@@ -137,8 +137,11 @@ abstractions generalize.
   signal of §18's semantic drift), **role concentration** (which roles
   can currently unblock the most tickets — approval inflation made
   measurable), and **dead evidence** (facts asserted frequently that
-  never influence any stage — evidence theater made measurable). All
-  pure derivations over logs and definitions.
+  never influence any stage — evidence theater made measurable), and
+  **conflict topology** (which fact paths conflict most, which actors
+  repeatedly disagree, which integration is the noisy source — ADR
+  0003's health metric made measurable). All pure derivations over logs
+  and definitions.
 
 ## Commercial
 

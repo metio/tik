@@ -22,21 +22,45 @@ role-priority, no per-process resolution rules.
 
 ## Context
 
+Most replicated systems ask "how do we make replicas converge?"; the
+prior question is "what does convergence mean when humans disagree?"
 Last-write-wins is deterministic but destroys information: an engineer
 asserting `severity=low` concurrently with a manager asserting
-`severity=critical` is a *disagreement*, and silently picking a winner by
-timestamp hides exactly the thing the process should surface. Per-process
-resolution policies were considered and rejected: they grow into a second
-language and move judgment out of the log.
+`severity=critical` is a *disagreement*, and `severity = conflicted` is
+the actual state of the evidence — the disagreement itself is
+information. Silently picking a winner by timestamp hides exactly the
+thing the process should surface, and every resolution shortcut fails
+the same way: latest-wins makes clocks into authority, role-priority
+embeds organizational judgment in the truth engine ("why did tik choose
+the manager's claim?" — "because the kernel says so" is the
+accountability hole), and per-process resolvers grow into a second
+governance language hidden in configuration. The causal DAG is what
+makes the distinction computable: a later assertion that *observed* the
+earlier one (an ancestor) is a correction — history, not conflict;
+only causally concurrent claims disagree.
 
 ## Consequences
 
 - Dispute, retraction, and conflict are now symmetric: three reasons a fact
   stops satisfying guards, all visible in `explain`, all resolved by new
-  events.
+  events. With absence, that completes the fact lifecycle — retracted
+  (withdrawn), disputed (challenged), conflicted (independent claims
+  disagree), absent (never established) — and lets guards ask exactly one
+  question with no per-scenario special cases: *is this fact currently
+  trustworthy enough to derive from?* (fact-status, the choke point).
+- Conflict volume is a health metric, not a merge problem: chronic
+  conflicts indicate overly broad fact paths, unclear ownership, or a
+  noisy integration (PLAN §5, §18). A "conflict topology" lens — which
+  paths conflict most, which actors disagree, which integration is the
+  source — fits the governance-observability family (IDEAS).
 - Requires `:event/parents` (Phase 1). Until then, single-replica ordering
   by `(at, id)` cannot produce concurrency, so nothing is silently wrong in
   Phase 0.
 - Escape hatches (per-fact `:on-conflict`) are deferred until dogfooding
   demonstrates a real need; adding one later is compatible, removing one is
-  not.
+  not. (The honest operational valve already exists without kernel
+  support: a policy bot authorized to sign superseding facts under
+  declared rules is an accountable actor, not protocol semantics —
+  PLAN §5.)
+- The job, in one line: tik does not eliminate conflict — it **makes
+  important conflicts impossible to hide.**
