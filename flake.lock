@@ -6,11 +6,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1783367782,
-        "narHash": "sha256-7/6160miyw7UATMxGFo+ZKUB2VC6dVFjAAYI3rM6D8c=",
+        "lastModified": 1783633631,
+        "narHash": "sha256-t24LTuPAsOrrkqnB6bBMAQkaJIOcqApO+mgujnrB5Ms=",
         "owner": "metio",
         "repo": "nix-devshell",
-        "rev": "9bbba31438253f49b9a9f9c5dde4caf74db81e99",
+        "rev": "94efbe67642de75c5a44af1fde91a7e4a2cd3adb",
         "type": "github"
       },
       "original": {

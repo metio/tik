@@ -22,11 +22,12 @@
         :task (shell "clojure -M:watson -p deps.edn -t github-advisory")}
   prose {:doc "Harper grammar over docs/ and kb/ (advisory: wrapped
               markdown trips false positives; not part of the gate)"
-         :task (shell {:continue true}
-                      (str "sh -c \"find docs kb -name '*.md' -print0"
-                           " | xargs -0 harper-cli lint --ignore"
-                           " 'SpellCheck,UseTitleCase,LongSentences,MassNouns,"
-                           "SplitWords,SentenceCapitalization,"
-                           "OrthographicConsistency,DisjointPrefixes'\""))}
+         :task (shell {:continue true
+                       :extra-env {"HARPER_IGNORE"
+                                   (str "LongSentences,MassNouns,SplitWords,"
+                                        "SentenceCapitalization,"
+                                        "OrthographicConsistency,"
+                                        "DisjointPrefixes")}}
+                      "ci-harper")}
   repl {:doc "JVM nREPL with dev+test paths"
         :task (shell "clojure -M:dev")}}}
