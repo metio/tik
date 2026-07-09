@@ -8,6 +8,7 @@
   not this Clojure, is the definition of tik."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.canonical :as canonical]
             [tik.event :as event]
@@ -37,7 +38,7 @@
           ;; store-format fixture: exact canonical bytes,
           ;; filename = event id = content address (verify L0)
           (doseq [^File f (file-seq (io/file dir "tickets"))
-                  :when (and (.isFile f) (.endsWith (.getName f) ".edn"))
+                  :when (and (.isFile f) (str/ends-with? (.getName f) ".edn"))
                   :let [e (fstore/read-event f)]]
             (is (= (slurp f) (canonical/emit (dissoc e :event/id)))
                 (str (.getName f) ": bytes are exactly the hashed region"))

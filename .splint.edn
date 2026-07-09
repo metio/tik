@@ -1,0 +1,10 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{;; Uniform Class/.member syntax is a stylistic migration with no
+ ;; correctness gain, and the kernel stays babashka-compatible —
+ ;; traditional interop reads fine in both runtimes.
+ lint/prefer-method-values {:enabled false}
+ ;; The flagged wrappers are EDN reader fns around static interop
+ ;; (Instant/parse); bare method values are 1.12-only syntax and the
+ ;; wrapper form is the one that reads identically under babashka.
+ lint/fn-wrapper {:enabled false}}

@@ -97,7 +97,7 @@ $ reuse lint       # license compliance
 
 ## Layout
 
-```
+```text
 src/tik/            the kernel (pure, bb-compatible .cljc — this IS the SDK)
   canonical.cljc    byte-stable EDN + content addressing (the un-migratable layer)
   event.cljc        the closed event vocabulary (7 types) & minting

@@ -34,7 +34,7 @@ into the plan.
 
 All tooling runs through the nix dev shell (the host has no toolchains):
 
-```
+```text
 nix develop --command <cmd>       # every command below assumes this
 ```
 
@@ -61,7 +61,7 @@ The full gate before calling work done: kaocha + kondo + tla + reuse +
 
 Derivation pipeline (all in `src/tik/`, pure `.cljc`, babashka + JVM):
 
-```
+```text
 events (canonical.cljc, event.cljc)
   → ticket state (reduce.cljc)      fold ordered by (at, id) over the SET
   → guard evaluation (guard.cljc)   pure fn of (state, now, reached)

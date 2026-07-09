@@ -9,4 +9,19 @@
                       org.clojure/test.check {:mvn/version "1.1.1"}}
          :main-opts ["-m" "kaocha.runner"]}
   :dev {:extra-paths ["test" "dev"]
-        :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}
+        :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}
+  ;; static analysis — the full battery runs in CI (metio/ci clojure.yml)
+  ;; and locally via `bb analyze` / `bb fmt`
+  :eastwood {:extra-paths ["test"]
+             :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
+                          org.clojure/test.check {:mvn/version "1.1.1"}
+                          lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+             :main-opts ["-m" "eastwood.lint"
+                         "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
+  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.15.2"}}
+           :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
+  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.13.0"}}
+           :main-opts ["-m" "cljfmt.main"]}
+  :watson {:extra-deps {io.github.clj-holmes/clj-watson
+                        {:git/tag "v6.1.0" :git/sha "be98e4db74fb8927db4825cc73bbe2606e44e5e3"}}
+           :main-opts ["-m" "clj-watson.cli" "scan"]}}}

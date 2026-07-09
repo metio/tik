@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+default: true
+MD013: false # line length: console blocks and tables exceed any sane limit
+MD033: false # inline HTML: SPDX comment headers in markdown files
+MD025:
+  front_matter_title: "" # kb/ pages carry both a front-matter title and a body H1
+MD041: false # PLAN.md deliberately starts at its first section heading
+MD060: false # table-column-style: pedantic; flags readable, valid tables

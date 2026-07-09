@@ -29,7 +29,7 @@
   1)
 
 (defn- emit-inst ^String [^Instant i]
-  (str "#inst \"" (.toString (.truncatedTo i ChronoUnit/MILLIS)) "\""))
+  (str "#inst \"" (str (.truncatedTo i ChronoUnit/MILLIS)) "\""))
 
 (defn emit
   "Return the canonical string form of `x`. Throws on unsupported types."
@@ -63,14 +63,14 @@
 (defn sha256-hex ^String [^String s]
   (let [d (.digest (MessageDigest/getInstance "SHA-256")
                    (.getBytes s "UTF-8"))]
-    (apply str (map #(format "%02x" %) d))))
+    (str/join (map #(format "%02x" %) d))))
 
 (defn sha256-hex-bytes
   "For blobs (artifacts). Hash policy — one algorithm per store per
   format-version, self-describing ids, additive migration — is ADR 0006."
   ^String [^bytes b]
   (let [d (.digest (MessageDigest/getInstance "SHA-256") b)]
-    (apply str (map #(format "%02x" %) d))))
+    (str/join (map #(format "%02x" %) d))))
 
 (defn content-address
   "\"sha256-<hex>\" of the canonical form of `value`."

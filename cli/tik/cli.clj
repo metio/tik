@@ -136,8 +136,7 @@
       (println "  + stage" stage-id "became derivable"))
     (doseq [stage-id (sort-by str (remove after-reached before-reached))]
       (println "  - stage" stage-id "no longer derivable"))
-    (doseq [path (sort-by str (into #{} (concat (keys before-facts)
-                                                (keys after-facts))))
+    (doseq [path (sort-by str (set (concat (keys before-facts) (keys after-facts))))
             :let [b (get before-facts path) a (get after-facts path)]
             :when (not= b a)]
       (cond

@@ -8,6 +8,7 @@
   retractions, disputes, invalid-per-schema values, and unknown event
   types, since the reducer must be total over all of them."
   (:require [clojure.edn :as edn]
+            [clojure.string :as str]
             [clojure.test.check.generators :as gen]
             [tik.event :as event])
   (:import (java.time Instant)))
@@ -15,7 +16,7 @@
 (def process (edn/read-string (slurp "processes/support-request.edn")))
 (def roles (:process/roles process))
 (def tid #uuid "018f2f6e-7c1a-7000-8000-00000000beef")
-(def base (Instant/parse "2026-07-08T10:00:00Z"))
+(def ^Instant base (Instant/parse "2026-07-08T10:00:00Z"))
 (defn at-sec ^Instant [s] (.plusSeconds base (long s)))
 
 (def actors ["seb" "billing" "customer" "rando"])
@@ -30,7 +31,7 @@
                    :low :normal :high :critical])
     gen/boolean
     gen/small-integer
-    (gen/fmap #(apply str %) (gen/vector gen/char-alphanumeric 0 12))]))
+    (gen/fmap str/join (gen/vector gen/char-alphanumeric 0 12))]))
 
 (def gen-op
   (gen/tuple (gen/frequency [[6 (gen/return :assert)]

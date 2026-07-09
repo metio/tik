@@ -32,8 +32,10 @@
    [:effort {:optional true} :string]        ; optional ISO-8601, never inferred
    [:sla {:optional true} [:map-of :keyword :any]]])
 
+#_{:splint/disable [naming/lisp-case]} ; schema names are PascalCase (Guard,
+                                        ; Stage); `Process` itself would clash
+                                        ; with java.lang.Process
 (def ProcessDef
-  ;; not `Process`: that name is java.lang.Process on the JVM
   [:map
    [:process/id :keyword]
    [:process/version pos-int?]

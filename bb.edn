@@ -12,5 +12,21 @@
         :task (shell "clj-kondo --lint src cli test")}
   tla  {:doc "Model-check the TLA+ specs (spec/)"
         :task (shell "bash spec/check.sh")}
+  analyze {:doc "Deep static analysis (eastwood + splint)"
+           :task (do (shell "clojure -M:eastwood")
+                     (shell "clojure -M:splint"))}
+  fmt  {:doc "Check formatting (cljfmt); `bb fmt fix` rewrites"
+        :task (shell (str "clojure -M:cljfmt "
+                          (or (first *command-line-args*) "check")))}
+  vuln {:doc "Dependency CVE scan (clj-watson; needs GITHUB_TOKEN)"
+        :task (shell "clojure -M:watson -p deps.edn -t github-advisory")}
+  prose {:doc "Harper grammar over docs/ and kb/ (advisory: wrapped
+              markdown trips false positives; not part of the gate)"
+         :task (shell {:continue true}
+                      (str "sh -c \"find docs kb -name '*.md' -print0"
+                           " | xargs -0 harper-cli lint --ignore"
+                           " 'SpellCheck,UseTitleCase,LongSentences,MassNouns,"
+                           "SplitWords,SentenceCapitalization,"
+                           "OrthographicConsistency,DisjointPrefixes'\""))}
   repl {:doc "JVM nREPL with dev+test paths"
         :task (shell "clojure -M:dev")}}}

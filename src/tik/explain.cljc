@@ -91,9 +91,9 @@
     (->> explanations
          (map (fn [{:keys [stage satisfied missing blocks hint]}]
                 (str "To reach " stage ":\n"
-                     (apply str (map #(str "  ✓ " (pr-str %) "\n") satisfied))
-                     (apply str (map #(str "  ✗ " (reason->text %) "\n")
-                                     missing))
+                     (str/join (map #(str "  ✓ " (pr-str %) "\n") satisfied))
+                     (str/join (map #(str "  ✗ " (reason->text %) "\n")
+                                    missing))
                      (when (seq blocks)
                        (str "  blocks: " (str/join ", " (map str (sort-by str blocks))) "\n"))
                      (when hint (str "  (see: " hint ")\n")))))

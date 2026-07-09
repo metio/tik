@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+[default.extend-words]
+# EDN is extensible data notation, not a typo of END
+edn = "edn"
+# clojure.core/juxt is a function, strat-* are stratification test names
+juxt = "juxt"
+strat = "strat"
+
+[files]
+# content-addressed corpus stores: filenames and bodies are hashes/EDN,
+# not prose
+extend-exclude = ["corpus/*/tickets/**", "flake.lock"]

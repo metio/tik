@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name: Verify
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  clojure:
+    # Reusable Clojure pipeline (kaocha, clj-kondo at fail-on-warning,
+    # eastwood, splint, cljfmt, clj-watson) shared across the metio Clojure
+    # repos; every gate runs through this repo's nix devShell. Pinned to the
+    # feat/clojure-pipeline commit until it merges — repin to @v1 then.
+    name: Clojure
+    uses: metio/ci/.github/workflows/clojure.yml@aec58ab29b70164cbb45864d38e4122fe4bfd59f # feat/clojure-pipeline
+    with:
+      kondo-paths: src cli test
+  tla:
+    # Merge and SweepFixpoint must pass; ChaoticFixpoint must FAIL — the
+    # script asserts the documented counterexample is still found.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command bash spec/check.sh
+  process-tests:
+    # Scripted process tests: steps in, expected derived stages out,
+    # explain printed on failure. The process definitions' own suite.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command bb tik lint processes/support-request.edn
+      - run: nix develop --command bb tik lint processes/sweep-order.edn
+      - run: nix develop --command bb tik test processes/support-request.tests.edn
+  reuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command ci-reuse
+  typos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command ci-typos
+  yaml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command ci-yaml
+  github-actions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command ci-actionlint
+  markdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - run: nix develop --command ci-markdown
+  verify:
+    # Single required check: mark only this one required in branch
+    # protection and new jobs are covered automatically.
+    name: Verify
+    needs: [clojure, tla, process-tests, reuse, typos, yaml, github-actions, markdown]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify every job succeeded or skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key)=\(.value.result)"')
+          [ -z "$bad" ] || { echo "::error::$bad"; exit 1; }

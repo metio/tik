@@ -107,6 +107,18 @@ abstractions generalize.
   `:signed-by` machinery authorizing "this service completes this
   task", covering mixed flows (SSH commands + API calls) under one
   accountable identity.
+- **Nix flakes as stage execution environments** — a stage annotation
+  (`:stage/environment {:flake "github:…" :narHash "sha256-…"}`) naming
+  the hash-pinned toolchain in which that stage's work is performed.
+  Not wild — tik-shaped: the annotation is authoring data the kernel
+  never interprets (ADR 0009), the effect runner or agent (ADR 0019)
+  materializes the environment with `nix develop`, and the resulting
+  `:work` attestation claims "performed in environment `narHash` X" —
+  making the *toolchain itself evidence*. A process can then guard on
+  it ("the release build's environment hash equals the pinned one"),
+  which is reproducible-builds discipline extended to organizational
+  work. Composes with agent accountability (§13): transcript hash +
+  environment hash = what ran, and in what world.
 - **`tik pack` / signed bundles / registry / federated discovery** —
   the distribution ladder beyond git-first. Transport porcelain only;
   hash stays identity, signature stays authority (§6).

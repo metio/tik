@@ -6,33 +6,42 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
+    # the metio toolchain: shared lint gate (reuse, typos, yamllint,
+    # actionlint, markdownlint-cli2, …) plus the ci-* wrappers CI runs
+    devshell.url = "github:metio/nix-devshell";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, devshell }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
-        devShells.default = pkgs.mkShell {
+        devShells.default = devshell.lib.mkDevShell {
+          inherit pkgs;
           packages = with pkgs; [
             jdk21          # JVM for the full library / server work
-            clojure        # tools.deps CLI (tests, REPL)
+            clojure        # tools.deps CLI (tests, deep analysis, REPL)
             babashka       # the tik CLI runtime
-            clj-kondo      # linting
+            clj-kondo      # fast lint (the deep battery rides deps.edn aliases)
             tlaplus        # TLC model checker for the specs in spec/
+            # harper-cli (bb prose) arrives via the shared devshell's
+            # ci-harper once metio/nix-devshell ships it (25.05 nixpkgs
+            # only packages harper-ls)
             git            # storage & replication substrate
-            reuse          # SPDX/REUSE compliance checks
             sqlite         # embedded store tier (Phase 2 spike)
           ];
 
-          shellHook = ''
+          menu = ''
             echo "tik dev shell — try:"
             echo "  bb tik            # CLI usage"
             echo "  bb test           # JVM test suite (kaocha)"
             echo "  bb lint           # clj-kondo"
+            echo "  bb analyze        # eastwood + splint"
+            echo "  bb fmt            # cljfmt check (bb fmt fix rewrites)"
+            echo "  bb vuln           # clj-watson CVE scan (needs GITHUB_TOKEN)"
             echo "  bb tla            # model-check the TLA+ specs"
-            echo "  reuse lint        # license compliance"
+            echo "  bb prose          # harper grammar over docs/ and kb/ (advisory)"
           '';
         };
       });
