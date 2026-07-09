@@ -142,6 +142,11 @@ abstractions generalize.
   repeatedly disagree, which integration is the noisy source — ADR
   0003's health metric made measurable). All pure derivations over logs
   and definitions.
+- **Causal view** — DAG analysis as a lens (ADR 0004): which assertions
+  were made from which evidence, which actors were working from an
+  outdated head, where a branch diverged, which conflicts came from
+  independent replicas. Becomes interesting with Phase 1 multi-replica
+  sync; pure `tik.dag` computation, no kernel change.
 
 ## Commercial
 
