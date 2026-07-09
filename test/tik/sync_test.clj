@@ -9,8 +9,7 @@
   than being resolved by the transport. If this test ever needs
   file-level conflict resolution, the store design failed (H2's kill
   criterion, verbatim)."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [clojure.java.shell :as sh]
             [clojure.test :refer [deftest is testing]]
             [tik.dag :as dag]
             [tik.event :as event]
