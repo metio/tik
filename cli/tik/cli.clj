@@ -22,6 +22,7 @@
             [tik.next :as next-lens]
             [tik.process :as process]
             [tik.reduce :as red]
+            [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
@@ -63,6 +64,25 @@
 
 (defn- the-store [] (fstore/file-store (root)))
 
+(defn- events-dir ^File [ticket-id]
+  (io/file (root) "tickets" (str ticket-id) "events"))
+
+(defn- event-file ^File [event]
+  (io/file (events-dir (:event/ticket event)) (str (:event/id event) ".edn")))
+
+(defn- signing-key [opts]
+  (let [k (or (:key opts) (System/getenv "TIK_KEY"))]
+    (when-not (str/blank? k) k)))
+
+(defn- append!*
+  "Append, then sign the stored bytes when a key is configured (--key or
+  TIK_KEY): authorship travels with the write (ADR 0010)."
+  [s event opts]
+  (store/append! s event)
+  (when-let [key (signing-key opts)]
+    (sign/sign! key (event-file event) (:event/id event)))
+  event)
+
 (defn- resolve-id [s ticket-str]
   (let [hits (filter #(str/starts-with? % ticket-str)
                      (map str (store/ticket-ids s)))]
@@ -90,7 +110,7 @@
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
                                 :process-hash (process/process-hash proc)})]
-    (store/append! (the-store) e)
+    (append!* (the-store) e opts)
     (println (str id))))
 
 (defn- cmd-set [{:keys [pos opts]}]
@@ -99,21 +119,23 @@
         id (resolve-id s ticket)]
     ;; heads recomputed per event: linear chain within one command
     (doseq [kv kvs :let [[k v] (str/split kv #"=" 2)]]
-      (store/append! s (event/assert-fact
-                        {:ticket id :actor (actor opts) :at (now)
-                         :parents (dag/heads (store/events s id))
-                         :path (parse-key k) :value (parse-value v)})))
+      (append!* s (event/assert-fact
+                   {:ticket id :actor (actor opts) :at (now)
+                    :parents (dag/heads (store/events s id))
+                    :path (parse-key k) :value (parse-value v)})
+                opts))
     (println "ok")))
 
 (defn- cmd-retract [{:keys [pos opts]}]
   (let [[ticket k] pos
         s (the-store)
         id (resolve-id s ticket)]
-    (store/append! s (event/retract-fact
-                      {:ticket id :actor (actor opts) :at (now)
-                       :parents (dag/heads (store/events s id))
-                       :path (parse-key k)
-                       :reason (:reason opts)}))
+    (append!* s (event/retract-fact
+                 {:ticket id :actor (actor opts) :at (now)
+                  :parents (dag/heads (store/events s id))
+                  :path (parse-key k)
+                  :reason (:reason opts)})
+              opts)
     (println "ok")))
 
 (defn- cmd-diff
@@ -152,11 +174,12 @@
   (let [[ticket k] pos
         s (the-store)
         id (resolve-id s ticket)]
-    (store/append! s (event/dispute-fact
-                      {:ticket id :actor (actor opts) :at (now)
-                       :parents (dag/heads (store/events s id))
-                       :path (parse-key k)
-                       :reason (or (:reason opts) "disputed")}))
+    (append!* s (event/dispute-fact
+                 {:ticket id :actor (actor opts) :at (now)
+                  :parents (dag/heads (store/events s id))
+                  :path (parse-key k)
+                  :reason (or (:reason opts) "disputed")})
+              opts)
     (println "ok")))
 
 (defn- cmd-attach [{:keys [pos opts]}]
@@ -172,10 +195,11 @@
         dest (io/file (root) "tickets" (str id) "blobs" hash)]
     (.mkdirs (.getParentFile dest))
     (io/copy src dest)
-    (store/append! s (event/attach-artifact
-                      {:ticket id :actor (actor opts) :at (now)
-                       :parents (dag/heads (store/events s id))
-                       :path (str "repro/" (.getName src)) :hash hash}))
+    (append!* s (event/attach-artifact
+                 {:ticket id :actor (actor opts) :at (now)
+                  :parents (dag/heads (store/events s id))
+                  :path (str "repro/" (.getName src)) :hash hash})
+              opts)
     (println "ok" hash)))
 
 (defn- cmd-comment
@@ -192,10 +216,11 @@
         dest (io/file (root) "tickets" (str id) "blobs" hash)]
     (.mkdirs (.getParentFile dest))
     (spit dest text)
-    (store/append! s (event/attach-artifact
-                      {:ticket id :actor (actor opts) :at at
-                       :parents (dag/heads (store/events s id))
-                       :path (str "comment/" at) :hash hash}))
+    (append!* s (event/attach-artifact
+                 {:ticket id :actor (actor opts) :at at
+                  :parents (dag/heads (store/events s id))
+                  :path (str "comment/" at) :hash hash})
+              opts)
     (println "ok" hash)))
 
 (defn- cmd-status [{:keys [pos]}]
@@ -450,6 +475,39 @@
       (println "test: PASS")
       (do (println (str "test: FAIL (" @failures ")")) (System/exit 1)))))
 
+(defn- cmd-actor
+  "actor add <name> <pubkey-file>: bind an actor to a key in the store's
+  allowed-signers registry (identity ladder rung 1, PLAN §9)."
+  [{:keys [pos]}]
+  (let [[sub actor-name pubkey-file] pos]
+    (when-not (and (= "add" sub) actor-name pubkey-file)
+      (die "usage: tik actor add <name> <pubkey-file>"))
+    (let [line (sign/allowed-signers-line
+                actor-name (str/trim (slurp pubkey-file)))
+          f (io/file (root) "actors")]
+      (spit f (str line "
+") :append true)
+      (println "ok" (sign/fingerprint (str/trim (slurp pubkey-file)))))))
+
+(defn- cmd-sign
+  "Sign this actor's OWN events that this key has not signed yet. A
+  signature is an authorship claim (ADR 0010), so signing another
+  actor's events would assert something false — those are skipped."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        id (resolve-id s (first pos))
+        key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
+        me (actor opts)
+        fpr (sign/fingerprint (sign/pubkey key))
+        dir (events-dir id)
+        mine (filter #(= me (:event/actor %)) (store/events s id))
+        unsigned (remove #(.exists (sign/sig-file dir (:event/id %) fpr))
+                         mine)]
+    (doseq [e unsigned]
+      (sign/sign! key (io/file dir (str (:event/id e) ".edn")) (:event/id e)))
+    (println "signed" (count unsigned) "event(s) as" me
+             (str "(" (count mine) " authored, key " fpr ")"))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         problems (process/lint proc)]
@@ -468,7 +526,10 @@
   (let [s (the-store)
         id (resolve-id s (first pos))
         dir (io/file (root) "tickets" (str id) "events")
-        files (filter #(.isFile ^File %) (.listFiles dir))
+        files (filter (fn [^File f]
+                        (and (.isFile f)
+                             (str/ends-with? (.getName f) ".edn")))
+                      (.listFiles dir))
         failures (atom 0)
         check (fn [ok? msg]
                 (println (str (if ok? "  ok    " "  FAIL  ") msg))
@@ -487,7 +548,23 @@
       (check (empty? (dag/missing-parents evs)) "all parents present")
       (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
       (println "L1 authenticity")
-      (println "  skip  no detached signatures in phase 0 (ADR 0007)")
+      (let [signers (io/file (root) "actors")]
+        (if-not (.exists signers)
+          (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
+          (let [unsigned (atom 0)]
+            (doseq [e (red/ordered evs)
+                    :let [sigs (sign/sidecars dir (:event/id e))]]
+              (if (empty? sigs)
+                (swap! unsigned inc)
+                (doseq [sig sigs]
+                  (check (sign/verify signers
+                                      (io/file dir (str (:event/id e) ".edn"))
+                                      sig (:event/actor e))
+                         (str (subs (:event/id e) 0 19) "… signed by "
+                              (:event/actor e))))))
+            (when (pos? @unsigned)
+              (println (str "  note  " @unsigned " event(s) unsigned"
+                            " (authenticity unclaimed, not failed)"))))))
       (println "L2 reproducibility")
       (let [state (red/ticket-state evs)
             proc (load-process (name (:process state)))]
@@ -517,7 +594,10 @@
   tik log <id>                                  the event history
   tik ls                                        all tickets with derived stages
   tik next [--actor A]                          the inbox: what unlocks the most work
-  tik verify <id>                               the verify ladder (L0/L2)
+  tik verify <id>                               the verify ladder (L0/L1/L2)
+  tik actor add <name> <key.pub>                register a signer (identity rung 1)
+  tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
+                                                sign every write as it happens)
   tik lint <process.edn>                        lint a process definition
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
@@ -542,6 +622,8 @@
       "next"    (cmd-next parsed)
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
+      "actor"   (cmd-actor parsed)
+      "sign"    (cmd-sign parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)
       (println usage))))

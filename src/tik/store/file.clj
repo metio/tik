@@ -47,7 +47,12 @@
   (events [_ ticket-id]
     (let [dir (ticket-dir root ticket-id)]
       (if (.isDirectory dir)
-        (mapv read-event (filter #(.isFile ^File %) (.listFiles dir)))
+        ;; only *.edn holds events; .sig.* sidecars are endorsements of
+        ;; the claim, never the claim (ADR 0007)
+        (mapv read-event (filter (fn [^File f]
+                                   (and (.isFile f)
+                                        (str/ends-with? (.getName f) ".edn")))
+                                 (.listFiles dir)))
         [])))
   (ticket-ids [_]
     (let [dir (io/file root "tickets")]

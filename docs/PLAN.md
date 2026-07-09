@@ -349,8 +349,14 @@ Verification is a product surface, not a test suite. The ladder:
   event stands, verify says "blob absent" rather than lying. Deletion
   (GDPR, leaked secrets) is a designed property, not a failure mode.
 
-`tik verify` ships L0 + L2 in Phase 0 — it already caught ADR 0007's bug
-during development, which is the entire argument for building it first.
+`tik verify` shipped L0 + L2 in Phase 0 — it already caught ADR 0007's
+bug during development, which is the entire argument for building it
+first. **L1 is now live**: detached SSH sidecars via `ssh-keygen -Y`
+(no crypto code of our own), verified against the store's `actors`
+registry (allowed-signers format — identity rung 1, §9). Events are
+signed at write time when `TIK_KEY` is set; unsigned events are
+reported as unclaimed, never failed (ADR 0011); a signature that
+does not verify as its event's claimed actor fails the ladder.
 
 The **conformance corpus** — directories of real event files plus
 expected derived results — is simultaneously the regression suite, the
@@ -396,8 +402,11 @@ Three commitments extend the ladder inward:
 
 A ladder, each rung sufficient, each next rung strengthening:
 
-1. **SSH keys** (Phase 0/1): actors are keys; signatures are detached
-   sidecars (ADR 0007). Works offline forever.
+1. **SSH keys** (built): actors are keys; signatures are detached
+   sidecars (ADR 0007) minted by `ssh-keygen -Y` and checked against
+   the store's `actors` allowed-signers registry (`tik actor add`).
+   Works offline forever; the fingerprint in the sidecar name is
+   coreutils-recomputable from the public key.
 2. **OIDC/Keycloak bridge**: a bridge service performs device-flow login
    and issues signed *attestation events* binding a key to an IdP
    subject, with a reconcile loop re-attesting on schedule. Verification
@@ -656,8 +665,8 @@ guard reasons; lint enforcing the closed basis, stratified negation
 explain as data + renderer; `tik.dag`; **`tik.next`** — the inbox lens,
 sound/complete against explain by property test, who-can-act aware of
 `:signed-by` restrictions. CLI: `new set retract dispute
-attach comment status explain log diff ls next lint sim test` and
-**`verify` (L0+L2)** — independently checked with coreutils; `comment`
+attach comment status explain log diff ls next lint sim test actor
+sign` and **`verify` (L0+L1+L2)** — independently checked with coreutils; `comment`
 attaches a text blob by hash (no dedicated event type); `log` is the
 evidence timeline (derived transitions interleaved at render time);
 `sim` is live process design (scratch ticket, auto-reloading

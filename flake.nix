@@ -29,6 +29,7 @@
             # ci-harper once metio/nix-devshell ships it (25.05 nixpkgs
             # only packages harper-ls)
             git            # storage & replication substrate
+            openssh        # ssh-keygen -Y: detached event signatures (verify L1)
             sqlite         # embedded store tier (Phase 2 spike)
           ];
 
