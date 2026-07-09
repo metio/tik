@@ -1,0 +1,9 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{;; defspec defines a test var; without this kondo flags every property
+ ;; test name as unresolved
+ :lint-as {clojure.test.check.clojure-test/defspec clojure.core/def}
+ ;; the .cljc kernel targets the JVM and babashka only — both :clj — so
+ ;; linting the :cljs branch produces false unresolved-symbol errors on
+ ;; Java interop
+ :cljc {:features [:clj]}}

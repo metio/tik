@@ -1,0 +1,16 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:paths ["src" "cli"]
+ :deps {metosin/malli {:mvn/version "0.17.0"}}
+ :tasks
+ {tik  {:doc "Run the tik CLI (bb tik -- status <id>)"
+        :requires ([tik.cli])
+        :task (apply tik.cli/-main *command-line-args*)}
+  test {:doc "Run the JVM test suite (kaocha)"
+        :task (shell "clojure -M:test")}
+  lint {:doc "clj-kondo over the code base"
+        :task (shell "clj-kondo --lint src cli test")}
+  tla  {:doc "Model-check the TLA+ specs (spec/)"
+        :task (shell "bash spec/check.sh")}
+  repl {:doc "JVM nREPL with dev+test paths"
+        :task (shell "clojure -M:dev")}}}

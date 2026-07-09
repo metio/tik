@@ -1,0 +1,59 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Sample process: user support requests.
+;;
+;; Two deliberate teaching points:
+;; - [:customer :ack] is a bare boolean so `tik lint` demonstrates the
+;;   facts-over-flags warning (opt out with {:lint {:boolean-facts :off}}).
+;; - :escalated uses fact-level negation [:not [:fact [:category]]] rather
+;;   than [:not [:stage-reached :triaged]]: stage negation within the same
+;;   stratum is forbidden by ADR 0005 (stratified negation), and "48h with
+;;   no category" is the more honest claim anyway.
+{:process/id :support-request
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/roles
+ {:triager {:members ["seb"]}
+  :billing {:members ["billing"]}}
+
+ :process/facts
+ {[:category]        [:enum :billing :technical :account :abuse]
+  [:severity]        [:enum :low :normal :high :critical]
+  [:resolution :ref] [:string {:min 8}]
+  [:customer :ack]   :boolean}
+
+ :process/stages
+ [{:stage/id :received
+   :guards []}
+
+  {:stage/id :triaged
+   :after [:received]
+   :hint "kb/concepts/triage.md"
+   :guards [[:fact [:category]]
+            [:fact [:severity]]
+            [:signed-by :triager [:category]]]}
+
+  {:stage/id :escalated
+   :after [:received]
+   :guards [[:elapsed-since :ticket/create "PT48H"]
+            [:not [:fact [:category]]]]}
+
+  {:stage/id :reproducible
+   :after [:triaged]
+   :guards [[:fact= [:category] :technical]
+            [:artifact "repro/"]]}
+
+  {:stage/id :resolved
+   :after [:triaged]
+   :guards [[:fact [:resolution :ref]]
+            ;; "technical implies reproduced" without :if: material
+            ;; implication is [:or [:not antecedent] consequent]
+            [:or [:not [:fact= [:category] :technical]]
+             [:stage-reached :reproducible]]]}
+
+  {:stage/id :closed
+   :after [:resolved]
+   :stage/sticky? true
+   :guards [[:fact [:customer :ack]]]}]}

@@ -1,0 +1,146 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+(ns tik.guard
+  "The closed guard vocabulary, v1.
+
+  Guards are deterministic pure functions of (state, now, reached). Effects
+  live in edge admission checks, never here: `verify` must re-evaluate every
+  guard identically, offline, years later.
+
+  eval-guard returns {:satisfied? bool :reasons [reason-map ...]}.
+  Reasons are DATA — the kernel speaks EDN, never English. Rendering to
+  text/forms/MCP task specs is the lens's job (tik.explain for the CLI).
+  Reason keys: :reason (namespaced keyword), plus :path/:schema/:role/
+  :stage/:by/:note/:expected/:actual/:prefix/:since/:duration/:due/
+  :errors/:options/:guard as applicable.
+
+  All fact inspection goes through tik.reduce/fact-status — the single
+  choke point for why a fact does or does not satisfy guards.
+
+  Vocabulary — an orthogonal basis of nine: :fact :artifact :signed-by
+  :stage-reached :elapsed-since :and :or :not :malli. [:fact= path v] is
+  authoring sugar that `expand` rewrites to a :malli guard before
+  evaluation; the evaluator and the stratification linter see only the
+  basis. Note ADR 0005: [:not [:stage-reached ...]] is lint-restricted to
+  strictly earlier strata — negation over `reached` must be stratified;
+  negation over facts is monotone-safe and unrestricted."
+  (:require [clojure.string :as str]
+            [clojure.walk :as walk]
+            [malli.core :as m]
+            [malli.error :as me]
+            [tik.reduce :as red])
+  #?(:clj (:import (java.time Duration Instant))))
+
+(defn- ->instant ^Instant [t]
+  (if (instance? java.util.Date t) (.toInstant ^java.util.Date t) t))
+
+(defn fact-map
+  "Facts as a simple {path value} map of effective values."
+  [state]
+  (into {}
+        (keep (fn [[path _]]
+                (when-some [v (red/fact-value state path)] [path v])))
+        (:facts state)))
+
+(def ^:private ok {:satisfied? true :reasons []})
+(defn- fail [& reasons] {:satisfied? false :reasons (vec reasons)})
+
+(declare eval-guard)
+
+(defn- eval-fact [[_ path] {:keys [state process]}]
+  (let [{:keys [status] :as fs} (red/fact-status state path)
+        schema (get-in process [:process/facts path])]
+    (case status
+      :absent    (fail {:reason :fact/missing :path path :schema schema})
+      :retracted (fail {:reason :fact/retracted :path path
+                        :by (:by fs) :note (:note fs)})
+      :disputed  (fail {:reason :fact/disputed :path path
+                        :by (:by fs) :note (:note fs)})
+      :conflicted (fail {:reason :fact/conflicted :path path
+                         :claims (:claims fs)})
+      :present
+      (if (and schema (not (m/validate schema (:value fs))))
+        (fail {:reason :fact/invalid :path path :value (:value fs)
+               :schema schema
+               :errors (me/humanize (m/explain schema (:value fs)))})
+        ok))))
+
+(defn- eval-artifact [[_ prefix] {:keys [state]}]
+  (if (some #(str/starts-with? % prefix) (keys (:artifacts state)))
+    ok
+    (fail {:reason :artifact/missing :prefix prefix})))
+
+(defn- eval-signed-by [[_ role path] {:keys [roles] :as ctx}]
+  (let [base (eval-fact [:fact path] ctx)]
+    (if-not (:satisfied? base)
+      base
+      (let [members (set (get-in roles [role :members]))
+            by (:by (red/fact-status (:state ctx) path))]
+        (if (contains? members by)
+          ok
+          (fail {:reason :role/unsatisfied :role role :path path :by by}))))))
+
+(defn- eval-stage-reached [[_ stage-id] {:keys [reached]}]
+  (if (contains? reached stage-id)
+    ok
+    (fail {:reason :stage/not-reached :stage stage-id})))
+
+(defn- eval-elapsed [[_ ref dur-str] {:keys [state now]}]
+  (let [start (case ref
+                :ticket/create (:created-at state)
+                (throw (ex-info "unknown :elapsed-since reference" {:ref ref})))
+        due (some-> start ->instant (.plus (Duration/parse dur-str)))]
+    (if (and due (not (.isBefore ^Instant (->instant now) due)))
+      ok
+      (fail {:reason :time/not-elapsed :since ref :duration dur-str :due due}))))
+
+(defn- eval-malli [[_ schema] {:keys [state]}]
+  (let [facts (fact-map state)]
+    (if (m/validate schema facts)
+      ok
+      (fail {:reason :schema/unsatisfied :schema schema
+             :errors (me/humanize (m/explain schema facts))}))))
+
+(defn expand
+  "Rewrite authoring sugar to the basis. [:fact= path v] means \"the fact
+  is present AND its effective value is v\" and expands to exactly that:
+  [:and [:fact path] [:malli [:map [path [:= v]]]]]. Applied once at the
+  eval-guard boundary; everything past it is the nine-operator basis."
+  [guard]
+  (walk/postwalk
+   (fn [x]
+     (if (and (vector? x) (= :fact= (first x)))
+       (let [[_ path expected] x]
+         [:and [:fact path] [:malli [:map [path [:= expected]]]]])
+       x))
+   guard))
+
+(defn- eval-guard*
+  [guard ctx]
+  (case (first guard)
+    :fact          (eval-fact guard ctx)
+    :artifact      (eval-artifact guard ctx)
+    :signed-by     (eval-signed-by guard ctx)
+    :stage-reached (eval-stage-reached guard ctx)
+    :elapsed-since (eval-elapsed guard ctx)
+    :malli         (eval-malli guard ctx)
+    :and (let [rs (map #(eval-guard* % ctx) (rest guard))]
+           {:satisfied? (every? :satisfied? rs)
+            :reasons (into [] (mapcat :reasons) rs)})
+    :or  (let [rs (map #(eval-guard* % ctx) (rest guard))]
+           (if (some :satisfied? rs)
+             ok
+             (fail {:reason :alternatives
+                    :options (mapv :reasons rs)})))
+    :not (let [r (eval-guard* (second guard) ctx)]
+           (if (:satisfied? r)
+             (fail {:reason :must-not-hold :guard (second guard)})
+             ok))
+    (throw (ex-info "unknown guard operator (closed vocabulary v1)"
+                    {:guard guard}))))
+
+(defn eval-guard
+  "ctx: {:state :process :now :reached :roles}. Sugar expands here; the
+  evaluator proper sees only the basis."
+  [guard ctx]
+  (eval-guard* (expand guard) ctx))

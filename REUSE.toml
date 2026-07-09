@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "tik"
+SPDX-PackageDownloadLocation = "https://github.com/metio/tik"
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "The tik Authors"
+SPDX-License-Identifier = "0BSD"

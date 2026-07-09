@@ -1,0 +1,1 @@
+{:current #{:closed :reproducible} :facts {[:category] :technical [:resolution :ref] "abc123def456" [:severity] :high} :now #inst "2026-07-08T12:00:00Z" :process :support-request :reached #{:closed :received :reproducible :resolved :triaged}}

@@ -1,0 +1,3 @@
+tik design ideas live in docs/IDEAS.md (unjudged) and docs/PLAN.md §19 (verdicts).
+
+- org-wide check which nixpkg upstream version is used - should we always reference unstable so that we never have to update version here? renovate will update the flake.lock file? why does the lock file not exist yet?

@@ -1,0 +1,58 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Process tests: scripted evidence in, expected derived stages out.
+;; Run with `tik test processes/support-request.tests.edn`. A failing
+;; case prints explain, so the process tells you why a stage did not
+;; derive. Deterministic: fixed epoch, pure derivation, no store.
+{:test/process "support-request.edn"
+ :test/cases
+ [{:case/name "facts alone do not triage — the triager role must sign"
+   :case/steps [[:actor "rando"]
+                [:set [:category] :technical]
+                [:set [:severity] :high]]
+   :case/expect {:excludes #{:triaged}}}
+
+  {:case/name "a triager categorizing reaches :triaged"
+   :case/steps [[:actor "seb"]
+                [:set [:category] :technical]
+                [:set [:severity] :high]]
+   :case/expect {:includes #{:triaged}
+                 :current #{:triaged}}}
+
+  {:case/name "categorized tickets never escalate"
+   :case/steps [[:actor "seb"]
+                [:set [:category] :technical]
+                [:now "+PT49H"]]
+   :case/expect {:excludes #{:escalated}}}
+
+  {:case/name "uncategorized tickets escalate after 48h"
+   :case/steps [[:now "+PT49H"]]
+   :case/expect {:includes #{:escalated}}}
+
+  {:case/name "technical resolution requires a reproduction first"
+   :case/steps [[:actor "seb"]
+                [:set [:category] :technical]
+                [:set [:severity] :high]
+                [:set [:resolution :ref] "abcdef123456"]]
+   :case/expect {:excludes #{:resolved}}}
+
+  {:case/name "reproduction unlocks resolution; both branch tips current"
+   :case/steps [[:actor "seb"]
+                [:set [:category] :technical]
+                [:set [:severity] :high]
+                [:set [:resolution :ref] "abcdef123456"]
+                [:attach "repro/crash.sh"]]
+   :case/expect {:includes #{:reproducible :resolved}
+                 :current #{:reproducible :resolved}}}
+
+  {:case/name "closed is sticky: surviving an ack retraction"
+   :case/steps [[:actor "seb"]
+                [:set [:category] :technical]
+                [:set [:severity] :high]
+                [:set [:resolution :ref] "abcdef123456"]
+                [:attach "repro/crash.sh"]
+                [:actor "customer"]
+                [:set [:customer :ack] true]
+                [:retract [:customer :ack]]]
+   :case/expect {:includes #{:closed}}}]}
