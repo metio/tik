@@ -122,6 +122,25 @@ abstractions generalize.
 - **`tik pack` / signed bundles / registry / federated discovery** —
   the distribution ladder beyond git-first. Transport porcelain only;
   hash stays identity, signature stays authority (§6).
+- **Customer information-request loop** — when a process needs facts
+  only the customer can provide, everything decomposes into existing
+  machinery: the *request* is an effect (ADR 0019: an email from an
+  org-specific template, fired when the frontier blocks on
+  customer-role facts); the *reply* enters through a bridge as signed
+  fact assertions (the email/portal bridge is just an actor); the
+  *completion* is derivation — the blocked stage derives the moment the
+  facts land, no sub-process state machine needed. A "sub-process" view
+  is a lens over the customer-role slice of the frontier; if a real
+  detached sub-ticket is wanted, that is a link fact plus a cross-log
+  attestation (§10 federation shape, banked composition). Two derived
+  extras make it shine: the email can render *where the ticket stands*
+  (the customer-filtered explain — capability-filtered explain's
+  friendly twin) and *what may be asked later* — every fact path a
+  customer-role guard anywhere downstream can demand is **statically
+  derivable from the definition**, so the org can choose per process:
+  drip-ask at each stage, or aggregate the full list into one email up
+  front. That choice is a lens/effect policy, not process semantics —
+  and "we asked for everything once" is itself evidence in the log.
 - **Plural, per-role priority views** — support, security, engineering,
   finance each get their own derived ranking over the same facts; no
   forced convergence to one number.
