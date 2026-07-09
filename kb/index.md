@@ -18,6 +18,17 @@ humans, navigable by agents. Guard `:hint`s in process definitions link here.
 - [decisions/0005-stratified-negation](decisions/0005-stratified-negation.md)
 - [decisions/0006-hash-policy](decisions/0006-hash-policy.md)
 - [decisions/0007-stored-bytes-are-the-hashed-region](decisions/0007-stored-bytes-are-the-hashed-region.md)
+- [decisions/0008-canonical-serialization-protocol](decisions/0008-canonical-serialization-protocol.md)
+- [decisions/0009-unknown-data-policy](decisions/0009-unknown-data-policy.md)
+- [decisions/0010-authority-model](decisions/0010-authority-model.md)
+- [decisions/0011-log-admission-vs-trust](decisions/0011-log-admission-vs-trust.md)
+- [decisions/0012-time-semantics](decisions/0012-time-semantics.md)
+- [decisions/0013-derived-state-never-authoritative](decisions/0013-derived-state-never-authoritative.md)
+- [decisions/0014-artifact-semantics](decisions/0014-artifact-semantics.md)
+- [decisions/0015-process-definition-trust](decisions/0015-process-definition-trust.md)
+- [decisions/0016-explain-stability-contract](decisions/0016-explain-stability-contract.md)
+- [decisions/0017-deletion-and-compaction](decisions/0017-deletion-and-compaction.md)
+- [decisions/0018-conformance](decisions/0018-conformance.md)
 
 ## Concepts
 
