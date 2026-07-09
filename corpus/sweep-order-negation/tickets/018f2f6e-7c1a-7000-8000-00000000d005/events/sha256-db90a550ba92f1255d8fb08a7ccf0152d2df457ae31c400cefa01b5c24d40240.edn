@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-08T10:00:00Z" :event/body {:ticket/process :sweep-order :ticket/process-hash "sha256-c1a7e26c32e6d698514f736328462804b7f7c3a4ee23192eb8672b41bdc2c654" :ticket/process-version 1 :ticket/title "sweep semantics are normative"} :event/parents #{} :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000d005" :event/type :ticket/create}

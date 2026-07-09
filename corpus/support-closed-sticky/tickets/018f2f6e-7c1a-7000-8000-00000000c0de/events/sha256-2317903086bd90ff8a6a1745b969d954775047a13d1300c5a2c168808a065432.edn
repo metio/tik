@@ -1,0 +1,1 @@
+{:event/actor "customer" :event/at #inst "2026-07-08T10:00:00Z" :event/body {:ticket/process :support-request :ticket/process-hash "sha256-b103a5f1cea29b521790df33407b09b8cdab75d7c1b5848951e40586efa29ae0" :ticket/process-version 1 :ticket/title "login broken"} :event/parents #{} :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000c0de" :event/type :ticket/create}
