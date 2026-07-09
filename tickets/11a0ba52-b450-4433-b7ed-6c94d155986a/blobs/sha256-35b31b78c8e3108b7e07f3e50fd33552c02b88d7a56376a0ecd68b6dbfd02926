@@ -1,0 +1,1 @@
+flow executed host-vs-podman-container over git:// TCP (dev/h2-two-machines.sh); conflicted derived and resolved across environments; MODE=remote against a physical box remains
