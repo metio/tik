@@ -29,6 +29,8 @@ humans, navigable by agents. Guard `:hint`s in process definitions link here.
 - [decisions/0016-explain-stability-contract](decisions/0016-explain-stability-contract.md)
 - [decisions/0017-deletion-and-compaction](decisions/0017-deletion-and-compaction.md)
 - [decisions/0018-conformance](decisions/0018-conformance.md)
+- [decisions/0019-effects-observe-derivation](decisions/0019-effects-observe-derivation.md)
+- [decisions/0020-eventstore-contract](decisions/0020-eventstore-contract.md)
 
 ## Concepts
 
