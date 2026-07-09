@@ -676,7 +676,12 @@ sound/complete against explain by property test, who-can-act aware of
 attach comment status explain log diff ls next lint sim test actor
 sign` and **`verify` (L0+L1+L2)**; structural conflict detection live
 (corpus case `concurrent-conflict`); union-merge replication validated
-over real git clones (`tik.sync-test`) — independently checked with coreutils; `comment`
+over real git clones (`tik.sync-test`) and across environments over
+`git://` (`dev/h2-two-machines.sh`); `tik migrate` (dry-run by default,
+`--apply` appends the signed event) with definitions archived
+content-addressed under `processes/by-hash/` so pinning is honored on
+READ — grandfathered tickets keep deriving and verifying under their
+archived definition after the named file moves on — independently checked with coreutils; `comment`
 attaches a text blob by hash (no dedicated event type); `log` is the
 evidence timeline (derived transitions interleaved at render time);
 `sim` is live process design (scratch ticket, auto-reloading
@@ -716,8 +721,11 @@ with ADRs 0001–0007.
   disagreement as `:conflicted`, and propagate its resolution — plus
   the content-addressing dividend, the identical event minted on both
   replicas colliding as byte-identical files and deduping to one.
-  What remains for a full H2 sign-off is the same flow across two real
-  machines rather than two clones on one.
+  The flow also passes across two **environments** connected only by
+  the git protocol over TCP (`dev/h2-two-machines.sh`: machine B is a
+  podman container with its own rootfs, clock, and user, cloning over
+  `git://`; `MODE=remote REMOTE=user@host` runs the same script against
+  a real second box, which is the last inch of the sign-off).
 - **H3 (Phase 1)** — *`explain`/`next` reduce time-to-action vs. a Jira
   baseline for a real support workload.* Kill: if users still open the
   raw log to find out what to do, the lens is decoration.

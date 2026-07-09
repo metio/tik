@@ -41,9 +41,15 @@
     (if (empty? args)
       {:pos pos :opts opts}
       (let [[a & more] args]
-        (if (str/starts-with? a "--")
-          (recur (rest more) pos (assoc opts (keyword (subs a 2)) (first more)))
-          (recur more (conj pos a) opts))))))
+        (cond
+          (not (str/starts-with? a "--"))
+          (recur more (conj pos a) opts)
+          ;; a flag with no value (end of args, or another option next)
+          ;; is boolean true — e.g. --apply
+          (or (empty? more) (str/starts-with? (first more) "--"))
+          (recur more pos (assoc opts (keyword (subs a 2)) true))
+          :else
+          (recur (rest more) pos (assoc opts (keyword (subs a 2)) (first more))))))))
 
 (defn- actor [opts]
   (or (:actor opts) (System/getenv "TIK_ACTOR")
@@ -57,10 +63,44 @@
 
 (defn- process-file ^File [name] (io/file (root) "processes" (str name ".edn")))
 
+(defn- by-hash-file ^File [hash] (io/file (root) "processes" "by-hash" (str hash ".edn")))
+
+(defn- archive-process!
+  "Store the definition content-addressed (processes/by-hash/<hash>.edn,
+  canonical bytes — sha256sum(file) = filename, the ADR 0007 pattern),
+  so a ticket's pinned hash resolves even after the named file moves on
+  (ADR 0002: reproducibility over freshness)."
+  [proc]
+  (let [hash (process/process-hash proc)
+        f (by-hash-file hash)]
+    (when-not (.exists f)
+      (io/make-parents f)
+      (spit f (canonical/emit proc)))
+    hash))
+
 (defn- load-process [name]
   (let [f (process-file name)]
     (when-not (.exists f) (die "no such process:" (str f)))
     (edn/read-string (slurp f))))
+
+(defn- load-pinned-process
+  "The definition a ticket derives under: its pinned hash from the
+  archive when present, else the named file (with a warning when that
+  file no longer matches the pin — an unmigrated ticket after the
+  named definition moved on)."
+  [state]
+  (let [hash (:process-hash state)
+        archived (some-> hash by-hash-file)]
+    (if (and archived (.exists ^File archived))
+      (edn/read-string (slurp archived))
+      (let [proc (load-process (name (:process state)))]
+        (when (and hash (not= hash (process/process-hash proc)))
+          (binding [*out* *err*]
+            (println "warning: pinned definition" hash
+                     "not in processes/by-hash/ and the named file has"
+                     "moved on — deriving under the file's current"
+                     "version")))
+        proc))))
 
 (defn- the-store [] (fstore/file-store (root)))
 
@@ -94,7 +134,7 @@
 (defn- ticket-ctx [s id]
   (let [evs (store/events s id)
         state (red/ticket-state evs)
-        proc (load-process (name (:process state)))]
+        proc (load-pinned-process state)]
     {:events evs :state state :process proc
      :roles (:process/roles proc {})
      :heads (dag/heads evs)}))
@@ -109,7 +149,7 @@
                                 :title (or (:title opts) "")
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
-                                :process-hash (process/process-hash proc)})]
+                                :process-hash (archive-process! proc)})]
     (append!* (the-store) e opts)
     (println (str id))))
 
@@ -475,6 +515,58 @@
       (println "test: PASS")
       (do (println (str "test: FAIL (" @failures ")")) (System/exit 1)))))
 
+(defn- cmd-migrate
+  "Dry-run BY DEFAULT (ADR 0002): a migration is a consequence-bearing
+  decision, so show the derived-stage diff under the pinned definition
+  vs the proposed one before anyone commits. --apply appends the signed
+  :process/migrate event and archives the new definition by hash."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        id (resolve-id s (first pos))
+        new-file (or (second pos) (die "usage: tik migrate <id> <new.edn> [--apply]"))
+        _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
+        new-proc (edn/read-string (slurp new-file))
+        problems (process/lint new-proc)
+        _ (do (doseq [{:keys [level msg]} problems]
+                (println (str "[" (name level) "] " msg)))
+              (when (some #(= :error (:level %)) problems)
+                (die "refusing to migrate to a definition with lint errors")))
+        {:keys [events process]} (ticket-ctx s id)
+        t (now)
+        old-roles (:process/roles process {})
+        new-roles (:process/roles new-proc {})
+        before (stage/effective-reached process events t old-roles)
+        after (stage/effective-reached new-proc events t new-roles)
+        old-hash (process/process-hash process)
+        new-hash (process/process-hash new-proc)]
+    (when (= old-hash new-hash)
+      (die "that is the definition the ticket is already pinned to"))
+    (println (str "pinned:   v" (:process/version process) " @ " (subs old-hash 0 19) "…"))
+    (println (str "proposed: v" (:process/version new-proc) " @ " (subs new-hash 0 19) "…"))
+    (doseq [stage-id (sort-by str (remove after before))]
+      (println "  - stage" stage-id "would REGRESS (no longer derivable)"))
+    (doseq [stage-id (sort-by str (remove before after))]
+      (println "  + stage" stage-id "would become derivable"))
+    (when (= before after)
+      (println "  derived stages unchanged"))
+    ;; what the new rules would newly demand, for stages lost or blocked
+    (doseq [{:keys [stage missing]} (explain/explain new-proc events t new-roles)
+            :when (contains? before stage)]
+      (println (str "  new blockers for " stage ":"))
+      (doseq [r missing]
+        (println (str "    ✗ " (explain/reason->text r)))))
+    (if-not (:apply opts)
+      (println "dry run — nothing recorded. Re-run with --apply to migrate.")
+      (do (archive-process! new-proc)
+          (append!* s (event/migrate-process
+                       {:ticket id :actor (actor opts) :at t
+                        :parents (dag/heads events)
+                        :version (:process/version new-proc)
+                        :process-hash new-hash
+                        :reason (:reason opts)})
+                    opts)
+          (println "migrated — ticket now pins" (subs new-hash 0 19) "…")))))
+
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
   allowed-signers registry (identity ladder rung 1, PLAN §9)."
@@ -567,10 +659,10 @@
                             " (authenticity unclaimed, not failed)"))))))
       (println "L2 reproducibility")
       (let [state (red/ticket-state evs)
-            proc (load-process (name (:process state)))]
+            proc (load-pinned-process state)]
         (check (or (nil? (:process-hash state))
                    (= (:process-hash state) (process/process-hash proc)))
-               "pinned process hash matches definition on disk")
+               "pinned process hash resolves to its definition")
         (let [reached (stage/effective-reached proc evs (now)
                                                (:process/roles proc {}))]
           (println (str "  ok    derived: "
@@ -598,6 +690,8 @@
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
+  tik migrate <id> <new.edn> [--reason R]       derived-stage diff under the proposed
+                [--apply]                       definition; dry-run unless --apply
   tik lint <process.edn>                        lint a process definition
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
@@ -624,6 +718,7 @@
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
       "sign"    (cmd-sign parsed)
+      "migrate" (cmd-migrate parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)
       (println usage))))

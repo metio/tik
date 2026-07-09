@@ -12,9 +12,9 @@ jobs:
     # Reusable Clojure pipeline (kaocha, clj-kondo at fail-on-warning,
     # eastwood, splint, cljfmt, clj-watson) shared across the metio Clojure
     # repos; every gate runs through this repo's nix devShell. Pinned to the
-    # feat/clojure-pipeline commit until it merges — repin to @v1 then.
+    # release SHA (Renovate bumps it via the version comment).
     name: Clojure
-    uses: metio/ci/.github/workflows/clojure.yml@aec58ab29b70164cbb45864d38e4122fe4bfd59f # feat/clojure-pipeline
+    uses: metio/ci/.github/workflows/clojure.yml@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
     with:
       kondo-paths: src cli test
   tla:
