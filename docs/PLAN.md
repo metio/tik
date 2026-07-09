@@ -758,8 +758,17 @@ nobody over-promises on tik's behalf: **tik guarantees that conclusions
 are reproducible from recorded evidence. It does not guarantee that the
 evidence is complete, truthful, well-chosen, or useful** — it guarantees
 that if an organization records bad evidence, everyone can later prove
-exactly which bad evidence led to which decision. Classes, with
-dispositions:
+exactly which bad evidence led to which decision.
+
+The deepest attack exploits the social gap between those two: *derived*
+gets presented as *true*. "tik proved it" actually means "given this
+immutable evidence and this immutable rule set, this conclusion
+follows" — and a manipulator profits from the audience hearing more
+than that. The standing defense is explain's own shape: every
+conclusion renders with its *because* (facts, actors, definition hash,
+guards) and never claims reality itself was verified. Keeping that
+provenance visible is a core security property, not a UX nicety.
+Classes, with dispositions:
 
 - **Evidence theater / Goodhart** (§13 already names it) and its
   management flavor, *organizational capture* ("measure people by
@@ -815,13 +824,26 @@ dispositions:
   collapse superseded history, and quotas/rate limits are porcelain. The
   kernel intentionally does **not** solve log hygiene — hygiene is
   policy about actors, and every byte of spam carries its author's
-  signature. Corollary worth saying to every deployment: *permission to
+  signature. If reduction cost ever demands checkpoints (a verified
+  reduction summary pinned to a head), the verdict is pre-recorded:
+  checkpoints are **untrusted accelerators** — a verifier may use one,
+  but replay always outranks it, because a summary is derived state and
+  the moment it becomes authoritative the one law is broken at the
+  store layer. Corollary worth saying to every deployment: *permission to
   assert facts is also permission to create review work* — write
   authorization is the real admission control. The same lesson applies
   to roles: `:signed-by :manager` is a security boundary exactly as
   wide as the role, and organizations reliably over-broaden roles —
   500 people holding "manager" means the cheapest attack is one
-  account, not any cryptography.
+  account, not any cryptography. The decay mode is temporal: the role
+  quietly widens while `[:signed-by :manager]` stays textually
+  identical, and a later auditor sees valid signatures over an
+  authority that no longer means what the process meant. The answer is
+  to give role bindings the same discipline as process definitions —
+  attestation-backed grants with provenance, temporal validity, and
+  explicit migration (§19 identity concretions), so "was 'manager'
+  still the same authority when this was signed?" is an answerable log
+  question.
 - **Lying by omission** (true facts asserted, the damning one withheld):
   no evidence system prevents it; process design does, by requiring
   sufficient evidence before important stages unlock — which is what
@@ -839,6 +861,19 @@ dispositions:
   (§6), fact schemas that constrain values (§5 `:malli`), and the
   authoring-layer fact-reuse analyses (IDEAS) that surface when one
   path is doing several jobs.
+
+The pattern across all of these, worth stating because three
+independent threat reviews converged on it: hardening the kernel
+**migrates the serious attacks upward** — into evidence quality, role
+semantics, process governance, and presentation. That is the intended
+boundary, not a gap: the kernel's job is to make the upward-migrated
+attacks *visible and attributable* (every one of the classes above
+leaves signed, inspectable traces), and the governance-observability
+lenses (IDEAS) exist to turn those traces into measurements. Rough
+severity order, per the reviews: semantic drift, authority inflation,
+bad definitions, evidence manipulation, write volume — with
+cryptographic attacks last, which is where a design like this wants
+them.
 
 **Process authoring as adoption ceiling.** The process language is not
 the product; if authoring a process requires understanding fixpoints and
