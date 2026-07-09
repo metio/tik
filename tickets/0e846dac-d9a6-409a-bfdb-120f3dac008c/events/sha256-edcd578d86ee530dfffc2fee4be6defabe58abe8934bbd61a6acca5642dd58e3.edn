@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:58.903Z" :event/body {:fact/path [:summary] :fact/value "Swap the feat/clojure-pipeline SHA pin for the v1 tag once metio/ci cuts its next release"} :event/parents #{"sha256-45ff7f892c68a96c35376ab20983f08036e59dd1d553ca35582eeff5a0869ebe"} :event/ticket #uuid "0e846dac-d9a6-409a-bfdb-120f3dac008c" :event/type :fact/assert}

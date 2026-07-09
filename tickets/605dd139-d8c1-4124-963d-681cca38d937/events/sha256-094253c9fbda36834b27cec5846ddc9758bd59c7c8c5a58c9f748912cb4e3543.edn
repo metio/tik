@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:59.721Z" :event/body {:fact/path [:summary] :fact/value "Evaluated in PLAN s11: optional transport for public artifacts, never core"} :event/parents #{"sha256-9763f2c802add7c6673a2e6c9817a43d64a1c15cb8a3de4eaaec173609dec870"} :event/ticket #uuid "605dd139-d8c1-4124-963d-681cca38d937" :event/type :fact/assert}

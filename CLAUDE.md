@@ -54,8 +54,19 @@ nix develop --command <cmd>       # every command below assumes this
 - `bb tik sim processes/support-request.edn` — live process design REPL
   (scratch ticket, auto-reloading definition).
 
-The full gate before calling work done: kaocha + kondo + tla + reuse +
-`tik test`. All five are green on main; keep them green.
+The full gate before calling work done: kaocha + kondo + eastwood +
+splint + cljfmt + tla + reuse + typos + markdown + `tik test`. All
+green on main; keep them green.
+
+## Dogfood store (H1)
+
+tik's own work runs in tik: the repo root is a live store (`tickets/`,
+`actors`, process `processes/tik-dev.edn`). `bb tik next --actor seb`
+is the project's actual inbox; when you land a feature, `bb tik set
+<id> commit=<sha> gate=:green` on its ticket. Sign writes by exporting
+`TIK_KEY=~/.config/tik/id_ed25519` (key lives outside the repo; only
+the `actors` registry is committed). Never hand-edit `tickets/` —
+events are content-addressed, `tik verify` will catch it.
 
 ## Architecture
 

@@ -699,7 +699,13 @@ with ADRs 0001–0007.
 - **H1 (Phase 0, now)** — *A file-backed, derive-on-read ticket CLI is
   pleasant for a single operator.* Kill: if daily-driving tik for
   infra.run's own work is abandoned within a month, the core loop is
-  wrong, not under-featured.
+  wrong, not under-featured. **Clock started 2026-07-10**: tik's own
+  development runs in tik — the `tik-dev` process (captured → triaged →
+  implemented → landed-sticky, with a reasoned `:parked` exit), its
+  scripted test suite, and a signed working store committed in-repo at
+  the root (`tickets/`, `actors`), replicated by the same git that
+  carries the code. The backlog tickets are real; `tik next` is the
+  project's actual inbox.
 - **H2 (Phase 1)** — *Signatures + verify L1 + multi-replica union merge
   work across two machines without a coordinator.* Kill: if merge ever
   requires human conflict resolution at the *file* level, the store

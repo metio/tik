@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:58.515Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-8081c570fbdef3fc8dfd15b15cb9b52143ac42553599b0aef37387e8014074f1" :ticket/process-version 1 :ticket/title "repin verify.yml to metio/ci @v1"} :event/parents #{} :event/ticket #uuid "0e846dac-d9a6-409a-bfdb-120f3dac008c" :event/type :ticket/create}

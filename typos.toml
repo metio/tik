@@ -12,4 +12,4 @@ fpr = "fpr"
 [files]
 # content-addressed corpus stores: filenames and bodies are hashes/EDN,
 # not prose
-extend-exclude = ["corpus/*/tickets/**", "flake.lock"]
+extend-exclude = ["corpus/*/tickets/**", "tickets/**", "flake.lock"]

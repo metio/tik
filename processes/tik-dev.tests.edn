@@ -1,0 +1,54 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "tik-dev.edn"
+ :test/cases
+ [{:case/name "captured is the root"
+   :case/steps []
+   :case/expect {:reached #{:captured}
+                 :current #{:captured}}}
+
+  {:case/name "triage needs the maintainer's kind, not just anyone's"
+   :case/steps [[:actor "drive-by"]
+                [:set [:summary] "make everything faster"]
+                [:set [:kind] :feature]]
+   :case/expect {:excludes #{:triaged}}}
+
+  {:case/name "a maintainer triages"
+   :case/steps [[:actor "seb"]
+                [:set [:summary] "SQLite EventStore backend"]
+                [:set [:kind] :feature]]
+   :case/expect {:includes #{:triaged}}}
+
+  {:case/name "naming the commit implements; a green gate lands"
+   :case/steps [[:actor "seb"]
+                [:set [:summary] "SQLite EventStore backend"]
+                [:set [:kind] :feature]
+                [:set [:commit] "8e1e2090"]
+                [:set [:gate] :green]]
+   :case/expect {:includes #{:implemented :landed}
+                 :current #{:landed}}}
+
+  {:case/name "a red gate does not land"
+   :case/steps [[:actor "seb"]
+                [:set [:summary] "SQLite EventStore backend"]
+                [:set [:kind] :feature]
+                [:set [:commit] "8e1e2090"]
+                [:set [:gate] :red]]
+   :case/expect {:includes #{:implemented}
+                 :excludes #{:landed}}}
+
+  {:case/name "landed is sticky across a later gate dispute"
+   :case/steps [[:actor "seb"]
+                [:set [:summary] "SQLite EventStore backend"]
+                [:set [:kind] :feature]
+                [:set [:commit] "8e1e2090"]
+                [:set [:gate] :green]
+                [:dispute [:gate] "flaky on second run"]]
+   :case/expect {:includes #{:landed}}}
+
+  {:case/name "parking is explicit and reasoned"
+   :case/steps [[:actor "seb"]
+                [:set [:summary] "IPFS blob transport"]
+                [:set [:kind] :spike]
+                [:set [:parked :reason] "PLAN §11: optional transport, never core"]]
+   :case/expect {:includes #{:parked}}}]}

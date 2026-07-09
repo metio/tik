@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:57.286Z" :event/body {:fact/path [:kind] :fact/value :feature} :event/parents #{"sha256-8e20a50b2e7296d1267ca87a11ed9074be0c0aa348bfe13f76d0c0b09b95696c"} :event/ticket #uuid "5f72ce3d-2d13-4ca3-b800-ca29d7c0fd17" :event/type :fact/assert}

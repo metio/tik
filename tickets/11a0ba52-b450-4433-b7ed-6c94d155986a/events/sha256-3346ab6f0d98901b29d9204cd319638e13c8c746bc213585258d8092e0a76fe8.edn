@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:57.671Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-8081c570fbdef3fc8dfd15b15cb9b52143ac42553599b0aef37387e8014074f1" :ticket/process-version 1 :ticket/title "H2 sign-off across two real machines"} :event/parents #{} :event/ticket #uuid "11a0ba52-b450-4433-b7ed-6c94d155986a" :event/type :ticket/create}

@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-09T22:39:56.106Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-8081c570fbdef3fc8dfd15b15cb9b52143ac42553599b0aef37387e8014074f1" :ticket/process-version 1 :ticket/title "SQLite EventStore backend (ADR 0020)"} :event/parents #{} :event/ticket #uuid "9001a361-62c7-4401-99eb-2b4be65608a7" :event/type :ticket/create}

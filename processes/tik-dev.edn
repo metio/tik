@@ -1,0 +1,46 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; tik's own development process — the H1 dogfood. Deliberately small:
+;; capture the idea, triage it (maintainer-signed kind), name the commit
+;; that implemented it, and land it when the full local gate is green.
+;; :landed is sticky (a landed feature stays landed even if its gate
+;; fact is later retracted in favor of a follow-up ticket); :parked is
+;; the honest exit for work that should wait, with the reason on record.
+{:process/id :tik-dev
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/roles
+ {:maintainer {:members ["seb"]}}
+
+ :process/facts
+ {[:summary]        [:string {:min 8}]
+  [:kind]           [:enum :feature :bug :docs :spike]
+  [:commit]         [:string {:min 7}]
+  [:gate]           [:enum :green :red]
+  [:parked :reason] [:string {:min 4}]}
+
+ :process/stages
+ [{:stage/id :captured
+   :guards []}
+
+  {:stage/id :triaged
+   :after [:captured]
+   :guards [[:fact [:summary]]
+            [:fact [:kind]]
+            [:signed-by :maintainer [:kind]]]}
+
+  {:stage/id :implemented
+   :after [:triaged]
+   :hint "CLAUDE.md"
+   :guards [[:fact [:commit]]]}
+
+  {:stage/id :landed
+   :after [:implemented]
+   :stage/sticky? true
+   :guards [[:fact= [:gate] :green]]}
+
+  {:stage/id :parked
+   :after [:triaged]
+   :guards [[:fact [:parked :reason]]]}]}
