@@ -675,7 +675,8 @@ sound/complete against explain by property test, who-can-act aware of
 `:signed-by` restrictions. CLI: `new set retract dispute
 attach comment status explain log diff ls next lint sim test actor
 sign` and **`verify` (L0+L1+L2)**; structural conflict detection live
-(corpus case `concurrent-conflict`) — independently checked with coreutils; `comment`
+(corpus case `concurrent-conflict`); union-merge replication validated
+over real git clones (`tik.sync-test`) — independently checked with coreutils; `comment`
 attaches a text blob by hash (no dedicated event type); `log` is the
 evidence timeline (derived transitions interleaved at render time);
 `sim` is live process design (scratch ticket, auto-reloading
@@ -700,10 +701,17 @@ with ADRs 0001–0007.
   infra.run's own work is abandoned within a month, the core loop is
   wrong, not under-featured.
 - **H2 (Phase 1)** — *Signatures + verify L1 + multi-replica union merge
-  work across two machines without a coordinator.* Structural conflict
-  detection lands here (parents already mandatory). Kill: if merge ever
+  work across two machines without a coordinator.* Kill: if merge ever
   requires human conflict resolution at the *file* level, the store
-  design failed.
+  design failed. **Status: every component is built and the kill
+  criterion is a passing integration test** (`tik.sync-test`): two git
+  clones append divergently, merge without a single file conflict,
+  derive identically from the union, surface a cross-replica
+  disagreement as `:conflicted`, and propagate its resolution — plus
+  the content-addressing dividend, the identical event minted on both
+  replicas colliding as byte-identical files and deduping to one.
+  What remains for a full H2 sign-off is the same flow across two real
+  machines rather than two clones on one.
 - **H3 (Phase 1)** — *`explain`/`next` reduce time-to-action vs. a Jira
   baseline for a real support workload.* Kill: if users still open the
   raw log to find out what to do, the lens is decoration.
