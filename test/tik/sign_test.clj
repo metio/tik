@@ -20,7 +20,7 @@
 (defn- gen-key! [dir name]
   (let [f (io/file dir name)]
     (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" name
-              "-f" (str f))
+           "-f" (str f))
     f))
 
 (deftest sign-and-verify-roundtrip

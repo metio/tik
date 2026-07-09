@@ -18,9 +18,10 @@
 
   fact-status is the single choke point for 'why does this fact (not)
   satisfy guards': :present | :absent | :retracted | :disputed |
-  :conflicted. Guards consult nothing else about facts. (:conflicted is
-  reserved for Phase 1 structural concurrency per ADR 0003/0004; in a
-  single linear history it cannot occur.)"
+  :conflicted. Guards consult nothing else about facts. :conflicted is
+  structural (ADR 0003/0004): causally concurrent writes that disagree,
+  computed from the parents DAG — in a single linear history it cannot
+  occur."
   (:refer-clojure :exclude [reduce])
   (:require [clojure.core :as core]))
 
@@ -108,12 +109,73 @@
 
 (defn fact-entry [state path] (get-in state [:facts path]))
 
+;; ---------------------------------------------------------------- conflicts
+;; ADR 0003/0004: causally concurrent writes (neither an ancestor of the
+;; other via :event/parents) that disagree about a path make the fact
+;; :conflicted until a write that OBSERVED all competitors supersedes
+;; them. Parents answer only "did these writes see each other?" — the
+;; effective value of a non-conflicted fact stays with (at, id) order.
+;; Computed from the complete log rather than maintained incrementally:
+;; an incremental frontier is order-dependent when a backdated
+;; intermediate event folds late, and commutativity is a law.
+
+(defn- ancestor?
+  "Is event id `a` an ancestor of event id `b`, per the parents index?"
+  [index a b]
+  (loop [frontier (get index b) seen #{}]
+    (cond
+      (contains? frontier a) true
+      (empty? frontier) false
+      :else (let [seen (into seen frontier)]
+              (recur (into #{} (comp (mapcat index) (remove seen))
+                           frontier)
+                     seen)))))
+
+(defn- path-writes
+  "The claims about a path's state: asserts and retracts. Disputes are
+  meta (challenges of a claim) and precede conflicts in fact-status."
+  [log path]
+  (keep (fn [e]
+          (let [body (:event/body e)]
+            (when (= path (:fact/path body))
+              (case (:event/type e)
+                :fact/assert {:kind :assert :value (:fact/value body)
+                              :by (:event/actor e) :at (:event/at e)
+                              :event (:event/id e)}
+                :fact/retract {:kind :retract
+                               :by (:event/actor e) :at (:event/at e)
+                               :event (:event/id e)}
+                nil))))
+        log))
+
+(defn conflicting-claims
+  "The causally-maximal writes on `path` when they disagree, else nil.
+  Concurrent writes that agree (same value, or both retracts) are not a
+  conflict — there is no disagreement to surface."
+  [state path]
+  (let [writes (path-writes (:log state) path)]
+    (when (< 1 (count writes))
+      (let [index (into {} (map (juxt :event/id :event/parents))
+                        (:log state))
+            maximal (filterv (fn [w]
+                               (not-any? #(and (not= (:event %) (:event w))
+                                               (ancestor? index (:event w)
+                                                          (:event %)))
+                                         writes))
+                             writes)
+            outcomes (distinct (map #(if (= :assert (:kind %))
+                                       [:value (:value %)]
+                                       [:retracted])
+                                    maximal))]
+        (when (and (< 1 (count maximal)) (< 1 (count outcomes)))
+          maximal)))))
+
 (defn fact-status
   "THE choke point. Returns
   {:status :present|:absent|:retracted|:disputed|:conflicted, ...}
   with :by/:at/:note/:value as applicable. Guards consult only this."
   [state path]
-  (let [{:keys [disputed retracted conflicted] :as entry} (fact-entry state path)]
+  (let [{:keys [disputed retracted] :as entry} (fact-entry state path)]
     (cond
       (nil? entry)
       {:status :absent :path path}
@@ -122,18 +184,20 @@
       {:status :disputed :path path
        :by (:by disputed) :at (:at disputed) :note (:reason disputed)}
 
-      conflicted   ; Phase 1: causally concurrent competing asserts (ADR 0003)
-      {:status :conflicted :path path :claims conflicted}
+      :else
+      (if-let [claims (conflicting-claims state path)]
+        {:status :conflicted :path path :claims claims}
+        (cond
 
-      retracted
-      {:status :retracted :path path
-       :by (:by retracted) :at (:at retracted) :note (:reason retracted)}
+          retracted
+          {:status :retracted :path path
+           :by (:by retracted) :at (:at retracted) :note (:reason retracted)}
 
-      (contains? entry :value)
-      {:status :present :path path
-       :value (:value entry) :by (:asserted-by entry) :at (:at entry)}
+          (contains? entry :value)
+          {:status :present :path path
+           :value (:value entry) :by (:asserted-by entry) :at (:at entry)}
 
-      :else {:status :absent :path path})))
+          :else {:status :absent :path path})))))
 
 (defn fact-value
   "Effective value: non-nil only when :status is :present."

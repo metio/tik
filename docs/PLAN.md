@@ -228,9 +228,17 @@ than an error message.
 exactly like a dispute until a *human signs a superseding value*. There
 is deliberately no resolution-policy language: tik is an accountability
 system, and "the protocol picked a winner" is precisely the
-accountability hole we refuse to ship. Detection lands in Phase 1 with
-multi-replica sync; the `:conflicted` status is already reserved in
-fact-status so the choke point never changes shape.
+accountability hole we refuse to ship. **Detection is built**: the
+causally-maximal writes on a path (asserts and retracts, per the
+parents DAG) conflict when they disagree; concurrent agreement is
+corroboration, not conflict; any write that observed all competitors
+resolves — including a retract, which is also a human judgment on the
+record. The DAG answers only "did these writes see each other?" —
+effective values of non-conflicted facts stay with `(at, id)` order,
+so backdated claimed times cannot fake or hide concurrency (detection
+is computed from the complete log precisely because an incremental
+frontier would be order-dependent under backdating). The corpus case
+`concurrent-conflict` pins the semantics.
 
 Blocking scales because conflicts are rare by construction: one requires
 two actors asserting *different values* for the *same fact path* on the
@@ -666,7 +674,8 @@ explain as data + renderer; `tik.dag`; **`tik.next`** — the inbox lens,
 sound/complete against explain by property test, who-can-act aware of
 `:signed-by` restrictions. CLI: `new set retract dispute
 attach comment status explain log diff ls next lint sim test actor
-sign` and **`verify` (L0+L1+L2)** — independently checked with coreutils; `comment`
+sign` and **`verify` (L0+L1+L2)**; structural conflict detection live
+(corpus case `concurrent-conflict`) — independently checked with coreutils; `comment`
 attaches a text blob by hash (no dedicated event type); `log` is the
 evidence timeline (derived transitions interleaved at render time);
 `sim` is live process design (scratch ticket, auto-reloading

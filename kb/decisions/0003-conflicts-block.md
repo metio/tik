@@ -53,9 +53,15 @@ only causally concurrent claims disagree.
   noisy integration (PLAN §5, §18). A "conflict topology" lens — which
   paths conflict most, which actors disagree, which integration is the
   source — fits the governance-observability family (IDEAS).
-- Requires `:event/parents` (Phase 1). Until then, single-replica ordering
-  by `(at, id)` cannot produce concurrency, so nothing is silently wrong in
-  Phase 0.
+- Built on `:event/parents` (ADR 0004): the causally-maximal writes on a
+  path conflict when they disagree. Concurrent agreement (same value from
+  independent replicas) is corroboration, not conflict. Resolution is any
+  write that observed all competitors — a superseding assert or a retract,
+  either way a judgment on the record. Detection is computed from the
+  complete log, never an incremental frontier: a backdated intermediate
+  event would make the incremental version order-dependent, and
+  commutativity is a law. Pinned by the corpus case `concurrent-conflict`
+  and by `tik.conflict-test` (including the backdating counterexample).
 - Escape hatches (per-fact `:on-conflict`) are deferred until dogfooding
   demonstrates a real need; adding one later is compatible, removing one is
   not. (The honest operational valve already exists without kernel

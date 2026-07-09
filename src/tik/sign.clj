@@ -75,11 +75,11 @@
   allowed-signers registry? Pure exit-code check; no output parsing."
   [allowed-signers ^java.io.File file ^java.io.File sig actor]
   (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
-                          "-f" (str allowed-signers)
-                          "-I" actor
-                          "-n" namespace-event
-                          "-s" (str sig)
-                          :in (slurp file)))))
+                       "-f" (str allowed-signers)
+                       "-I" actor
+                       "-n" namespace-event
+                       "-s" (str sig)
+                       :in (slurp file)))))
 
 (defn sidecars
   "All signature sidecar Files for an event id in `events-dir`."
