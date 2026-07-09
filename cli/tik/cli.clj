@@ -19,6 +19,7 @@
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.guard :as guard]
+            [tik.next :as next-lens]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.stage :as stage]
@@ -249,6 +250,35 @@
       (doseq [stage-id gained]
         (println (str (:event/at e)) "derived —"
                  (str "stage " stage-id " became reachable"))))))
+
+(defn- cmd-next
+  "The inbox: frontier actions across every ticket, sorted by unlock
+  count, filtered by --actor when given. A rendering of tik.next."
+  [{:keys [opts]}]
+  (let [s (the-store)
+        t (now)
+        per-ticket (for [id (store/ticket-ids s)
+                         :let [{:keys [events process roles]} (ticket-ctx s id)]]
+                     (next-lens/contributions id process events t roles))
+        {:keys [items waiting]} (next-lens/inbox per-ticket (:actor opts))]
+    (if (empty? items)
+      (println "Nothing actionable"
+               (if (:actor opts) (str "for " (:actor opts)) "right now") "—"
+               (count waiting) "stage(s) waiting on time or upstream stages.")
+      (do
+        (doseq [{:keys [action who unlocks]} items]
+          (println (format "%-42s unlocks %d"
+                           (str (name (first action)) " "
+                                (pr-str (second action))
+                                (when (not= :anyone who)
+                                  (str "  (" (clojure.string/join ", " (sort who)) ")")))
+                           (count unlocks)))
+          (doseq [{:keys [ticket stage hint]} unlocks]
+            (println (str "    " (subs (str ticket) 0 8) " -> " stage
+                          (when hint (str "  (see: " hint ")"))))))
+        (when (seq waiting)
+          (println (str "waiting: " (count waiting)
+                        " stage(s) gated on time or upstream stages")))))))
 
 (defn- cmd-ls [_]
   (let [s (the-store)]
@@ -486,6 +516,7 @@
   tik explain <id>                              what is needed to advance
   tik log <id>                                  the event history
   tik ls                                        all tickets with derived stages
+  tik next [--actor A]                          the inbox: what unlocks the most work
   tik verify <id>                               the verify ladder (L0/L2)
   tik lint <process.edn>                        lint a process definition
   tik sim <process.edn>                         live process design (scratch ticket,
@@ -508,6 +539,7 @@
       "explain" (cmd-explain parsed)
       "log"     (cmd-log parsed)
       "ls"      (cmd-ls parsed)
+      "next"    (cmd-next parsed)
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "sim"     (cmd-sim parsed)

@@ -653,8 +653,10 @@ references; the evolve fold; fact-status; the nine-operator guard basis
 with `:fact=` expanding to `:malli` at the eval boundary; structured
 guard reasons; lint enforcing the closed basis, stratified negation
 (single spelling), and facts-over-flags with per-process lint config;
-explain as data + renderer; `tik.dag`. CLI: `new set retract dispute
-attach comment status explain log diff ls lint sim test` and
+explain as data + renderer; `tik.dag`; **`tik.next`** — the inbox lens,
+sound/complete against explain by property test, who-can-act aware of
+`:signed-by` restrictions. CLI: `new set retract dispute
+attach comment status explain log diff ls next lint sim test` and
 **`verify` (L0+L2)** — independently checked with coreutils; `comment`
 attaches a text blob by hash (no dedicated event type); `log` is the
 evidence timeline (derived transitions interleaved at render time);

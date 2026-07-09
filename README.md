@@ -43,6 +43,8 @@ $ bb tik status 018f              # -> regressed to received, with the reason in
 $ bb tik log 018f                 # the evidence timeline: events interleaved with
                                   # derived stage transitions (computed, never stored)
 $ bb tik diff 018f 2              # what the last 2 events made derivable
+$ bb tik next --actor seb         # the inbox: which facts unlock the most work,
+                                  # filtered to what seb's roles can act on
 $ bb tik verify 018f              # L0 integrity + L2 reproducibility; L0 is
                                   # checkable with sha256sum and nothing else
 ```

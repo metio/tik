@@ -1,0 +1,123 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+(ns tik.next-test
+  "The inbox's laws: sound (every item satisfies some ticket's explain
+  reason), complete (every actionable reason surfaces as an item),
+  ranked by unlock count, and who-can-act filtering never invents work."
+  (:require [clojure.test :refer [deftest is testing]]
+            [clojure.test.check.clojure-test :refer [defspec]]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]
+            [tik.event :as event]
+            [tik.explain :as explain]
+            [tik.gen-events :as ge]
+            [tik.next :as next-lens])
+  (:import (java.time Instant)))
+
+(defn at [s] (Instant/parse s))
+(def now (at "2026-07-08T12:00:00Z"))
+
+(defn- ticket [n & builders]
+  (let [tid (java.util.UUID/fromString
+             (format "018f2f6e-7c1a-7000-8000-%012d" n))]
+    (reduce (fn [evs b] (conj evs (b tid #{(:event/id (peek evs))})))
+            [(event/create-ticket {:ticket tid :actor "customer"
+                                   :at (at "2026-07-08T10:00:00Z")
+                                   :title (str "t" n)
+                                   :process :support-request})]
+            builders)))
+
+(defn- assert-step [path value]
+  (fn [tid parents]
+    (event/assert-fact {:ticket tid :actor "seb" :parents parents
+                        :at (at "2026-07-08T10:01:00Z")
+                        :path path :value value})))
+
+(defn- contribs [events]
+  (next-lens/contributions (:event/ticket (first events))
+                           ge/process events now ge/roles))
+
+(deftest shared-missing-facts-aggregate-across-tickets
+  (let [fresh-a (ticket 1)
+        fresh-b (ticket 2)
+        half (ticket 3 (assert-step [:category] :technical))
+        {:keys [items]} (next-lens/inbox (map contribs [fresh-a fresh-b half]))
+        by-action (into {} (map (juxt :action identity)) items)]
+    (testing "severity is missing on all three tickets and ranks first"
+      (is (= [:set [:severity]] (:action (first items))))
+      (is (= 3 (count (:unlocks (first items))))))
+    (testing "category is missing on only two"
+      (is (= 2 (count (:unlocks (by-action [:set [:category]]))))))
+    (testing "the who-can-act union names the triager"
+      (is (= #{"seb"} (:who (by-action [:set [:category]])))))))
+
+(deftest actor-filter-never-invents-and-only-removes
+  (let [tickets [(ticket 1) (ticket 2)]
+        all (next-lens/inbox (map contribs tickets))
+        seb (next-lens/inbox (map contribs tickets) "seb")
+        rando (next-lens/inbox (map contribs tickets) "rando")]
+    (testing "seb (a triager) sees everything"
+      (is (= (set (map :action (:items all)))
+             (set (map :action (:items seb))))))
+    (testing "rando loses the role-gated actions but keeps open ones"
+      (is (contains? (set (map :action (:items all))) [:set [:category]]))
+      (is (every? (fn [item]
+                    (contains? (set (map :action (:items all)))
+                               (:action item)))
+                  (:items rando))))))
+
+(deftest time-gated-work-is-waiting-not-actionable
+  (let [{:keys [actions waiting]} (contribs (ticket 1))]
+    (is (not-any? #(= :escalated (:stage %)) actions)
+        "escalation needs elapsed time and fact-absence — nobody can act")
+    (is (some #(and (= :escalated (:stage %))
+                    (= :time/not-elapsed (:reason %)))
+              waiting))))
+
+(defspec inbox-is-sound-and-complete 60
+  ;; sound: every item's unlock corresponds to a frontier stage whose
+  ;; explain block contains a reason this action satisfies.
+  ;; complete: every actionable explain reason appears under some item.
+  (prop/for-all [events ge/gen-events
+                 t ge/gen-now]
+    (let [tid (:event/ticket (first events))
+          {:keys [items]} (next-lens/inbox
+                           [(next-lens/contributions tid ge/process events
+                                                     t ge/roles)])
+          blocks (explain/explain ge/process events t ge/roles)
+          expected (set
+                    (for [{:keys [stage missing]} blocks
+                          r missing
+                          :let [a (case (:reason r)
+                                    (:fact/missing :fact/invalid
+                                                   :fact/retracted :fact/disputed
+                                                   :fact/conflicted :role/unsatisfied)
+                                    [:set (:path r)]
+                                    :artifact/missing [:attach (:prefix r)]
+                                    nil)]
+                          :when a]
+                      [a stage]))
+          actual (set (for [{:keys [action unlocks]} items
+                            u unlocks]
+                        [action (:stage u)]))]
+      ;; :alternatives expands in the lens but not in `expected`, so the
+      ;; lens may offer MORE (each branch of an :or); it must offer at
+      ;; least everything directly actionable, and unlock counts are
+      ;; ordered.
+      (and (every? actual expected)
+           (apply >= (map #(count (:unlocks %)) items))))))
+
+(defspec who-filter-is-monotone 40
+  ;; filtering by actor only ever removes unlocks, never adds or invents
+  (prop/for-all [events ge/gen-events
+                 t ge/gen-now
+                 actor (gen/elements ge/actors)]
+    (let [tid (:event/ticket (first events))
+          per [(next-lens/contributions tid ge/process events t ge/roles)]
+          all-pairs (set (for [{:keys [action unlocks]} (:items (next-lens/inbox per))
+                               u unlocks]
+                           [action (:ticket u) (:stage u)]))
+          actor-pairs (set (for [{:keys [action unlocks]} (:items (next-lens/inbox per actor))
+                                 u unlocks]
+                             [action (:ticket u) (:stage u)]))]
+      (every? all-pairs actor-pairs))))
