@@ -306,12 +306,18 @@ lint honest rather than dogmatic).
 
 ## 7. Hashing policy (ADR 0006)
 
-SHA-256, **on purpose**: it is where git's own hash transition is headed
-(SHA-512, SHA-512/256, BLAKE2, K12 were evaluated and rejected by git),
-and where OCI, Sigstore/in-toto/DSSE, Nix, and FIPS 180-4 already are —
-and `sha256sum` ships in coreutils, which is what keeps verify L0
-checkable with tools from 1995. Length-extension is irrelevant to content
-addressing; performance is irrelevant at event sizes.
+SHA-256, **on purpose** — the argument is ecosystem weight, not a
+prediction about cryptography: it is deployed widely enough that the
+verification ecosystem around it currently outweighs any alternative's
+benefits. git's own hash transition targets it (SHA-512, SHA-512/256,
+BLAKE2, K12 were evaluated and rejected by git); OCI,
+Sigstore/in-toto/DSSE, Nix, and FIPS 180-4 already speak it; and
+`sha256sum` ships in coreutils, which is what keeps verify L0 checkable
+with tools from 1995. Length-extension is irrelevant — tik hashes
+complete canonical byte sequences and never uses the hash as an
+authentication primitive: hashes answer "is this byte sequence
+unchanged?", detached signatures answer "who authorized it?" (ADR 0007).
+Performance is irrelevant at event sizes.
 
 Ids are self-describing (`sha256-<hex>`), but **exactly one algorithm per
 store per format-version** — agility in the format, discipline in the
