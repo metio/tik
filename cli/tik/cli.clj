@@ -22,6 +22,7 @@
             [tik.explain :as explain]
             [tik.guard :as guard]
             [tik.next :as next-lens]
+            [tik.work :as work]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.sign :as sign]
@@ -1409,6 +1410,101 @@
                   "  (read-only; ctrl-c stops)"))
     @(promise)))
 
+(defn- cmd-work
+  "The work-evidence surface (H6):
+    work record <id> <edn>          agent/tool telemetry as a :work claim
+    work week [--actor A] [--from I --to I] [--sign]
+                                    machine-drafted activity: method
+                                    declared, durations marked as
+                                    inferences, every line tracing to
+                                    event ids; --sign turns the draft
+                                    into human-signed per-ticket claims
+    work cost [--pricing F]         usage totals derived by folding;
+                                    money only via an explicit pricing
+                                    table — observations never rot"
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        sub (first pos)]
+    (case sub
+      "record"
+      (let [id (resolve-id s (second pos))
+            body (edn/read-string (nth pos 2))]
+        (append!* s (event/add-attestation
+                     {:ticket id :actor (actor opts) :at (now)
+                      :parents (dag/heads (store/events s id))
+                      :claim (merge {:claim :work} body)})
+                  opts)
+        (println "recorded" (pr-str (:work/kind body :work))
+                 "on" (subs (str id) 0 8)))
+
+      "week"
+      (let [who (or (:actor opts) (die "work week requires --actor"))
+            from (some-> (:from opts) Instant/parse)
+            to (some-> (:to opts) Instant/parse)
+            per-ticket (for [id (store/ticket-ids s)
+                             :let [{:keys [events state]} (ticket-ctx s id)]]
+                         {:ticket id :title (:title state) :events events})
+            d (work/draft per-ticket who from to)]
+        (if (:edn opts)
+          (prn d)
+          (do
+            (println (tint "1" (str "activity draft — " who))
+                     (tint "2" (str "(" (get-in d [:method :statement]) ")")))
+            (doseq [{:keys [ticket title sessions duration evidence]}
+                    (:tickets d)]
+              (println (format "  %s  ~%-10s %d session(s), %d event(s)  %s"
+                               (subs (str ticket) 0 8)
+                               (subs (str duration) 2)
+                               sessions (count evidence) title)))
+            (println (tint "1" (str "  total ~" (subs (:total d) 2)
+                                    "  — an inference, not a measurement")))
+            (if-not (:sign opts)
+              (println (tint "2" "  review, then --sign to record it as your claim"))
+              (do
+                (doseq [{:keys [ticket duration evidence]} (:tickets d)]
+                  (append!* s (event/add-attestation
+                               {:ticket ticket :actor who :at (now)
+                                :parents (dag/heads (store/events s ticket))
+                                :claim {:claim :work
+                                        :work/kind :human
+                                        :work/duration duration
+                                        :work/method (get-in d [:method :method])
+                                        :work/evidence evidence}})
+                            opts))
+                (println (tint "32"
+                               (str "  signed " (count (:tickets d))
+                                    " per-ticket claim(s) — corrected by"
+                                    " you, carried with evidence"))))))))
+
+      "cost"
+      (let [pricing (some-> (:pricing opts) slurp edn/read-string)
+            records (mapcat (fn [id]
+                              (map #(assoc % :ticket id)
+                                   (work/work-records
+                                    (store/events s id))))
+                            (store/ticket-ids s))
+            agent-runs (filter :usage records)
+            totals (work/usage-totals agent-runs pricing)]
+        (if (:edn opts)
+          (prn totals)
+          (do
+            (doseq [[model u] (:observations totals)]
+              (println (tint "1" (str model)))
+              (doseq [[k v] (sort u)]
+                (println (format "    %-20s %,d" (name k) (long v))))
+              (when-let [cost (get-in totals [:priced model])]
+                (println (tint "33" (format "    ≈ %.2f (per --pricing table, today)"
+                                            (double cost))))))
+            (when (empty? agent-runs)
+              (println "no agent-run work records yet — tik work record"))
+            (when-not pricing
+              (println (tint "2" (str "  raw observations only — pass"
+                                      " --pricing <file.edn> to price them"
+                                      " (money is a lens, prices change,"
+                                      " observations don't rot)")))))))
+
+      (die "usage: tik work record|week|cost ..."))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         missing-runbooks (for [s (:process/stages proc)
@@ -1652,6 +1748,9 @@
                                                 timestamps the entire ancestry
   tik attest <id> <claim-edn>                   record a signed claim (kernel ignores
                                                 semantics; :attested-within reads it)
+  tik work record|week|cost                     work evidence (H6): telemetry claims in,
+                                                machine-drafted human-signed records out,
+                                                usage totals derived — never stored
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
@@ -1695,6 +1794,7 @@
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
       "attest"  (cmd-attest parsed)
+      "work"    (cmd-work parsed)
       "witness" (cmd-witness parsed)
       "agent"   (cmd-agent parsed)
       "process" (cmd-process parsed)

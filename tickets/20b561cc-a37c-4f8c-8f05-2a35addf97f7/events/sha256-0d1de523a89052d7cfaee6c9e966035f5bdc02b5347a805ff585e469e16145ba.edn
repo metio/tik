@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T10:03:23.492Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813" :ticket/process-version 1 :ticket/title "work-evidence lens (H6 machinery)"} :event/parents #{} :event/ticket #uuid "20b561cc-a37c-4f8c-8f05-2a35addf97f7" :event/type :ticket/create}
