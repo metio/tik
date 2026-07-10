@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:09:44.893Z" :event/body {:fact/path [:summary] :fact/value "secrets stay in env or the password manager, never in tik"} :event/parents #{"sha256-6fbe94efadcd4178fc2b05e78f9dcad6f4b7c92461dbc62af5ad873d6779c9ff"} :event/ticket #uuid "3d749a71-201d-4359-86dc-27af610b0557" :event/type :fact/assert}
