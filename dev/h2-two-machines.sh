@@ -6,6 +6,8 @@
 #
 #   ./dev/h2-two-machines.sh            # machine B = podman container
 #   MODE=remote REMOTE=user@host ./dev/h2-two-machines.sh   # B = real box
+#   (remote mode ONLY against a machine explicitly designated for this —
+#    never against infrastructure that happens to be reachable)
 #
 # Flow (mirrors test/tik/sync_test.clj, but across environments):
 #   A creates a ticket and publishes; B clones over git://, categorizes;
