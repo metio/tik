@@ -20,6 +20,7 @@
             [tik.author :as author]
             [tik.oidc :as oidc]
             [tik.canonical :as canonical]
+            [tik.causal :as causal]
             [tik.dag :as dag]
             [tik.dupe :as dupe]
             [tik.event :as event]
@@ -436,6 +437,32 @@
     (if (:edn opts)
       (prn blocks)
       (print (paint-explain (explain/render blocks))))))
+
+(defn- cmd-causal
+  "Which signed events made each reached stage true — forensics: the
+  auditor's 'prove it' rendered from the same fold as everything else."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        id (resolve-id s (first pos))
+        {:keys [events process roles]} (ticket-ctx s id)
+        by-id (into {} (map (juxt :event/id identity)) events)
+        blocks (causal/causal process events (eval-instant opts) roles)]
+    (if (:edn opts)
+      (prn blocks)
+      (doseq [{:keys [stage support]} blocks]
+        (println (str (tint "32" (str stage)) " is supported by:"))
+        (if (empty? support)
+          (println "  nothing — no guards, reachable by structure alone")
+          (doseq [{:keys [via events note]} support]
+            (println (str "  " (pr-str via)))
+            (doseq [eid events
+                    :let [e (by-id eid)]]
+              (println (tint "2" (str "    ← " (subs eid 0 15) "… "
+                                      (name (:event/type e)) " by "
+                                      (:event/actor e) " @ "
+                                      (:event/at e)))))
+            (when note
+              (println (tint "2" (str "    ← " note))))))))))
 
 (defn- cmd-log
   "The evidence timeline: stored events interleaved with DERIVED stage
@@ -2088,6 +2115,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 --edn: the ADR 0016 data contract —
                                                 stable plumbing; text is never stable)
   tik log <id>                                  the event history
+  tik causal <id> [--edn]                       which signed events made each reached
+                                                stage true (negations and time say so
+                                                honestly) — the auditor's \"prove it\"
   tik ls [--all] [--long]                       open tickets with derived stages;
          [--filter ':a :b'|':not :a']           --long adds each ticket's description
          [--search TEXT]                        fact; filter by current stage
@@ -2171,6 +2201,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       "status"  (cmd-status parsed)
       "explain" (cmd-explain parsed)
       "log"     (cmd-log parsed)
+      "causal"  (cmd-causal parsed)
       "ls"      (cmd-ls parsed)
       "next"    (cmd-next parsed)
       "search"  (cmd-search parsed)
