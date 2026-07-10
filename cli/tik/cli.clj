@@ -443,7 +443,7 @@
         (println (str (subs (str id) 0 8) " " repo-name
                       ": no such directory under " holder " — skipped"))
         :else
-        (let [f (resolve-file probe)
+        (let [^File f (resolve-file probe)
               argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
               r (apply sh/sh (concat argv
                                      [:dir (str dir)
