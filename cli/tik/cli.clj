@@ -1319,7 +1319,22 @@
                       :parents (dag/heads (store/events s id))
                       :path (str "comment/" at) :hash hash})
                   opts)
-        (println "comment ->" (subs (str id) 0 8) "as" actor-name))
+        ;; the reply convention: `tik> key=value` lines become signed
+        ;; facts — the other half of the info-request loop (the email
+        ;; sink teaches exactly this syntax)
+        (let [facts (for [line (str/split-lines (or body ""))
+                          :let [[_ k v] (re-matches #"\s*tik>\s*([^=\s]+)=(.*)" line)]
+                          :when k]
+                      [(parse-key k) (parse-value (str/trim v))])]
+          (doseq [[path value] facts]
+            (append!* s (event/assert-fact
+                         {:ticket id :actor actor-name :at (now)
+                          :parents (dag/heads (store/events s id))
+                          :path path :value value})
+                      opts))
+          (println (str "comment -> " (subs (str id) 0 8) " as " actor-name
+                        (when (seq facts)
+                          (str " (+ " (count facts) " fact(s))"))))))
       (let [proc-name (name (or (:process cfg) (die (str "no :process in " cfg-file))))
             proc (load-process proc-name)
             id (random-uuid)
@@ -1365,6 +1380,25 @@
                   "event_action" "trigger"}
       {"ticket" (str ticket) "title" title
        "stage" (str stage) "text" text})))
+
+(defn- email-message
+  "RFC822 text asking a human for what the stage needs. The subject
+  carries [tik <id>] so a plain reply routes back through `tik bridge
+  email`; the body renders explain and teaches the reply convention —
+  the email IS a capability-scoped view of the same derivation."
+  [{:keys [to from]} {:keys [ticket title stage]} explain-text]
+  (str "To: " to "\r\n"
+       "From: " (or from "tik") "\r\n"
+       "Subject: [tik " ticket "] " title " — " stage "\r\n"
+       "\r\n"
+       "\"" title "\" reached " stage " and needs something only you"
+       " can provide.\r\n\r\n"
+       explain-text
+       "\r\nReply to this email. Lines like\r\n\r\n"
+       "  tik> key=value\r\n\r\n"
+       "become facts on the ticket (everything else is kept as a"
+       " comment), and the process moves on the moment the facts"
+       " arrive.\r\n"))
 
 (defn- json-str
   "Tiny JSON emitter for the flat payloads above — no dependency."
@@ -1423,18 +1457,29 @@
             sink sinks
             :let [key (canonical/sha256-hex
                        (pr-str [(:ticket tr) (:stage tr)
-                                (:type sink) (:url sink)]))]
+                                (:type sink) (:url sink) (:to sink)]))]
             :when (not (contains? sent key))]
-      (let [payload (json-str (effect-payload (:type sink) tr))]
-        (if (:dry-run opts)
-          (println "would send" (name (:type sink)) "<-"
-                   (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
-          (do (post! (:url sink) payload)
-              (spit ledger-file (str key "\n") :append true)
-              (swap! fired inc)
-              (println "sent" (name (:type sink)) "<-"
-                       (str (subs (str (:ticket tr)) 0 8) " "
-                            (:stage tr)))))))
+      (if (:dry-run opts)
+        (println "would send" (name (:type sink)) "<-"
+                 (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
+        (do (if (= :email (:type sink))
+              ;; sendmail-compatible: the :command reads RFC822 on stdin
+              ;; (default sendmail -t); MTA-agnostic like the inbound
+              ;; bridge — procmail in, sendmail out, tik stays porcelain
+              (let [text (email-message
+                          sink tr
+                          (explain/render
+                           (explain/explain process events (now) roles)))
+                    cmdv (or (:command sink) ["sendmail" "-t"])
+                    r (apply sh/sh (concat cmdv [:in text]))]
+                (when-not (zero? (:exit r))
+                  (die (str "email sink failed: " (:err r)))))
+              (post! (:url sink) (json-str (effect-payload (:type sink) tr))))
+            (spit ledger-file (str key "\n") :append true)
+            (swap! fired inc)
+            (println "sent" (name (:type sink)) "<-"
+                     (str (subs (str (:ticket tr)) 0 8) " "
+                          (:stage tr))))))
     (when-not (:dry-run opts)
       (println @fired "effect(s) fired — delivery state is disposable,"
                "truth untouched"))))
@@ -2135,14 +2180,19 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   tik serve [--port N]                          the live board over HTTP (read-only;
                                                 /tickets.edn + /explain/<id>.edn for tools)
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
-                                                [tik <id>] comments, else new ticket
+                                                [tik <id>] comments that ticket and
+                                                tik> key=value lines become facts;
+                                                else a new ticket
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U --password P]       a signed key-binding attestation on the
                                                 registry ticket; verification never
                                                 calls the IdP
   tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
                                                 slack|discord|matrix|alertmanager|
-                                                pagerduty|webhook sinks (ADR 0019)
+                                                pagerduty|webhook|email sinks (ADR
+                                                0019; email renders explain, routes
+                                                replies via [tik <id>], and its
+                                                tik> answers close the loop)
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
