@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-08T10:11:00Z" :event/body {:artifact/hash "sha256-deadbeef" :artifact/path "repro/crash.sh"} :event/parents #{"sha256-2b56c0472bd1e466e2e3149263a377c7e2320681c236b56b577bcedb8579cb38"} :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000c0de" :event/type :artifact/attach}

@@ -23,9 +23,11 @@
 
  :process/stages
  [{:stage/id :captured
+   :hint "kb/runbooks/tik-dev-captured.md"
    :guards []}
 
   {:stage/id :triaged
+   :hint "kb/runbooks/tik-dev-triaged.md"
    :after [:captured]
    :guards [[:fact [:summary]]
             [:fact [:kind]]
@@ -33,14 +35,16 @@
 
   {:stage/id :implemented
    :after [:triaged]
-   :hint "CLAUDE.md"
+   :hint "kb/runbooks/tik-dev-implemented.md"
    :guards [[:fact [:commit]]]}
 
   {:stage/id :landed
+   :hint "kb/runbooks/tik-dev-landed.md"
    :after [:implemented]
    :stage/sticky? true
    :guards [[:fact= [:gate] :green]]}
 
   {:stage/id :parked
+   :hint "kb/runbooks/tik-dev-parked.md"
    :after [:triaged]
    :guards [[:fact [:parked :reason]]]}]}

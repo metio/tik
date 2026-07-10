@@ -1,0 +1,1 @@
+{:process/guard-vocab 1 :process/id :sweep-order :process/stages [{:guards [] :stage/id :a} {:after [:a] :guards [] :stage/id :b} {:after [:a] :guards [] :stage/id :c} {:after [:b] :guards [[:not [:stage-reached :c]]] :stage/id :d}] :process/version 1}

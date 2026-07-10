@@ -1,0 +1,1 @@
+{:event/actor "customer" :event/at #inst "2026-07-08T11:30:00Z" :event/body {:fact/path [:customer :ack] :retract/reason "misclick"} :event/parents #{"sha256-df58c84f402fa003e4935ac1ca502437a82ed39488f1fb9bdf262d07bd797ebc"} :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000c0de" :event/type :fact/retract}

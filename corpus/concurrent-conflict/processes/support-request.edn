@@ -26,26 +26,30 @@
 
  :process/stages
  [{:stage/id :received
+   :hint "kb/runbooks/support-request-received.md"
    :guards []}
 
   {:stage/id :triaged
    :after [:received]
-   :hint "kb/concepts/triage.md"
+   :hint "kb/runbooks/support-request-triaged.md"
    :guards [[:fact [:category]]
             [:fact [:severity]]
             [:signed-by :triager [:category]]]}
 
   {:stage/id :escalated
+   :hint "kb/runbooks/support-request-escalated.md"
    :after [:received]
    :guards [[:elapsed-since :ticket/create "PT48H"]
             [:not [:fact [:category]]]]}
 
   {:stage/id :reproducible
+   :hint "kb/runbooks/support-request-reproducible.md"
    :after [:triaged]
    :guards [[:fact= [:category] :technical]
             [:artifact "repro/"]]}
 
   {:stage/id :resolved
+   :hint "kb/runbooks/support-request-resolved.md"
    :after [:triaged]
    :guards [[:fact [:resolution :ref]]
             ;; "technical implies reproduced" without :if: material
@@ -54,6 +58,7 @@
              [:stage-reached :reproducible]]]}
 
   {:stage/id :closed
+   :hint "kb/runbooks/support-request-closed.md"
    :after [:resolved]
    :stage/sticky? true
    :guards [[:fact [:customer :ack]]]}]}

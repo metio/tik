@@ -11,6 +11,8 @@
 ;; The corpus case sweep-order-negation pins this byte-for-byte.
 {:process/id :sweep-order
  :process/version 1
+ ;; evaluation-order teaching fixture: no runbooks by design
+ :lint {:runbooks :off}
  :process/guard-vocab 1
 
  :process/stages

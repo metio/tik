@@ -32,6 +32,16 @@ humans, navigable by agents. Guard `:hint`s in process definitions link here.
 - [decisions/0019-effects-observe-derivation](decisions/0019-effects-observe-derivation.md)
 - [decisions/0020-eventstore-contract](decisions/0020-eventstore-contract.md)
 
+## Runbooks
+
+One per stage — consulted when unsure what to DO (explain says what is
+missing; the runbook says how one produces it). Judgment stages say so
+explicitly instead of pretending to be procedures.
+
+- support-request: [received](runbooks/support-request-received.md) · [triaged](runbooks/support-request-triaged.md) · [escalated](runbooks/support-request-escalated.md) · [reproducible](runbooks/support-request-reproducible.md) · [resolved](runbooks/support-request-resolved.md) · [closed](runbooks/support-request-closed.md)
+- tik-dev: [captured](runbooks/tik-dev-captured.md) · [triaged](runbooks/tik-dev-triaged.md) · [implemented](runbooks/tik-dev-implemented.md) · [landed](runbooks/tik-dev-landed.md) · [parked](runbooks/tik-dev-parked.md)
+- hypothesis: [captured](runbooks/hypothesis-captured.md) · [stated](runbooks/hypothesis-stated.md) · [running](runbooks/hypothesis-running.md) · [validated](runbooks/hypothesis-validated.md) · [killed](runbooks/hypothesis-killed.md)
+
 ## Concepts
 
 - [concepts/event-log](concepts/event-log.md)

@@ -55,7 +55,7 @@
     (is (contains? reasons {:reason :fact/missing :path [:severity]}))
     (is (contains? (:blocks block) :closed)
         "blocks is the downstream closure")
-    (is (= "kb/concepts/triage.md" (:hint block)))))
+    (is (= "kb/runbooks/support-request-triaged.md" (:hint block)))))
 
 (deftest role-reason-carries-the-role
   (let [[block] (filter #(= :triaged (:stage %))

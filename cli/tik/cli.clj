@@ -682,7 +682,13 @@
 
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
-        problems (process/lint proc)]
+        missing-runbooks (for [s (:process/stages proc)
+                               :let [h (:hint s)]
+                               :when (and h (not (.exists (io/file h))))]
+                           {:level :warning
+                            :msg (str "stage " (:stage/id s) " :hint "
+                                      h " does not exist on disk")})
+        problems (concat (process/lint proc) missing-runbooks)]
     (doseq [{:keys [level msg]} problems]
       (println (str "[" (name level) "] " msg)))
     (when (some #(= :error (:level %)) problems) (System/exit 1))

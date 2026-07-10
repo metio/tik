@@ -23,26 +23,30 @@
 
  :process/stages
  [{:stage/id :captured
+   :hint "kb/runbooks/hypothesis-captured.md"
    :guards []}
 
   {:stage/id :stated
    :after [:captured]
-   :hint "docs/PLAN.md"
+   :hint "kb/runbooks/hypothesis-stated.md"
    :guards [[:fact [:statement]]
             [:fact [:kill]]
             [:signed-by :maintainer [:statement]]]}
 
   {:stage/id :running
+   :hint "kb/runbooks/hypothesis-running.md"
    :after [:stated]
    :guards [[:fact [:experiment]]]}
 
   {:stage/id :validated
+   :hint "kb/runbooks/hypothesis-validated.md"
    :after [:running]
    :stage/sticky? true
    :guards [[:fact= [:verdict] :validated]
             [:fact [:evidence]]]}
 
   {:stage/id :killed
+   :hint "kb/runbooks/hypothesis-killed.md"
    :after [:running]
    :stage/sticky? true
    :guards [[:fact= [:verdict] :killed]

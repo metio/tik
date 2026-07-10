@@ -155,6 +155,18 @@
                        " with extra steps. Prefer a fact useful"
                        " downstream, or set {:lint {:boolean-facts"
                        " :off}} to accept this explicitly.")}))
+        ;; runbooks: every stage carries authored how-to knowledge
+        ;; (:hint), or the process opts out. explain answers WHAT is
+        ;; missing; the runbook answers HOW one produces it — and a
+        ;; stage whose runbook is unwritable is either under-specified
+        ;; or judgment work whose runbook should say exactly that.
+        (when-not (= :off (get-in process [:lint :runbooks]))
+          (for [s stages :when (not (:hint s))]
+            {:level :warning
+             :msg (str "stage " (:stage/id s) " has no :hint (runbook)."
+                       " Link kb/runbooks/, or a judgment-stage runbook"
+                       " saying whose judgment and how to record it, or"
+                       " set {:lint {:runbooks :off}}.")}))
         ;; closed guard basis
         (for [s stages, g (all-guards s), op (unknown-operators g)]
           {:level :error
