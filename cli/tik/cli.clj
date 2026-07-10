@@ -38,6 +38,34 @@
   (binding [*out* *err*] (apply println msg))
   (System/exit 1))
 
+;; ---------------------------------------------------------------- color
+;; Color is porcelain: tty-detected, NO_COLOR honored, and the kernel
+;; lens keeps emitting plain data — only this file paints.
+(def ^:private use-color?
+  (delay (and (nil? (System/getenv "NO_COLOR"))
+              (some? (System/console)))))
+
+(defn- tint [code s]
+  (if @use-color? (str "\u001b[" code "m" s "\u001b[0m") s))
+
+(defn- paint-stage [stage-str settled? parked?]
+  (cond
+    settled? (tint "32" stage-str)                 ; green: finished
+    parked? (tint "33" stage-str)                  ; yellow: waiting on a decision
+    :else (tint "36" stage-str)))                  ; cyan: live work
+
+(defn- paint-explain
+  "Green checks, red crosses, dim hints — over the lens's plain text."
+  [s]
+  (->> (str/split-lines s)
+       (map #(cond
+               (str/starts-with? % "  ✓") (tint "32" %)
+               (str/starts-with? % "  ✗") (tint "31" %)
+               (str/starts-with? % "  (see:") (tint "2" %)
+               (str/starts-with? % "To reach") (tint "1" %)
+               :else %))
+       (str/join "\n")))
+
 (defn- parse-args [args]
   (loop [args args pos [] opts {}]
     (if (empty? args)
@@ -300,13 +328,16 @@
                  :conflicted "[CONFLICTED]"
                  "")))
     (println)
-    (print (explain/render (explain/explain process events (now) roles)))))
+    (print (paint-explain (explain/render (explain/explain process events (now) roles))))))
 
-(defn- cmd-explain [{:keys [pos]}]
+(defn- cmd-explain [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
-        {:keys [events process roles]} (ticket-ctx s id)]
-    (print (explain/render (explain/explain process events (now) roles)))))
+        {:keys [events process roles]} (ticket-ctx s id)
+        blocks (explain/explain process events (now) roles)]
+    (if (:edn opts)
+      (prn blocks)
+      (print (paint-explain (explain/render blocks))))))
 
 (defn- cmd-log
   "The evidence timeline: stored events interleaved with DERIVED stage
@@ -338,9 +369,12 @@
         per-ticket (for [id (store/ticket-ids s)
                          :let [{:keys [events process roles]} (ticket-ctx s id)]]
                      (next-lens/contributions id process events t roles))
-        {:keys [items waiting settled]}
+        {:keys [items waiting settled] :as inbox}
         (next-lens/inbox per-ticket (:actor opts)
                          {:include-settled? (:all opts)})]
+    (when (:edn opts)
+      (prn inbox)
+      (System/exit 0))
     (if (empty? items)
       (println "Nothing actionable"
                (if (:actor opts) (str "for " (:actor opts)) "right now") "—"
@@ -348,10 +382,10 @@
       (do
         (doseq [{:keys [action who unlocks]} items]
           (println (format "%-42s unlocks %d"
-                           (str (name (first action)) " "
-                                (pr-str (second action))
+                           (str (tint "1" (str (name (first action)) " "
+                                               (pr-str (second action))))
                                 (when (not= :anyone who)
-                                  (str "  (" (clojure.string/join ", " (sort who)) ")")))
+                                  (tint "2" (str "  (" (str/join ", " (sort who)) ")"))))
                            (count unlocks)))
           (doseq [{:keys [ticket stage hint]} unlocks]
             (println (str "    " (subs (str ticket) 0 8) " -> " stage
@@ -403,12 +437,17 @@
                                         (:haystack %)
                                         (str/lower-case (str (:search opts))))))
         visible (if (:all opts) rows (remove :settled? rows))]
-    (doseq [{:keys [id current title describe]} visible]
-      (println (subs (str id) 0 8)
-               (format "%-24s" (str/join "," (map name current)))
+    (when (:edn opts)
+      (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
+                 visible))
+      (System/exit 0))
+    (doseq [{:keys [id current title describe settled?]} visible]
+      (println (tint "2" (subs (str id) 0 8))
+               (paint-stage (format "%-24s" (str/join "," (map name current)))
+                            settled? (contains? current :parked))
                title)
       (when (and (:long opts) describe)
-        (println (str "         " describe))))
+        (println (tint "2" (str "         " describe)))))
     (when (empty? visible) (println "no matching tickets"))
     (let [hidden (- (count rows) (count visible))]
       (when (pos? hidden)
@@ -647,6 +686,23 @@
                   0 (store/ticket-ids src))]
     (println "exported" n "event(s) to" target)))
 
+(defn- cmd-process
+  "process sign <name> [--key K]: publish the current definition —
+  archive it content-addressed and sign the archived canonical bytes
+  (namespace tik-process, ADR 0015). The hash stays the identity; the
+  signature is the authority."
+  [{:keys [pos opts]}]
+  (let [[sub proc-name] pos]
+    (when-not (and (= "sign" sub) proc-name)
+      (die "usage: tik process sign <name> [--key K]"))
+    (let [key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
+          proc (load-process proc-name)
+          hash (archive-process! proc)
+          f (by-hash-file hash)
+          sig (sign/sign! key f hash sign/namespace-process)]
+      (println "published" proc-name "@" hash)
+      (println "signature" (.getName ^File sig)))))
+
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
   allowed-signers registry (identity ladder rung 1, PLAN §9)."
@@ -694,15 +750,75 @@
     (when (some #(= :error (:level %)) problems) (System/exit 1))
     (when (empty? problems) (println "clean"))))
 
+(declare verify-ticket)
+
+(defn- verify-definitions
+  "Audit processes/by-hash/: every archived definition's bytes hash to
+  its filename (the ADR 0007 property applied to governance), and every
+  publication signature (namespace tik-process, ADR 0015) verifies
+  against a registered principal."
+  [check]
+  (let [dir (io/file (root) "processes" "by-hash")
+        signers (io/file (root) "actors")]
+    (when (.isDirectory dir)
+      (println "definitions")
+      (doseq [^File f (.listFiles dir)
+              :when (str/ends-with? (.getName f) ".edn")
+              :let [stem (str/replace (.getName f) #"\.edn$" "")]]
+        (check (= stem (str "sha256-" (canonical/sha256-hex (slurp f))))
+               (str (subs stem 0 19) "… definition bytes hash to filename"))
+        (let [sigs (sign/sidecars dir stem)]
+          (if (empty? sigs)
+            (println (str "  note  " (subs stem 0 19)
+                          "… unsigned definition (tik process sign)"))
+            (doseq [sig sigs
+                    :let [who (and (.exists signers)
+                                   (first (sign/find-principals
+                                           signers f sig
+                                           sign/namespace-process)))]]
+              (check (boolean
+                      (and who (sign/verify signers f sig who
+                                            sign/namespace-process)))
+                     (str (subs stem 0 19) "… published by "
+                          (or who "<unregistered key>"))))))))))
+
 (defn- cmd-verify
-  "The verify ladder, Phase 0 rungs:
-  L0 integrity — every file's canonical bytes hash to its name; every
-     parent exists; exactly one root
-  L1 authenticity — signatures (Phase 1; reported as skipped)
-  L2 reproducibility — re-derive stages under the hash-pinned process."
-  [{:keys [pos]}]
+  "The verify ladder. With a ticket id: that ticket. With no arguments:
+  the WHOLE STORE — every ticket plus every archived definition and its
+  publication signatures. One command, complete audit."
+  [{:keys [pos] :as parsed}]
+  (if (empty? pos)
+    (let [s (the-store)
+          ids (store/ticket-ids s)
+          failures (atom 0)
+          check (fn [ok? msg]
+                  (when-not ok?
+                    (println (tint "31" (str "  FAIL  " msg)))
+                    (swap! failures inc)))]
+      (doseq [id ids]
+        (let [r (with-out-str (verify-ticket parsed id))]
+          (if (str/includes? r "FAIL")
+            (do (print r) (swap! failures inc))
+            (println (tint "2" (subs (str id) 0 8))
+                     (tint "32" "ok")
+                     (str (count (store/events s id)) " event(s)")))))
+      (verify-definitions check)
+      (if (zero? @failures)
+        (println (tint "32" (str "verify: PASS (" (count ids) " tickets)")))
+        (do (println (tint "31" (str "verify: FAIL (" @failures ")")))
+            (System/exit 1))))
+    (let [f (verify-ticket parsed (resolve-id (the-store) (first pos)))]
+      (verify-definitions
+       (fn [ok? msg]
+         (println (str (if ok? "  ok    " "  FAIL  ") msg))
+         (when-not ok? (System/exit 1))))
+      (when (pos? f) (System/exit 1)))))
+
+(defn- verify-ticket
+  "The per-ticket ladder; prints, exits nonzero on failure when run for
+  a single ticket."
+  [{:keys []} id]
   (let [s (the-store)
-        id (resolve-id s (first pos))
         dir (io/file (root) "tickets" (str id) "events")
         files (filter (fn [^File f]
                         (and (.isFile f)
@@ -767,7 +883,8 @@
                         (str/join ", " (map str (sort-by str reached))))))))
     (if (zero? @failures)
       (println "verify: PASS")
-      (do (println (str "verify: FAIL (" @failures ")")) (System/exit 1)))))
+      (println (str "verify: FAIL (" @failures ")")))
+    @failures))
 
 (def ^:private usage
   "tik — a process system, not a ticket system
@@ -780,7 +897,9 @@
   tik attach <id> <file>                        attach an artifact (stored by hash)
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
   tik status <id>                               derived stage, facts, what's next
-  tik explain <id>                              what is needed to advance
+  tik explain <id> [--edn]                      what is needed to advance
+                                                (--edn: the ADR 0016 data contract —
+                                                stable plumbing; text is never stable)
   tik log <id>                                  the event history
   tik ls [--all] [--long]                       open tickets with derived stages;
          [--filter ':a :b'|':not :a']           --long adds each ticket's description
@@ -789,7 +908,9 @@
   tik search <text...>                          search ALL tickets, titles and facts
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
-  tik verify <id>                               the verify ladder (L0/L1/L2)
+  tik verify [<id>]                             the verify ladder (L0/L1/L2); with no
+                                                id, audits EVERY ticket + definition
+  tik process sign <name> [--key K]             publish: sign the archived definition
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
@@ -823,6 +944,7 @@
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
+      "process" (cmd-process parsed)
       "sign"    (cmd-sign parsed)
       "migrate" (cmd-migrate parsed)
       "export"  (cmd-export parsed)

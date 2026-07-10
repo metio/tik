@@ -681,7 +681,9 @@ explain as data + renderer; `tik.dag`; **`tik.next`** — the inbox lens,
 sound/complete against explain by property test, who-can-act aware of
 `:signed-by` restrictions. CLI: `new set retract dispute
 attach comment status explain log diff ls next lint sim test actor
-sign` and **`verify` (L0+L1+L2)**; structural conflict detection live
+sign process-sign` and **`verify` (L0+L1+L2; bare `tik verify`
+audits every ticket and every archived definition — including
+tik-process-namespaced publication signatures, ADR 0015 built)**; structural conflict detection live
 (corpus case `concurrent-conflict`); union-merge replication validated
 over real git clones (`tik.sync-test`) and across environments over
 `git://` (`dev/h2-two-machines.sh`); SQLite EventStore backend

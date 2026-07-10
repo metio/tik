@@ -27,9 +27,13 @@
 (def namespace-event
   "The ssh-keygen -Y namespace for event signatures. Domain-separated so
   a tik event signature can never be replayed as a git commit signature
-  or vice versa; future sidecar kinds (witness countersignatures) get
-  their own namespace."
+  or vice versa; each sidecar kind gets its own namespace."
   "tik-event")
+
+(def namespace-process
+  "Namespace for process-definition publication signatures (ADR 0015):
+  a definition endorsement can never masquerade as an event signature."
+  "tik-process")
 
 (defn- sh! [& args]
   (let [r (apply sh/sh args)]
@@ -58,28 +62,45 @@
 
 (defn sign!
   "Sign `file` (the exact stored bytes) with `key-file`; write the
-  sidecar next to it; return the sidecar File."
-  [key-file ^java.io.File file event-id]
-  (let [fpr (fingerprint (pubkey key-file))
-        target (sig-file (.getParentFile file) event-id fpr)]
-    (sh! "ssh-keygen" "-Y" "sign" "-f" (str key-file)
-         "-n" namespace-event (str file))
+  sidecar next to it; return the sidecar File. Namespace defaults to
+  event signing; pass namespace-process for definitions."
+  ([key-file file artifact-id] (sign! key-file file artifact-id namespace-event))
+  ([key-file ^java.io.File file artifact-id sig-namespace]
+   (let [fpr (fingerprint (pubkey key-file))
+         target (sig-file (.getParentFile file) artifact-id fpr)]
+     (sh! "ssh-keygen" "-Y" "sign" "-f" (str key-file)
+          "-n" sig-namespace (str file))
     ;; ssh-keygen writes <file>.sig; the sidecar name carries the key
-    (let [produced (io/file (str file ".sig"))]
-      (io/copy produced target)
-      (io/delete-file produced))
-    target))
+     (let [produced (io/file (str file ".sig"))]
+       (io/copy produced target)
+       (io/delete-file produced))
+     target)))
 
 (defn verify
   "Does `sig` verify `file`'s bytes as authored by `actor`, per the
   allowed-signers registry? Pure exit-code check; no output parsing."
-  [allowed-signers ^java.io.File file ^java.io.File sig actor]
-  (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
-                       "-f" (str allowed-signers)
-                       "-I" actor
-                       "-n" namespace-event
-                       "-s" (str sig)
-                       :in (slurp file)))))
+  ([allowed-signers file sig actor]
+   (verify allowed-signers file sig actor namespace-event))
+  ([allowed-signers ^java.io.File file ^java.io.File sig actor sig-namespace]
+   (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
+                        "-f" (str allowed-signers)
+                        "-I" actor
+                        "-n" sig-namespace
+                        "-s" (str sig)
+                        :in (slurp file))))))
+
+(defn find-principals
+  "Which registered principals could have produced `sig` over `file`?
+  Empty when the key is not in the registry."
+  [allowed-signers ^java.io.File file ^java.io.File sig sig-namespace]
+  (let [r (sh/sh "ssh-keygen" "-Y" "find-principals"
+                 "-f" (str allowed-signers)
+                 "-n" sig-namespace
+                 "-s" (str sig)
+                 :in (slurp file))]
+    (if (zero? (:exit r))
+      (vec (remove str/blank? (str/split-lines (:out r))))
+      [])))
 
 (defn sidecars
   "All signature sidecar Files for an event id in `events-dir`."
