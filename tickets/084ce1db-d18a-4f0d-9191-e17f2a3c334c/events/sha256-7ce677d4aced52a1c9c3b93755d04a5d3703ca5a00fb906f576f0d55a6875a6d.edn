@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T12:36:54.315Z" :event/body {:fact/path [:summary] :fact/value "the auditor asks prove it; this lens answers, derived not stored"} :event/parents #{"sha256-c343dfcad28fe91ca7a5ec3657a040363ae005555040704e552c3a9c36321237"} :event/ticket #uuid "084ce1db-d18a-4f0d-9191-e17f2a3c334c" :event/type :fact/assert}
