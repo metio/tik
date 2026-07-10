@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:04:59.092Z" :event/body {:fact/path [:summary] :fact/value "seventeen sink types, templated, plus a universal command escape hatch"} :event/parents #{"sha256-a5c6b98b4ffd4ac118ee9f01e88941a5504ed60a30c62604e9b5a4366e92dac1"} :event/ticket #uuid "1c0eec13-d4e7-4487-9126-d2c8c1ec525a" :event/type :fact/assert}
