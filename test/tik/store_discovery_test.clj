@@ -158,3 +158,34 @@
           (is (re-find #"0 ticket\(s\) created, 4 already covered" (:out r)))
           (is (re-find #"beta -> [0-9a-f]{8} beta \(done\)" (:out r))
               "the checkmark derived itself from the child's evidence"))))))
+
+(deftest probe_derives_facts_from_the_world
+  (let [top (tmpdir)]
+    (doseq [r ["alpha" "beta"]]
+      (.mkdirs (io/file top r ".git")))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "mig.edn")
+          (pr-str {:process/id :mig :process/version 1
+                   :process/guard-vocab 1
+                   :lint {:runbooks :off}
+                   :probe "probes/mig.sh"
+                   :process/facts {[:proof] [:string {:min 2}]}
+                   :process/stages [{:stage/id :started :guards []}
+                                    {:stage/id :done :after [:started]
+                                     :stage/sticky? true
+                                     :guards [[:fact [:proof]]]}]}))
+    (.mkdirs (io/file top ".tik" "probes"))
+    (spit (io/file top ".tik" "probes" "mig.sh")
+          "if [ -f marker.txt ]; then echo \"proof=\\\"$(cat marker.txt)\\\"\"; fi\n")
+    (tik-at top nil "rollout" "mig")
+    (testing "no evidence in the world, no facts asserted"
+      (is (re-find #"0 fact\(s\) derived" (:out (tik-at top nil "probe")))))
+    (testing "evidence appears; the probe records it and the stage derives"
+      (spit (io/file top "alpha" "marker.txt") "pr-77")
+      (let [r (tik-at top nil "probe")]
+        (is (re-find #"alpha: proof = \"pr-77\"" (:out r)))
+        (is (re-find #"alpha -> .*done" (:out r)))
+        (is (re-find #"1 fact\(s\) derived" (:out r)))))
+    (testing "re-probing an unchanged world asserts nothing"
+      (is (re-find #"0 fact\(s\) derived" (:out (tik-at top nil "probe")))))))

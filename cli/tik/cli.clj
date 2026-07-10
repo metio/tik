@@ -310,7 +310,7 @@
             [])
           explicit)))
 
-(declare link-facts render-link)
+(declare link-facts render-link resolve-file)
 
 (defn- cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T]
@@ -405,6 +405,80 @@
       (doseq [l (sort-by :rel (link-facts state))]
         (println "  " (render-link s t l))))
     (println (str "watch it: tik status " (subs (str parent-id) 0 8)))))
+
+(defn- cmd-probe
+  "probe [<id>] [--command C]
+  Auto-derive facts from the world: for every open ticket carrying a
+  [:repo] fact (or just <id>), run the probe — an executable printing
+  key=value lines — with cwd set to that ticket's repository under the
+  store holder, and assert each CHANGED value as an ordinary signed
+  fact. The probe comes from --command or the :probe field of the
+  ticket's process definition (looked up by name — a porcelain
+  convenience, never derivation semantics). Idempotent by
+  construction: unchanged values assert nothing; stages derive from
+  whatever landed."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        t (now)
+        holder (store-holder)
+        ids (if (seq pos)
+              [(resolve-id s (first pos))]
+              (store/ticket-ids s))
+        changed (atom 0)]
+    (doseq [id ids
+            :let [{:keys [events state process roles]} (ticket-ctx s id)
+                  repo (red/fact-value state [:repo])]
+            :when (and repo
+                       (or (seq pos)
+                           (not (next-lens/settled? process events t roles))))
+            :let [repo-name (if (keyword? repo) (name repo) (str repo))
+                  dir (io/file holder repo-name)
+                  probe (or (:command opts)
+                            (let [f (process-file (name (:process state)))]
+                              (when (.exists f)
+                                (:probe (edn/read-string (slurp f))))))]]
+      (cond
+        (nil? probe) nil
+        (not (.isDirectory dir))
+        (println (str (subs (str id) 0 8) " " repo-name
+                      ": no such directory under " holder " — skipped"))
+        :else
+        (let [f (resolve-file probe)
+              argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
+              r (apply sh/sh (concat argv
+                                     [:dir (str dir)
+                                      :env (assoc (into {} (System/getenv))
+                                                  "TIK_TICKET" (str id)
+                                                  "TIK_REPO" repo-name)]))
+              before (stage/effective-reached process events t roles)]
+          (if-not (zero? (:exit r))
+            (println (str (subs (str id) 0 8) " " repo-name ": probe failed — "
+                          (str/trim (:err r))))
+            (do
+              (doseq [line (str/split-lines (:out r))
+                      :let [[_ k v] (re-matches #"\s*([^=\s]+)=(.*)" line)]
+                      :when k
+                      :let [path (parse-key k)
+                            value (parse-value (str/trim v))]
+                      :when (not= value (red/fact-value
+                                         (red/ticket-state (store/events s id))
+                                         path))]
+                (append!* s (event/assert-fact
+                             {:ticket id :actor (actor opts) :at (now)
+                              :parents (dag/heads (store/events s id))
+                              :path path :value value})
+                          opts)
+                (swap! changed inc)
+                (println (str (subs (str id) 0 8) " " repo-name ": " k " = "
+                              (pr-str value))))
+              (let [evs (store/events s id)
+                    after (stage/effective-reached process evs (now) roles)
+                    gained (sort-by str (remove before after))]
+                (when (seq gained)
+                  (println (str (subs (str id) 0 8) " " repo-name " -> "
+                                (tint "32" (str/join ", " (map name gained))))))))))))
+    (println (str @changed " fact(s) derived from the world — signed like"
+                  " any other claim"))))
 
 (defn- cmd-init
   "init [--hidden]: mark this directory as a store. --hidden puts
@@ -2662,6 +2736,12 @@ answers.edn and run: tik author --from answers.edn")
                                                 a parent: a checklist whose checkmarks
                                                 derive from each child's evidence.
                                                 Idempotent; re-runs report coverage
+  tik probe [<id>] [--command C]                auto-derive facts from the world: run
+                                                each repo ticket's probe (the :probe
+                                                script of its process; any executable
+                                                printing key=value) with cwd in that
+                                                repo; changed values land as signed
+                                                facts and stages derive. Idempotent
   tik next [--actor A] [--role :r] [--all]      the inbox: what unlocks the most work,
                                                 quiet tickets rising; --actor = what I
                                                 can do, --role = what a role is being
@@ -2721,6 +2801,7 @@ answers.edn and run: tik author --from answers.edn")
     (case cmd
       "init"    (cmd-init parsed)
       "rollout" (cmd-rollout parsed)
+      "probe"   (cmd-probe parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)
