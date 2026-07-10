@@ -126,6 +126,7 @@
     (doseq [r ["alpha" "beta" "gamma"]]
       (.mkdirs (io/file top r ".git")))
     (.mkdirs (io/file top "not-a-repo"))
+    (.mkdirs (io/file top "group" "subgroup" "delta" ".git"))
     (tik-at top nil "init" "--hidden")
     (.mkdirs (io/file top ".tik" "processes"))
     (spit (io/file top ".tik" "processes" "mig.edn")
@@ -140,9 +141,12 @@
     (testing "one ticket per git repo, a parent, links rendered live"
       (let [r (tik-at top nil "rollout" "mig")]
         (is (zero? (:exit r)) (:err r))
-        (is (re-find #"3 ticket\(s\) created, 0 already covered, 3 repo\(s\) total"
+        (is (re-find #"4 ticket\(s\) created, 0 already covered, 4 repo\(s\) total"
                      (:out r)))
         (is (re-find #"alpha -> [0-9a-f]{8} alpha \(started\)" (:out r)))
+        (is (re-find #"group.subgroup.delta -> [0-9a-f]{8} group/subgroup/delta \(started\)"
+                     (:out r))
+            "GitLab-style nested repos are found; identity is the path")
         (is (not (re-find #"not-a-repo" (:out r))))))
     (testing "children carry the repo dimension"
       (is (re-find #"beta" (:out (tik-at top nil "query" "fact" "repo" ":beta")))))
@@ -151,6 +155,6 @@
                         :out str/split-lines first (str/split #"\s+") first)]
         (tik-at top nil "set" beta-id "proof=\"pr-42\"")
         (let [r (tik-at top nil "rollout" "mig")]
-          (is (re-find #"0 ticket\(s\) created, 3 already covered" (:out r)))
+          (is (re-find #"0 ticket\(s\) created, 4 already covered" (:out r)))
           (is (re-find #"beta -> [0-9a-f]{8} beta \(done\)" (:out r))
               "the checkmark derived itself from the child's evidence"))))))

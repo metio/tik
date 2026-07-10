@@ -319,17 +319,28 @@
   a checklist whose checkmarks DERIVE from each child's evidence.
   Idempotent: re-runs create only uncovered repos and missing links,
   and report coverage. The parent's own completion stays a human
-  signature; guards never query across tickets (ADR 0004 scope)."
+  signature; guards never query across tickets (ADR 0004 scope).
+
+  Repos are found RECURSIVELY (GitLab-style group/subgroup/repo trees
+  work); descent stops at each repo, hidden directories are skipped.
+  A nested repo's identity is its relative path: the [:repo] fact and
+  queries use the string \"group/repo\", flat repos keep the keyword."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
                       (die "usage: tik rollout <process> [--parent <id>] [--parent-title T]"))
         proc (load-process proc-name)
         holder (store-holder)
-        repos (sort (for [^File d (.listFiles holder)
-                          :when (and (.isDirectory d)
-                                     (not (str/starts-with? (.getName d) "."))
-                                     (.exists (io/file d ".git")))]
-                      (.getName d)))
+        walk (fn walk [^File d rel]
+               (cond
+                 (str/starts-with? (.getName d) ".") []
+                 (.exists (io/file d ".git")) [rel]
+                 :else (mapcat #(walk % (str rel "/" (.getName ^File %)))
+                               (filter #(.isDirectory ^File %)
+                                       (or (.listFiles d) [])))))
+        repos (sort (mapcat #(walk % (.getName ^File %))
+                            (filter #(.isDirectory ^File %)
+                                    (or (.listFiles holder) []))))
+        repo-value #(if (str/includes? % "/") % (keyword %))
         _ (when (empty? repos)
             (die (str "no git repositories directly under " holder)))
         s (the-store)
@@ -341,10 +352,10 @@
                              :when (= (keyword proc-name) (:process state))
                              :let [r (red/fact-value state [:repo])]
                              :when r]
-                         [(name r) id]))
+                         [(if (keyword? r) (name r) (str r)) id]))
         parent-title (or (:parent-title opts) (str proc-name " rollout"))
         parent-id
-        (or (some-> (:parent opts) (->> (resolve-id s)))
+        (or (when-let [p (:parent opts)] (resolve-id s p))
             (some (fn [{:keys [id state events process roles]}]
                     (when (and (= parent-title (:title state))
                                (not (next-lens/settled? process events t roles)))
@@ -374,16 +385,18 @@
                                      {:ticket (:event/ticket e)
                                       :actor (actor opts) :at (now)
                                       :parents #{(:event/id e)}
-                                      :path [:repo] :value (keyword repo)})
+                                      :path [:repo] :value (repo-value repo)})
                                   opts)
                         (swap! created inc)
                         (:event/ticket e)))
             {:keys [state]} (ticket-ctx s parent-id)]
-        (when-not (= (str child) (red/fact-value state [:link (keyword repo)]))
+        (when-not (= (str child)
+                     (red/fact-value state [:link (keyword (str/replace repo "/" "."))]))
           (append!* s (event/assert-fact
                        {:ticket parent-id :actor (actor opts) :at (now)
                         :parents (dag/heads (store/events s parent-id))
-                        :path [:link (keyword repo)] :value (str child)})
+                        :path [:link (keyword (str/replace repo "/" "."))]
+                        :value (str child)})
                     opts))))
     (println (str @created " ticket(s) created, "
                   (- (count repos) @created) " already covered, "
