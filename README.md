@@ -10,6 +10,7 @@ stages derive, and `tik explain` always knows exactly what is needed next.
 git answers "what changed?"; tik answers "what is true, why is it true,
 who proved it, and can anyone reproduce the conclusion?"
 
+The elevator version lives in [docs/PITCH.md](docs/PITCH.md).
 Part of the [metio](https://metio.wtf) family. Licensed 0BSD,
 [REUSE](https://reuse.software)-compliant. Full design: [docs/PLAN.md](docs/PLAN.md).
 Decisions and concepts live in the OKF bundle under [kb/](kb/index.md);
