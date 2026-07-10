@@ -73,6 +73,40 @@
      {:state red/empty-state :reached #{} :sticky-ever #{} :timeline []}
      (red/ordered events))))
 
+(defn trace-sweeps
+  "The fixpoint with its working shown: one entry per sweep, recording
+  which stages were evaluated against the sweep-start snapshot, every
+  guard's verdict, and what the sweep added. Pure — the process
+  debugger's data source, and executable documentation of the
+  normative synchronous-sweep semantics (ADR 0005/0018)."
+  [process state now roles]
+  (loop [reached #{} sweeps []]
+    (let [ctx {:state state :process process :now now
+               :roles roles :reached reached}
+          evaluated (for [s (:process/stages process)
+                          :when (not (contains? reached (:stage/id s)))]
+                      {:stage (:stage/id s)
+                       :prereqs-met? (every? reached (:after s []))
+                       :guards (when (every? reached (:after s []))
+                                 (mapv (fn [g]
+                                         {:guard g
+                                          :verdict (guard/eval-guard g ctx)})
+                                       (:guards s [])))})
+          added (into #{}
+                      (comp (filter :prereqs-met?)
+                            (filter #(every? (comp :satisfied? :verdict)
+                                             (:guards %)))
+                            (map :stage))
+                      evaluated)
+          reached' (into reached added)
+          sweeps' (conj sweeps {:sweep (inc (count sweeps))
+                                :snapshot reached
+                                :evaluated (vec evaluated)
+                                :added added})]
+      (if (= reached' reached)
+        {:reached reached :sweeps sweeps'}
+        (recur reached' sweeps')))))
+
 (defn effective-reached
   "Reached set at `now` (which may be later than the last event — time alone
   can satisfy :elapsed-since), seeded with the sticky carry from the fold."

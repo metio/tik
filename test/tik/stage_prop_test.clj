@@ -81,3 +81,14 @@
                                             ge/process %) r)
                                current)))
                    reached)))))
+
+(defspec trace-sweeps-agrees-with-reached-set 60
+  ;; the debugger's data source IS the fixpoint: same reached set, and
+  ;; the union of sweep additions reconstructs it exactly
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
+    (let [state (red/ticket-state events)
+          {:keys [reached sweeps]} (stage/trace-sweeps ge/process state
+                                                       now ge/roles)]
+      (and (= reached (stage/reached-set ge/process state now ge/roles))
+           (= reached (reduce into #{} (map :added sweeps)))))))

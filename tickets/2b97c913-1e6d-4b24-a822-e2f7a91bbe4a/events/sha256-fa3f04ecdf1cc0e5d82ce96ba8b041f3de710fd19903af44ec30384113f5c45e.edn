@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T09:07:55.477Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813" :ticket/process-version 1 :ticket/title "board: self-contained HTML dashboard"} :event/parents #{} :event/ticket #uuid "2b97c913-1e6d-4b24-a822-e2f7a91bbe4a" :event/type :ticket/create}

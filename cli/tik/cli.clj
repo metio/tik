@@ -739,6 +739,219 @@
     (println "signed" (count unsigned) "event(s) as" me
              (str "(" (count mine) " authored, key " fpr ")"))))
 
+(defn- cmd-debug
+  "The fixpoint with its working shown: every sweep, every stage, every
+  guard verdict against the sweep-start snapshot. tik's EXPLAIN plan."
+  [{:keys [pos opts]}]
+  (let [proc-name (first pos)
+        proc (if (str/ends-with? (str proc-name) ".edn")
+               (edn/read-string (slurp proc-name))
+               (load-process proc-name))
+        s (the-store)
+        [state t roles]
+        (if-let [tid (second pos)]
+          (let [{:keys [events state process roles]}
+                (ticket-ctx s (resolve-id s tid))]
+            [state (now) roles])
+          [red/empty-state (now) (:process/roles proc {})])
+        {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
+    (if (:edn opts)
+      (prn {:reached reached :sweeps sweeps})
+      (do
+        (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
+          (println (tint "1" (str "sweep " sweep))
+                   (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))
+          (doseq [{:keys [stage prereqs-met? guards]} evaluated]
+            (if-not prereqs-met?
+              (println (tint "2" (str "  " stage " prerequisites not reached — not evaluated")))
+              (do (println (str "  " stage))
+                  (doseq [{:keys [guard verdict]} guards]
+                    (println (if (:satisfied? verdict)
+                               (tint "32" (str "    ✓ " (pr-str guard)))
+                               (tint "31" (str "    ✗ " (pr-str guard)))))))))
+          (println (str "  => added " (pr-str (vec (sort-by str added))))))
+        (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached))))))))))
+
+(defn- cmd-graph
+  "The :after DAG by strata; with a ticket, overlay derived status:
+  ● reached, ◐ frontier (prereqs met, guards missing), ○ blocked."
+  [{:keys [pos]}]
+  (let [proc-name (first pos)
+        proc (if (str/ends-with? (str proc-name) ".edn")
+               (edn/read-string (slurp proc-name))
+               (load-process proc-name))
+        s (the-store)
+        reached (when-let [tid (second pos)]
+                  (let [{:keys [events process roles]}
+                        (ticket-ctx s (resolve-id s tid))]
+                    (stage/effective-reached process events (now) roles)))
+        stages (:process/stages proc)
+        depth (fn depth [id seen]
+                (let [st (first (filter #(= id (:stage/id %)) stages))]
+                  (if (or (seen id) (empty? (:after st [])))
+                    0
+                    (inc (apply max (map #(depth % (conj seen id))
+                                         (:after st)))))))
+        by-depth (group-by #(depth (:stage/id %) #{}) stages)]
+    (doseq [d (sort (keys by-depth))]
+      (doseq [st (sort-by :stage/id (by-depth d))
+              :let [id (:stage/id st)
+                    frontier? (and reached
+                                   (not (reached id))
+                                   (every? reached (:after st [])))
+                    glyph (cond (nil? reached) "·"
+                                (reached id) (tint "32" "●")
+                                frontier? (tint "36" "◐")
+                                :else (tint "2" "○"))]]
+        (println (str (str/join (repeat (* 2 d) " "))
+                      glyph " " (name id)
+                      (when (seq (:after st))
+                        (tint "2" (str "  <- " (str/join ", " (map name (:after st))))))
+                      (when (:stage/sticky? st) (tint "33" "  [sticky]"))))))))
+
+(defn- cmd-whatif
+  "Counterfactuals: apply hypothetical steps to a ticket IN MEMORY and
+  show what would change. Nothing is written — derivation over a
+  hypothetical event set is the same pure function (PLAN §19)."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        id (resolve-id s (first pos))
+        {:keys [events process roles]} (ticket-ctx s id)
+        t (now)
+        steps (for [kv (rest pos)]
+                (cond
+                  (str/starts-with? kv "+") [:now (str kv)]
+                  (str/starts-with? kv "retract:") [:retract (parse-key (subs kv 8))]
+                  :else (let [[k v] (str/split kv #"=" 2)]
+                          [:set (parse-key k) (parse-value v)])))
+        before (stage/effective-reached process events t roles)
+        st (reduce apply-step
+                   {:events (vec (red/ordered events)) :now t
+                    :actor (actor opts)}
+                   steps)
+        after (stage/effective-reached process (:events st) (:now st) roles)]
+    (println (tint "2" (str "whatif " (str/join " " (rest pos))
+                            "  (nothing recorded)")))
+    (doseq [g (sort-by str (remove before after))]
+      (println (tint "32" (str "  + " g " would become derivable"))))
+    (doseq [l (sort-by str (remove after before))]
+      (println (tint "31" (str "  - " l " would no longer derive"))))
+    (when (= before after)
+      (println "  no derived change"))))
+
+(defn- cmd-query
+  "The query lens: questions across EVERY ticket's log.
+  disputed | conflicted | unsigned | fact <k> [<v>] | actor <name> | stage <:kw>"
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        t (now)
+        [q & args] pos
+        rows (for [id (store/ticket-ids s)
+                   :let [{:keys [events state process roles]} (ticket-ctx s id)]]
+               {:id id :title (:title state) :state state :events events
+                :reached (stage/effective-reached process events t roles)})
+        hit? (case q
+               "disputed" (fn [{:keys [state]}]
+                            (some #(= :disputed (:status (red/fact-status state %)))
+                                  (keys (:facts state))))
+               "conflicted" (fn [{:keys [state]}]
+                              (some #(= :conflicted (:status (red/fact-status state %)))
+                                    (keys (:facts state))))
+               "unsigned" (fn [{:keys [id events]}]
+                            (let [dir (events-dir id)]
+                              (some #(empty? (sign/sidecars dir (:event/id %)))
+                                    events)))
+               "fact" (let [path (parse-key (first args))
+                            v (some-> (second args) parse-value)]
+                        (fn [{:keys [state]}]
+                          (let [fs (red/fact-status state path)]
+                            (and (= :present (:status fs))
+                                 (or (nil? v) (= v (:value fs)))))))
+               "actor" (fn [{:keys [events]}]
+                         (some #(= (first args) (:event/actor %)) events))
+               "stage" (fn [{:keys [reached]}]
+                         (contains? reached (edn/read-string (first args))))
+               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>"))
+        hits (filter hit? rows)]
+    (if (:edn opts)
+      (prn (mapv #(select-keys % [:id :title :reached]) hits))
+      (do (doseq [{:keys [id title reached]} hits]
+            (println (tint "2" (subs (str id) 0 8)) title
+                     (tint "2" (pr-str (vec (sort-by str reached))))))
+          (println (count hits) "ticket(s)")))))
+
+(defn- html-escape [x]
+  (-> (str x)
+      (str/replace "&" "&amp;") (str/replace "<" "&lt;")
+      (str/replace ">" "&gt;") (str/replace "\"" "&quot;")))
+
+(defn- cmd-board
+  "One self-contained HTML file: the whole board, stage-colored, with
+  facts and explain per ticket. No dependencies, no scripts, no network
+  — mail it, archive it, open it anywhere. A rendering of the same
+  derivation as every other lens."
+  [{:keys [pos]}]
+  (let [s (the-store)
+        t (now)
+        rows (for [id (store/ticket-ids s)
+                   :let [{:keys [events state process roles]} (ticket-ctx s id)
+                         reached (stage/effective-reached process events t roles)
+                         current (stage/current-stages process reached)
+                         settled? (next-lens/settled? process events t roles)]]
+               {:id id :title (:title state) :process (:process state)
+                :current current :settled? settled?
+                :parked? (contains? current :parked)
+                :facts (sort-by (comp pr-str key) (guard/fact-map state))
+                :blocks (explain/explain process events t roles)})
+        chip (fn [{:keys [settled? parked?]}]
+               (cond settled? "chip done" parked? "chip parked" :else "chip live"))
+        html
+        (str
+         "<!doctype html><html><head><meta charset=\"utf-8\">"
+         "<title>tik board</title><style>"
+         "body{font:15px/1.5 system-ui;margin:2rem auto;max-width:60rem;padding:0 1rem;background:#fff;color:#1a1a1a}"
+         "@media(prefers-color-scheme:dark){body{background:#14161a;color:#d5d9de}.card{background:#1b1e24!important;border-color:#2a2e36!important}}"
+         ".card{border:1px solid #ddd;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0;background:#fafafa}"
+         ".chip{display:inline-block;border-radius:99px;padding:.05rem .6rem;font-size:.8rem;margin-right:.5rem;color:#fff}"
+         ".live{background:#0e7490}.done{background:#15803d}.parked{background:#b45309}"
+         ".id{opacity:.55;font-family:monospace;font-size:.85rem}"
+         "ul{margin:.3rem 0 .1rem 1.2rem;padding:0}li{margin:.1rem 0}"
+         ".miss{color:#b91c1c}.sat{color:#15803d}"
+         "code{font-size:.85em;opacity:.85}"
+         "h1{font-size:1.3rem}small{opacity:.6}"
+         "</style></head><body>"
+         "<h1>tik board</h1><small>derived " (html-escape t)
+         " — every line f(events, now); nothing stored</small>"
+         (str/join
+                (for [{:keys [id title current facts blocks] :as row} rows]
+                  (str "<div class=\"card\">"
+                       "<span class=\"" (chip row) "\">"
+                       (html-escape (str/join ", " (map name current))) "</span>"
+                       "<b>" (html-escape title) "</b> "
+                       "<span class=\"id\">" (html-escape (subs (str id) 0 8)) "</span>"
+                       (when (seq facts)
+                         (str "<ul>"
+                              (str/join (for [[p v] facts]
+                                           (str "<li><code>" (html-escape (pr-str p))
+                                                " = " (html-escape (pr-str v))
+                                                "</code></li>")))
+                              "</ul>"))
+                       (str/join
+                              (for [{:keys [stage missing]} blocks]
+                                (str "<div><small>to reach <b>"
+                                     (html-escape (name stage)) "</b>:</small><ul>"
+                                     (str/join
+                                            (for [r missing]
+                                              (str "<li class=\"miss\">✗ "
+                                                   (html-escape (explain/reason->text r))
+                                                   "</li>")))
+                                     "</ul></div>")))
+                       "</div>")))
+         "</body></html>")]
+    (if-let [out (first pos)]
+      (do (spit out html) (println "wrote" out))
+      (print html))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         missing-runbooks (for [s (:process/stages proc)
@@ -909,6 +1122,13 @@
          [--search TEXT]                        fact; filter by current stage
                                                 (negatable); search titles+facts
   tik search <text...>                          search ALL tickets, titles and facts
+  tik query <question> [args]                   across every log: disputed|conflicted|
+                                                unsigned|fact <k> [v]|actor <n>|stage <:s>
+  tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing written
+  tik debug <process> [<id>]                    the fixpoint with its working shown
+  tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
+  tik board [<file.html>]                       the whole board as ONE dependency-free
+                                                HTML file — mail it, archive it
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
   tik verify [<id>]                             the verify ladder (L0/L1/L2); with no
@@ -944,6 +1164,11 @@
       "ls"      (cmd-ls parsed)
       "next"    (cmd-next parsed)
       "search"  (cmd-search parsed)
+      "query"   (cmd-query parsed)
+      "whatif"  (cmd-whatif parsed)
+      "debug"   (cmd-debug parsed)
+      "graph"   (cmd-graph parsed)
+      "board"   (cmd-board parsed)
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
