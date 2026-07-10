@@ -8,7 +8,16 @@
         ;; the kernel never loads JSON machinery.
         cheshire/cheshire {:mvn/version "6.0.0"}}
  :aliases
- {:test {:extra-paths ["test"]
+ {;; the native binary's closed world: bb ships http-client and httpkit
+  ;; as builtins, the JVM/native build declares them; graal-build-time
+  ;; marks Clojure namespaces initialize-at-build-time for native-image
+  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.22"}
+                        http-kit/http-kit {:mvn/version "2.8.0"}
+                        com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}}
+  :build {:extra-paths ["."]
+          :deps {io.github.clojure/tools.build {:mvn/version "0.10.6"}}
+          :ns-default build}
+  :test {:extra-paths ["test"]
          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
                       org.clojure/test.check {:mvn/version "1.1.1"}}
          :main-opts ["-m" "kaocha.runner"]}
@@ -17,9 +26,14 @@
   ;; static analysis — the full battery runs in CI (metio/ci clojure.yml)
   ;; and locally via `bb analyze` / `bb fmt`
   :eastwood {:extra-paths ["test"]
+             ;; tik.main requires the :native closed-world deps; the
+             ;; analyzer needs them resolvable to lint that namespace
              :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
                           org.clojure/test.check {:mvn/version "1.1.1"}
-                          lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+                          lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                          org.babashka/http-client {:mvn/version "0.4.22"}
+                          http-kit/http-kit {:mvn/version "2.8.0"}
+                          com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
   :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.15.2"}}

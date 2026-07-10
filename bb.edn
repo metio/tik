@@ -33,4 +33,6 @@
         :requires ([tik.mcp])
         :task (tik.mcp/-main)}
   repl {:doc "JVM nREPL with dev+test paths"
-        :task (shell "clojure -M:dev")}}}
+        :task (shell "clojure -M:dev")}
+  build-native {:doc "Single-binary tik (GraalVM native-image -> target/tik)"
+                :task (shell "sh dev/build-native.sh")}}}

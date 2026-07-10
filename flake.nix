@@ -28,6 +28,7 @@
             # harper-cli (bb prose) arrives via the shared devshell's
             # ci-harper once metio/nix-devshell ships it (25.05 nixpkgs
             # only packages harper-ls)
+            graalvm-ce     # native-image: the single-binary build (bb build-native)
             git            # storage & replication substrate
             openssh        # ssh-keygen -Y: detached event signatures (verify L1)
             sqlite         # embedded store tier (Phase 2 spike)
