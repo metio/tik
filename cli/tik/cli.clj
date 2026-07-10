@@ -13,6 +13,7 @@
   - fact values: parsed as EDN; bare words become keywords"
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.set :as set]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
@@ -363,10 +364,20 @@
                     " finished ticket(s) hidden (--all shows their"
                     " escape hatches)")))))
 
+(defn- stage-filter
+  "--filter ':a :b' matches tickets whose current stage is any of them;
+  a leading :not negates: --filter ':not :running'."
+  [expr]
+  (let [ks (mapv edn/read-string (str/split (str/trim (str expr)) #"[\s,]+"))]
+    (if (= :not (first ks))
+      (let [ex (set (rest ks))] #(empty? (set/intersection ex %)))
+      (let [in (set ks)] #(boolean (seq (set/intersection in %)))))))
+
 (defn- cmd-ls
   "Open tickets by default; settled ones (sticky terminal reached —
-  :landed, :closed, :validated, :killed) hide behind --all, same
-  policy as the inbox."
+  :landed, :closed, :validated, :killed) hide behind --all. An explicit
+  query (--filter / --search) searches EVERYTHING — asking for :landed
+  and getting silence would be a lie."
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
@@ -375,16 +386,31 @@
                          reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)]]
                {:id id :title (:title state) :current current
+                :haystack (str/lower-case
+                           (str (:title state) " "
+                                (pr-str (guard/fact-map state))))
                 :settled? (next-lens/settled? process events t roles)})
+        rows (cond->> rows
+               (:filter opts) (filter (comp (stage-filter (:filter opts))
+                                            :current))
+               (:search opts) (filter #(str/includes?
+                                        (:haystack %)
+                                        (str/lower-case (str (:search opts))))))
         visible (if (:all opts) rows (remove :settled? rows))]
     (doseq [{:keys [id current title]} visible]
       (println (subs (str id) 0 8)
                (format "%-24s" (str/join "," (map name current)))
                title))
+    (when (empty? visible) (println "no matching tickets"))
     (let [hidden (- (count rows) (count visible))]
       (when (pos? hidden)
         (println (str "settled: " hidden
                       " finished ticket(s) hidden (--all shows)"))))))
+
+(defn- cmd-search
+  "tik search <text…> = ls --search over everything, settled included."
+  [{:keys [pos opts]}]
+  (cmd-ls {:opts (assoc opts :search (str/join " " pos) :all true)}))
 
 (defn- apply-step
   "One scripted step against sim/test state {:events :now :actor}. Steps:
@@ -742,8 +768,10 @@
   tik status <id>                               derived stage, facts, what's next
   tik explain <id>                              what is needed to advance
   tik log <id>                                  the event history
-  tik ls [--all]                                open tickets with derived stages
-                                                (--all includes settled ones)
+  tik ls [--all] [--filter ':a :b'|':not :a']   open tickets with derived stages;
+         [--search TEXT]                        filter by current stage (negatable),
+                                                search titles+facts (--all: settled too)
+  tik search <text...>                          search ALL tickets, titles and facts
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
   tik verify <id>                               the verify ladder (L0/L1/L2)
@@ -776,6 +804,7 @@
       "log"     (cmd-log parsed)
       "ls"      (cmd-ls parsed)
       "next"    (cmd-next parsed)
+      "search"  (cmd-search parsed)
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
