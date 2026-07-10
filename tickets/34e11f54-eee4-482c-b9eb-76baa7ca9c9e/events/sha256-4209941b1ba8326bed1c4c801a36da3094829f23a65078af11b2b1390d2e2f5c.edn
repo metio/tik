@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T22:08:07.943Z" :event/body {:fact/path [:summary] :fact/value "answers files lint before they build; the LLM prompt teaches the same rules"} :event/parents #{"sha256-dcfbf6ffb99fcf382b342e85dd1d57aeea9b3f423f7ee58234a7798a140dccbf"} :event/ticket #uuid "34e11f54-eee4-482c-b9eb-76baa7ca9c9e" :event/type :fact/assert}
