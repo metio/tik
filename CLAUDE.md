@@ -68,6 +68,13 @@ is the project's actual inbox; when you land a feature, `bb tik set
 the `actors` registry is committed). Never hand-edit `tickets/` —
 events are content-addressed, `tik verify` will catch it.
 
+H3 instrumentation (ticket f446679f, running): drive every work
+session from `tik next`/`explain`. If you ever need `tik log` or raw
+event files to figure out WHAT TO DO NEXT (demos don't count), that is
+a kill-criterion datapoint — record it immediately:
+`bb tik comment f446679f leg-1 spelunking datapoint <date>: <what the
+lenses failed to answer>`.
+
 ## Architecture
 
 Derivation pipeline (all in `src/tik/`, pure `.cljc`, babashka + JVM):
