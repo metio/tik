@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T10:51:00.408Z" :event/body {:fact/path [:summary] :fact/value "errors name their fix and values need no EDN knowledge"} :event/parents #{"sha256-0c0bc5a547436fc287b65eee41ce038d90840856e4828420c1a086ffd6e2c02a"} :event/ticket #uuid "8530d38a-bb42-4ff4-b9ca-9adca8f54595" :event/type :fact/assert}
