@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T09:33:27.483Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813" :ticket/process-version 1 :ticket/title "docs: the pitch"} :event/parents #{} :event/ticket #uuid "a04dfab0-12c9-4713-95ac-6395c64e81e9" :event/type :ticket/create}
