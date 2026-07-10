@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T11:22:52.794Z" :event/body {:fact/path [:summary] :fact/value "store hygiene lint that found its own ticket"} :event/parents #{"sha256-dce563a48051eb6b09ca2c790521c6cd8366f92424f3ede4584dd30189f6024e"} :event/ticket #uuid "9127a6c4-d1dc-462b-8ed2-d1e8bc6bc411" :event/type :fact/assert}

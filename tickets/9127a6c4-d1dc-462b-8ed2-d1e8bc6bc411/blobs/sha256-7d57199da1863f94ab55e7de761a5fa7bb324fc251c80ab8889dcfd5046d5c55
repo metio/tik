@@ -1,0 +1,1 @@
+gate note 2026-07-10: one unreproduced kaocha failure (103 tests/324 assertions run), 13 consecutive clean runs afterwards incl. 4x property suites and 6x CLI-driving suites. Watch for recurrence.
