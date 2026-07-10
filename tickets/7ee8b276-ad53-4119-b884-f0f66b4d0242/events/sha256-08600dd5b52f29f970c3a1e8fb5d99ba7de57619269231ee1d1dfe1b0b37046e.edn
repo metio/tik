@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T12:07:30.523Z" :event/body {:fact/path [:summary] :fact/value "known-good shapes plus a no-process-yet fallback"} :event/parents #{"sha256-c7209e85193583c0f13bcbca135d8df8fb2ae4d2aa443b1d886934025b8cdf9b"} :event/ticket #uuid "7ee8b276-ad53-4119-b884-f0f66b4d0242" :event/type :fact/assert}
