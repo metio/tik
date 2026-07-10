@@ -496,7 +496,8 @@
                      (next-lens/contributions id process events t roles))
         {:keys [items waiting settled] :as inbox}
         (next-lens/inbox per-ticket (:actor opts)
-                         {:include-settled? (:all opts)})]
+                         {:include-settled? (:all opts)
+                          :role (some-> (:role opts) parse-value)})]
     (if (:edn opts)
       (prn inbox)
       (do
@@ -2197,8 +2198,10 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 0019; email renders explain, routes
                                                 replies via [tik <id>], and its
                                                 tik> answers close the loop)
-  tik next [--actor A] [--all]                  the inbox: what unlocks the most work
-                                                (--all includes settled tickets)
+  tik next [--actor A] [--role :r] [--all]      the inbox: what unlocks the most work,
+                                                quiet tickets rising; --actor = what I
+                                                can do, --role = what a role is being
+                                                waited on for (--all adds settled)
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
                                                 (--changed: skip unchanged heads —
                                                 drift check, not the full audit)

@@ -48,11 +48,16 @@
     (into {} (map (fn [[role path]] [path role]))
           (mapcat walk (:guards stage [])))))
 
+(defn- reason->role
+  "The role an action is restricted to, or nil for anyone's work."
+  [r restrictions]
+  (or (when (= :role/unsatisfied (:reason r)) (:role r))
+      (restrictions (:path r))))
+
 (defn- reason->who
   "Who may perform the action: a set of actor names, or :anyone."
   [r roles restrictions]
-  (if-let [role (or (when (= :role/unsatisfied (:reason r)) (:role r))
-                    (restrictions (:path r)))]
+  (if-let [role (reason->role r restrictions)]
     (set (get-in roles [role :members]))
     :anyone))
 
@@ -89,6 +94,8 @@
                            :stage stage
                            :action (reason->action r)
                            :who (reason->who r roles restrictions)}
+                    (reason->role r restrictions)
+                    (assoc :role (reason->role r restrictions))
                     hint (assoc :hint hint)))]
     {:ticket ticket-id
      :actions (vec (distinct actions))
@@ -121,13 +128,14 @@
            :settled <count of tickets hidden>}."
   ([per-ticket] (inbox per-ticket nil nil))
   ([per-ticket actor] (inbox per-ticket actor nil))
-  ([per-ticket actor {:keys [include-settled?]}]
+  ([per-ticket actor {:keys [include-settled? role]}]
    (let [live (if include-settled?
                 per-ticket
                 (remove :settled? per-ticket))
          stale-of (into {} (map (juxt :ticket :stale-ms)) live)
-         actions (filter #(allowed? (:who %) actor)
-                         (mapcat :actions live))
+         actions (cond->> (filter #(allowed? (:who %) actor)
+                                  (mapcat :actions live))
+                   role (filter #(= role (:role %))))
          items (for [[action contribs] (group-by :action actions)]
                  {:action action
                   ;; the quietest ticket this action unlocks — silence

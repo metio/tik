@@ -162,3 +162,20 @@
                          (>= (:stale-ms a) (:stale-ms b))
                          (< (count (:unlocks a)) (count (:unlocks b)))))
                    (partition 2 1 items))))))
+
+(deftest role-view-shows-what-the-role-is-waited-on-for
+  ;; the support-request sample: :triaged demands the :triager's
+  ;; signature over [:category] — the role view must surface exactly
+  ;; the role-bound action, and an unknown role sees nothing
+  (let [tid (random-uuid)
+        events (event/chain
+                (fn [_] (event/create-ticket
+                         {:ticket tid :actor "customer" :at now
+                          :title "role view" :process :support-request})))
+        per [(next-lens/contributions tid ge/process events now ge/roles)]
+        triager (:items (next-lens/inbox per nil {:role :triager}))
+        nobody (:items (next-lens/inbox per nil {:role :ghost-role}))]
+    (is (seq triager))
+    (is (every? #(= [:set [:category]] (:action %)) triager))
+    (is (= #{"seb"} (:who (first triager))))
+    (is (empty? nobody))))
