@@ -391,31 +391,34 @@
         {:keys [items waiting settled] :as inbox}
         (next-lens/inbox per-ticket (:actor opts)
                          {:include-settled? (:all opts)})]
-    (when (:edn opts)
+    (if (:edn opts)
       (prn inbox)
-      (System/exit 0))
-    (if (empty? items)
-      (println "Nothing actionable"
-               (if (:actor opts) (str "for " (:actor opts)) "right now") "—"
-               (count waiting) "stage(s) waiting on time or upstream stages.")
       (do
-        (doseq [{:keys [action who unlocks]} items]
-          (println (format "%-42s unlocks %d"
-                           (str (tint "1" (str (name (first action)) " "
-                                               (pr-str (second action))))
-                                (when (not= :anyone who)
-                                  (tint "2" (str "  (" (str/join ", " (sort who)) ")"))))
-                           (count unlocks)))
-          (doseq [{:keys [ticket stage hint]} unlocks]
-            (println (str "    " (subs (str ticket) 0 8) " -> " stage
-                          (when hint (str "  (see: " hint ")"))))))
-        (when (seq waiting)
-          (println (str "waiting: " (count waiting)
-                        " stage(s) gated on time or upstream stages")))))
-    (when (and (pos? (or settled 0)) (not (:all opts)))
-      (println (str "settled: " settled
-                    " finished ticket(s) hidden (--all shows their"
-                    " escape hatches)")))))
+        (if (empty? items)
+          (println "Nothing actionable"
+                   (if (:actor opts) (str "for " (:actor opts)) "right now")
+                   "—" (count waiting)
+                   "stage(s) waiting on time or upstream stages.")
+          (do
+            (doseq [{:keys [action who unlocks]} items]
+              (println (format "%-42s unlocks %d"
+                               (str (tint "1" (str (name (first action)) " "
+                                                   (pr-str (second action))))
+                                    (when (not= :anyone who)
+                                      (tint "2" (str "  ("
+                                                     (str/join ", " (sort who))
+                                                     ")"))))
+                               (count unlocks)))
+              (doseq [{:keys [ticket stage hint]} unlocks]
+                (println (str "    " (subs (str ticket) 0 8) " -> " stage
+                              (when hint (str "  (see: " hint ")"))))))
+            (when (seq waiting)
+              (println (str "waiting: " (count waiting)
+                            " stage(s) gated on time or upstream stages")))))
+        (when (and (pos? (or settled 0)) (not (:all opts)))
+          (println (str "settled: " settled
+                        " finished ticket(s) hidden (--all shows their"
+                        " escape hatches)")))))))
 
 (defn- stage-filter
   "--filter ':a :b' matches tickets whose current stage is any of them;
@@ -456,22 +459,22 @@
                                         (:haystack %)
                                         (str/lower-case (str (:search opts))))))
         visible (if (:all opts) rows (remove :settled? rows))]
-    (when (:edn opts)
+    (if (:edn opts)
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
                  visible))
-      (System/exit 0))
-    (doseq [{:keys [id current title describe settled?]} visible]
+      (do
+        (doseq [{:keys [id current title describe settled?]} visible]
       (println (tint "2" (subs (str id) 0 8))
                (paint-stage (format "%-24s" (str/join "," (map name current)))
                             settled? (contains? current :parked))
                title)
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe)))))
-    (when (empty? visible) (println "no matching tickets"))
-    (let [hidden (- (count rows) (count visible))]
-      (when (pos? hidden)
-        (println (str "settled: " hidden
-                      " finished ticket(s) hidden (--all shows)"))))))
+        (when (empty? visible) (println "no matching tickets"))
+        (let [hidden (- (count rows) (count visible))]
+          (when (pos? hidden)
+            (println (str "settled: " hidden
+                          " finished ticket(s) hidden (--all shows)"))))))))
 
 (defn- cmd-search
   "tik search <text…> = ls --search over everything, settled included."
@@ -1368,6 +1371,44 @@
                           "… witnessed root is historical (store has"
                           " grown since)"))))))))
 
+(defn- cmd-serve
+  "serve [--port N]: the live board over HTTP, read-only. GET / renders
+  the same HTML as `tik board` — freshly derived per request, because
+  derivation is cheap and caches lie eventually. /tickets.edn and
+  /explain/<id>.edn expose the ADR 0016 data for tools. httpkit ships
+  inside babashka: zero new dependencies, and READ-ONLY on purpose —
+  writes stay with the signed CLI/bridge/MCP surfaces where authorship
+  is enforced."
+  [{:keys [opts]}]
+  (let [run-server (requiring-resolve 'org.httpkit.server/run-server)
+        port (if (:port opts) (Long/parseLong (str (:port opts))) 7777)
+        handler
+        (fn [{:keys [uri]}]
+          (cond
+            (= uri "/")
+            {:status 200
+             :headers {"Content-Type" "text/html; charset=utf-8"}
+             :body (with-out-str (cmd-board {:pos []}))}
+
+            (= uri "/tickets.edn")
+            {:status 200
+             :headers {"Content-Type" "application/edn"}
+             :body (with-out-str
+                     (cmd-ls {:opts {:edn true :all true}}))}
+
+            (re-matches #"/explain/[0-9a-f-]+\.edn" uri)
+            (let [id (second (re-matches #"/explain/([0-9a-f-]+)\.edn" uri))]
+              {:status 200
+               :headers {"Content-Type" "application/edn"}
+               :body (with-out-str
+                       (cmd-explain {:pos [id] :opts {:edn true}}))})
+
+            :else {:status 404 :body "tik: not found\n"}))]
+    (run-server handler {:port port})
+    (println (str "tik board live at http://127.0.0.1:" port
+                  "  (read-only; ctrl-c stops)"))
+    @(promise)))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         missing-runbooks (for [s (:process/stages proc)
@@ -1587,6 +1628,8 @@
   tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
   tik board [<file.html>]                       the whole board as ONE dependency-free
                                                 HTML file — mail it, archive it
+  tik serve [--port N]                          the live board over HTTP (read-only;
+                                                /tickets.edn + /explain/<id>.edn for tools)
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments, else new ticket
   tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
@@ -1644,6 +1687,7 @@
       "debug"   (cmd-debug parsed)
       "graph"   (cmd-graph parsed)
       "board"   (cmd-board parsed)
+      "serve"   (cmd-serve parsed)
       "bridge"  (cmd-bridge parsed)
       "effects" (cmd-effects parsed)
       "verify"  (cmd-verify parsed)
