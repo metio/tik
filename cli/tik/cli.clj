@@ -312,9 +312,12 @@
         current (stage/current-stages process reached)]
     (println "ticket: " id)
     (println "title:  " (:title state))
-    (println "process:" (:process state)
+    ;; the hash is the RULE SET's identity, never the ticket's — label
+    ;; it so nobody misreads the pin as a mutable ticket id
+    (println "rules:  " (:process state)
              (str "v" (:process-version state))
-             (str "@ " (some-> (:process-hash state) (subs 0 19)) "…"))
+             (str "(pinned @ " (some-> (:process-hash state) (subs 0 19))
+                  "…)"))
     (println "stage:  " (str/join ", " (map name current))
              (str "(reached: " (str/join ", " (map name (sort-by str reached))) ")"))
     (println "facts:")
