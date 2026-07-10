@@ -55,6 +55,9 @@
   "Attach the content-addressed :event/id and validate. Enforces ADR 0004:
   only :ticket/create may (and must) have empty parents."
   [event]
+  (when-not (map? event)
+    (throw (ex-info "an event must be a map"
+                    {:reason :event/malformed :event event})))
   (let [e (assoc event :event/id (event-id event))]
     (when-not (valid? e)
       (throw (ex-info "invalid event" {:explain (explain-event e)})))

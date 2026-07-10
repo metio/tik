@@ -201,6 +201,16 @@
                     {:guard guard}))))
 
 (defn eval-guard
-  "ctx: {:state :process :now :reached :roles}."
+  "ctx: {:state :process :now :reached :roles}. Total or fails well:
+  any throw escaping evaluation is ex-info carrying the guard — lint
+  keeps malformed guards out of real definitions, but a hostile or
+  hand-built caller must get a data-carrying rejection, never a bare
+  type error from inside an operator."
   [guard ctx]
-  (eval-guard* guard ctx))
+  (try
+    (eval-guard* guard ctx)
+    (catch #?(:clj clojure.lang.ExceptionInfo :cljs ExceptionInfo) e
+      (throw e))
+    (catch #?(:clj Exception :cljs :default) e
+      (throw (ex-info "malformed guard" {:reason :guard/malformed
+                                         :guard guard} e)))))

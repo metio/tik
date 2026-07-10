@@ -34,10 +34,25 @@
 (defn order [events]
   (sort-by (juxt :event/at :event/id) events))
 
+(defn- well-formed!
+  "The fold's entry contract: whatever claims to be an event must carry
+  the fields ordering and folding depend on. A hostile or corrupted
+  store fails WELL here — one data-carrying rejection naming the
+  offender — instead of a type error deep inside a comparator."
+  [events]
+  (doseq [e events]
+    (when-not (and (map? e)
+                   (string? (:event/id e))
+                   (inst? (:event/at e))
+                   (keyword? (:event/type e)))
+      (throw (ex-info "malformed event in the log"
+                      {:reason :event/malformed :event e}))))
+  events)
+
 (defn ordered
   "Dedupe, then order — the reducer's canonical input."
   [events]
-  (order (dedupe-events events)))
+  (order (dedupe-events (well-formed! events))))
 
 (def empty-state
   {:facts {} :artifacts {} :log []})
