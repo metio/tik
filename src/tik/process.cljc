@@ -66,6 +66,34 @@
   dogfood evidence (see the guard namespace docstring)."
   (into guard-operators-v1 #{:attested-within :different-person}))
 
+(defn signing-roles
+  "Roles whose signature a guard tree demands, via :signed-by."
+  [guard]
+  (if-not (vector? guard)
+    []
+    (case (first guard)
+      :signed-by [(second guard)]
+      (:and :or) (into [] (mapcat signing-roles) (rest guard))
+      :not (signing-roles (second guard))
+      [])))
+
+(defn roles-gating
+  "role -> {:members [...] :stages [stage-ids]} for one definition —
+  who gates what: every role with the stages waiting on its signature.
+  Roles declared but gating nothing still appear (they may satisfy
+  :role/unsatisfied facts without a :signed-by spelling)."
+  [{:process/keys [roles stages]}]
+  (let [gated (reduce (fn [acc {:stage/keys [id] :keys [guards]}]
+                        (reduce (fn [m role] (update m role (fnil conj []) id))
+                                acc
+                                (distinct (mapcat signing-roles guards))))
+                      {}
+                      stages)]
+    (into {}
+          (for [role (distinct (concat (keys roles) (keys gated)))]
+            [role {:members (get-in roles [role :members] [])
+                   :stages (get gated role [])}]))))
+
 (defn- all-guards [stage]
   (vec (:guards stage [])))
 

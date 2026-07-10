@@ -61,3 +61,18 @@
          (process/process-hash (update sample :process/stages vec))))
   (is (not= (process/process-hash sample)
             (process/process-hash (assoc sample :process/version 2)))))
+
+(deftest roles-gating-inverts-the-signature-graph
+  (let [gating (process/roles-gating sample)]
+    (is (= [:triaged] (get-in gating [:triager :stages]))
+        "the triager gates exactly the stage demanding its signature")
+    (is (= ["seb"] (get-in gating [:triager :members])))
+    (testing "declared-but-not-gating roles still appear"
+      (is (contains? gating :billing))
+      (is (= [] (get-in gating [:billing :stages]))))
+    (testing "a role used by :signed-by but never declared surfaces memberless"
+      (let [p {:process/id :p :process/version 1
+               :process/stages [{:stage/id :a
+                                 :guards [[:signed-by :ghost [:x]]]}]}]
+        (is (= {:members [] :stages [:a]}
+               (:ghost (process/roles-gating p))))))))

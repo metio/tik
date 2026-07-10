@@ -1933,6 +1933,76 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (println (str "wrote " out))
     (println "verify anywhere with: tar xzf, then ./verify.sh (coreutils + ssh-keygen only)")))
 
+(defn- cmd-roles
+  "Who gates what: every role on the open board with its members and
+  the stages waiting on its signature — the admin's inverse of
+  next --role, derived from the definitions open tickets actually pin."
+  [{:keys [opts]}]
+  (let [s (the-store)
+        t (now)
+        procs (distinct
+               (for [id (store/ticket-ids s)
+                     :let [{:keys [events process roles]} (ticket-ctx s id)]
+                     :when (not (next-lens/settled? process events t roles))]
+                 process))
+        ;; distinct on the RENDERED row: several archived versions of
+        ;; one process may be pinned; identical gating collapses
+        rows (distinct
+              (for [p procs
+                    [role {:keys [members stages]}] (process/roles-gating p)]
+                {:role role :process (:process/id p)
+                 :members members :stages stages}))
+        by-role (group-by :role rows)]
+    (if (:edn opts)
+      (prn (vec rows))
+      (do
+        (doseq [[role entries] (sort-by (comp str key) by-role)]
+          (println (str (tint "1" (str role)) " — "
+                        (let [ms (distinct (mapcat :members entries))]
+                          (if (seq ms) (str/join ", " ms)
+                              (tint "31" "NO MEMBERS — nothing can satisfy this role")))))
+          (doseq [{:keys [process stages]} (sort-by (comp str :process) entries)]
+            (println (str "  " process ": "
+                          (if (seq stages)
+                            (str "gates " (str/join ", " (map str (sort-by str stages))))
+                            "declared, gates no stage by signature")))))
+        (when (empty? by-role)
+          (println "no roles on the open board"))))))
+
+(def ^:private author-llm-prompt
+  "You are helping design a tik process definition. Interview me about my
+workflow, then output ONLY an EDN map in exactly this shape (no prose,
+no code fences):
+
+{:name \"kebab-case-process-name\"
+ :purpose \"one line: what this process is for\"
+ :stages [{:name \"stage-name\"
+           :purpose \"one line: what reaching this stage means\"
+           :after []            ; names of prerequisite stages ([] for the start)
+           :needs [ ... ]}]
+ :roles {\"role-name\" [\"actor\" ...]}}
+
+Each entry in :needs is one of:
+  {:kind :fact   :path [:dotted :path]}                    ; information anyone records
+  {:kind :fact   :path [:amount] :type :number}            ; a numeric fact
+  {:kind :choice :path [:category] :values [:a :b :c]}     ; one of fixed options
+  {:kind :signature :role :approver}                       ; a role signs off
+  {:kind :signature :role :reviewer :over [:some :fact]}   ; a role signs a specific fact
+  {:kind :file   :prefix \"evidence/\"}                    ; a file must be attached
+  {:kind :waited :duration \"PT48H\"}                      ; ISO-8601 time since creation
+
+Rules of the trade:
+- Stages are states of evidence, not tasks; name them for what has
+  become TRUE (submitted, approved, paid), not for activity.
+- Prefer a :choice over a yes/no fact; prefer facts over flags.
+- Every decision that matters should be a :signature, so accountability
+  is in the record.
+- 3 to 6 stages is almost always right; if you need more, the process
+  probably wants splitting.
+
+When I have answered enough, print the EDN. I will save it as
+answers.edn and run: tik author --from answers.edn")
+
 (defn- author-write! [^File f content force?]
   (when (and (.exists f) (not force?))
     (die (str (.getPath f) " already exists — pass --force to overwrite")))
@@ -1950,8 +2020,12 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
 
 (defn- cmd-author
   "The authoring lens (H11): interview -> linted definition + a test
-  skeleton. --from <answers.edn> skips the interview (agents, tests)."
-  [{:keys [opts]}]
+  skeleton. --from <answers.edn> skips the interview (agents, tests);
+  `author prompt` prints the LLM recipe that produces such a file."
+  [{:keys [pos opts]}]
+  (when (= "prompt" (first pos))
+    (println author-llm-prompt)
+    (System/exit 0))
   (let [answers (cond
                   (:template opts)
                   (or (get author/templates (:template opts))
@@ -2324,7 +2398,12 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
              [--template bug|change-request|    definition + test skeleton; no EDN
               purchase-approval] [--name N]     knowledge needed; templates are
-                                                finished interviews to edit from
+                                                finished interviews to edit from;
+                                                `author prompt` prints an LLM recipe
+                                                that yields an answers.edn
+  tik roles [--edn]                             who gates what: every role on the open
+                                                board, its members, and the stages
+                                                waiting on its signature
   tik lint [<process.edn>]                      lint a process definition; with no
                                                 argument, lint the STORE — open tickets
                                                 missing descriptions/titles/signatures
@@ -2362,6 +2441,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       "verify"  (cmd-verify parsed)
       "root"    (cmd-root parsed)
       "author"  (cmd-author parsed)
+      "roles"   (cmd-roles parsed)
       "bundle"  (cmd-bundle parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
