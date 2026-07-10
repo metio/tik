@@ -147,6 +147,11 @@
                 (str "available processes: " (str/join ", " ps))
                 "no processes yet — `tik author` writes your first one"))))
   (let [f (process-file name)]
+    (when (and (not (.exists f)) (= "track" name))
+      ;; the built-in fallback works in an EMPTY store; materialize it
+      ;; so the store stays self-contained and hand-editable
+      (io/make-parents f)
+      (spit f (with-out-str (pp/pprint author/track-process))))
     (when-not (.exists f)
       (die (str "no process named '" name "' (looked for " f ")\n"
                 (if-let [ps (seq (available-processes))]
@@ -523,7 +528,8 @@
           (if (empty? rows)
             (println (str "no tickets yet — start with:\n"
                           "  tik author                  describe your process; tik writes the definition\n"
-                          "  tik new <process>           mint the first ticket\n"
+                          "  tik author --template bug   or start from a known-good shape\n"
+                          "  tik new track --title ...   or skip process design: just track a thing\n"
                           "  tik set <id> key=value      record what is true; the stage derives itself"))
             (println "no matching tickets")))
         (let [hidden (- (count rows) (count visible))]
@@ -1753,9 +1759,16 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   "The authoring lens (H11): interview -> linted definition + a test
   skeleton. --from <answers.edn> skips the interview (agents, tests)."
   [{:keys [opts]}]
-  (let [answers (if-let [f (:from opts)]
-                  (edn/read-string (slurp f))
-                  (author/interview read-line #(do (print %) (flush))))
+  (let [answers (cond
+                  (:template opts)
+                  (or (get author/templates (:template opts))
+                      (die (str "no template '" (:template opts) "' — available: "
+                                (str/join ", " (sort (keys author/templates))))))
+                  (:from opts) (edn/read-string (slurp (:from opts)))
+                  :else (author/interview read-line #(do (print %) (flush))))
+        answers (if (string? (:name opts))
+                  (assoc answers :name (:name opts))
+                  answers)
         _ (when (str/blank? (:name answers))
             (die "the process needs a name — run tik author again"))
         pname (:name answers)
@@ -2095,8 +2108,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 checkable with coreutils + ssh-keygen,
                                                 no tik required
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
-                                                definition + test skeleton; no EDN
-                                                knowledge needed
+             [--template bug|change-request|    definition + test skeleton; no EDN
+              purchase-approval] [--name N]     knowledge needed; templates are
+                                                finished interviews to edit from
   tik lint [<process.edn>]                      lint a process definition; with no
                                                 argument, lint the STORE — open tickets
                                                 missing descriptions/titles/signatures

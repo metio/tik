@@ -1,0 +1,25 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; The meta-process for "no process yet": just track this thing with
+;; evidence. Two stages — it exists, and it ended with an outcome on
+;; record. When tickets here start growing informal conventions
+;; (severity in titles, approval in comments), that is the signal to
+;; run `tik author` and give the workflow a real definition.
+{:process/id :track
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/facts
+ {[:outcome] [:string {:min 4}]}
+
+ :process/stages
+ [{:stage/id :open
+   :hint "kb/runbooks/track-open.md"
+   :guards []}
+
+  {:stage/id :done
+   :after [:open]
+   :stage/sticky? true
+   :hint "kb/runbooks/track-done.md"
+   :guards [[:fact [:outcome]]]}]}

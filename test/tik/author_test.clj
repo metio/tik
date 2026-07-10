@@ -1,7 +1,8 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.author-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.edn]
+            [clojure.test :refer [deftest is testing]]
             [tik.author :as author]
             [tik.process :as process]))
 
@@ -71,6 +72,21 @@
                  (get stubs "kb/runbooks/expense-approval-approved.md")))
     (testing "every stage's :hint points at a generated stub"
       (is (every? #(contains? stubs (:hint %)) (:process/stages d))))))
+
+(deftest every_template_builds_a_lintable_process
+  (doseq [[tname answers] author/templates]
+    (let [d (author/build-process answers)]
+      (is (empty? (filter #(= :error (:level %)) (process/lint d)))
+          (str tname ": " (pr-str (process/lint d))))
+      (is (seq (author/terminal-stages d)) tname)
+      (is (:purpose answers) tname))))
+
+(deftest the_builtin_track_process_matches_the_shipped_file
+  (is (= author/track-process
+         (clojure.edn/read-string (slurp "processes/track.edn")))
+      "one definition, two homes — they must never drift")
+  (is (empty? (filter #(= :error (:level %))
+                      (process/lint author/track-process)))))
 
 (deftest scripted_interview_produces_the_same_answers
   (let [lines (atom ["tiny" "just one stage"          ; name, purpose

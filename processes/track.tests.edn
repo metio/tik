@@ -1,0 +1,17 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "track.edn"
+ :test/cases
+ [{:case/name "a fresh ticket is open and not done"
+   :case/steps [[:actor "anyone"]]
+   :case/expect {:includes #{:open} :excludes #{:done}}}
+
+  {:case/name "an outcome on record settles the ticket"
+   :case/steps [[:actor "anyone"]
+                [:set [:outcome] "shipped in v2"]]
+   :case/expect {:includes #{:done} :current #{:done}}}
+
+  {:case/name "a too-short outcome does not settle"
+   :case/steps [[:actor "anyone"]
+                [:set [:outcome] "ok"]]
+   :case/expect {:excludes #{:done}}}]}
