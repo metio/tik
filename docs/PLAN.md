@@ -457,7 +457,11 @@ re-derive the attested claim) and **attested** (witness vouches; you
 trust the key). witnessed.dev sells the fast, fine-grained, accountable
 version of this.
 
-**Trustless anchoring (adopted):** aggregate witness heads into
+**Trustless anchoring (adopted, packaged LIGHTLY):** anchoring is an
+optional `--anchor` flag shelling out to the external `ots` tool when —
+and only when — the operator installed it; tik ships no timestamping
+dependency, and no chain vocabulary appears in its surfaces. The
+mechanism: aggregate witness heads into
 OpenTimestamps — a detached `<head>.ots` sidecar (the ADR 0007 pattern
 again) proving existence before a Bitcoin block to any third party, no
 tokens, no accounts, no trust in witnessed.dev's clock. Commercial judo:

@@ -13,6 +13,7 @@
   - fact values: parsed as EDN; bare words become keywords"
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
             [clojure.set :as set]
             [clojure.string :as str]
             [tik.canonical :as canonical]
@@ -1303,7 +1304,33 @@
           (.renameTo ^File produced target)
           ;; the doc regenerates; only the endorsement is worth keeping
           (io/delete-file f)
-          (println "witnessed" (subs root 0 19) "… ->" (.getName target)))))))
+          (println "witnessed" (subs root 0 19) "… ->" (.getName target)))))
+    (when (:anchor opts)
+      ;; DELIBERATELY light integration: anchoring shells out to the
+      ;; external `ots` tool if — and only if — the operator installed
+      ;; it. tik ships no timestamping dependency, mentions no chain in
+      ;; its surfaces, and works identically without this flag; the
+      ;; .ots sidecar is just one more detached endorsement for those
+      ;; who want third-party timestamping (PLAN §10).
+      (when-not (zero? (:exit (sh/sh "sh" "-c" "command -v ots")))
+        (die (str "--anchor needs the external `ots` tool"
+                  " (opentimestamps-client) — entirely optional;"
+                  " everything else works without it")))
+      (let [dir (io/file (root-dir-roots))
+            f (io/file dir (str root ".edn"))
+            ots-target (io/file dir (str root ".ots"))]
+        (io/make-parents f)
+        (spit f bytes)
+        (let [r (sh/sh "ots" "stamp" (str f))]
+          (if (and (zero? (:exit r))
+                   (.exists (io/file (str f ".ots"))))
+            (do (.renameTo (io/file (str f ".ots")) ots-target)
+                (println "anchored" (subs root 0 19)
+                         "… ->" (.getName ots-target)
+                         "(upgrade after ~1 block: ots upgrade)"))
+            (println "anchor failed (calendars unreachable?):"
+                     (str/trim (str (:err r))))))
+        (io/delete-file f)))))
 
 (defn- root-dir-roots ^File [] (io/file (root) "roots"))
 
@@ -1570,8 +1597,10 @@
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
                                                 (--changed: skip unchanged heads —
                                                 drift check, not the full audit)
-  tik root [--witness]                          ONE hash committing to the entire
-                                                store; --witness countersigns it
+  tik root [--witness] [--anchor]               ONE hash committing to the entire
+                                                store; --witness countersigns it;
+                                                --anchor adds a third-party timestamp
+                                                (needs the external ots tool; optional)
   tik process sign <name> [--key K]             publish: sign the archived definition
   tik agent actions|set|attest <id> --actor A   the GATED agent surface: only what the
                                                 frontier admits for the role; everything
