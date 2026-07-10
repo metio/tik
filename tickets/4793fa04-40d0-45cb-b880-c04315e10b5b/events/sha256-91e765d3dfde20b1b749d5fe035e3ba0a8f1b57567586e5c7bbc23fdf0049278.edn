@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:45:20.647Z" :event/body {:fact/path [:instrument-binary] :fact/value "bb build-native -> target/tik (commit 9b182f3)"} :event/parents #{"sha256-f69d251c054ebc9d0c476114bad425ffbab9f9a7dab2d6f1c1f288ea265ce02d"} :event/ticket #uuid "4793fa04-40d0-45cb-b880-c04315e10b5b" :event/type :fact/assert}

@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:45:20.105Z" :event/body {:fact/path [:summary] :fact/value "curl and run: 33MB binary, 0.14s board, zero runtime deps"} :event/parents #{"sha256-5eb0638f838a6408d0c5d765bd657749f7a0adc40223a0c5a68b03c47f252e92"} :event/ticket #uuid "e6edd4f3-783c-4d0e-a8c8-45a3ab3b3dc6" :event/type :fact/assert}
