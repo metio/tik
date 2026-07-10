@@ -17,15 +17,17 @@
   All fact inspection goes through tik.reduce/fact-status — the single
   choke point for why a fact does or does not satisfy guards.
 
-  Vocabulary — an orthogonal basis of nine: :fact :artifact :signed-by
-  :stage-reached :elapsed-since :and :or :not :malli. [:fact= path v] is
-  authoring sugar that `expand` rewrites to a :malli guard before
-  evaluation; the evaluator and the stratification linter see only the
-  basis. Note ADR 0005: [:not [:stage-reached ...]] is lint-restricted to
-  strictly earlier strata — negation over `reached` must be stratified;
-  negation over facts is monotone-safe and unrestricted."
+  Vocabulary — an orthogonal basis of ten: :fact :fact= :artifact
+  :signed-by :stage-reached :elapsed-since :and :or :not :malli.
+  (:fact= was demoted to :malli-expanding sugar in v6 and RESTORED by
+  dogfood evidence: the expansion double-reported an absent fact —
+  :fact/missing plus a redundant schema error — and ADR 0016 makes
+  structured reasons the API, so reason quality is a contract concern,
+  not a rendering nicety.) Note ADR 0005: [:not [:stage-reached ...]]
+  is lint-restricted to strictly earlier strata — negation over
+  `reached` must be stratified; negation over facts is monotone-safe
+  and unrestricted."
   (:require [clojure.string :as str]
-            [clojure.walk :as walk]
             [malli.core :as m]
             [malli.error :as me]
             [tik.reduce :as red])
@@ -101,24 +103,27 @@
       (fail {:reason :schema/unsatisfied :schema schema
              :errors (me/humanize (m/explain schema facts))}))))
 
-(defn expand
-  "Rewrite authoring sugar to the basis. [:fact= path v] means \"the fact
-  is present AND its effective value is v\" and expands to exactly that:
-  [:and [:fact path] [:malli [:map [path [:= v]]]]]. Applied once at the
-  eval-guard boundary; everything past it is the nine-operator basis."
-  [guard]
-  (walk/postwalk
-   (fn [x]
-     (if (and (vector? x) (= :fact= (first x)))
-       (let [[_ path expected] x]
-         [:and [:fact path] [:malli [:map [path [:= expected]]]]])
-       x))
-   guard))
+(defn- eval-fact=
+  "Present AND equal, with exactly one reason per failure mode: absent
+  reports :fact/missing carrying :expected (the lens can say what to
+  set it TO); a different value reports :fact/mismatch."
+  [[_ path expected] {:keys [state]}]
+  (let [{:keys [status value]} (red/fact-status state path)]
+    (cond
+      (not= :present status)
+      (fail {:reason :fact/missing :path path :expected expected})
+
+      (not= expected value)
+      (fail {:reason :fact/mismatch :path path
+             :expected expected :actual value})
+
+      :else ok)))
 
 (defn- eval-guard*
   [guard ctx]
   (case (first guard)
     :fact          (eval-fact guard ctx)
+    :fact=         (eval-fact= guard ctx)
     :artifact      (eval-artifact guard ctx)
     :signed-by     (eval-signed-by guard ctx)
     :stage-reached (eval-stage-reached guard ctx)
@@ -140,7 +145,6 @@
                     {:guard guard}))))
 
 (defn eval-guard
-  "ctx: {:state :process :now :reached :roles}. Sugar expands here; the
-  evaluator proper sees only the basis."
+  "ctx: {:state :process :now :reached :roles}."
   [guard ctx]
-  (eval-guard* (expand guard) ctx))
+  (eval-guard* guard ctx))

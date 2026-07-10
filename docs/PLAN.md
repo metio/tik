@@ -197,15 +197,18 @@ maximality is computed against the `:after` graph only.
 
 ## 5. Guards
 
-Closed vocabulary v1, an orthogonal basis of nine: `:fact`, `:artifact`,
-`:signed-by`, `:stage-reached`, `:elapsed-since`, `:and`, `:or`, `:not`,
-`:malli`. The v6 subtraction cut everything derivable inside the basis:
-`:if` was boolean algebra over `:and`/`:or`/`:not`; `:not-stage` was a
-second spelling of `[:not [:stage-reached …]]`; `:fact=` survives only
-as documented authoring sugar that *expands* to a `:malli` guard before
-evaluation, so the evaluator and the stratification linter see the basis
-and nothing else. A smaller basis is a smaller thing to prove,
-corpus-test, and reimplement. Guards are deterministic pure functions of
+Closed vocabulary v1, an orthogonal basis of ten: `:fact`, `:fact=`,
+`:artifact`, `:signed-by`, `:stage-reached`, `:elapsed-since`, `:and`,
+`:or`, `:not`, `:malli`. The v6 subtraction cut everything derivable
+inside the basis: `:if` was boolean algebra over `:and`/`:or`/`:not`;
+`:not-stage` was a second spelling of `[:not [:stage-reached …]]`. v6
+also demoted `:fact=` to `:malli`-expanding sugar — **reversed by
+dogfood evidence** (ticket 1c08e147): the expansion double-reported an
+absent fact, and once ADR 0016 made structured reasons the API, reason
+quality became a contract concern — an operator with one clean reason
+per failure mode earns its basis seat. A smaller basis is a smaller
+thing to prove, corpus-test, and reimplement — but not smaller than
+its reasons can afford. Guards are deterministic pure functions of
 `(state, now, reached)` — **guards never query**. Anything external
 (CI green, payment cleared, another ticket's stage) enters as a signed
 attestation event; the attestation is the materialized answer, and
@@ -671,8 +674,7 @@ babashka-first CLI so the local shape has no JVM startup tax.
 
 Kernel (v6 shape): canonical form with golden bytes; the seven-type
 event vocabulary with mandatory parents and hash-pinned process
-references; the evolve fold; fact-status; the nine-operator guard basis
-with `:fact=` expanding to `:malli` at the eval boundary; structured
+references; the evolve fold; fact-status; the ten-operator guard basis (`:fact=` first-class, restored by dogfood evidence); structured
 guard reasons; lint enforcing the closed basis, stratified negation
 (single spelling), and facts-over-flags with per-process lint config;
 explain as data + renderer; `tik.dag`; **`tik.next`** — the inbox lens,

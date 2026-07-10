@@ -2,14 +2,12 @@
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.guard-prop-test
   "Laws of the guard algebra: purity, boolean semantics of the
-  combinators, the reasons discipline (unsatisfied iff reasons), sugar
-  expansion staying inside the basis, and :fact= meaning exactly
-  present-equal-and-schema-valid."
+  combinators, the reasons discipline (unsatisfied iff reasons), and
+  :fact= meaning present-and-equal with one reason per failure mode."
   (:require [clojure.test :refer [deftest is]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
-            [malli.core :as m]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
             [tik.reduce :as red]
@@ -79,34 +77,18 @@
            (= (:satisfied? (guard/eval-guard (into [:or] gs) c))
               (boolean (some sat? gs)))))))
 
-(def basis
-  #{:fact :artifact :signed-by :stage-reached :elapsed-since
-    :and :or :not :malli})
-
-(defn- operators [guard]
-  (when (vector? guard)
-    (cons (first guard)
-          (case (first guard)
-            (:and :or) (mapcat operators (rest guard))
-            :not (operators (second guard))
-            nil))))
-
-(defspec expand-emits-only-the-basis 100
-  (prop/for-all [g gen-guard]
-    (every? basis (operators (guard/expand g)))))
-
-(defspec fact=-means-present-equal-and-schema-valid 100
+(defspec fact=-means-present-and-equal 100
+  ;; and exactly ONE reason per failure mode — the double-report bug
+  ;; (ticket 1c08e147) stays fixed
   (prop/for-all [events ge/gen-events
                  p (gen/elements ge/paths)
                  v ge/gen-value]
     (let [c (ctx events ge/base)
           {:keys [status value]} (red/fact-status (:state c) p)
-          schema (get-in ge/process [:process/facts p])
-          expected (and (= :present status)
-                        (= v value)
-                        (or (nil? schema) (m/validate schema value)))]
-      (= expected
-         (boolean (:satisfied? (guard/eval-guard [:fact= p v] c)))))))
+          {:keys [satisfied? reasons]} (guard/eval-guard [:fact= p v] c)]
+      (and (= (and (= :present status) (= v value))
+              (boolean satisfied?))
+           (<= (count reasons) 1)))))
 
 (deftest removed-operators-are-not-quietly-accepted
   (let [c (ctx (ge/ops->events []) ge/base)]

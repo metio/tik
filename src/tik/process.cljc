@@ -9,8 +9,7 @@
   version number is a human label.
 
   The linter enforces what the kernel cannot:
-  - the closed guard basis (error on unknown operators; :fact= sugar is
-    accepted and expands before evaluation)
+  - the closed guard basis (error on unknown operators)
   - facts over flags (warning, per-process opt-out via :lint config)
   - graph sanity (unknown refs, unreachable stages)
   - stratified negation (ADR 0005, error): [:not [:stage-reached ...]]
@@ -55,8 +54,9 @@
   (canonical/content-address process))
 
 (def guard-operators
-  "The nine-operator basis plus :fact= authoring sugar (expands to :malli
-  before evaluation — tik.guard/expand)."
+  "The ten-operator basis (v1). :fact= is a first-class operator — it
+  was briefly v6 sugar and was restored by dogfood evidence (see the
+  guard namespace docstring)."
   #{:fact :fact= :artifact :signed-by :stage-reached :elapsed-since
     :and :or :not :malli})
 
@@ -160,7 +160,7 @@
           {:level :error
            :msg (str "stage " (:stage/id s) " uses unknown guard"
                      " operator " (pr-str op) " — the vocabulary"
-                     " is closed (basis + :fact= sugar).")})
+                     " is closed at ten operators.")})
         ;; undeclared facts
         (for [s stages, g (all-guards s)
               path (fact-refs g) :when (not (declared path))]

@@ -55,11 +55,13 @@
 (defn reason->text
   "One structured reason -> one English line. The only place guard failures
   become prose."
-  [{:keys [reason path schema by note prefix role stage
+  [{:keys [reason path schema by note prefix role stage expected actual
            since duration due errors value options guard]}]
   (case reason
     :fact/missing    (str "set fact " path
-                          (when schema (str " (" (pr-str schema) ")")))
+                          (cond
+                            expected (str " = " (pr-str expected))
+                            schema (str " (" (pr-str schema) ")")))
     :fact/invalid    (str "fact " path " = " (pr-str value)
                           " is invalid: " (pr-str errors))
     :fact/retracted  (str "fact " path " was retracted by " by
@@ -69,6 +71,8 @@
                           ": \"" note "\" — provide a corrected value")
     :fact/conflicted (str "fact " path " has conflicting concurrent"
                           " assertions — one must supersede (ADR 0003)")
+    :fact/mismatch   (str "set fact " path " = " (pr-str expected)
+                          " (currently " (pr-str actual) ")")
     :artifact/missing (str "attach an artifact under \"" prefix "\"")
     :role/unsatisfied (str "fact " path " must be asserted by a member of"
                            " role " role " (currently by " (pr-str by) ")")
