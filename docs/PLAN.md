@@ -669,6 +669,23 @@ third implementation of the same protocol, listed nowhere until it earns
 its keep (v6 — name the seam, delete the list). Blobs stored by hash
 next to events; transfer is lazy.
 
+**Scale (millions of tickets).** Three mechanisms, all inside the laws:
+the **store root** — one canonical hash over sorted `ticket → heads` —
+commits to every event in the store (each head commits to its ancestry,
+ADR 0004 aggregated), so replicas compare in O(1) and one witness
+countersignature timestamps everything; only the root's *endorsement*
+sidecar is kept (`roots/`) — the root document regenerates
+byte-identically on demand, so even the witnessed artifact obeys
+derived-beats-declared. **Incremental verify** (`--changed`) skips
+tickets whose heads match the last full audit via a disposable cache —
+honestly labeled drift detection, not the audit; full replay always
+outranks (§18's checkpoint verdict, implemented). **Lens memoization**
+(designed, built when a store is actually slow): derived state cached
+under the key `(head-set, process-hash)`, which makes invalidation
+impossible to get wrong because the key IS the input identity;
+time-dependent guards bound the entry with a validity horizon (the
+earliest `:due` among unsatisfied time guards).
+
 **One serialization** (v6): canonical EDN is the stored bytes, the
 hashed bytes, the signed bytes, *and* the wire bytes. Transit was a
 second encoding that existed only as wire optimization — a standing
