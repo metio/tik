@@ -1368,13 +1368,45 @@
 ;; the log; the sent-ledger is a DISPOSABLE cache (ADR 0013) — deleting
 ;; it can only cause a resend, never wrong truth.
 
-(defn- effect-payload [adapter {:keys [ticket title stage]}]
-  (let [text (str "tik: \"" title "\" reached " stage
-                  " (" (subs (str ticket) 0 8) ")")]
-    (case adapter
+(defn- render-template
+  "{{ticket}} {{short}} {{title}} {{stage}} in the sink's own words —
+  every sink may carry a :template; the default reads like a log line."
+  [template {:keys [ticket title stage]}]
+  (-> template
+      (str/replace "{{ticket}}" (str ticket))
+      (str/replace "{{short}}" (subs (str ticket) 0 8))
+      (str/replace "{{title}}" (str title))
+      (str/replace "{{stage}}" (str stage))))
+
+(defn- effect-payload
+  "One derived transition in each service's native shape. Every
+  adapter is a pure data mapping over the same {ticket title stage};
+  credentials, addressing and message :template come from the sink's
+  own config. The fallback shape is the stable :webhook contract."
+  [{:keys [type] :as sink} {:keys [ticket title stage] :as tr}]
+  (let [text (render-template
+              (or (:template sink)
+                  "tik: \"{{title}}\" reached {{stage}} ({{short}})")
+              tr)]
+    (case type
       :slack {"text" text}
       :discord {"content" text}
       :matrix {"msgtype" "m.text" "body" text}
+      :mattermost {"text" text}
+      :rocketchat {"text" text}
+      :googlechat {"text" text}
+      :teams {"type" "message" "text" text}
+      :ntfy {"topic" (:topic sink) "title" (str "tik: " title)
+             "message" (if (:template sink) text (str "reached " stage))}
+      :gotify {"title" (str "tik: " title)
+               "message" (if (:template sink) text (str "reached " stage))
+               "priority" 5}
+      :pushover {"token" (:token sink) "user" (:user sink)
+                 "message" text}
+      :telegram {"chat_id" (:chat-id sink) "text" text}
+      :opsgenie {"message" text
+                 "alias" (str ticket ":" stage)
+                 "source" "tik"}
       :alertmanager [{"labels" {"alertname" "tik_stage_reached"
                                 "ticket" (str ticket)
                                 "stage" (str stage)}
@@ -1421,10 +1453,13 @@
 
 (defn- post!
   "POST JSON; babashka's built-in http client, resolved lazily so the
-  namespace loads on the JVM too."
-  [url body]
+  namespace loads on the JVM too. Extra headers come from the sink's
+  :headers — enough for every token-authenticated service (opsgenie's
+  GenieKey, gotify's X-Gotify-Key, bearer tokens) without tik ever
+  storing credentials anywhere but the operator's own config."
+  [url body headers]
   (let [post (requiring-resolve 'babashka.http-client/post)]
-    (post url {:headers {"Content-Type" "application/json"}
+    (post url {:headers (merge {"Content-Type" "application/json"} headers)
                :body body
                :throw false})))
 
@@ -1462,15 +1497,18 @@
             sink sinks
             :let [key (canonical/sha256-hex
                        (pr-str [(:ticket tr) (:stage tr)
-                                (:type sink) (:url sink) (:to sink)]))]
+                                (:type sink) (:url sink) (:to sink)
+                                (:command sink) (:topic sink)
+                                (:chat-id sink)]))]
             :when (not (contains? sent key))]
       (if (:dry-run opts)
         (println "would send" (name (:type sink)) "<-"
                  (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
-        (do (if (= :email (:type sink))
+        (do (case (:type sink)
               ;; sendmail-compatible: the :command reads RFC822 on stdin
               ;; (default sendmail -t); MTA-agnostic like the inbound
               ;; bridge — procmail in, sendmail out, tik stays porcelain
+              :email
               (let [text (email-message
                           sink tr
                           (explain/render
@@ -1479,7 +1517,19 @@
                     r (apply sh/sh (concat cmdv [:in text]))]
                 (when-not (zero? (:exit r))
                   (die (str "email sink failed: " (:err r)))))
-              (post! (:url sink) (json-str (effect-payload (:type sink) tr))))
+              ;; the universal escape hatch: the webhook JSON on stdin
+              ;; to ANY program — notify-send wrappers, SMS gateways,
+              ;; syslog, a shop's existing paging script
+              :command
+              (let [r (apply sh/sh (concat (:command sink)
+                                           [:in (json-str
+                                                 (effect-payload
+                                                  (assoc sink :type :webhook)
+                                                  tr))]))]
+                (when-not (zero? (:exit r))
+                  (die (str "command sink failed: " (:err r)))))
+              (post! (:url sink) (json-str (effect-payload sink tr))
+                     (:headers sink)))
             (spit ledger-file (str key "\n") :append true)
             (swap! fired inc)
             (println "sent" (name (:type sink)) "<-"
@@ -2193,11 +2243,16 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 registry ticket; verification never
                                                 calls the IdP
   tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
-                                                slack|discord|matrix|alertmanager|
-                                                pagerduty|webhook|email sinks (ADR
-                                                0019; email renders explain, routes
-                                                replies via [tik <id>], and its
-                                                tik> answers close the loop)
+                                                slack|discord|matrix|teams|mattermost|
+                                                rocketchat|googlechat|ntfy|gotify|
+                                                pushover|telegram|opsgenie|alertmanager|
+                                                pagerduty|webhook|email|command sinks
+                                                (ADR 0019). Per-sink :template puts the
+                                                message in your words ({{title}}
+                                                {{stage}} {{short}} {{ticket}}); :headers
+                                                carries auth; :command pipes the JSON to
+                                                ANY program; email renders explain and
+                                                its tik> replies close the loop
   tik next [--actor A] [--role :r] [--all]      the inbox: what unlocks the most work,
                                                 quiet tickets rising; --actor = what I
                                                 can do, --role = what a role is being
