@@ -35,6 +35,14 @@
   a definition endorsement can never masquerade as an event signature."
   "tik-process")
 
+(def namespace-witness
+  "Namespace for head countersignatures: a witness observation over an
+  entire ancestry (ADR 0004 — one signature timestamps everything the
+  head commits to). Sidecar: <head>.witness.<fingerprint> (v6
+  endorsement algebra: .sig authorship, .witness observation, .ots
+  anchoring)."
+  "tik-witness")
+
 (defn- sh! [& args]
   (let [r (apply sh/sh args)]
     (when-not (zero? (:exit r))

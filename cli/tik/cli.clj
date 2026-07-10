@@ -739,6 +739,100 @@
               opts)
     (println "attested" (pr-str claim) "as" (actor opts))))
 
+(defn- agent-admissible
+  "The actions the frontier admits for this actor on this ticket —
+  derived from process + roles + current evidence, nothing else. THE
+  authorization boundary (PLAN §12): not a permission table, a
+  projection of the process definition."
+  [id actor-name]
+  (let [s (the-store)
+        {:keys [events process roles]} (ticket-ctx s id)
+        {:keys [actions]} (next-lens/contributions id process events
+                                                   (now) roles)]
+    (filterv #(or (= :anyone (:who %))
+                  (contains? (:who %) actor-name))
+             actions)))
+
+(defn- agent-refuse! [actor-name attempted admissible]
+  (binding [*out* *err*]
+    (println "REFUSED:" (pr-str attempted) "is not admitted by the"
+             "frontier for actor" actor-name)
+    (println "admissible now:"
+             (pr-str (mapv :action admissible))))
+  (System/exit 3))
+
+(defn- cmd-agent
+  "The gated surface an agent works through (H7):
+    agent actions <id> --actor A         the admissible action set (EDN)
+    agent set <id> k=v --actor A         assert — ONLY if admitted
+    agent attest <id> <claim> --actor A  attest — ONLY if admitted
+  Enforcement is derivation: the same contributions the inbox shows.
+  Everything an agent does lands as ordinary signed events; the
+  accountability trail is the ticket itself (PLAN §12/§13)."
+  [{:keys [pos opts]}]
+  (let [[sub ticket & args] pos
+        who (or (:actor opts) (die "agent commands require --actor"))
+        s (the-store)
+        id (resolve-id s ticket)
+        admissible (agent-admissible id who)]
+    (case sub
+      "actions" (prn {:actor who :ticket id
+                      :admissible (mapv #(select-keys % [:action :stage])
+                                        admissible)})
+      "set" (let [[k v] (str/split (first args) #"=" 2)
+                  path (parse-key k)
+                  attempted [:set path]]
+              (when-not (some #(= attempted (:action %)) admissible)
+                (agent-refuse! who attempted admissible))
+              (append!* s (event/assert-fact
+                           {:ticket id :actor who :at (now)
+                            :parents (dag/heads (store/events s id))
+                            :path path :value (parse-value v)})
+                        opts)
+              (println "ok" (pr-str attempted)))
+      "attest" (let [claim (edn/read-string (first args))
+                     attempted [:attest claim]]
+                 (when-not (some #(= attempted (:action %)) admissible)
+                   (agent-refuse! who attempted admissible))
+                 (append!* s (event/add-attestation
+                              {:ticket id :actor who :at (now)
+                               :parents (dag/heads (store/events s id))
+                               :claim {:claim claim}})
+                           opts)
+                 (println "ok" (pr-str attempted)))
+      (die "usage: tik agent actions|set|attest <id> ... --actor A"))))
+
+(defn- cmd-witness
+  "witness <id> [--key K]: countersign every current head — a detached
+  <head>.witness.<fpr> sidecar over the head event's stored bytes. One
+  signature timestamps the entire ancestry the head commits to
+  (ADR 0004); observation, not authorship, hence its own namespace."
+  [{:keys [pos opts]}]
+  (let [s (the-store)
+        id (resolve-id s (first pos))
+        key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
+        dir (events-dir id)
+        heads (dag/heads (store/events s id))]
+    (doseq [head heads
+            :let [f (io/file dir (str head ".edn"))
+                  fpr (sign/fingerprint (sign/pubkey key))
+                  target (io/file dir (str head ".witness." fpr))]]
+      (when-not (.exists target)
+        (let [produced (sign/sign! key f (str head ".witness-tmp")
+                                   sign/namespace-witness)]
+          (.renameTo ^File produced target)))
+      (println "witnessed" (subs head 0 19) "…"))
+    (println (count heads) "head(s) countersigned — each timestamps its"
+             "entire ancestry")))
+
+(defn- witness-sidecars [dir head]
+  (let [prefix (str head ".witness.")]
+    (->> (.listFiles (io/file dir))
+         (filter (fn [^File f]
+                   (and (.isFile f)
+                        (str/starts-with? (.getName f) prefix))))
+         (sort-by (fn [^File f] (.getName f))))))
+
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
   allowed-signers registry (identity ladder rung 1, PLAN §9)."
@@ -1306,6 +1400,25 @@
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
                             " (authenticity unclaimed, not failed)"))))))
+      (println "L3 provenance (witness countersignatures)")
+      (let [signers (io/file (root) "actors")
+            heads (dag/heads evs)
+            witnessed (for [head heads
+                            sc (witness-sidecars dir head)]
+                        [head sc])]
+        (if (empty? witnessed)
+          (println "  note  no countersigned heads (tik witness <id>)")
+          (doseq [[head ^File sc] witnessed
+                  :let [f (io/file dir (str head ".edn"))
+                        who (and (.exists signers)
+                                 (first (sign/find-principals
+                                         signers f sc
+                                         sign/namespace-witness)))]]
+            (check (boolean (and who (sign/verify signers f sc who
+                                                  sign/namespace-witness)))
+                   (str (subs head 0 19) "… witnessed by "
+                        (or who "<unregistered key>")
+                        " (whole ancestry)")))))
       (println "L2 reproducibility")
       (let [state (red/ticket-state evs)
             proc (load-pinned-process state)]
@@ -1359,6 +1472,11 @@
   tik verify [<id>]                             the verify ladder (L0/L1/L2); with no
                                                 id, audits EVERY ticket + definition
   tik process sign <name> [--key K]             publish: sign the archived definition
+  tik agent actions|set|attest <id> --actor A   the GATED agent surface: only what the
+                                                frontier admits for the role; everything
+                                                else is refused with the derived reason
+  tik witness <id> [--key K]                    countersign the head(s): one signature
+                                                timestamps the entire ancestry
   tik attest <id> <claim-edn>                   record a signed claim (kernel ignores
                                                 semantics; :attested-within reads it)
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
@@ -1402,6 +1520,8 @@
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
       "attest"  (cmd-attest parsed)
+      "witness" (cmd-witness parsed)
+      "agent"   (cmd-agent parsed)
       "process" (cmd-process parsed)
       "sign"    (cmd-sign parsed)
       "migrate" (cmd-migrate parsed)
