@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T10:45:14.352Z" :event/body {:fact/path [:summary] :fact/value "guided authoring interview compiles to the closed guard basis"} :event/parents #{"sha256-d043f4a61f1d415b78fa995d1a85dbca8ed56ef2f304a7e7f9fc508ef08cdb4b"} :event/ticket #uuid "b7ae6525-8b7f-4507-82ea-9cc56d28fb2e" :event/type :fact/assert}
