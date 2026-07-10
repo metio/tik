@@ -645,9 +645,14 @@ absence (§8 L3) is the designed answer.
 
 ## 14. Storage and packaging
 
-`EventStore` protocol with exactly two backends: **file/git** (Phase 0 —
-union-merge replication for free, `sha256sum`-auditable) and **SQLite**
-(single-file ops). Two implementations keep the seam honest; anything
+`EventStore` protocol with exactly two backends, **both built**:
+**file/git** (Phase 0 — union-merge replication for free,
+`sha256sum`-auditable) and **SQLite** (single-file ops: `TIK_DB=…`,
+exact canonical bytes in a BLOB, verify L0 recomputes hashes from the
+raw rows, and the ADR 0020 contract is a cross-backend test both must
+pass — including a property that they derive identically). The file
+store remains the auditor-grade interchange format; `tik export`
+materializes any store as one. Two implementations keep the seam honest; anything
 heavier (Postgres for multi-tenant SaaS, bitemporal stores) is a future
 third implementation of the same protocol, listed nowhere until it earns
 its keep (v6 — name the seam, delete the list). Blobs stored by hash
@@ -677,7 +682,8 @@ attach comment status explain log diff ls next lint sim test actor
 sign` and **`verify` (L0+L1+L2)**; structural conflict detection live
 (corpus case `concurrent-conflict`); union-merge replication validated
 over real git clones (`tik.sync-test`) and across environments over
-`git://` (`dev/h2-two-machines.sh`); `tik migrate` (dry-run by default,
+`git://` (`dev/h2-two-machines.sh`); SQLite EventStore backend
+(`TIK_DB`, `tik export`, cross-backend contract tests); `tik migrate` (dry-run by default,
 `--apply` appends the signed event) with definitions archived
 content-addressed under `processes/by-hash/` so pinning is honored on
 READ — grandfathered tickets keep deriving and verifying under their

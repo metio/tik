@@ -25,7 +25,8 @@
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
-            [tik.store.protocol :as store])
+            [tik.store.protocol :as store]
+            [tik.store.sqlite :as sqlite])
   (:import (java.io File)
            (java.time Duration Instant)))
 
@@ -102,7 +103,18 @@
                      "version")))
         proc))))
 
-(defn- the-store [] (fstore/file-store (root)))
+(defn- db-path []
+  (let [db (System/getenv "TIK_DB")]
+    (when-not (str/blank? db) db)))
+
+(defn- the-store
+  "TIK_DB selects the single-file SQLite backend (ADR 0020); default is
+  the file/git store under TIK_ROOT. Blobs and the actors registry stay
+  filesystem-side under TIK_ROOT either way."
+  []
+  (if-let [db (db-path)]
+    (sqlite/sqlite-store db)
+    (fstore/file-store (root))))
 
 (defn- events-dir ^File [ticket-id]
   (io/file (root) "tickets" (str ticket-id) "events"))
@@ -573,6 +585,21 @@
                     opts)
           (println "migrated — ticket now pins" (subs new-hash 0 19) "…")))))
 
+(defn- cmd-export
+  "Materialize the current store (whatever backend) as a file/git store
+  at <dir> — the auditor-grade interchange format where sha256sum(file)
+  = filename. Events only: blobs and the actors registry are filesystem
+  artifacts under TIK_ROOT and copy with cp."
+  [{:keys [pos]}]
+  (let [target (or (first pos) (die "usage: tik export <dir>"))
+        src (the-store)
+        dest (fstore/file-store target)
+        n (reduce (fn [n id]
+                    (reduce (fn [n e] (store/append! dest e) (inc n))
+                            n (store/events src id)))
+                  0 (store/ticket-ids src))]
+    (println "exported" n "event(s) to" target)))
+
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
   allowed-signers registry (identity ladder rung 1, PLAN §9)."
@@ -633,15 +660,27 @@
                 (println (str (if ok? "  ok    " "  FAIL  ") msg))
                 (when-not ok? (swap! failures inc)))]
     (println "L0 integrity")
-    (doseq [^File f files
-            :let [e (fstore/read-event f)
-                  bytes-on-disk (slurp f)
-                  stem (str/replace (.getName f) #"\.edn$" "")]]
-      (check (= bytes-on-disk (canonical/emit (dissoc e :event/id)))
-             (str stem " bytes are exactly the canonical hashed region"))
-      (check (= stem (event/event-id e))
-             (str stem " sha256(bytes) = filename = id"))
-      (check (event/valid? e) (str stem " schema-valid")))
+    (if-let [db (db-path)]
+      ;; SQLite: the raw BLOB must be the exact hashed region — checked
+      ;; against storage, not against this process's parsing (ADR 0020)
+      (doseq [[eid hex] (sqlite/raw-rows db id)
+              :let [raw (String. ^bytes (sqlite/hex->bytes hex) "UTF-8")
+                    e (assoc (edn/read-string {:readers fstore/edn-readers} raw)
+                             :event/id eid)]]
+        (check (= eid (str "sha256-" (canonical/sha256-hex raw)))
+               (str (subs eid 0 19) "… hash(stored bytes) = id"))
+        (check (= raw (canonical/emit (dissoc e :event/id)))
+               (str (subs eid 0 19) "… bytes are exactly the hashed region"))
+        (check (event/valid? e) (str (subs eid 0 19) "… schema-valid")))
+      (doseq [^File f files
+              :let [e (fstore/read-event f)
+                    bytes-on-disk (slurp f)
+                    stem (str/replace (.getName f) #"\.edn$" "")]]
+        (check (= bytes-on-disk (canonical/emit (dissoc e :event/id)))
+               (str stem " bytes are exactly the canonical hashed region"))
+        (check (= stem (event/event-id e))
+               (str stem " sha256(bytes) = filename = id"))
+        (check (event/valid? e) (str stem " schema-valid"))))
     (let [evs (store/events s id)]
       (check (empty? (dag/missing-parents evs)) "all parents present")
       (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
@@ -699,6 +738,8 @@
                                                 sign every write as it happens)
   tik migrate <id> <new.edn> [--reason R]       derived-stage diff under the proposed
                 [--apply]                       definition; dry-run unless --apply
+  tik export <dir>                              materialize any store as the file/git
+                                                format (the audit interchange)
   tik lint <process.edn>                        lint a process definition
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
@@ -726,6 +767,7 @@
       "actor"   (cmd-actor parsed)
       "sign"    (cmd-sign parsed)
       "migrate" (cmd-migrate parsed)
+      "export"  (cmd-export parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)
       (println usage))))

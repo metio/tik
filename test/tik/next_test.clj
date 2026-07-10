@@ -4,7 +4,8 @@
   "The inbox's laws: sound (every item satisfies some ticket's explain
   reason), complete (every actionable reason surfaces as an item),
   ranked by unlock count, and who-can-act filtering never invents work."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.edn :as edn]
+            [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
@@ -80,7 +81,7 @@
                        (assert-step [:kind] :bug)
                        (assert-step [:commit] "abc1234")
                        (assert-step [:gate] :green))
-        proc (clojure.edn/read-string (slurp "processes/tik-dev.edn"))
+        proc (edn/read-string (slurp "processes/tik-dev.edn"))
         contrib (next-lens/contributions (:event/ticket (first landed))
                                          proc landed now
                                          (:process/roles proc))]
