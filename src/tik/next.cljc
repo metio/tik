@@ -90,7 +90,15 @@
                            :action (reason->action r)
                            :who (reason->who r roles restrictions)}
                     hint (assoc :hint hint)))]
-    {:actions (vec (distinct actions))
+    {:ticket ticket-id
+     :actions (vec (distinct actions))
+     ;; attention debt: how long this ticket has sat untouched. Events
+     ;; are points; the inbox uses the last one as "someone last looked
+     ;; here" and lets silence accumulate weight.
+     :stale-ms (let [last-at (reduce (fn [acc e]
+                                       (max acc (inst-ms (:event/at e))))
+                                     0 events)]
+                 (max 0 (- (inst-ms now) last-at)))
      :settled? (settled? process events now roles)
      :waiting (vec (for [{:keys [stage missing]} blocks
                          r missing
@@ -117,10 +125,15 @@
    (let [live (if include-settled?
                 per-ticket
                 (remove :settled? per-ticket))
+         stale-of (into {} (map (juxt :ticket :stale-ms)) live)
          actions (filter #(allowed? (:who %) actor)
                          (mapcat :actions live))
          items (for [[action contribs] (group-by :action actions)]
                  {:action action
+                  ;; the quietest ticket this action unlocks — silence
+                  ;; is debt, and debt breaks unlock-count ties
+                  :stale-ms (reduce max 0 (keep (comp stale-of :ticket)
+                                                contribs))
                   ;; :anyone absorbs into the most permissive answer;
                   ;; otherwise the union of actors any unlock admits
                   :who (if (some #(= :anyone (:who %)) contribs)
@@ -130,6 +143,7 @@
                                  (map #(select-keys % [:ticket :stage :hint])
                                       contribs)))})]
      {:items (vec (sort-by (juxt #(- (count (:unlocks %)))
+                                 #(- (:stale-ms %))
                                  #(pr-str (:action %)))
                            items))
       :settled (count (filter :settled? per-ticket))

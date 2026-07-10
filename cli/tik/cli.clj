@@ -506,15 +506,19 @@
                    "—" (count waiting)
                    "stage(s) waiting on time or upstream stages.")
           (do
-            (doseq [{:keys [action who unlocks]} items]
-              (println (format "%-42s unlocks %d"
+            (doseq [{:keys [action who unlocks stale-ms]} items
+                    :let [days (quot (or stale-ms 0) 86400000)]]
+              (println (format "%-42s unlocks %d%s"
                                (str (tint "1" (str (name (first action)) " "
                                                    (pr-str (second action))))
                                     (when (not= :anyone who)
                                       (tint "2" (str "  ("
                                                      (str/join ", " (sort who))
                                                      ")"))))
-                               (count unlocks)))
+                               (count unlocks)
+                               (if (>= days 2)
+                                 (tint "33" (str "  (quiet " days "d)"))
+                                 "")))
               (doseq [{:keys [ticket stage hint]} unlocks]
                 (println (str "    " (subs (str ticket) 0 8) " -> " stage
                               (when hint (str "  (see: " hint ")"))))))

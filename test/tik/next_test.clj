@@ -147,3 +147,18 @@
                                  u unlocks]
                              [action (:ticket u) (:stage u)]))]
       (every? all-pairs actor-pairs))))
+
+(defspec silence-breaks-unlock-ties 40
+  ;; among equal unlock counts, the quieter ticket's action leads —
+  ;; attention debt is a tiebreaker, never a trump over unlock count
+  (prop/for-all [events ge/gen-events
+                 t ge/gen-now]
+    (let [tid (:event/ticket (first events))
+          per [(next-lens/contributions tid ge/process events t ge/roles)]
+          items (:items (next-lens/inbox per nil {:include-settled? true}))]
+      (and (every? #(<= 0 (:stale-ms %)) items)
+           (every? (fn [[a b]]
+                     (or (> (count (:unlocks a)) (count (:unlocks b)))
+                         (>= (:stale-ms a) (:stale-ms b))
+                         (< (count (:unlocks a)) (count (:unlocks b)))))
+                   (partition 2 1 items))))))
