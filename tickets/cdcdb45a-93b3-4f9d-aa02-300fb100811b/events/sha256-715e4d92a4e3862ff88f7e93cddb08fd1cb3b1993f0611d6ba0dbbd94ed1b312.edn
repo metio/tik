@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T08:57:16.578Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813" :ticket/process-version 1 :ticket/title "plumbing: --edn machine-stable output"} :event/parents #{} :event/ticket #uuid "cdcdb45a-93b3-4f9d-aa02-300fb100811b" :event/type :ticket/create}
