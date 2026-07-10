@@ -18,6 +18,7 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [tik.author :as author]
+            [tik.oidc :as oidc]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
             [tik.event :as event]
@@ -1165,6 +1166,53 @@
      :subject (or (header "Subject") "")
      :body (str/trim (str/join "\n" (rest body)))}))
 
+(defn- cmd-bridge-oidc
+  "bridge oidc: identity rung 2 (PLAN §9). Login against the config's
+  issuer — device flow by default, password grant when --user and
+  --password are given (headless onboarding) — and append the signed
+  key-binding attestation to the registry ticket. Verification of the
+  binding never calls the IdP."
+  [opts]
+  (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
+        cfg (if (.exists (io/file cfg-file))
+              (edn/read-string (slurp cfg-file)) {})
+        issuer (or (:issuer opts) (:issuer cfg)
+                   (die "no OIDC issuer — pass --issuer or put :issuer in oidc.edn"))
+        client-id (or (:client-id opts) (:client-id cfg) "tik")
+        registry-ref (or (:registry opts) (:registry cfg)
+                         (die (str "no registry ticket — mint one with\n"
+                                   "  tik new identity-registry --title 'identity registry'\n"
+                                   "then pass --registry <its id>")))
+        who (actor opts)
+        key-file (or (:key opts)
+                     (some-> (System/getenv "TIK_KEY") (str ".pub"))
+                     (die "which key binds to this login? --key <pubkey.pub> or set TIK_KEY"))
+        public-key (str/trim (slurp key-file))
+        s (the-store)
+        registry-id (resolve-id s registry-ref)
+        endpoints (oidc/discover oidc/http-get issuer)
+        response (if (and (:user opts) (:password opts))
+                   (oidc/password-flow oidc/http-post endpoints client-id
+                                       (:user opts) (:password opts))
+                   (let [{:keys [prompt poll]} (oidc/device-flow
+                                                oidc/http-post endpoints
+                                                client-id #(Thread/sleep (long %)))]
+                     (println prompt)
+                     (loop [] (or (poll) (recur)))))
+        claim (try (oidc/token->binding response {:actor who
+                                                  :public-key public-key
+                                                  :issuer issuer})
+                   (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        heads (dag/heads (store/events s registry-id))
+        e (event/add-attestation {:ticket registry-id :actor who :at (now)
+                                  :parents heads :claim claim})]
+    (append!* s e opts)
+    (println (str "bound " (:identity/issuer claim) " subject "
+                  (:identity/subject claim) " (" (:identity/username claim)
+                  ") to actor '" who "' — attestation " (subs (:event/id e) 0 15)
+                  "… on " registry-id))
+    (System/exit 0)))
+
 (defn- cmd-bridge
   "bridge email [--config bridge.edn] < message
   One RFC822 message on stdin — MTA-agnostic: procmail, fetchmail,
@@ -1175,8 +1223,9 @@
   opens a new ticket under :process with the body as first comment.
   Set TIK_KEY so the bridge's claims are signed like anyone else's."
   [{:keys [pos opts]}]
+  (when (= "oidc" (first pos)) (cmd-bridge-oidc opts))
   (when-not (= "email" (first pos))
-    (die "usage: tik bridge email [--config bridge.edn] < message"))
+    (die "usage: tik bridge email [--config bridge.edn] < message\n       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]"))
   (let [cfg-file (or (:config opts) (str (io/file (root) "bridge.edn")))
         cfg (if (.exists (io/file cfg-file))
               (edn/read-string (slurp cfg-file))
@@ -1846,6 +1895,10 @@
                                                 /tickets.edn + /explain/<id>.edn for tools)
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments, else new ticket
+  tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
+                  [--user U --password P]       a signed key-binding attestation on the
+                                                registry ticket; verification never
+                                                calls the IdP
   tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
                                                 slack|discord|matrix|alertmanager|
                                                 pagerduty|webhook sinks (ADR 0019)

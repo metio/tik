@@ -1,0 +1,14 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; The identity registry is a ticket (PLAN §9): a well-known log whose
+;; attestations are key bindings, evaluated by the same kernel and
+;; verified by the same ladder as every other ticket. The bridge
+;; appends; lenses read; nothing here is workflow.
+{:process/id :identity-registry
+ :process/version 1
+ :process/guard-vocab 1
+ :process/stages
+ [{:stage/id :registry
+   :hint "kb/runbooks/identity-registry-registry.md"
+   :guards []}]}
