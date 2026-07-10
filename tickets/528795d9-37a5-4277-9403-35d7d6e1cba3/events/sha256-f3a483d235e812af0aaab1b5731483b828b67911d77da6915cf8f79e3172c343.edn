@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T21:28:59.981Z" :event/body {:fact/path [:summary] :fact/value "one dot-entry above many repos; every command finds it from anywhere beneath"} :event/parents #{"sha256-00750342d20437ce0190321a9f8bbf50452af9a90f2285efd3e8c75eeb3e94a2"} :event/ticket #uuid "528795d9-37a5-4277-9403-35d7d6e1cba3" :event/type :fact/assert}
