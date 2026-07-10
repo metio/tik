@@ -99,9 +99,23 @@
 
 (defn- parse-key [s] (mapv keyword (str/split s #"\.")))
 
-(defn- parse-value [s]
-  (let [v (edn/read-string s)]
-    (if (symbol? v) (keyword (str v)) v)))
+(defn- parse-value
+  "Forgiving: one complete EDN form is taken as EDN (bare words become
+  keywords); anything else — multi-word prose, 31ffd53-style
+  hex-with-letters, stray punctuation — is the literal string. Nobody
+  should need to know EDN quoting to record a description."
+  [s]
+  (let [[v ok?] (try
+                  (with-open [r (java.io.PushbackReader.
+                                 (java.io.StringReader. s))]
+                    (let [form (edn/read {:eof ::eof} r)
+                          rest (edn/read {:eof ::eof} r)]
+                      [form (= ::eof rest)]))
+                  (catch Exception _ [nil false]))]
+    (cond
+      (not ok?) s
+      (symbol? v) (keyword (str v))
+      :else v)))
 
 (defn- process-file ^File [name] (io/file (root) "processes" (str name ".edn")))
 
@@ -120,9 +134,24 @@
       (spit f (canonical/emit proc)))
     hash))
 
+(defn- available-processes []
+  (sort (keep #(second (re-matches #"(.+)\.edn" (.getName ^File %)))
+              (filter #(not (str/ends-with? (.getName ^File %) ".tests.edn"))
+                      (.listFiles (io/file (root) "processes"))))))
+
 (defn- load-process [name]
+  (when-not name
+    (die (str "usage: tik new <process> [--title T]\n"
+              (if-let [ps (seq (available-processes))]
+                (str "available processes: " (str/join ", " ps))
+                "no processes yet — `tik author` writes your first one"))))
   (let [f (process-file name)]
-    (when-not (.exists f) (die "no such process:" (str f)))
+    (when-not (.exists f)
+      (die (str "no process named '" name "' (looked for " f ")\n"
+                (if-let [ps (seq (available-processes))]
+                  (str "available: " (str/join ", " ps)
+                       "\nor `tik author` to create one")
+                  "none exist yet — `tik author` writes your first one"))))
     (edn/read-string (slurp f))))
 
 (defn- load-pinned-process
@@ -181,8 +210,11 @@
                      (map str (store/ticket-ids s)))]
     (case (count hits)
       1 (java.util.UUID/fromString (first hits))
-      0 (die "no ticket matching" ticket-str)
-      (die "ambiguous prefix" ticket-str "->" (pr-str (vec hits))))))
+      0 (die (str "no ticket starting with '" ticket-str
+                  "' — `tik ls` lists open tickets, `tik ls --all` everything"))
+      (die (str "'" ticket-str "' matches " (count hits)
+                " tickets — add more characters:\n  "
+                (str/join "\n  " (sort hits)))))))
 
 (defn- ticket-ctx [s id]
   (let [evs (store/events s id)
@@ -208,6 +240,19 @@
 
 (defn- cmd-set [{:keys [pos opts]}]
   (let [[ticket & kvs] pos
+        _ (when (or (nil? ticket) (empty? kvs))
+            (die "usage: tik set <id> key=value [key=value ...]   (dotted keys nest: payment.ref=abc)"))
+        ;; unquoted prose splits at the shell; words without '=' belong
+        ;; to the previous pair — `set <id> note=hello world` records
+        ;; note="hello world" instead of erroring on "world"
+        kvs (reduce (fn [acc kv]
+                      (cond
+                        (str/includes? kv "=") (conj acc kv)
+                        (empty? acc)
+                        (die (str "'" kv "' is not key=value — write it as "
+                                  kv "=<value>"))
+                        :else (conj (pop acc) (str (peek acc) " " kv))))
+                    [] kvs)
         s (the-store)
         id (resolve-id s ticket)]
     ;; heads recomputed per event: linear chain within one command
@@ -473,7 +518,13 @@
                title)
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe)))))
-        (when (empty? visible) (println "no matching tickets"))
+        (when (empty? visible)
+          (if (empty? rows)
+            (println (str "no tickets yet — start with:\n"
+                          "  tik author                  describe your process; tik writes the definition\n"
+                          "  tik new <process>           mint the first ticket\n"
+                          "  tik set <id> key=value      record what is true; the stage derives itself"))
+            (println "no matching tickets")))
         (let [hidden (- (count rows) (count visible))]
           (when (pos? hidden)
             (println (str "settled: " hidden
@@ -1760,6 +1811,12 @@
 (def ^:private usage
   "tik — a process system, not a ticket system
 
+  start here:
+    tik author                       answer questions; tik writes the process
+    tik new expense-approval         mint a ticket against it
+    tik set <id> amount=120          record facts; the stage derives itself
+    tik explain <id>                 what is missing, who can act
+
   tik new <process> [--title T] [--actor A]     mint a ticket (pins process hash)
   tik set <id> k=v [k=v ...] [--actor A]        assert facts (dotted keys nest)
   tik retract <id> <k> [--reason R]             withdraw a fact (no replacement)
@@ -1868,4 +1925,6 @@
       "export"  (cmd-export parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)
-      (println usage))))
+      (do (when cmd
+            (println (str "tik: '" cmd "' is not a command — the full list:\n")))
+          (println usage)))))

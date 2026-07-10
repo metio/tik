@@ -1,0 +1,1 @@
+H9 datapoint 2026-07-10: tik set silently keywordizes multi-word values (description=tik author: ... became :tik) and dies on 31ffd53 (EDN read error, no hint). Fix: parse-value falls back to plain string when the value is not one complete EDN form.
