@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T14:03:16.381Z" :event/body {:fact/path [:guide] :fact/value "docs/getting-started.md, executed by guide_test.clj (commit 093c3be)"} :event/parents #{"sha256-91e765d3dfde20b1b749d5fe035e3ba0a8f1b57567586e5c7bbc23fdf0049278"} :event/ticket #uuid "4793fa04-40d0-45cb-b880-c04315e10b5b" :event/type :fact/assert}
