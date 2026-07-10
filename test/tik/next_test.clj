@@ -74,6 +74,26 @@
                     (= :time/not-elapsed (:reason %)))
               waiting))))
 
+(deftest settled-tickets-leave-the-inbox
+  (let [landed (ticket 7
+                       (assert-step [:summary] "escape hatches are noise")
+                       (assert-step [:kind] :bug)
+                       (assert-step [:commit] "abc1234")
+                       (assert-step [:gate] :green))
+        proc (clojure.edn/read-string (slurp "processes/tik-dev.edn"))
+        contrib (next-lens/contributions (:event/ticket (first landed))
+                                         proc landed now
+                                         (:process/roles proc))]
+    (is (:settled? contrib) "sticky terminal :landed is reached")
+    (testing "the default inbox hides the escape hatch, and says so"
+      (let [{:keys [items settled]} (next-lens/inbox [contrib])]
+        (is (empty? items))
+        (is (= 1 settled))))
+    (testing "--all still shows it: the lens hides, derivation never does"
+      (let [{:keys [items]} (next-lens/inbox [contrib] nil
+                                             {:include-settled? true})]
+        (is (= [[:set [:parked :reason]]] (mapv :action items)))))))
+
 (defspec inbox-is-sound-and-complete 60
   ;; sound: every item's unlock corresponds to a frontier stage whose
   ;; explain block contains a reason this action satisfies.
@@ -83,7 +103,8 @@
     (let [tid (:event/ticket (first events))
           {:keys [items]} (next-lens/inbox
                            [(next-lens/contributions tid ge/process events
-                                                     t ge/roles)])
+                                                     t ge/roles)]
+                           nil {:include-settled? true})
           blocks (explain/explain ge/process events t ge/roles)
           expected (set
                     (for [{:keys [stage missing]} blocks
@@ -114,10 +135,14 @@
                  actor (gen/elements ge/actors)]
     (let [tid (:event/ticket (first events))
           per [(next-lens/contributions tid ge/process events t ge/roles)]
-          all-pairs (set (for [{:keys [action unlocks]} (:items (next-lens/inbox per))
+          all-pairs (set (for [{:keys [action unlocks]}
+                               (:items (next-lens/inbox per nil
+                                                        {:include-settled? true}))
                                u unlocks]
                            [action (:ticket u) (:stage u)]))
-          actor-pairs (set (for [{:keys [action unlocks]} (:items (next-lens/inbox per actor))
+          actor-pairs (set (for [{:keys [action unlocks]}
+                                 (:items (next-lens/inbox per actor
+                                                          {:include-settled? true}))
                                  u unlocks]
                              [action (:ticket u) (:stage u)]))]
       (every? all-pairs actor-pairs))))

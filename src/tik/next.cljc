@@ -12,7 +12,8 @@
   that no actor can act on (time not elapsed, upstream stage not
   reached, must-not-hold) are WAITING, not actionable, and are counted
   rather than listed."
-  (:require [tik.explain :as explain]))
+  (:require [tik.explain :as explain]
+            [tik.stage :as stage]))
 
 (defn- reason->action
   "The concrete act that would satisfy a structured reason, or nil when
@@ -62,9 +63,22 @@
     (mapcat actionable (apply concat (:options r)))
     (if (reason->action r) [r] [])))
 
+(defn settled?
+  "Has this ticket reached a sticky terminal stage (a milestone with no
+  downstream — :closed, :landed)? A settled ticket's remaining frontier
+  is escape hatches, not work: derivation still reports it (explain
+  stays complete), the inbox declines to nag about it."
+  [process events now roles]
+  (let [reached (stage/effective-reached process events now roles)]
+    (boolean (some #(and (:stage/sticky? %)
+                         (contains? reached (:stage/id %))
+                         (empty? (stage/downstream process (:stage/id %))))
+                   (:process/stages process)))))
+
 (defn contributions
   "One ticket's actionable work: [{:ticket :stage :action :who :hint}].
-  Also returns waiting reasons under :waiting."
+  Also returns waiting reasons under :waiting and the ticket's
+  :settled? flag (dropped from the default inbox)."
   [ticket-id process events now roles]
   (let [blocks (explain/explain process events now roles)
         actions (for [{:keys [stage missing hint]} blocks
@@ -76,6 +90,7 @@
                            :who (reason->who r roles restrictions)}
                     hint (assoc :hint hint)))]
     {:actions (vec (distinct actions))
+     :settled? (settled? process events now roles)
      :waiting (vec (for [{:keys [stage missing]} blocks
                          r missing
                          :when (empty? (actionable r))]
@@ -89,12 +104,20 @@
   how much each action unlocks, optionally filtered to what `actor` may
   do. `per-ticket` is a coll of `contributions` results.
 
+  Settled tickets (sticky terminal reached) are dropped unless
+  `include-settled?` — finished work's escape hatches are not next work.
+
   Returns {:items [{:action :who :unlocks [{:ticket :stage :hint?}]}]
-           :waiting [{:ticket :stage :reason}]}."
-  ([per-ticket] (inbox per-ticket nil))
-  ([per-ticket actor]
-   (let [actions (filter #(allowed? (:who %) actor)
-                         (mapcat :actions per-ticket))
+           :waiting [{:ticket :stage :reason}]
+           :settled <count of tickets hidden>}."
+  ([per-ticket] (inbox per-ticket nil nil))
+  ([per-ticket actor] (inbox per-ticket actor nil))
+  ([per-ticket actor {:keys [include-settled?]}]
+   (let [live (if include-settled?
+                per-ticket
+                (remove :settled? per-ticket))
+         actions (filter #(allowed? (:who %) actor)
+                         (mapcat :actions live))
          items (for [[action contribs] (group-by :action actions)]
                  {:action action
                   ;; :anyone absorbs into the most permissive answer;
@@ -108,4 +131,5 @@
      {:items (vec (sort-by (juxt #(- (count (:unlocks %)))
                                  #(pr-str (:action %)))
                            items))
-      :waiting (vec (mapcat :waiting per-ticket))})))
+      :settled (count (filter :settled? per-ticket))
+      :waiting (vec (mapcat :waiting live))})))

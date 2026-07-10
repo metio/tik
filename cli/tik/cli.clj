@@ -325,7 +325,9 @@
         per-ticket (for [id (store/ticket-ids s)
                          :let [{:keys [events process roles]} (ticket-ctx s id)]]
                      (next-lens/contributions id process events t roles))
-        {:keys [items waiting]} (next-lens/inbox per-ticket (:actor opts))]
+        {:keys [items waiting settled]}
+        (next-lens/inbox per-ticket (:actor opts)
+                         {:include-settled? (:all opts)})]
     (if (empty? items)
       (println "Nothing actionable"
                (if (:actor opts) (str "for " (:actor opts)) "right now") "—"
@@ -343,7 +345,11 @@
                           (when hint (str "  (see: " hint ")"))))))
         (when (seq waiting)
           (println (str "waiting: " (count waiting)
-                        " stage(s) gated on time or upstream stages")))))))
+                        " stage(s) gated on time or upstream stages")))))
+    (when (and (pos? (or settled 0)) (not (:all opts)))
+      (println (str "settled: " settled
+                    " finished ticket(s) hidden (--all shows their"
+                    " escape hatches)")))))
 
 (defn- cmd-ls [_]
   (let [s (the-store)]
@@ -685,7 +691,8 @@
   tik explain <id>                              what is needed to advance
   tik log <id>                                  the event history
   tik ls                                        all tickets with derived stages
-  tik next [--actor A]                          the inbox: what unlocks the most work
+  tik next [--actor A] [--all]                  the inbox: what unlocks the most work
+                                                (--all includes settled tickets)
   tik verify <id>                               the verify ladder (L0/L1/L2)
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
