@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T11:03:42.479Z" :event/body {:fact/path [:summary] :fact/value "OIDC subject to key binding as signed attestation on the registry ticket"} :event/parents #{"sha256-f5fc182da96ad922df9c3c875ec0345544c1a20a17a58e93f8b77c26c20df5bf"} :event/ticket #uuid "926a0459-78ee-4771-ab20-bb7c2150be24" :event/type :fact/assert}

@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T11:03:43.647Z" :event/body {:fact/path [:instrument] :fact/value "tik bridge oidc (commit 2c6373d), registry ticket a3e07b0b"} :event/parents #{"sha256-6c94f87435456ae9ad95b8e24a112df1d65cd03e76a41085372ca8e23360ab0f"} :event/ticket #uuid "885d4f60-5cbf-4985-a9e1-0395ba6ed117" :event/type :fact/assert}
