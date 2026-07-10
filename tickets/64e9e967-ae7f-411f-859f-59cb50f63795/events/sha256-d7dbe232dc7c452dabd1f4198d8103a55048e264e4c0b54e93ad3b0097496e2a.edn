@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T23:12:48.071Z" :event/body {:fact/path [:summary] :fact/value "lint and prompt are two lenses over one rule set; orgs extend it in their store"} :event/parents #{"sha256-41d6ce1cdd4b65fd791296c276b59ba63a01f3c03a13ad8613dea52fe9b47c7e"} :event/ticket #uuid "64e9e967-ae7f-411f-859f-59cb50f63795" :event/type :fact/assert}
