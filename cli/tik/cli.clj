@@ -1607,6 +1607,133 @@
 
       (die "usage: tik work record|week|cost ..."))))
 
+(def ^:private bundle-verify-sh
+  "POSIX shell + coreutils + ssh-keygen — no tik required. The bundle
+  is evidence precisely because the recipient needs nothing of ours to
+  check it."
+  "#!/bin/sh
+# Verifies this tik evidence bundle. Requires only coreutils and
+# ssh-keygen (OpenSSH 8.2+). Run from anywhere: ./verify.sh
+set -u
+cd \"$(dirname \"$0\")\"
+fail=0
+
+# L0 integrity: every stored file's name IS the sha256 of its bytes.
+for f in tickets/*/events/*.edn processes/by-hash/*.edn; do
+  [ -e \"$f\" ] || continue
+  base=$(basename \"$f\" .edn)
+  sum=$(sha256sum \"$f\" | cut -d' ' -f1)
+  if [ \"sha256-$sum\" = \"$base\" ]; then
+    echo \"ok    $base bytes match their name\"
+  else
+    echo \"FAIL  $f bytes do not match their name\"; fail=1
+  fi
+done
+for f in tickets/*/blobs/*; do
+  [ -e \"$f\" ] || continue
+  base=$(basename \"$f\")
+  sum=$(sha256sum \"$f\" | cut -d' ' -f1)
+  if [ \"sha256-$sum\" = \"$base\" ]; then
+    echo \"ok    $base blob bytes match their name\"
+  else
+    echo \"FAIL  $f blob bytes do not match their name\"; fail=1
+  fi
+done
+
+# L1 authenticity: detached signatures against the actors registry.
+check_sig() { # $1 sidecar, $2 target file, $3 namespace
+  p=$(ssh-keygen -Y find-principals -f actors -n \"$3\" -s \"$1\" < \"$2\" 2>/dev/null)
+  if [ -z \"$p\" ]; then
+    echo \"FAIL  $1 signed by a key absent from the actors registry\"; fail=1; return
+  fi
+  if ssh-keygen -Y verify -f actors -I \"$p\" -n \"$3\" -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+    echo \"ok    $(basename \"$1\") verifies as $p\"
+  else
+    echo \"FAIL  $1 does not verify\"; fail=1
+  fi
+}
+for sig in tickets/*/events/*.sig.*; do
+  [ -e \"$sig\" ] || continue
+  check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-event
+done
+for sig in tickets/*/events/*.witness.*; do
+  [ -e \"$sig\" ] || continue
+  check_sig \"$sig\" \"${sig%%.witness.*}.edn\" tik-witness
+done
+for sig in processes/by-hash/*.sig.*; do
+  [ -e \"$sig\" ] || continue
+  check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-process
+done
+
+if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1; fi
+")
+
+(defn- bundle-readme [id title process-hash]
+  (str "<!--\nSPDX-FileCopyrightText: The tik Authors\n"
+       "SPDX-License-Identifier: 0BSD\n-->\n\n"
+       "# Evidence bundle: " title "\n\n"
+       "Ticket `" id "` as a self-contained, independently verifiable\n"
+       "artifact. Nothing here requires tik or trusts its producer:\n\n"
+       "- `tickets/…/events/*.edn` — the append-only log. Each file's\n"
+       "  NAME is the sha256 of its BYTES, and parents inside each event\n"
+       "  chain them into a Merkle DAG: one head commits to all history.\n"
+       "- `*.sig.*` — detached authorship signatures (`ssh-keygen -Y`).\n"
+       "- `*.witness.*` — third-party countersignatures over a head:\n"
+       "  one signature timestamps the entire ancestry.\n"
+       "- `processes/by-hash/" process-hash ".edn` — the exact ruleset\n"
+       "  the ticket pinned at creation, plus publication signatures.\n"
+       "- `actors` — the allowed-signers registry the signatures check\n"
+       "  against. Verify its keys out of band; it names who, the\n"
+       "  signatures prove that they, and the hashes prove what.\n\n"
+       "## Verify\n\n"
+       "```sh\n./verify.sh\n```\n\n"
+       "coreutils + ssh-keygen only. To additionally REPLAY the\n"
+       "derivation (what stage these facts imply), install tik and run\n"
+       "`tik export`/`tik verify` over this directory — derivation is a\n"
+       "pure function of these files, so any tik, anywhere, forever,\n"
+       "derives the same answer.\n"))
+
+(defn- cmd-bundle
+  "The evidence bundle (PLAN §10): one ticket as a portable artifact a
+  third party verifies with coreutils + ssh-keygen — no tik, no trust
+  in us. This is H5's deliverable and the thing H8 sells."
+  [{:keys [pos opts]}]
+  (let [ticket (or (first pos) (die "usage: tik bundle <id> [--out file.tgz]"))
+        s (the-store)
+        id (resolve-id s ticket)
+        {:keys [state]} (ticket-ctx s id)
+        phash (:process-hash state)
+        out (io/file (or (:out opts) (str "tik-bundle-" (subs (str id) 0 8) ".tgz")))
+        work (.toFile (java.nio.file.Files/createTempDirectory
+                       "tik-bundle" (make-array java.nio.file.attribute.FileAttribute 0)))
+        bdir (io/file work "bundle")
+        copy! (fn [^File src ^File dst]
+                (when (.exists src)
+                  (if (.isDirectory src)
+                    (doseq [^File f (.listFiles src)
+                            :when (.isFile f)]
+                      (io/make-parents (io/file dst (.getName f)))
+                      (io/copy f (io/file dst (.getName f))))
+                    (do (io/make-parents dst) (io/copy src dst)))))]
+    (copy! (io/file (root) "tickets" (str id) "events")
+           (io/file bdir "tickets" (str id) "events"))
+    (copy! (io/file (root) "tickets" (str id) "blobs")
+           (io/file bdir "tickets" (str id) "blobs"))
+    (copy! (io/file (root) "actors") (io/file bdir "actors"))
+    (when phash
+      (doseq [^File f (.listFiles (io/file (root) "processes" "by-hash"))
+              :when (str/starts-with? (.getName f) phash)]
+        (copy! f (io/file bdir "processes" "by-hash" (.getName f)))))
+    (spit (io/file bdir "verify.sh") bundle-verify-sh)
+    (.setExecutable (io/file bdir "verify.sh") true)
+    (spit (io/file bdir "README.md")
+          (bundle-readme id (:title state) (or phash "unpinned")))
+    (let [r (sh/sh "tar" "czf" (str (.getAbsoluteFile out))
+                   "-C" (str bdir) ".")]
+      (when-not (zero? (:exit r)) (die (str "tar failed: " (:err r)))))
+    (println (str "wrote " out))
+    (println "verify anywhere with: tar xzf, then ./verify.sh (coreutils + ssh-keygen only)")))
+
 (defn- author-write! [^File f content force?]
   (when (and (.exists f) (not force?))
     (die (str (.getPath f) " already exists — pass --force to overwrite")))
@@ -1962,6 +2089,11 @@
                 [--apply]                       definition; dry-run unless --apply
   tik export <dir>                              materialize any store as the file/git
                                                 format (the audit interchange)
+  tik bundle <id> [--out file.tgz]              ONE ticket as a portable evidence
+                                                bundle: events, signatures, witness
+                                                marks, pinned ruleset, verify.sh —
+                                                checkable with coreutils + ssh-keygen,
+                                                no tik required
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
                                                 definition + test skeleton; no EDN
                                                 knowledge needed
@@ -2001,6 +2133,7 @@
       "verify"  (cmd-verify parsed)
       "root"    (cmd-root parsed)
       "author"  (cmd-author parsed)
+      "bundle"  (cmd-bundle parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
       "attest"  (cmd-attest parsed)
