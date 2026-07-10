@@ -141,3 +141,38 @@
   (testing "the clean templates stay clean apart from change-me"
     (doseq [[tname answers] author/templates]
       (is (not-any? #(= :error (:level %)) (author/check answers)) tname))))
+
+(deftest rules_are_data_with_org_overrides
+  (testing "built-ins apply by default"
+    (is (= 2 (count author/default-rules))))
+  (testing "an org adds a rule; it fires like a built-in"
+    (let [rules (author/merge-rules
+                 {:rules [{:id :no-temp :on :fact-name :match "^temp-"
+                           :level :warning
+                           :msg "is temporary by its own admission"}]})
+          findings (author/check
+                    {:name "x"
+                     :stages [{:name "a" :after []
+                               :needs [{:kind :fact :path [:temp-note]}]}]}
+                    rules)]
+      (is (some #(re-find #"temporary by its own admission" (:msg %))
+                findings))))
+  (testing "an org disables a built-in by id"
+    (let [rules (author/merge-rules {:disable [:flag-facts]})
+          findings (author/check
+                    {:name "x"
+                     :stages [{:name "a" :after []
+                               :needs [{:kind :fact :path [:json-created]}]}]}
+                    rules)]
+      (is (not-any? #(re-find #"yes/no" (:msg %)) findings))))
+  (testing "an org replaces a built-in wholesale, same id"
+    (let [rules (author/merge-rules
+                 {:rules [{:id :flag-facts :on :fact-name :match "^flagged-"
+                           :level :error :msg "house style forbids this"}]})]
+      (is (= 2 (count rules)))
+      (is (some #(= :error (:level %))
+                (author/check {:name "x"
+                               :stages [{:name "a" :after []
+                                         :needs [{:kind :fact
+                                                  :path [:flagged-item]}]}]}
+                              rules))))))

@@ -189,3 +189,21 @@
         (is (re-find #"1 fact\(s\) derived" (:out r)))))
     (testing "re-probing an unchanged world asserts nothing"
       (is (re-find #"0 fact\(s\) derived" (:out (tik-at top nil "probe")))))))
+
+(deftest org_authoring_rules_feed_check_and_prompt_alike
+  (let [top (tmpdir)]
+    (tik-at top nil "init" "--hidden")
+    (spit (io/file top ".tik" "authoring-rules.edn")
+          (pr-str {:rules [{:id :metio-ban-foo :on :stage-name
+                            :match "^foo" :level :warning
+                            :msg "violates metio house style"
+                            :teach "metio house style: never name a stage foo-anything."}]}))
+    (spit (io/file top "answers.edn")
+          (pr-str {:name "x"
+                   :stages [{:name "foo-bar" :after [] :needs []}]}))
+    (testing "check applies the org rule"
+      (is (re-find #"metio house style"
+                   (:out (tik-at top nil "author" "check" "answers.edn")))))
+    (testing "the prompt teaches the very same rule"
+      (is (re-find #"metio house style: never name a stage"
+                   (:out (tik-at top nil "author" "prompt")))))))

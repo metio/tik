@@ -2281,7 +2281,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         (when (empty? by-role)
           (println "no roles on the open board"))))))
 
-(def ^:private author-llm-prompt
+(def ^:private author-llm-prompt-head
   "You are helping design a tik process definition. Interview me about my
 workflow, then output ONLY an EDN map in exactly this shape (no prose,
 no code fences):
@@ -2302,26 +2302,51 @@ Each entry in :needs is one of:
   {:kind :signature :role :reviewer :over [:some :fact]}   ; a role signs a specific fact
   {:kind :file   :prefix \"evidence/\"}                    ; a file must be attached
   {:kind :waited :duration \"PT48H\"}                      ; ISO-8601 time since creation
+")
 
-Rules of the trade (tik author check enforces these):
-- Stages are states of evidence, not tasks; name them for what has
-  become TRUE (submitted, approved, paid) — never in-progress/wip/doing.
-- NEVER name a fact like a checkbox (config-created, yaml-removed,
-  actions-adjusted). Record the thing itself — a reference, an address,
-  a value ({:kind :fact :path [:renovate :config :ref]}) — or demand
-  the evidence file ({:kind :file :prefix \"migration/\"}). Ask: what
-  would an auditor want to SEE?
-- Prefer a :choice over a yes/no fact; prefer facts over flags.
-- Every stage after the first needs at least one :needs entry — a
-  stage with none derives instantly and says nothing.
-- Every decision that matters should be a :signature, and role members
-  must be REAL actor names (never the role's own name, never
-  placeholders).
-- 3 to 6 stages is almost always right; if you need more, the process
-  probably wants splitting.
+(defn- authoring-rules
+  "The active rule set: built-ins merged with the store's
+  authoring-rules.edn ({:disable [ids…] :rules [{…}…]}) when present.
+  The store can live in git, so committing that file IS the org-wide
+  distribution mechanism: everyone's check and everyone's prompt
+  tighten together."
+  []
+  (let [f (io/file (root) "authoring-rules.edn")]
+    (author/merge-rules (when (.exists f) (edn/read-string (slurp f))))))
 
-When I have answered enough, print the EDN. I will save it as
-answers.edn and run: tik author --from answers.edn")
+(defn- author-llm-prompt
+  "Philosophy first, then the ACTIVE rule set — the same data check
+  enforces, so prompt and lint can never teach different laws."
+  [rules]
+  (str author-llm-prompt-head
+       "\nHow to think about a process (this is what separates good"
+       " ones from task lists):\n"
+       "- EVIDENCE, not tasks. A process is a chain of states, each\n"
+       "  defined by what has become TRUE and what proves it. Before\n"
+       "  writing any :needs entry ask: what would an auditor want to\n"
+       "  SEE a year from now?\n"
+       "- Several checkboxes are often ONE piece of evidence. If three\n"
+       "  tasks land in one commit, the commit reference is the fact —\n"
+       "  not three booleans about it.\n"
+       "- Never restate what a system of record already proves. If\n"
+       "  git, a registry or a dashboard shows it, the fact REFERENCES\n"
+       "  it (a path@commit, a URL, an id).\n"
+       "- Accountability is a signature, not a checkbox: whoever\n"
+       "  stands behind a judgment signs it.\n"
+       "- Prefer a :choice over a yes/no fact; prefer facts over flags.\n"
+       "\nRules (tik author check enforces exactly these):\n"
+       (str/join "\n"
+                 (for [{:keys [teach msg level]} rules]
+                   (str "- " (or teach msg)
+                        (when (= :error level) " (hard error)"))))
+       "\n- Every stage after the first needs at least one :needs entry"
+       " —\n  a stage with none derives instantly and says nothing.\n"
+       "- Role members must be REAL actor names (never the role's own\n"
+       "  name, never placeholders).\n"
+       "- 3 to 6 stages is almost always right; if you need more, the\n"
+       "  process probably wants splitting.\n"
+       "\nWhen I have answered enough, print the EDN. I will save it as\n"
+       "answers.edn and run: tik author --from answers.edn"))
 
 (defn- author-write! [^File f content force?]
   (when (and (.exists f) (not force?))
@@ -2344,13 +2369,14 @@ answers.edn and run: tik author --from answers.edn")
   `author prompt` prints the LLM recipe that produces such a file."
   [{:keys [pos opts]}]
   (when (= "prompt" (first pos))
-    (println author-llm-prompt)
+    (println (author-llm-prompt (authoring-rules)))
     (System/exit 0))
   (when (= "check" (first pos))
     (let [f (resolve-file (or (second pos)
                               (die "usage: tik author check <answers.edn>")))
           _ (when-not (.exists f) (die (str "no such file: " (second pos))))
-          findings (author/check (edn/read-string (slurp f)))]
+          findings (author/check (edn/read-string (slurp f))
+                                 (authoring-rules))]
       (doseq [{:keys [level msg]} findings]
         (println (str "[" (name level) "] " msg)))
       (if (empty? findings)
@@ -2370,7 +2396,7 @@ answers.edn and run: tik author --from answers.edn")
                   answers)
         _ (when (str/blank? (:name answers))
             (die "the process needs a name — run tik author again"))
-        answer-findings (author/check answers)
+        answer-findings (author/check answers (authoring-rules))
         _ (doseq [{:keys [level msg]} answer-findings]
             (binding [*out* *err*]
               (println (str "[" (name level) "] " msg))))

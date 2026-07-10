@@ -50,60 +50,88 @@
               [:needs {:optional true} [:vector Need]]]]]
    [:roles {:optional true} [:map-of :string [:vector :string]]]])
 
-(def ^:private flag-word
-  "Fact-name endings that read as yes/no checkboxes. A flag says an
-  activity happened; a fact records the thing itself, which is what
-  guards, audits and explain can actually use."
-  #"(?:created|removed|deleted|added|adjusted|updated|migrated|done|completed?|enabled|disabled|configured|installed|merged|fixed)$|^(?:is|has|was|uses)-")
+(def default-rules
+  "The naming rules as DATA — one source of truth that `check` applies
+  and `prompt` teaches. Each rule: :id (disable handle), :on
+  (:fact-name | :stage-name), :match (regex source), :level, :msg
+  (shown on findings), :teach (shown in the LLM prompt). Org rules
+  from the store's authoring-rules.edn merge over these."
+  [{:id :flag-facts
+    :on :fact-name
+    :match "(?:created|removed|deleted|added|adjusted|updated|migrated|done|completed?|enabled|disabled|configured|installed|merged|fixed)$|^(?:is|has|was|uses)-"
+    :level :warning
+    :msg "reads like a yes/no flag — record the thing itself instead (a reference, an address, a value) or demand the evidence with {:kind :file}; ask: what would an auditor want to SEE?"
+    :teach "NEVER name a fact like a checkbox (config-created, yaml-removed, uses-x). Record the thing itself — a reference, an address, a value — or demand the evidence file. Ask: what would an auditor want to SEE?"}
+   {:id :activity-stages
+    :on :stage-name
+    :match "^(?:in-progress|wip|doing|working|started|ongoing)$"
+    :level :warning
+    :msg "is named for activity, not evidence — name stages for what has become TRUE (configured, approved, verified)"
+    :teach "Stages are states of evidence, not tasks; name them for what has become TRUE (submitted, approved, paid) — never in-progress/wip/doing."}])
+
+(defn merge-rules
+  "default-rules with the org's file applied: {:disable [ids…]
+  :rules [more…]}. Disabling unknown ids is harmless; org rules with
+  a known id REPLACE the built-in of that id."
+  [org]
+  (let [disabled (set (:disable org))
+        override (into {} (map (juxt :id identity)) (:rules org))]
+    (vec (concat (for [r default-rules
+                       :when (not (disabled (:id r)))]
+                   (get override (:id r) r))
+                 (remove (comp (set (map :id default-rules)) :id)
+                         (:rules org))))))
+
+(defn- apply-rule [{:keys [on match level msg]} answers]
+  (let [re (re-pattern match)]
+    (case on
+      :fact-name
+      (for [{:keys [name needs]} (:stages answers)
+            {:keys [kind path]} (or needs [])
+            :when (and (= :fact kind)
+                       (re-find re (clojure.core/name (last path))))]
+        {:level level
+         :msg (str "stage '" name "': fact " path " " msg)})
+      :stage-name
+      (for [{:keys [name]} (:stages answers)
+            :when (re-find re name)]
+        {:level level :msg (str "stage '" name "' " msg)})
+      [])))
 
 (defn check
   "Findings for an answers map: schema errors first (level :error),
-  then the smells experience keeps finding in machine- and
-  human-drafted processes alike (level :warning). Empty = clean."
-  [answers]
-  (if-not (m/validate Answers answers)
-    [{:level :error
-      :msg (str "not a valid answers map: "
-                (pr-str (me/humanize (m/explain Answers answers))))}]
-    (let [stage-names (set (map :name (:stages answers)))]
-      (vec
-       (concat
-        (for [{:keys [name after]} (:stages answers)
-              missing (remove stage-names (or after []))]
-          {:level :error
-           :msg (str "stage '" name "' comes after unknown stage '"
-                     missing "'")})
-        (for [{:keys [name needs]} (:stages answers)
-              {:keys [kind path]} (or needs [])
-              :when (and (= :fact kind)
-                         (re-find flag-word (clojure.core/name (last path))))]
-          {:level :warning
-           :msg (str "stage '" name "': fact " path " reads like a yes/no"
-                     " flag — record the thing itself instead (a"
-                     " reference, an address, a value) or demand the"
-                     " evidence with {:kind :file}; ask: what would an"
-                     " auditor want to SEE?")})
-        (for [{:keys [name]} (:stages answers)
-              :when (re-matches #"(?:in-progress|wip|doing|working|started|ongoing)"
-                                name)]
-          {:level :warning
-           :msg (str "stage '" name "' is named for activity, not"
-                     " evidence — name stages for what has become TRUE"
-                     " (configured, approved, verified)")})
-        (for [{:keys [name after needs]} (:stages answers)
-              :when (and (seq after) (empty? needs))]
-          {:level :warning
-           :msg (str "stage '" name "' has no needs — it derives the"
-                     " instant its prerequisites do and adds no"
-                     " information; give it a requirement or remove it")})
-        (for [[role members] (:roles answers)
-              :when (or (some #{role "change-me"} members)
-                        (empty? members))]
-          {:level :warning
-           :msg (str "role '" role "' has placeholder members "
-                     (pr-str members)
-                     " — put real actor names in, or signatures can"
-                     " never be satisfied")}))))))
+  then structural smells, then every naming rule in `rules` (defaults
+  to default-rules; pass (merge-rules org) to apply an org's file).
+  Empty = clean."
+  ([answers] (check answers default-rules))
+  ([answers rules]
+   (if-not (m/validate Answers answers)
+     [{:level :error
+       :msg (str "not a valid answers map: "
+                 (pr-str (me/humanize (m/explain Answers answers))))}]
+     (let [stage-names (set (map :name (:stages answers)))]
+       (vec
+        (concat
+         (for [{:keys [name after]} (:stages answers)
+               missing (remove stage-names (or after []))]
+           {:level :error
+            :msg (str "stage '" name "' comes after unknown stage '"
+                      missing "'")})
+         (for [{:keys [name after needs]} (:stages answers)
+               :when (and (seq after) (empty? needs))]
+           {:level :warning
+            :msg (str "stage '" name "' has no needs — it derives the"
+                      " instant its prerequisites do and adds no"
+                      " information; give it a requirement or remove it")})
+         (for [[role members] (:roles answers)
+               :when (or (some #{role "change-me"} members)
+                         (empty? members))]
+           {:level :warning
+            :msg (str "role '" role "' has placeholder members "
+                      (pr-str members)
+                      " — put real actor names in, or signatures can"
+                      " never be satisfied")})
+         (mapcat #(apply-rule % answers) rules)))))))
 
 ;; ---------------------------------------------------------------- pure
 
