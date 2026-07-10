@@ -310,6 +310,89 @@
             [])
           explicit)))
 
+(declare link-facts render-link)
+
+(defn- cmd-rollout
+  "rollout <process> [--parent <id>] [--parent-title T]
+  One ticket per git repository under the store holder, each carrying
+  its repo=<name> fact, all wired as link.<repo> facts on a parent —
+  a checklist whose checkmarks DERIVE from each child's evidence.
+  Idempotent: re-runs create only uncovered repos and missing links,
+  and report coverage. The parent's own completion stays a human
+  signature; guards never query across tickets (ADR 0004 scope)."
+  [{:keys [pos opts]}]
+  (let [proc-name (or (first pos)
+                      (die "usage: tik rollout <process> [--parent <id>] [--parent-title T]"))
+        proc (load-process proc-name)
+        holder (store-holder)
+        repos (sort (for [^File d (.listFiles holder)
+                          :when (and (.isDirectory d)
+                                     (not (str/starts-with? (.getName d) "."))
+                                     (.exists (io/file d ".git")))]
+                      (.getName d)))
+        _ (when (empty? repos)
+            (die (str "no git repositories directly under " holder)))
+        s (the-store)
+        t (now)
+        all (vec (for [id (store/ticket-ids s)]
+                   (assoc (ticket-ctx s id) :id id)))
+        child-of (into {}
+                       (for [{:keys [id state]} all
+                             :when (= (keyword proc-name) (:process state))
+                             :let [r (red/fact-value state [:repo])]
+                             :when r]
+                         [(name r) id]))
+        parent-title (or (:parent-title opts) (str proc-name " rollout"))
+        parent-id
+        (or (some-> (:parent opts) (->> (resolve-id s)))
+            (some (fn [{:keys [id state events process roles]}]
+                    (when (and (= parent-title (:title state))
+                               (not (next-lens/settled? process events t roles)))
+                      id))
+                  all)
+            (let [track (load-process "track")
+                  e (event/create-ticket
+                     {:ticket (random-uuid) :actor (actor opts) :at (now)
+                      :title parent-title :process :track
+                      :version (:process/version track)
+                      :process-hash (archive-process! track)})]
+              (append!* s e opts)
+              (println (str "parent " (subs (str (:event/ticket e)) 0 8)
+                            " \"" parent-title "\""))
+              (:event/ticket e)))
+        created (atom 0)]
+    (doseq [repo repos]
+      (let [child (or (child-of repo)
+                      (let [e (event/create-ticket
+                               {:ticket (random-uuid) :actor (actor opts)
+                                :at (now) :title repo
+                                :process (keyword proc-name)
+                                :version (:process/version proc)
+                                :process-hash (archive-process! proc)})]
+                        (append!* s e opts)
+                        (append!* s (event/assert-fact
+                                     {:ticket (:event/ticket e)
+                                      :actor (actor opts) :at (now)
+                                      :parents #{(:event/id e)}
+                                      :path [:repo] :value (keyword repo)})
+                                  opts)
+                        (swap! created inc)
+                        (:event/ticket e)))
+            {:keys [state]} (ticket-ctx s parent-id)]
+        (when-not (= (str child) (red/fact-value state [:link (keyword repo)]))
+          (append!* s (event/assert-fact
+                       {:ticket parent-id :actor (actor opts) :at (now)
+                        :parents (dag/heads (store/events s parent-id))
+                        :path [:link (keyword repo)] :value (str child)})
+                    opts))))
+    (println (str @created " ticket(s) created, "
+                  (- (count repos) @created) " already covered, "
+                  (count repos) " repo(s) total — the living checklist:"))
+    (let [{:keys [state]} (ticket-ctx s parent-id)]
+      (doseq [l (sort-by :rel (link-facts state))]
+        (println "  " (render-link s t l))))
+    (println (str "watch it: tik status " (subs (str parent-id) 0 8)))))
+
 (defn- cmd-init
   "init [--hidden]: mark this directory as a store. --hidden puts
   everything inside .tik/ (one dot-entry beside your repos — the
@@ -2561,6 +2644,11 @@ answers.edn and run: tik author --from answers.edn")
                                                 \"show\" \"x\"]}; :command pipes the JSON to
                                                 ANY program; email renders explain and
                                                 its tik> replies close the loop
+  tik rollout <process> [--parent <id>]         one ticket per git repo under the store
+              [--parent-title T]                (context-tagged), wired as link facts on
+                                                a parent: a checklist whose checkmarks
+                                                derive from each child's evidence.
+                                                Idempotent; re-runs report coverage
   tik next [--actor A] [--role :r] [--all]      the inbox: what unlocks the most work,
                                                 quiet tickets rising; --actor = what I
                                                 can do, --role = what a role is being
@@ -2619,6 +2707,7 @@ answers.edn and run: tik author --from answers.edn")
         parsed (parse-args (vec more))]
     (case cmd
       "init"    (cmd-init parsed)
+      "rollout" (cmd-rollout parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)
