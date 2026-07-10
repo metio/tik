@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T11:29:46.683Z" :event/body {:fact/path [:summary] :fact/value "fuzz layer found and closed 3 kernel-totality holes on its first run"} :event/parents #{"sha256-3fe1d0f51d546b92f107c53cb44a17ec236170bf3141dbc36df92fa13d40f02a"} :event/ticket #uuid "2f70090c-e20d-48ec-82c3-66d07ac32ff8" :event/type :fact/assert}
