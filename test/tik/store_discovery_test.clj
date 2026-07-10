@@ -7,6 +7,7 @@
   directory (bb --config keeps the repo's task while cwd points into
   the scenario) and no TIK_ROOT in the environment."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.java.shell :as sh]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
@@ -87,3 +88,35 @@
     (let [r (tik-at top nil "init" "--hidden")]
       (is (= 1 (:exit r)))
       (is (re-find #"already a store" (:err r))))))
+
+(deftest context_facts_make_the_repo_dimension_automatic
+  (let [top (tmpdir)
+        jaas (io/file top "jaas" "src")
+        chart (io/file top "charts" "stageset")]
+    (.mkdirs jaas)
+    (.mkdirs chart)
+    (.mkdirs (io/file top "jaas" ".git"))
+    (tik-at top nil "init" "--hidden")
+    (testing "the enclosing git repo becomes a signed repo fact, unasked"
+      (let [r (tik-at jaas nil "new" "track" "--title" "renovate for jaas")
+            id (str/trim (:out r))]
+        (is (re-find #"context: repo=:jaas" (:err r)))
+        (is (re-find #"\[:repo\] = :jaas"
+                     (:out (tik-at top nil "status" id))))))
+    (testing "marker files annotate everything beneath them"
+      (spit (io/file top "charts" ".tik-facts.edn")
+            "{:team :platform [:component :kind] :chart}")
+      (let [r (tik-at chart nil "new" "track" "--title" "bump appVersion")
+            id (str/trim (:out r))
+            status (:out (tik-at top nil "status" id))]
+        (is (re-find #"\[:team\] = :platform" status))
+        (is (re-find #"\[:component :kind\] = :chart" status))))
+    (testing "an explicit marker beats the automatic repo"
+      (spit (io/file top "jaas" ".tik-facts.edn") "{:repo :jaas-monorepo}")
+      (let [r (tik-at jaas nil "new" "track" "--title" "second jaas idea")
+            id (str/trim (:out r))]
+        (is (re-find #"\[:repo\] = :jaas-monorepo"
+                     (:out (tik-at top nil "status" id))))))
+    (testing "the portfolio view slices by the derived dimension"
+      (is (re-find #"renovate for jaas"
+                   (:out (tik-at top nil "query" "fact" "repo" ":jaas")))))))

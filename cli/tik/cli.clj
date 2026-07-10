@@ -269,6 +269,47 @@
      {:id id :title (:title state)
       :text (dupe/haystack {:title (:title state) :facts (:facts state)})})))
 
+(defn- store-holder
+  "The directory the store sits IN: the parent of a hidden .tik root,
+  the root itself otherwise. Context collection walks cwd up to here."
+  ^File []
+  (let [r (.getCanonicalFile (io/file (root)))]
+    (if (= ".tik" (.getName r)) (.getParentFile r) r)))
+
+(defn- context-facts
+  "Facts a ticket created HERE inherits, as [path value] pairs:
+  - repo=<name> from the nearest enclosing git repo strictly below
+    the store holder — the cross-repo dimension nobody has to
+    remember to type;
+  - .tik-facts.edn markers from the holder down to cwd, deeper files
+    winning per key; keys are keywords (single-segment paths) or
+    vectors (explicit paths); explicit keys beat the automatic repo.
+  Pure context collection at WRITE time: everything lands as ordinary
+  signed events, the kernel never reads a marker file."
+  []
+  (let [holder (store-holder)
+        cwd (.getCanonicalFile (io/file "."))
+        below? (str/starts-with? (str cwd) (str holder "/"))
+        chain (when below?
+                (->> (iterate #(.getParentFile ^File %) cwd)
+                     (take-while #(and % (not= (str %) (str holder))))
+                     reverse))                       ; holder-side first
+        repo (some #(when (.exists (io/file % ".git"))
+                      (keyword (.getName ^File %)))
+                   (reverse chain))                  ; nearest git wins
+        markers (apply merge
+                       (for [^File d chain
+                             :let [f (io/file d ".tik-facts.edn")]
+                             :when (.isFile f)]
+                         (edn/read-string (slurp f))))
+        explicit (into {}
+                       (for [[k v] markers]
+                         [(if (vector? k) k [k]) v]))]
+    (into (if (and repo (not (contains? explicit [:repo])))
+            [[[:repo] repo]]
+            [])
+          explicit)))
+
 (defn- cmd-init
   "init [--hidden]: mark this directory as a store. --hidden puts
   everything inside .tik/ (one dot-entry beside your repos — the
@@ -302,6 +343,15 @@
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]
     (append!* s e opts)
+    (doseq [[path value] (context-facts)]
+      (append!* s (event/assert-fact
+                   {:ticket id :actor (actor opts) :at (now)
+                    :parents (dag/heads (store/events s id))
+                    :path path :value value})
+                opts)
+      (binding [*out* *err*]
+        (println (str "context: " (str/join "." (map name path)) "="
+                      (pr-str value)))))
     (println (str id))
     (doseq [{existing :id :keys [title score]} similar]
       (binding [*out* *err*]
@@ -2425,7 +2475,12 @@ answers.edn and run: tik author --from answers.edn")
                                                 Commands find the store git-style:
                                                 TIK_ROOT, else the nearest ancestor
                                                 with .tik/ or tickets/, else here
-  tik new <process> [--title T] [--actor A]     mint a ticket (pins process hash)
+  tik new <process> [--title T] [--actor A]     mint a ticket (pins process hash);
+                                                created beneath a store it inherits
+                                                context as signed facts: repo=<name>
+                                                from the enclosing git repo, plus any
+                                                .tik-facts.edn maps on the way down
+                                                (nearest wins; explicit beats auto)
   tik set <id> k=v [k=v ...] [--actor A]        assert facts (dotted keys nest)
   tik retract <id> <k> [--reason R]             withdraw a fact (no replacement)
   tik dispute <id> <k> [--reason R]             reject a fact; stage regresses by derivation
