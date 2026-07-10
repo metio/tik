@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:00:13.787Z" :event/body {:fact/path [:summary] :fact/value "every role gets its own honest queue from one fold"} :event/parents #{"sha256-f00110c2a92138c6ea29464b2a3b6f6ac6cff191e30324b5101c71e5f58cbe2e"} :event/ticket #uuid "51203740-dcac-4cd3-ba8f-5a57c64d6665" :event/type :fact/assert}
