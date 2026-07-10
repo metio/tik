@@ -148,7 +148,7 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   DAG, mandatory per ADR 0004) are for integrity/causality/sync, never
   ordering. The reducer is total, commutative, idempotent (property-tested).
 
-### The test stack (four independent layers)
+### The test stack (five independent layers)
 
 - Golden byte tests + coreutils checks (`canonical_test.clj`, `verify` L0).
 - The **conformance corpus** (`corpus/`) — event files + expected
@@ -161,6 +161,12 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   `evolve` must agree with it. explain has property-tested soundness and
   completeness laws.
 - **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics.
+- **Fuzzing** (`test/tik/fuzz_test.clj`) — the other layers feed VALID
+  inputs and check the answers; this one feeds garbage and checks the
+  manner of failure. The contract is *fail well*: ex-info or schema
+  rejection, never a raw JVM exception, never a silent pass. Includes
+  an exhaustive single-byte-flip sweep over stored event files.
+  `TIK_FUZZ_N` scales iterations for soak runs.
 
 Each layer has caught at least one real bug the others missed; when
 touching kernel semantics, extend the layer that would have caught your
