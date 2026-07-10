@@ -495,7 +495,7 @@
                 ;; summary on work tickets, statement on hypotheses, plus
                 ;; the parked/verdict context where present
                 :describe (let [fm (guard/fact-map state)]
-                            (or (some fm [[:summary] [:statement]])
+                            (or (some fm [[:description] [:summary] [:statement]])
                                 nil))
                 :haystack (str/lower-case
                            (str (:title state) " "
@@ -1666,19 +1666,52 @@
     (println (str "  bb tik new " pname "                    first real ticket"))
     (when (some #(= :error (:level %)) problems) (System/exit 1))))
 
+(defn- lint-store
+  "Hygiene over every open ticket — the things verify (integrity) and
+  explain (derivation) don't check because they're not wrong, just
+  unkempt: a board line without a description, a blank title, events
+  nobody signed. Derived on read like everything else; findings name
+  the command that fixes them."
+  []
+  (let [s (the-store)
+        t (now)
+        findings
+        (vec
+         (for [id (store/ticket-ids s)
+               :let [{:keys [events state process roles]} (ticket-ctx s id)
+                     short (subs (str id) 0 8)
+                     fm (guard/fact-map state)]
+               :when (not (next-lens/settled? process events t roles))
+               problem
+               [(when (str/blank? (:title state))
+                  (str short " has no title — tik set " short " … happened at create; open a fresh ticket with --title"))
+                (when-not (some fm [[:description] [:summary] [:statement]])
+                  (str short " has no description — tik set " short " description=<one line: what is this ticket about?>"))
+                (when-let [n (seq (filter #(empty? (sign/sidecars (events-dir id) (:event/id %))) events))]
+                  (str short " has " (count n) " unsigned event(s) — tik sign " short " (or export TIK_KEY to sign as you write)"))]
+               :when problem]
+           problem))]
+    (doseq [f findings] (println (str "[warning] " f)))
+    (if (empty? findings)
+      (println "store: clean")
+      (do (println (str (count findings) " finding(s)"))
+          (System/exit 1)))))
+
 (defn- cmd-lint [{:keys [pos]}]
-  (let [proc (edn/read-string (slurp (first pos)))
-        missing-runbooks (for [s (:process/stages proc)
-                               :let [h (:hint s)]
-                               :when (and h (not (.exists (io/file h))))]
-                           {:level :warning
-                            :msg (str "stage " (:stage/id s) " :hint "
-                                      h " does not exist on disk")})
-        problems (concat (process/lint proc) missing-runbooks)]
-    (doseq [{:keys [level msg]} problems]
-      (println (str "[" (name level) "] " msg)))
-    (when (some #(= :error (:level %)) problems) (System/exit 1))
-    (when (empty? problems) (println "clean"))))
+  (if (empty? pos)
+    (lint-store)
+    (let [proc (edn/read-string (slurp (first pos)))
+          missing-runbooks (for [s (:process/stages proc)
+                                 :let [h (:hint s)]
+                                 :when (and h (not (.exists (io/file h))))]
+                             {:level :warning
+                              :msg (str "stage " (:stage/id s) " :hint "
+                                        h " does not exist on disk")})
+          problems (concat (process/lint proc) missing-runbooks)]
+      (doseq [{:keys [level msg]} problems]
+        (println (str "[" (name level) "] " msg)))
+      (when (some #(= :error (:level %)) problems) (System/exit 1))
+      (when (empty? problems) (println "clean")))))
 
 (declare verify-ticket)
 
@@ -1932,7 +1965,9 @@
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
                                                 definition + test skeleton; no EDN
                                                 knowledge needed
-  tik lint <process.edn>                        lint a process definition
+  tik lint [<process.edn>]                      lint a process definition; with no
+                                                argument, lint the STORE — open tickets
+                                                missing descriptions/titles/signatures
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
   tik test <tests.edn>                          run scripted process tests (steps in,
