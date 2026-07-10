@@ -1,0 +1,49 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; The roadmap method (PLAN §16) as a process: a hypothesis is stated
+;; with its kill criterion before any work, runs as a named experiment,
+;; and ends validated OR killed — both sticky terminals, both requiring
+;; evidence, because a killed hypothesis is a result, not a failure.
+;; There is no way to reach a verdict without having stated, in advance
+;; and on the record, what would count as losing.
+{:process/id :hypothesis
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/roles
+ {:maintainer {:members ["seb"]}}
+
+ :process/facts
+ {[:statement]  [:string {:min 12}]
+  [:kill]       [:string {:min 12}]
+  [:experiment] [:string {:min 12}]
+  [:verdict]    [:enum :validated :killed]
+  [:evidence]   [:string {:min 8}]}
+
+ :process/stages
+ [{:stage/id :captured
+   :guards []}
+
+  {:stage/id :stated
+   :after [:captured]
+   :hint "docs/PLAN.md"
+   :guards [[:fact [:statement]]
+            [:fact [:kill]]
+            [:signed-by :maintainer [:statement]]]}
+
+  {:stage/id :running
+   :after [:stated]
+   :guards [[:fact [:experiment]]]}
+
+  {:stage/id :validated
+   :after [:running]
+   :stage/sticky? true
+   :guards [[:fact= [:verdict] :validated]
+            [:fact [:evidence]]]}
+
+  {:stage/id :killed
+   :after [:running]
+   :stage/sticky? true
+   :guards [[:fact= [:verdict] :killed]
+            [:fact [:evidence]]]}]}

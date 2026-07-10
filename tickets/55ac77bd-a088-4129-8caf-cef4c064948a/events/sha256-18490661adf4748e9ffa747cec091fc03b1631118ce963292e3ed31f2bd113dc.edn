@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:51.649Z" :event/body {:fact/path [:statement] :fact/value "A file-backed, derive-on-read ticket CLI is pleasant for a single operator"} :event/parents #{"sha256-fe9a00d770eaf42299f25f8bfbbc9854f71be3209fc5218aa7dab372ee4976cc"} :event/ticket #uuid "55ac77bd-a088-4129-8caf-cef4c064948a" :event/type :fact/assert}

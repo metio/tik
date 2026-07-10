@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:35.170Z" :event/body {:fact/path [:summary] :fact/value "Witness panels and role taxonomy. Trigger: H5 proves single-witness economics first"} :event/parents #{"sha256-0b5b509ca0470d8cdd856383a2c33b94bde7cf9f6e97cb8c0ba49ea5e3c29946"} :event/ticket #uuid "9ec66b1c-da1a-4528-9a32-5f91ef871960" :event/type :fact/assert}

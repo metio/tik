@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:55.962Z" :event/body {:fact/path [:kill] :fact/value "Users still open the raw log to find out what to do — then the lens is decoration"} :event/parents #{"sha256-b0a3ef04deec53ecb839e948ff6acc99e01d47e10e41a32c50b0b18e34e4e391"} :event/ticket #uuid "f446679f-85f2-41eb-a235-1984492023ca" :event/type :fact/assert}

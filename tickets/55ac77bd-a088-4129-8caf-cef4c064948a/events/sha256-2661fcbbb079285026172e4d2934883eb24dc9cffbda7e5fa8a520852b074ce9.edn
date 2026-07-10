@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:52.616Z" :event/body {:fact/path [:experiment] :fact/value "Dogfooding since 2026-07-10: tik development runs in tik (tik-dev process, in-repo store)"} :event/parents #{"sha256-9bfca45b7572f148c823ba5906a74ec3d723aee95d100ed7af13adbde0674970"} :event/ticket #uuid "55ac77bd-a088-4129-8caf-cef4c064948a" :event/type :fact/assert}

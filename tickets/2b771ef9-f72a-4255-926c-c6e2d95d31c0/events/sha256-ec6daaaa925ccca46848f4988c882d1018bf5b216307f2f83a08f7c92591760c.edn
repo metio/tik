@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:00.013Z" :event/body {:fact/path [:kill] :fact/value "Miss either bar — then it is a demo, not a product"} :event/parents #{"sha256-ae7c07013e29f801ad69b59661bd7aa42dcbd316533a559482d23118085ae4c6"} :event/ticket #uuid "2b771ef9-f72a-4255-926c-c6e2d95d31c0" :event/type :fact/assert}

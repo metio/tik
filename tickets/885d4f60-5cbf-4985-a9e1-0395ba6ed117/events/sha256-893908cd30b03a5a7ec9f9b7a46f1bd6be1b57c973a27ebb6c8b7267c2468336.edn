@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:57.242Z" :event/body {:fact/path [:kill] :fact/value "More than 30 minutes to onboard an org first ten actors"} :event/parents #{"sha256-410bf61c4a2f48ec433467627cde0baa8e180dcb8076e9e793d3a8f1a8e762c7"} :event/ticket #uuid "885d4f60-5cbf-4985-a9e1-0395ba6ed117" :event/type :fact/assert}

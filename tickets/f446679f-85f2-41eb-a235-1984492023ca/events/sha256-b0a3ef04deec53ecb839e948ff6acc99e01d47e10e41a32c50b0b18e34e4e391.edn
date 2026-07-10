@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:55.511Z" :event/body {:fact/path [:statement] :fact/value "explain and next reduce time-to-action versus a Jira baseline for a real support workload"} :event/parents #{"sha256-9626e15d9bc6445a12871dd595c6e8937a059919e6fce062bb335a91ae458c03"} :event/ticket #uuid "f446679f-85f2-41eb-a235-1984492023ca" :event/type :fact/assert}

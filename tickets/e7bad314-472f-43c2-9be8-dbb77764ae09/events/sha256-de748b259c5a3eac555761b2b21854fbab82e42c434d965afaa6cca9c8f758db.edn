@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:50:54.111Z" :event/body {:fact/path [:kill] :fact/value "Merge ever requires human conflict resolution at the FILE level — then the store design failed"} :event/parents #{"sha256-59986af40da17cc03d8208b21c86a6611149e5016cfdb10af221e0a91638684d"} :event/ticket #uuid "e7bad314-472f-43c2-9be8-dbb77764ae09" :event/type :fact/assert}

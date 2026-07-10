@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:02.082Z" :event/body {:fact/path [:statement] :fact/value "A real organization pays for witnessed.dev attestations or support before Phase 3 ships"} :event/parents #{"sha256-1f79e967a35a172c1f908c225ba478f81d0fd6128b65e0b29d6b9035aa984568"} :event/ticket #uuid "0d477972-5709-42e0-a0f9-dbed0617f093" :event/type :fact/assert}

@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:01.274Z" :event/body {:fact/path [:kill] :fact/value "Boundary violations require prompt-side enforcement — then the lens design failed"} :event/parents #{"sha256-30202a615a40b72bf399e2b850d22d8132ac4cc4d778371c4ffedef0b69ca467"} :event/ticket #uuid "f3047584-2155-4b09-adfc-6be74c039d45" :event/type :fact/assert}

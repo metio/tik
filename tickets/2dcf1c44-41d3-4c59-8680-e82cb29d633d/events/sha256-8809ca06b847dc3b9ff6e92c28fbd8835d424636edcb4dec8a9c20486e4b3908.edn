@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:05.096Z" :event/body {:fact/path [:kill] :fact/value "They ask but what do I DO — then the product surface failed at its one job"} :event/parents #{"sha256-6ec98d572eca871486f3d74ae3cbe52e17d135409ffadef385aaaafd4373d09d"} :event/ticket #uuid "2dcf1c44-41d3-4c59-8680-e82cb29d633d" :event/type :fact/assert}

@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:51:03.866Z" :event/body {:fact/path [:kill] :fact/value "Onboarding requires reading the plan — then the porcelain is a research demo"} :event/parents #{"sha256-1bde8184c749b91aee6ec9b90c20e62ea8cc4384da595c1e84436f14e06408cc"} :event/ticket #uuid "4793fa04-40d0-45cb-b880-c04315e10b5b" :event/type :fact/assert}

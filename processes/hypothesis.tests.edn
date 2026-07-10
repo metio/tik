@@ -1,0 +1,47 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "hypothesis.edn"
+ :test/cases
+ [{:case/name "no verdict is reachable without a stated kill criterion"
+   :case/steps [[:actor "seb"]
+                [:set [:statement] "everything will be fine somehow"]
+                [:set [:experiment] "vibes and enthusiasm"]
+                [:set [:verdict] :validated]
+                [:set [:evidence] "trust me"]]
+   :case/expect {:excludes #{:stated :running :validated}}}
+
+  {:case/name "statement plus kill, maintainer-signed, states it"
+   :case/steps [[:actor "seb"]
+                [:set [:statement] "the file-backed CLI is pleasant daily"]
+                [:set [:kill] "abandoned within a month of daily driving"]]
+   :case/expect {:includes #{:stated}
+                 :excludes #{:running}}}
+
+  {:case/name "an experiment sets it running"
+   :case/steps [[:actor "seb"]
+                [:set [:statement] "the file-backed CLI is pleasant daily"]
+                [:set [:kill] "abandoned within a month of daily driving"]
+                [:set [:experiment] "run tik's own development in tik"]]
+   :case/expect {:includes #{:running}
+                 :current #{:running}}}
+
+  {:case/name "a verdict with evidence terminates — killed is a result"
+   :case/steps [[:actor "seb"]
+                [:set [:statement] "the file-backed CLI is pleasant daily"]
+                [:set [:kill] "abandoned within a month of daily driving"]
+                [:set [:experiment] "run tik's own development in tik"]
+                [:set [:verdict] :killed]
+                [:set [:evidence] "stopped using it after nine days"]]
+   :case/expect {:includes #{:killed}
+                 :excludes #{:validated}
+                 :current #{:killed}}}
+
+  {:case/name "verdicts are sticky across a later evidence dispute"
+   :case/steps [[:actor "seb"]
+                [:set [:statement] "the file-backed CLI is pleasant daily"]
+                [:set [:kill] "abandoned within a month of daily driving"]
+                [:set [:experiment] "run tik's own development in tik"]
+                [:set [:verdict] :validated]
+                [:set [:evidence] "34 days of daily driving, 12 tickets"]
+                [:dispute [:evidence] "only 30 of those days count"]]
+   :case/expect {:includes #{:validated}}}]}
