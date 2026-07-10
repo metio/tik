@@ -750,8 +750,7 @@
         s (the-store)
         [state t roles]
         (if-let [tid (second pos)]
-          (let [{:keys [events state process roles]}
-                (ticket-ctx s (resolve-id s tid))]
+          (let [{:keys [state roles]} (ticket-ctx s (resolve-id s tid))]
             [state (now) roles])
           [red/empty-state (now) (:process/roles proc {})])
         {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
@@ -952,6 +951,188 @@
       (do (spit out html) (println "wrote" out))
       (print html))))
 
+(defn- parse-rfc822
+  "Minimal RFC822: headers to the first blank line, body after.
+  Header folding (continuation lines) honored; only From and Subject
+  are consumed."
+  [text]
+  (let [lines (str/split-lines text)
+        [head body] (split-with #(not (str/blank? %)) lines)
+        headers (loop [hs [] [l & more] head]
+                  (cond
+                    (nil? l) hs
+                    (and (seq hs) (re-matches #"^[ \t].*" l))
+                    (recur (conj (pop hs) (str (peek hs) " " (str/trim l))) more)
+                    :else (recur (conj hs l) more)))
+        header (fn [k]
+                 (some #(when-let [[_ v] (re-matches
+                                          (re-pattern (str "(?i)^" k ":\\s*(.*)$")) %)]
+                          (str/trim v))
+                       headers))]
+    {:from (some->> (header "From")
+                    (re-find #"[\w.+-]+@[\w.-]+")
+                    str/lower-case)
+     :subject (or (header "Subject") "")
+     :body (str/trim (str/join "\n" (rest body)))}))
+
+(defn- cmd-bridge
+  "bridge email [--config bridge.edn] < message
+  One RFC822 message on stdin — MTA-agnostic: procmail, fetchmail,
+  maildrop, or a paste all work. The bridge is an ACTOR (ADR 0019
+  inbound): the sender maps to an actor via the config's :from->actor
+  (unknown senders use :default-actor or are rejected), a subject
+  containing [tik <id-prefix>] comments that ticket, anything else
+  opens a new ticket under :process with the body as first comment.
+  Set TIK_KEY so the bridge's claims are signed like anyone else's."
+  [{:keys [pos opts]}]
+  (when-not (= "email" (first pos))
+    (die "usage: tik bridge email [--config bridge.edn] < message"))
+  (let [cfg-file (or (:config opts) (str (io/file (root) "bridge.edn")))
+        cfg (if (.exists (io/file cfg-file))
+              (edn/read-string (slurp cfg-file))
+              {})
+        {:keys [from subject body]} (parse-rfc822 (slurp *in*))
+        actor-name (or (get-in cfg [:from->actor from])
+                       (:default-actor cfg)
+                       (die (str "unknown sender " from
+                                 " and no :default-actor in " cfg-file)))
+        opts (assoc opts :actor actor-name)
+        s (the-store)
+        ticket-ref (second (re-find #"\[tik ([0-9a-f-]+)\]" subject))]
+    (if ticket-ref
+      (let [id (resolve-id s ticket-ref)
+            at (now)
+            text (str subject "\n\n" body)
+            bytes (.getBytes ^String text "UTF-8")
+            hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
+            dest (io/file (root) "tickets" (str id) "blobs" hash)]
+        (io/make-parents dest)
+        (spit dest text)
+        (append!* s (event/attach-artifact
+                     {:ticket id :actor actor-name :at at
+                      :parents (dag/heads (store/events s id))
+                      :path (str "comment/" at) :hash hash})
+                  opts)
+        (println "comment ->" (subs (str id) 0 8) "as" actor-name))
+      (let [proc-name (name (or (:process cfg) (die (str "no :process in " cfg-file))))
+            proc (load-process proc-name)
+            id (random-uuid)
+            e (event/create-ticket {:ticket id :actor actor-name :at (now)
+                                    :title subject
+                                    :process (keyword proc-name)
+                                    :version (:process/version proc)
+                                    :process-hash (archive-process! proc)})]
+        (append!* s e opts)
+        (when-not (str/blank? body)
+          (let [at (now)
+                bytes (.getBytes ^String body "UTF-8")
+                hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
+                dest (io/file (root) "tickets" (str id) "blobs" hash)]
+            (io/make-parents dest)
+            (spit dest body)
+            (append!* s (event/attach-artifact
+                         {:ticket id :actor actor-name :at at
+                          :parents (dag/heads (store/events s id))
+                          :path (str "comment/" at) :hash hash})
+                      opts)))
+        (println (str id))))))
+
+;; ---------------------------------------------------------------- effects
+;; ADR 0019: effects observe derivation. Delivery lives entirely outside
+;; the log; the sent-ledger is a DISPOSABLE cache (ADR 0013) — deleting
+;; it can only cause a resend, never wrong truth.
+
+(defn- effect-payload [adapter {:keys [ticket title stage]}]
+  (let [text (str "tik: \"" title "\" reached " stage
+                  " (" (subs (str ticket) 0 8) ")")]
+    (case adapter
+      :slack {"text" text}
+      :discord {"content" text}
+      :matrix {"msgtype" "m.text" "body" text}
+      :alertmanager [{"labels" {"alertname" "tik_stage_reached"
+                                "ticket" (str ticket)
+                                "stage" (str stage)}
+                      "annotations" {"summary" text}}]
+      :pagerduty {"payload" {"summary" text
+                             "source" "tik"
+                             "severity" "info"}
+                  "event_action" "trigger"}
+      {"ticket" (str ticket) "title" title
+       "stage" (str stage) "text" text})))
+
+(defn- json-str
+  "Tiny JSON emitter for the flat payloads above — no dependency."
+  [x]
+  (cond
+    (map? x) (str "{" (str/join "," (for [[k v] x]
+                                      (str (json-str (str k)) ":" (json-str v))))
+                  "}")
+    (sequential? x) (str "[" (str/join "," (map json-str x)) "]")
+    (string? x) (str "\"" (-> x (str/replace "\\" "\\\\")
+                               (str/replace "\"" "\\\"")
+                               (str/replace "\n" "\\n"))
+                     "\"")
+    :else (str x)))
+
+(defn- post!
+  "POST JSON; babashka's built-in http client, resolved lazily so the
+  namespace loads on the JVM too."
+  [url body]
+  (let [post (requiring-resolve 'babashka.http-client/post)]
+    (post url {:headers {"Content-Type" "application/json"}
+               :body body
+               :throw false})))
+
+(defn- cmd-effects
+  "effects run [--config effects.edn] [--dry-run]
+  Fire configured sinks for every newly derived stage transition.
+  Config: {:sinks [{:type :slack :url \"…\"} …] :stages #{:landed}}
+  (:stages optional — default every transition). Idempotent via
+  content-hashed effect keys in .effects-sent; at-least-once on ledger
+  loss, exactly what ADR 0019 promises."
+  [{:keys [pos opts]}]
+  (when-not (= "run" (first pos))
+    (die "usage: tik effects run [--config effects.edn] [--dry-run]"))
+  (let [cfg-file (or (:config opts) (str (io/file (root) "effects.edn")))
+        _ (when-not (.exists (io/file cfg-file))
+            (die "no effects config:" cfg-file))
+        {:keys [sinks stages]} (edn/read-string (slurp cfg-file))
+        ledger-file (io/file (root) ".effects-sent")
+        sent (if (.exists ledger-file)
+               (set (str/split-lines (slurp ledger-file)))
+               #{})
+        s (the-store)
+        fired (atom 0)]
+    (doseq [id (store/ticket-ids s)
+            :let [{:keys [events state process roles]} (ticket-ctx s id)
+                  timeline (:timeline (stage/evolve process events roles))
+                  transitions
+                  (distinct
+                   (for [[prev entry] (map vector (cons nil timeline) timeline)
+                         stage-id (sort-by str (remove (:reached prev #{})
+                                                       (:reached entry)))
+                         :when (or (nil? stages) (contains? stages stage-id))]
+                     {:ticket id :title (:title state) :stage stage-id}))]
+            tr transitions
+            sink sinks
+            :let [key (canonical/sha256-hex
+                       (pr-str [(:ticket tr) (:stage tr)
+                                (:type sink) (:url sink)]))]
+            :when (not (contains? sent key))]
+      (let [payload (json-str (effect-payload (:type sink) tr))]
+        (if (:dry-run opts)
+          (println "would send" (name (:type sink)) "<-"
+                   (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
+          (do (post! (:url sink) payload)
+              (spit ledger-file (str key "\n") :append true)
+              (swap! fired inc)
+              (println "sent" (name (:type sink)) "<-"
+                       (str (subs (str (:ticket tr)) 0 8) " "
+                            (:stage tr)))))))
+    (when-not (:dry-run opts)
+      (println @fired "effect(s) fired — delivery state is disposable,"
+               "truth untouched"))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         missing-runbooks (for [s (:process/stages proc)
@@ -1129,6 +1310,11 @@
   tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
   tik board [<file.html>]                       the whole board as ONE dependency-free
                                                 HTML file — mail it, archive it
+  tik bridge email [--config F] < msg           mail in: sender->actor per config;
+                                                [tik <id>] comments, else new ticket
+  tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
+                                                slack|discord|matrix|alertmanager|
+                                                pagerduty|webhook sinks (ADR 0019)
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
   tik verify [<id>]                             the verify ladder (L0/L1/L2); with no
@@ -1169,6 +1355,8 @@
       "debug"   (cmd-debug parsed)
       "graph"   (cmd-graph parsed)
       "board"   (cmd-board parsed)
+      "bridge"  (cmd-bridge parsed)
+      "effects" (cmd-effects parsed)
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
