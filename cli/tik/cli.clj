@@ -1451,15 +1451,47 @@
                      "\"")
     :else (str x)))
 
+(defn- resolve-header-value
+  "A header value is a string, {:env \"NAME\"} (process environment),
+  or {:command [\"pass\" \"show\" \"x\"]} (first line of a local
+  secret-manager's stdout — pass, passage, gopass, op read, anything
+  that prints the secret). Resolved at send time so effects.edn can be
+  committed with no secret in it. Failures are loud and name the
+  source; a silent blank header would just be a mysterious 401 later."
+  [k v]
+  (cond
+    (and (map? v) (:env v))
+    (or (System/getenv (:env v))
+        (throw (ex-info (str "header " k " wants environment variable "
+                             (:env v) ", which is not set")
+                        {:header k :env (:env v)})))
+
+    (and (map? v) (:command v))
+    (let [r (apply sh/sh (:command v))]
+      (if (zero? (:exit r))
+        (str/trim-newline (first (str/split-lines (:out r))))
+        (throw (ex-info (str "header " k " lookup command "
+                             (pr-str (:command v)) " failed: "
+                             (str/trim (:err r)))
+                        {:header k :command (:command v)
+                         :exit (:exit r)}))))
+
+    :else v))
+
+(defn- resolve-headers [headers]
+  (into {} (for [[k v] headers] [k (resolve-header-value k v)])))
+
 (defn- post!
   "POST JSON; babashka's built-in http client, resolved lazily so the
   namespace loads on the JVM too. Extra headers come from the sink's
   :headers — enough for every token-authenticated service (opsgenie's
   GenieKey, gotify's X-Gotify-Key, bearer tokens) without tik ever
-  storing credentials anywhere but the operator's own config."
+  storing credentials anywhere but the operator's own config or, via
+  {:env \"NAME\"} values, the process environment."
   [url body headers]
   (let [post (requiring-resolve 'babashka.http-client/post)]
-    (post url {:headers (merge {"Content-Type" "application/json"} headers)
+    (post url {:headers (merge {"Content-Type" "application/json"}
+                               (resolve-headers headers))
                :body body
                :throw false})))
 
@@ -2250,7 +2282,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 (ADR 0019). Per-sink :template puts the
                                                 message in your words ({{title}}
                                                 {{stage}} {{short}} {{ticket}}); :headers
-                                                carries auth; :command pipes the JSON to
+                                                carries auth — values are literal,
+                                                {:env \"NAME\"} or {:command [\"pass\"
+                                                \"show\" \"x\"]}; :command pipes the JSON to
                                                 ANY program; email renders explain and
                                                 its tik> replies close the loop
   tik next [--actor A] [--role :r] [--all]      the inbox: what unlocks the most work,

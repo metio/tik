@@ -83,3 +83,27 @@
     (is (str/includes?
          (get (payload {:type :slack :template "{{ticket}}"} tr) "text")
          "018f2f6e-7c1a-7000-8000-00000000beef"))))
+
+(deftest header_values_can_come_from_the_environment
+  (let [resolve-headers #'cli/resolve-headers]
+    (testing "{:env NAME} pulls from the process environment at send time"
+      (is (= {"Authorization" (System/getenv "PATH")}
+             (resolve-headers {"Authorization" {:env "PATH"}}))))
+    (testing "plain strings pass through untouched"
+      (is (= {"X-Key" "literal"} (resolve-headers {"X-Key" "literal"}))))
+    (testing "an unset variable fails loudly with its name"
+      (is (thrown-with-msg?
+           Exception #"TIK_TEST_SURELY_UNSET"
+           (resolve-headers {"X-Key" {:env "TIK_TEST_SURELY_UNSET"}}))))))
+
+(deftest header_values_can_come_from_a_password_manager
+  (let [resolve-headers #'cli/resolve-headers]
+    (testing "{:command [...]} takes the first stdout line, trimmed"
+      (is (= {"Authorization" "GenieKey s3cret"}
+             (resolve-headers
+              {"Authorization"
+               {:command ["printf" "GenieKey s3cret\nsecond line"]}}))))
+    (testing "a failing lookup names the header and the command"
+      (is (thrown-with-msg?
+           Exception #"X-Key lookup command"
+           (resolve-headers {"X-Key" {:command ["false"]}}))))))
