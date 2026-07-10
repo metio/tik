@@ -655,13 +655,21 @@
       (println (str "[" (name level) "] " msg)))
     (when (not-any? #(= :error (:level %)) problems) p)))
 
+(defn- resolve-file
+  "A file argument as given, else relative to the store root — so
+  `tik test processes/bug.tests.edn` works both inside the store and
+  wherever TIK_ROOT points from."
+  ^File [path]
+  (let [as-given (io/file path)]
+    (if (.exists as-given) as-given (io/file (root) path))))
+
 (defn- cmd-sim
   "Live process design: a scratch ticket in memory, a definition that
   reloads whenever its file changes. Assert facts and watch stages
   derive; edit the EDN in another window and the next render uses the
   new rules. Pure derivation each round — nothing is stored."
   [{:keys [pos opts]}]
-  (let [f (io/file (first pos))]
+  (let [f (resolve-file (first pos))]
     (when-not (.exists f) (die "no such file:" (str f)))
     (let [tid (random-uuid)
           base (now)
@@ -715,7 +723,7 @@
   Deterministic: fixed epoch, pure derivation. A failing case prints
   explain — the process tells you WHY the stage did not derive."
   [{:keys [pos]}]
-  (let [f (io/file (first pos))
+  (let [f (resolve-file (first pos))
         _ (when-not (.exists f) (die "no such file:" (str f)))
         {:test/keys [process cases]} (edn/read-string (slurp f))
         proc (edn/read-string (slurp (io/file (.getParentFile (.getAbsoluteFile f))
@@ -2107,7 +2115,11 @@ answers.edn and run: tik author --from answers.edn")
 (defn- cmd-lint [{:keys [pos]}]
   (if (empty? pos)
     (lint-store)
-    (let [proc (edn/read-string (slurp (first pos)))
+    (let [f (resolve-file (first pos))
+          _ (when-not (.exists f)
+              (die (str "no such file: " (first pos)
+                        " — `tik lint` with no argument lints the store")))
+          proc (edn/read-string (slurp f))
           missing-runbooks (for [s (:process/stages proc)
                                  :let [h (:hint s)]
                                  :when (and h (not (.exists (io/file h))))]
@@ -2455,6 +2467,6 @@ answers.edn and run: tik author --from answers.edn")
       "export"  (cmd-export parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)
-      (do (when cmd
-            (println (str "tik: '" cmd "' is not a command — the full list:\n")))
+      ("help" "--help" "-h" nil) (println usage)
+      (do (println (str "tik: '" cmd "' is not a command — the full list:\n"))
           (println usage)))))

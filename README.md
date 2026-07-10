@@ -18,6 +18,10 @@ unjudged ideas under [docs/IDEAS.md](docs/IDEAS.md).
 
 ## Quickstart
 
+New here? [Getting started](docs/getting-started.md) builds you a
+working ticket system in under five minutes — and every command on
+that page is executed by the test suite, so it cannot go stale.
+
 ```console
 $ nix develop                     # clojure, babashka, clj-kondo, tlc, jdk, reuse
 

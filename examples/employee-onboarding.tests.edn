@@ -1,0 +1,39 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "employee-onboarding.edn"
+ :test/cases
+ [{:case/name "a contract file alone does not hire — HR signs the reference"
+   :case/steps [[:actor "erik"]
+                [:set [:start-date] "2026-09-01"]
+                [:attach "contract/frida.pdf"]
+                [:set [:contract :ref] "frida-2026"]]
+   :case/expect {:excludes #{:hired}}}
+
+  {:case/name "HR's signed contract reference hires"
+   :case/steps [[:actor "dana"]
+                [:set [:start-date] "2026-09-01"]
+                [:attach "contract/frida.pdf"]
+                [:set [:contract :ref] "frida-2026"]]
+   :case/expect {:includes #{:hired}}}
+
+  {:case/name "equipment and accounts proceed independently"
+   :case/steps [[:actor "dana"]
+                [:set [:start-date] "2026-09-01"]
+                [:attach "contract/frida.pdf"]
+                [:set [:contract :ref] "frida-2026"]
+                [:actor "erik"]
+                [:set [:accounts :email] "frida@example.test"]]
+   :case/expect {:includes #{:accounts-live}
+                 :excludes #{:equipped :ready}}}
+
+  {:case/name "both branches plus a buddy make ready"
+   :case/steps [[:actor "dana"]
+                [:set [:start-date] "2026-09-01"]
+                [:attach "contract/frida.pdf"]
+                [:set [:contract :ref] "frida-2026"]
+                [:actor "erik"]
+                [:set [:equipment :ref] "laptop-4411"]
+                [:set [:accounts :email] "frida@example.test"]
+                [:actor "dana"]
+                [:set [:buddy] "carol"]]
+   :case/expect {:includes #{:ready} :current #{:ready}}}]}

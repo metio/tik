@@ -1,0 +1,58 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Incident response: from first alarm to a reviewed postmortem. The
+;; interesting edges the guard basis covers here:
+;; - :mitigated requires SIGNED severity — an unsigned severity guess
+;;   does not gate the response.
+;; - :postmortem-due derives from TIME, not memory: five days after
+;;   creation with no postmortem attached, the ticket says so itself.
+;; - :reviewed uses :different-person — the author of the postmortem
+;;   summary cannot be the one who reviews it.
+{:process/id :incident-response
+ :process/version 1
+ :process/guard-vocab 2
+
+ :process/roles
+ {:commander {:members ["alice"]}
+  :responder {:members ["alice" "bob" "carol"]}}
+
+ :process/facts
+ {[:severity]            [:enum :sev1 :sev2 :sev3]
+  [:impact]              [:string {:min 10}]
+  [:mitigation :note]    [:string {:min 10}]
+  [:root-cause]          [:string {:min 10}]
+  [:postmortem :summary] [:string {:min 40}]
+  [:review :verdict]     [:enum :accepted :needs-work]}
+
+ :process/stages
+ [{:stage/id :declared
+   :hint "examples/runbooks/incident-declared.md"
+   :guards [[:fact [:severity]]
+            [:fact [:impact]]]}
+
+  {:stage/id :mitigated
+   :after [:declared]
+   :hint "examples/runbooks/incident-mitigated.md"
+   :guards [[:signed-by :commander [:severity]]
+            [:fact [:mitigation :note]]]}
+
+  {:stage/id :postmortem-due
+   :after [:mitigated]
+   :hint "examples/runbooks/incident-postmortem-due.md"
+   :guards [[:elapsed-since :ticket/create "P5D"]
+            [:not [:fact [:postmortem :summary]]]]}
+
+  {:stage/id :analyzed
+   :after [:mitigated]
+   :hint "examples/runbooks/incident-analyzed.md"
+   :guards [[:fact [:root-cause]]
+            [:fact [:postmortem :summary]]]}
+
+  {:stage/id :reviewed
+   :after [:analyzed]
+   :stage/sticky? true
+   :hint "examples/runbooks/incident-reviewed.md"
+   :guards [[:fact= [:review :verdict] :accepted]
+            [:signed-by :commander [:review :verdict]]
+            [:different-person [:postmortem :summary] [:review :verdict]]]}]}

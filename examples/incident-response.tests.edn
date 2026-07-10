@@ -1,0 +1,62 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "incident-response.edn"
+ :test/cases
+ [{:case/name "an unsigned severity guess does not gate the response"
+   :case/steps [[:actor "bob"]
+                [:set [:severity] :sev1]
+                [:set [:impact] "checkout is down for all tenants"]
+                [:set [:mitigation :note] "rolled back to v41"]]
+   :case/expect {:includes #{:declared} :excludes #{:mitigated}}}
+
+  {:case/name "the commander signing severity unlocks mitigation"
+   :case/steps [[:actor "alice"]
+                [:set [:severity] :sev1]
+                [:set [:impact] "checkout is down for all tenants"]
+                [:set [:mitigation :note] "rolled back to v41"]]
+   :case/expect {:includes #{:mitigated}}}
+
+  {:case/name "five quiet days surface the missing postmortem"
+   :case/steps [[:actor "alice"]
+                [:set [:severity] :sev2]
+                [:set [:impact] "reports render slowly everywhere"]
+                [:set [:mitigation :note] "scaled the reporting pool"]
+                [:now "+P6D"]]
+   :case/expect {:includes #{:postmortem-due}}}
+
+  {:case/name "a delivered postmortem silences the due nag"
+   :case/steps [[:actor "alice"]
+                [:set [:severity] :sev2]
+                [:set [:impact] "reports render slowly everywhere"]
+                [:set [:mitigation :note] "scaled the reporting pool"]
+                [:set [:root-cause] "unbounded query on the stats table"]
+                [:set [:postmortem :summary]
+                 "The stats query lacked a limit; growth made it quadratic. Fixed and alarmed."]
+                [:now "+P6D"]]
+   :case/expect {:includes #{:analyzed} :excludes #{:postmortem-due}}}
+
+  {:case/name "the postmortem author cannot review their own work"
+   :case/steps [[:actor "alice"]
+                [:set [:severity] :sev2]
+                [:set [:impact] "reports render slowly everywhere"]
+                [:set [:mitigation :note] "scaled the reporting pool"]
+                [:set [:root-cause] "unbounded query on the stats table"]
+                [:set [:postmortem :summary]
+                 "The stats query lacked a limit; growth made it quadratic. Fixed and alarmed."]
+                [:set [:review :verdict] :accepted]]
+   :case/expect {:excludes #{:reviewed}}}
+
+  {:case/name "a second person's accepted review settles the incident"
+   :case/steps [[:actor "bob"]
+                [:set [:severity] :sev2]
+                [:set [:impact] "reports render slowly everywhere"]
+                [:set [:mitigation :note] "scaled the reporting pool"]
+                [:actor "alice"]
+                [:set [:severity] :sev2]
+                [:set [:root-cause] "unbounded query on the stats table"]
+                [:actor "bob"]
+                [:set [:postmortem :summary]
+                 "The stats query lacked a limit; growth made it quadratic. Fixed and alarmed."]
+                [:actor "alice"]
+                [:set [:review :verdict] :accepted]]
+   :case/expect {:includes #{:reviewed} :current #{:reviewed}}}]}

@@ -1,0 +1,45 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Employee onboarding: the checklist that runs itself. Two branches
+;; proceed independently after :hired (equipment and accounts do not
+;; wait for each other) and rejoin at :ready — the DAG expresses what
+;; a linear checklist cannot. :contract requires the signed-artifact
+;; pattern: the file AND a role's signature over its reference.
+{:process/id :employee-onboarding
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/roles
+ {:hr {:members ["dana"]}
+  :it {:members ["erik"]}}
+
+ :process/facts
+ {[:start-date]      [:string {:min 10}]
+  [:contract :ref]   [:string {:min 4}]
+  [:equipment :ref]  [:string {:min 4}]
+  [:accounts :email] [:string {:min 5}]
+  [:buddy]           [:string {:min 2}]}
+
+ :process/stages
+ [{:stage/id :hired
+   :hint "examples/runbooks/onboarding-hired.md"
+   :guards [[:fact [:start-date]]
+            [:artifact "contract/"]
+            [:signed-by :hr [:contract :ref]]]}
+
+  {:stage/id :equipped
+   :after [:hired]
+   :hint "examples/runbooks/onboarding-equipped.md"
+   :guards [[:signed-by :it [:equipment :ref]]]}
+
+  {:stage/id :accounts-live
+   :after [:hired]
+   :hint "examples/runbooks/onboarding-accounts.md"
+   :guards [[:signed-by :it [:accounts :email]]]}
+
+  {:stage/id :ready
+   :after [:equipped :accounts-live]
+   :stage/sticky? true
+   :hint "examples/runbooks/onboarding-ready.md"
+   :guards [[:fact [:buddy]]]}]}
