@@ -73,6 +73,33 @@
                 :blocks (stage/downstream process (:stage/id s))}
          (:hint s) (assoc :hint (:hint s)))))))
 
+(defn actionable-by?
+  "Can this actor act on this reason right now? Role-bound reasons
+  need membership (for :role/same-person, membership minus being the
+  very person whose signature already counted); time and other-stage
+  waits are nobody's to act on; everything else — facts, corrections,
+  artifacts, attestations — is anyone's."
+  [{:keys [reason role by]} roles actor]
+  (case reason
+    :role/unsatisfied
+    (contains? (set (get-in roles [role :members])) actor)
+    :role/same-person
+    (and (contains? (set (get-in roles [role :members])) actor)
+         (not= by actor))
+    (:time/not-elapsed :stage/not-reached) false
+    true))
+
+(defn for-actor
+  "The capability view of explain: each block's :missing filtered to
+  what `actor` can act on, with :hidden counting what was filtered so
+  no renderer can silently pretend the rest does not exist."
+  [blocks roles actor]
+  (vec (for [b blocks
+             :let [mine (filterv #(actionable-by? % roles actor)
+                                 (:missing b))]]
+         (assoc b :missing mine
+                :hidden (- (count (:missing b)) (count mine))))))
+
 (defn reason->text
   "One structured reason -> one English line. The only place guard failures
   become prose."
@@ -122,11 +149,13 @@
   (if (empty? explanations)
     "Nothing to provide right now."
     (->> explanations
-         (map (fn [{:keys [stage satisfied missing blocks hint]}]
+         (map (fn [{:keys [stage satisfied missing blocks hint hidden]}]
                 (str "To reach " stage ":\n"
                      (str/join (map #(str "  ✓ " (pr-str %) "\n") satisfied))
                      (str/join (map #(str "  ✗ " (reason->text %) "\n")
                                     missing))
+                     (when (and hidden (pos? hidden))
+                       (str "  … " hidden " step(s) waiting on others or time\n"))
                      (when (seq blocks)
                        (str "  blocks: " (str/join ", " (map str (sort-by str blocks))) "\n"))
                      (when hint (str "  (see: " hint ")\n")))))

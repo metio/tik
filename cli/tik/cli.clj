@@ -429,7 +429,10 @@
   (let [s (the-store)
         id (resolve-id s (first pos))
         {:keys [events process roles]} (ticket-ctx s id)
-        blocks (explain/explain process events (eval-instant opts) roles)]
+        blocks (explain/explain process events (eval-instant opts) roles)
+        blocks (if-let [who (:actor opts)]
+                 (explain/for-actor blocks roles who)
+                 blocks)]
     (if (:edn opts)
       (prn blocks)
       (print (paint-explain (explain/render blocks))))))
@@ -2079,8 +2082,10 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
   tik status <id> [--at <instant>]              derived stage, facts, what's next
                                                 (--at: the state at ANY moment)
-  tik explain <id> [--edn]                      what is needed to advance
-                                                (--edn: the ADR 0016 data contract —
+  tik explain <id> [--actor A] [--edn]          what is needed to advance
+                                                (--actor: only what THIS person can
+                                                act on, with a count of the rest;
+                                                --edn: the ADR 0016 data contract —
                                                 stable plumbing; text is never stable)
   tik log <id>                                  the event history
   tik ls [--all] [--long]                       open tickets with derived stages;

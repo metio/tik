@@ -8,6 +8,7 @@
   COMPLETE — every unreached stage whose prerequisites are reached
   appears as a block. explain never omits."
   (:require [clojure.test.check.clojure-test :refer [defspec]]
+            [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [tik.explain :as explain]
             [tik.gen-events :as ge]
@@ -64,3 +65,18 @@
               (let [ranks (map explain/actionability missing)]
                 (apply <= 0 (concat ranks [10]))))
             (explain/explain ge/process events now ge/roles))))
+
+(defspec capability-filter-loses-nothing 60
+  ;; for-actor partitions: an actor's view plus its hidden count always
+  ;; equals the full block — filtering can never silently drop a reason
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now
+                 who (gen/elements ["seb" "billing" "rando" "nobody"])]
+    (let [blocks (explain/explain ge/process events now ge/roles)
+          mine (explain/for-actor blocks ge/roles who)]
+      (every? (fn [[b m]]
+                (and (= (count (:missing b))
+                        (+ (count (:missing m)) (:hidden m)))
+                     (every? #(explain/actionable-by? % ge/roles who)
+                             (:missing m))))
+              (map vector blocks mine)))))
