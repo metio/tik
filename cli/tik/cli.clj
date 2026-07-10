@@ -2133,12 +2133,20 @@ Each entry in :needs is one of:
   {:kind :file   :prefix \"evidence/\"}                    ; a file must be attached
   {:kind :waited :duration \"PT48H\"}                      ; ISO-8601 time since creation
 
-Rules of the trade:
+Rules of the trade (tik author check enforces these):
 - Stages are states of evidence, not tasks; name them for what has
-  become TRUE (submitted, approved, paid), not for activity.
+  become TRUE (submitted, approved, paid) — never in-progress/wip/doing.
+- NEVER name a fact like a checkbox (config-created, yaml-removed,
+  actions-adjusted). Record the thing itself — a reference, an address,
+  a value ({:kind :fact :path [:renovate :config :ref]}) — or demand
+  the evidence file ({:kind :file :prefix \"migration/\"}). Ask: what
+  would an auditor want to SEE?
 - Prefer a :choice over a yes/no fact; prefer facts over flags.
-- Every decision that matters should be a :signature, so accountability
-  is in the record.
+- Every stage after the first needs at least one :needs entry — a
+  stage with none derives instantly and says nothing.
+- Every decision that matters should be a :signature, and role members
+  must be REAL actor names (never the role's own name, never
+  placeholders).
 - 3 to 6 stages is almost always right; if you need more, the process
   probably wants splitting.
 
@@ -2168,6 +2176,18 @@ answers.edn and run: tik author --from answers.edn")
   (when (= "prompt" (first pos))
     (println author-llm-prompt)
     (System/exit 0))
+  (when (= "check" (first pos))
+    (let [f (resolve-file (or (second pos)
+                              (die "usage: tik author check <answers.edn>")))
+          _ (when-not (.exists f) (die (str "no such file: " (second pos))))
+          findings (author/check (edn/read-string (slurp f)))]
+      (doseq [{:keys [level msg]} findings]
+        (println (str "[" (name level) "] " msg)))
+      (if (empty? findings)
+        (println "clean — build it: tik author --from" (str f))
+        (when (some #(= :error (:level %)) findings)
+          (System/exit 1)))
+      (System/exit 0)))
   (let [answers (cond
                   (:template opts)
                   (or (get author/templates (:template opts))
@@ -2180,6 +2200,12 @@ answers.edn and run: tik author --from answers.edn")
                   answers)
         _ (when (str/blank? (:name answers))
             (die "the process needs a name — run tik author again"))
+        answer-findings (author/check answers)
+        _ (doseq [{:keys [level msg]} answer-findings]
+            (binding [*out* *err*]
+              (println (str "[" (name level) "] " msg))))
+        _ (when (some #(= :error (:level %)) answer-findings)
+            (die "fix the answers file first (tik author check <file> re-checks without writing)"))
         pname (:name answers)
         definition (author/with-runbook-hints
                     (author/build-process answers) pname)
@@ -2574,7 +2600,9 @@ answers.edn and run: tik author --from answers.edn")
               purchase-approval] [--name N]     knowledge needed; templates are
                                                 finished interviews to edit from;
                                                 `author prompt` prints an LLM recipe
-                                                that yields an answers.edn
+                                                that yields an answers.edn;
+                                                `author check <answers.edn>` lints it
+                                                without writing (schema + smells)
   tik roles [--edn]                             who gates what: every role on the open
                                                 board, its members, and the stages
                                                 waiting on its signature

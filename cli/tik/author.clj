@@ -19,7 +19,91 @@
   file, waiting) and compiles to the closed guard basis; it never
   extends the vocabulary — the ceiling stays PLAN §18's authoring
   ceiling."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [malli.core :as m]
+            [malli.error :as me]))
+
+;; ------------------------------------------------------------ checking
+
+(def Need
+  [:multi {:dispatch :kind}
+   [:fact [:map [:kind [:= :fact]] [:path [:vector :keyword]]
+           [:type {:optional true} [:= :number]]]]
+   [:choice [:map [:kind [:= :choice]] [:path [:vector :keyword]]
+             [:values [:vector :keyword]]]]
+   [:signature [:map [:kind [:= :signature]] [:role :keyword]
+                [:over {:optional true} [:vector :keyword]]]]
+   [:file [:map [:kind [:= :file]] [:prefix :string]]]
+   [:waited [:map [:kind [:= :waited]] [:duration :string]]]])
+
+(def Answers
+  "The authoring answers format — what the interview produces, what
+  --from consumes, what the LLM prompt asks a model to emit."
+  [:map
+   [:name [:re #"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"]]
+   [:purpose {:optional true} :string]
+   [:stages [:vector
+             [:map
+              [:name [:re #"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"]]
+              [:purpose {:optional true} :string]
+              [:after {:optional true} [:vector :string]]
+              [:needs {:optional true} [:vector Need]]]]]
+   [:roles {:optional true} [:map-of :string [:vector :string]]]])
+
+(def ^:private flag-word
+  "Fact-name endings that read as yes/no checkboxes. A flag says an
+  activity happened; a fact records the thing itself, which is what
+  guards, audits and explain can actually use."
+  #"(?:created|removed|deleted|added|adjusted|updated|migrated|done|completed?|enabled|disabled|configured|installed|merged|fixed)$|^(?:is|has|was|uses)-")
+
+(defn check
+  "Findings for an answers map: schema errors first (level :error),
+  then the smells experience keeps finding in machine- and
+  human-drafted processes alike (level :warning). Empty = clean."
+  [answers]
+  (if-not (m/validate Answers answers)
+    [{:level :error
+      :msg (str "not a valid answers map: "
+                (pr-str (me/humanize (m/explain Answers answers))))}]
+    (let [stage-names (set (map :name (:stages answers)))]
+      (vec
+       (concat
+        (for [{:keys [name after]} (:stages answers)
+              missing (remove stage-names (or after []))]
+          {:level :error
+           :msg (str "stage '" name "' comes after unknown stage '"
+                     missing "'")})
+        (for [{:keys [name needs]} (:stages answers)
+              {:keys [kind path]} (or needs [])
+              :when (and (= :fact kind)
+                         (re-find flag-word (clojure.core/name (last path))))]
+          {:level :warning
+           :msg (str "stage '" name "': fact " path " reads like a yes/no"
+                     " flag — record the thing itself instead (a"
+                     " reference, an address, a value) or demand the"
+                     " evidence with {:kind :file}; ask: what would an"
+                     " auditor want to SEE?")})
+        (for [{:keys [name]} (:stages answers)
+              :when (re-matches #"(?:in-progress|wip|doing|working|started|ongoing)"
+                                name)]
+          {:level :warning
+           :msg (str "stage '" name "' is named for activity, not"
+                     " evidence — name stages for what has become TRUE"
+                     " (configured, approved, verified)")})
+        (for [{:keys [name after needs]} (:stages answers)
+              :when (and (seq after) (empty? needs))]
+          {:level :warning
+           :msg (str "stage '" name "' has no needs — it derives the"
+                     " instant its prerequisites do and adds no"
+                     " information; give it a requirement or remove it")})
+        (for [[role members] (:roles answers)
+              :when (or (some #{role "change-me"} members)
+                        (empty? members))]
+          {:level :warning
+           :msg (str "role '" role "' has placeholder members "
+                     (pr-str members)
+                     " — put real actor names in, or signatures can"
+                     " never be satisfied")}))))))
 
 ;; ---------------------------------------------------------------- pure
 

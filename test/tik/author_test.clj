@@ -101,3 +101,43 @@
                       :needs [{:kind :fact :path [:note]}]}]
             :roles {}}
            (author/interview in out)))))
+
+(def llm-answers
+  "A real LLM draft: schema-valid, smelly in every classic way."
+  {:name "dependabot-to-renovate-migration"
+   :stages [{:name "plan" :after [] :needs []}
+            {:name "in-progress" :after ["plan"]
+             :needs [{:kind :fact :path [:renovate :json-created]}
+                     {:kind :fact :path [:renovate :uses-org-wide-config]}]}
+            {:name "empty-mid" :after ["plan"] :needs []}
+            {:name "done" :after ["in-progress"]
+             :needs [{:kind :signature :role :developer}]}]
+   :roles {"developer" ["developer"]}})
+
+(deftest check_finds_the_classic_llm_smells
+  (let [msgs (map :msg (author/check llm-answers))]
+    (testing "flag-shaped facts, suffix and prefix spellings"
+      (is (some #(re-find #"json-created.*yes/no" %) msgs))
+      (is (some #(re-find #"uses-org-wide-config" %) msgs)))
+    (testing "activity-named stage"
+      (is (some #(re-find #"in-progress.*activity" %) msgs)))
+    (testing "needless mid-chain stage; the needless START stage is fine"
+      (is (some #(re-find #"empty-mid.*no needs" %) msgs))
+      (is (not-any? #(re-find #"'plan'" %) msgs)))
+    (testing "placeholder role members"
+      (is (some #(re-find #"placeholder members" %) msgs)))
+    (testing "all of it is advisory, none of it fatal"
+      (is (not-any? #(= :error (:level %)) (author/check llm-answers))))))
+
+(deftest check_rejects_broken_answers_loudly
+  (testing "schema violations are errors"
+    (is (= :error (:level (first (author/check {:name "Bad Name"
+                                                :stages []}))))))
+  (testing "unknown :after targets are errors"
+    (is (some #(and (= :error (:level %))
+                    (re-find #"unknown stage 'ghost'" (:msg %)))
+              (author/check {:name "x"
+                             :stages [{:name "a" :after ["ghost"]}]}))))
+  (testing "the clean templates stay clean apart from change-me"
+    (doseq [[tname answers] author/templates]
+      (is (not-any? #(= :error (:level %)) (author/check answers)) tname))))
