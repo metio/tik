@@ -102,10 +102,14 @@
          :event/body (cond-> {:fact/path path}
                        reason (assoc :retract/reason reason))}))
 
-(defn attach-artifact [{:keys [ticket actor at parents path hash]}]
+(defn attach-artifact
+  [{:keys [ticket actor at parents path hash derived-from]}]
   (mint {:event/ticket ticket :event/type :artifact/attach
          :event/actor actor :event/at at :event/parents (set parents)
-         :event/body {:artifact/path path :artifact/hash hash}}))
+         :event/body (cond-> {:artifact/path path :artifact/hash hash}
+                       ;; provenance edge, the attacher's claim (ADR 0014)
+                       derived-from
+                       (assoc :artifact/derived-from derived-from))}))
 
 (defn add-attestation [{:keys [ticket actor at parents claim]}]
   (mint {:event/ticket ticket :event/type :attestation/add

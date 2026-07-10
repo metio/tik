@@ -24,6 +24,7 @@
                    :fact/disputed :fact/conflicted :role/unsatisfied)
     [:set (:path r)]
     :artifact/missing [:attach (:prefix r)]
+    (:attestation/missing :attestation/stale) [:attest (:claim r)]
     nil))
 
 (defn- signed-by-restrictions

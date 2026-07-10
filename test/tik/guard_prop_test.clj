@@ -4,14 +4,17 @@
   "Laws of the guard algebra: purity, boolean semantics of the
   combinators, the reasons discipline (unsatisfied iff reasons), and
   :fact= meaning present-and-equal with one reason per failure mode."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
+            [tik.event :as event]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
             [tik.reduce :as red]
             [tik.stage :as stage]))
+
+(defn- at [s] (java.time.Instant/parse s))
 
 (defn ctx [events now]
   {:state (red/ticket-state events)
@@ -97,3 +100,49 @@
                [:frobnicate 1]]]
       (is (thrown? clojure.lang.ExceptionInfo (guard/eval-guard g c))
           (pr-str g)))))
+
+(deftest v2-attested-within
+  (let [tid (:event/ticket (first (ge/ops->events [])))
+        create (first (ge/ops->events []))
+        att (fn [t] (event/add-attestation
+                     {:ticket tid :actor "ci" :at (at t)
+                      :parents #{(:event/id create)}
+                      :claim {:claim :ci/green :run 42}}))
+        eval-at (fn [events t]
+                  (guard/eval-guard [:attested-within :ci/green "PT24H"]
+                                    (ctx events (at t))))]
+    (testing "no attestation at all"
+      (let [{:keys [satisfied? reasons]} (eval-at [create] "2026-07-08T12:00:00Z")]
+        (is (not satisfied?))
+        (is (= :attestation/missing (:reason (first reasons))))))
+    (testing "fresh attestation satisfies"
+      (is (:satisfied? (eval-at [create (att "2026-07-08T11:00:00Z")]
+                                "2026-07-08T12:00:00Z"))))
+    (testing "the same attestation, replayed a month later, is STALE"
+      (let [{:keys [satisfied? reasons]}
+            (eval-at [create (att "2026-07-08T11:00:00Z")]
+                     "2026-08-08T12:00:00Z")]
+        (is (not satisfied?))
+        (is (= :attestation/stale (:reason (first reasons))))))))
+
+(deftest v2-different-person
+  (let [events (ge/ops->events [])
+        tid (:event/ticket (first events))
+        put (fn [evs actor path v t]
+              (conj evs (event/assert-fact
+                         {:ticket tid :actor actor :at (at t)
+                          :parents #{(:event/id (peek evs))}
+                          :path path :value v})))
+        g [:different-person [:review] [:approve]]]
+    (testing "same person on both sides fails with both names"
+      (let [evs (-> events
+                    (put "seb" [:review] :ok "2026-07-08T10:01:00Z")
+                    (put "seb" [:approve] :ok "2026-07-08T10:02:00Z"))
+            {:keys [satisfied? reasons]} (guard/eval-guard g (ctx evs ge/base))]
+        (is (not satisfied?))
+        (is (= :role/same-person (:reason (first reasons))))))
+    (testing "four eyes satisfy"
+      (let [evs (-> events
+                    (put "seb" [:review] :ok "2026-07-08T10:01:00Z")
+                    (put "billing" [:approve] :ok "2026-07-08T10:02:00Z"))]
+        (is (:satisfied? (guard/eval-guard g (ctx evs ge/base))))))))

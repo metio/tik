@@ -42,7 +42,7 @@
     (doseq [g [[:not-stage :a] [:if [:fact [:x]] [:fact [:y]]]]]
       (let [p {:process/id :p :process/version 1
                :process/stages [{:stage/id :a :guards [g]}]}]
-        (is (some #(re-find #"unknown guard operator" (:msg %)) (errors p))
+        (is (some #(re-find #"not admitted by guard-vocab" (:msg %)) (errors p))
             (pr-str g)))))
   (testing ":fact= is accepted sugar"
     (let [p {:process/id :p :process/version 1

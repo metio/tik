@@ -17,8 +17,14 @@
   All fact inspection goes through tik.reduce/fact-status — the single
   choke point for why a fact does or does not satisfy guards.
 
-  Vocabulary — an orthogonal basis of ten: :fact :fact= :artifact
-  :signed-by :stage-reached :elapsed-since :and :or :not :malli.
+  Vocabulary v2 — twelve operators: :fact :fact= :artifact :signed-by
+  :stage-reached :elapsed-since :attested-within :different-person
+  :and :or :not :malli. v2 is additive over v1 (ADR 0006 discipline
+  applied to semantics: old definitions evaluate unchanged forever).
+  :attested-within closes §18's stale-evidence gap; :different-person
+  is separation of duties. Both read the LOG (which lives in state), so
+  guards remain pure functions of (state, now, reached) — attestations
+  stay out of ticket-state (ADR 0009) yet inside derivation's reach.
   (:fact= was demoted to :malli-expanding sugar in v6 and RESTORED by
   dogfood evidence: the expansion double-reported an absent fact —
   :fact/missing plus a redundant schema error — and ADR 0016 makes
@@ -119,10 +125,60 @@
 
       :else ok)))
 
+(defn- eval-attested-within
+  "[:attested-within claim duration]: a fresh-enough attestation of
+  `claim` exists — an :attestation/add event whose body :claim equals
+  `claim`, no older than `duration` before `now` ON THE CLAIMED CLOCK
+  (ADR 0012: claimed is the default; a witnessed variant arrives with
+  witness infrastructure). Closes the stale-evidence gap: a replayed
+  \"CI green\" from last month is cryptographically valid and fails
+  this guard honestly."
+  [[_ claim dur-str] {:keys [state now]}]
+  (let [cutoff (.minus (->instant now) (Duration/parse dur-str))
+        fresh (filter (fn [e]
+                        (and (= :attestation/add (:event/type e))
+                             (= claim (get-in e [:event/body :claim]))
+                             (not (.isBefore (->instant (:event/at e))
+                                             cutoff))))
+                      (:log state))]
+    (if (seq fresh)
+      ok
+      (let [any (filter #(and (= :attestation/add (:event/type %))
+                              (= claim (get-in % [:event/body :claim])))
+                        (:log state))]
+        (if (seq any)
+          (fail {:reason :attestation/stale :claim claim
+                 :within dur-str
+                 :last-at (:event/at (last (sort-by :event/at any)))})
+          (fail {:reason :attestation/missing :claim claim
+                 :within dur-str}))))))
+
+(defn- eval-different-person
+  "[:different-person path-a path-b]: separation of duties — both facts
+  present AND asserted by different actors. The four-eyes principle as
+  a derivable condition."
+  [[_ path-a path-b] {:keys [state]}]
+  (let [a (red/fact-status state path-a)
+        b (red/fact-status state path-b)]
+    (cond
+      (not= :present (:status a))
+      (fail {:reason :fact/missing :path path-a})
+
+      (not= :present (:status b))
+      (fail {:reason :fact/missing :path path-b})
+
+      (= (:by a) (:by b))
+      (fail {:reason :role/same-person :paths [path-a path-b]
+             :by (:by a)})
+
+      :else ok)))
+
 (defn- eval-guard*
   [guard ctx]
   (case (first guard)
     :fact          (eval-fact guard ctx)
+    :attested-within (eval-attested-within guard ctx)
+    :different-person (eval-different-person guard ctx)
     :fact=         (eval-fact= guard ctx)
     :artifact      (eval-artifact guard ctx)
     :signed-by     (eval-signed-by guard ctx)

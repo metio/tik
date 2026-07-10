@@ -56,7 +56,8 @@
   "One structured reason -> one English line. The only place guard failures
   become prose."
   [{:keys [reason path schema by note prefix role stage expected actual
-           since duration due errors value options guard]}]
+           since duration due errors value options guard claim within
+           last-at paths]}]
   (case reason
     :fact/missing    (str "set fact " path
                           (cond
@@ -85,6 +86,13 @@
                                                        (map reason->text %))
                                             options)))
     :must-not-hold (str "must NOT hold: " (pr-str guard))
+    :attestation/missing (str "attest " (pr-str claim)
+                              " (none on record; needed within " within ")")
+    :attestation/stale (str "re-attest " (pr-str claim)
+                            " (last " last-at ", needed within " within ")")
+    :role/same-person (str "facts " (pr-str paths)
+                           " must come from different people"
+                           " (both by " (pr-str by) ")")
     (pr-str reason)))
 
 (defn render

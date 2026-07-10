@@ -34,6 +34,14 @@
 (defn- root [] (or (System/getenv "TIK_ROOT") "."))
 (defn- now [] (Instant/now))
 
+(defn- eval-instant
+  "--at <inst>: evaluate at any moment — status on March 1 is just
+  f(events, March 1); time travel was free the whole time (ADR 0012)."
+  [opts]
+  (if-let [at (:at opts)]
+    (Instant/parse at)
+    (now)))
+
 (defn- die [& msg]
   (binding [*out* *err*] (apply println msg))
   (System/exit 1))
@@ -277,9 +285,13 @@
     (.mkdirs (.getParentFile dest))
     (io/copy src dest)
     (append!* s (event/attach-artifact
-                 {:ticket id :actor (actor opts) :at (now)
-                  :parents (dag/heads (store/events s id))
-                  :path (str "repro/" (.getName src)) :hash hash})
+                 (cond-> {:ticket id :actor (actor opts) :at (now)
+                          :parents (dag/heads (store/events s id))
+                          :path (str "repro/" (.getName src)) :hash hash}
+                   ;; lineage is a CLAIM by the attacher (ADR 0014):
+                   ;; carried in the event body, disputable like any claim
+                   (:derived-from opts)
+                   (assoc :derived-from (:derived-from opts))))
               opts)
     (println "ok" hash)))
 
@@ -304,11 +316,12 @@
               opts)
     (println "ok" hash)))
 
-(defn- cmd-status [{:keys [pos]}]
+(defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
         {:keys [events state process roles]} (ticket-ctx s id)
-        reached (stage/effective-reached process events (now) roles)
+        t (eval-instant opts)
+        reached (stage/effective-reached process events t roles)
         current (stage/current-stages process reached)]
     (println "ticket: " id)
     (println "title:  " (:title state))
@@ -330,14 +343,16 @@
                  :retracted (str "[retracted by " by "]")
                  :conflicted "[CONFLICTED]"
                  "")))
+    (when (:at opts)
+      (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
-    (print (paint-explain (explain/render (explain/explain process events (now) roles))))))
+    (print (paint-explain (explain/render (explain/explain process events t roles))))))
 
 (defn- cmd-explain [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
         {:keys [events process roles]} (ticket-ctx s id)
-        blocks (explain/explain process events (now) roles)]
+        blocks (explain/explain process events (eval-instant opts) roles)]
     (if (:edn opts)
       (prn blocks)
       (print (paint-explain (explain/render blocks))))))
@@ -706,6 +721,24 @@
       (println "published" proc-name "@" hash)
       (println "signature" (.getName ^File sig)))))
 
+(defn- cmd-attest
+  "attest <id> <claim-edn> [--body <edn>]: record an attestation — a
+  signed claim whose semantics the kernel ignores (ADR 0009), read by
+  lenses and by the v2 :attested-within guard."
+  [{:keys [pos opts]}]
+  (let [[ticket claim-str] pos
+        _ (when-not claim-str (die "usage: tik attest <id> <claim-edn>"))
+        s (the-store)
+        id (resolve-id s ticket)
+        claim (edn/read-string claim-str)
+        extra (some-> (:body opts) edn/read-string)]
+    (append!* s (event/add-attestation
+                 {:ticket id :actor (actor opts) :at (now)
+                  :parents (dag/heads (store/events s id))
+                  :claim (merge {:claim claim} extra)})
+              opts)
+    (println "attested" (pr-str claim) "as" (actor opts))))
+
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
   allowed-signers registry (identity ladder rung 1, PLAN §9)."
@@ -870,7 +903,12 @@
                          (some #(= (first args) (:event/actor %)) events))
                "stage" (fn [{:keys [reached]}]
                          (contains? reached (edn/read-string (first args))))
-               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>"))
+               "derived-from" (fn [{:keys [events]}]
+                                (some #(= (first args)
+                                          (get-in % [:event/body
+                                                     :artifact/derived-from]))
+                                      events))
+               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>|derived-from <hash>"))
         hits (filter hit? rows)]
     (if (:edn opts)
       (prn (mapv #(select-keys % [:id :title :reached]) hits))
@@ -1293,7 +1331,8 @@
   tik diff <id> [n]                             evidence gained over the last n events
   tik attach <id> <file>                        attach an artifact (stored by hash)
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
-  tik status <id>                               derived stage, facts, what's next
+  tik status <id> [--at <instant>]              derived stage, facts, what's next
+                                                (--at: the state at ANY moment)
   tik explain <id> [--edn]                      what is needed to advance
                                                 (--edn: the ADR 0016 data contract —
                                                 stable plumbing; text is never stable)
@@ -1320,6 +1359,8 @@
   tik verify [<id>]                             the verify ladder (L0/L1/L2); with no
                                                 id, audits EVERY ticket + definition
   tik process sign <name> [--key K]             publish: sign the archived definition
+  tik attest <id> <claim-edn>                   record a signed claim (kernel ignores
+                                                semantics; :attested-within reads it)
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
@@ -1360,6 +1401,7 @@
       "verify"  (cmd-verify parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
+      "attest"  (cmd-attest parsed)
       "process" (cmd-process parsed)
       "sign"    (cmd-sign parsed)
       "migrate" (cmd-migrate parsed)

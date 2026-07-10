@@ -53,12 +53,18 @@
   [process]
   (canonical/content-address process))
 
-(def guard-operators
-  "The ten-operator basis (v1). :fact= is a first-class operator — it
-  was briefly v6 sugar and was restored by dogfood evidence (see the
-  guard namespace docstring)."
+(def guard-operators-v1
   #{:fact :fact= :artifact :signed-by :stage-reached :elapsed-since
     :and :or :not :malli})
+
+(def guard-operators
+  "Guard vocabulary v2: twelve operators, additive over v1 (old
+  definitions evaluate unchanged forever — the runtime is total over
+  both; the LINT enforces that a definition uses only what its declared
+  :process/guard-vocab admits). :attested-within and :different-person
+  arrived in v2; :fact= was briefly v6 sugar and was restored by
+  dogfood evidence (see the guard namespace docstring)."
+  (into guard-operators-v1 #{:attested-within :different-person}))
 
 (defn- all-guards [stage]
   (vec (:guards stage [])))
@@ -70,22 +76,28 @@
     @acc))
 
 (defn- unknown-operators
-  "Operators outside the closed basis (+ sugar), found by descending only
-  into combinator argument positions — fact paths are argument vectors
-  with keyword heads and must not be mistaken for operators."
-  [guard]
+  "Operators outside the closed vocabulary the process DECLARES
+  (:process/guard-vocab, conservative default 1), found by descending
+  only into combinator argument positions — fact paths are argument
+  vectors with keyword heads and must not be mistaken for operators."
+  [allowed guard]
   (if-not (and (vector? guard) (keyword? (first guard)))
     [guard]
     (let [op (first guard)]
       (cond
-        (not (guard-operators op)) [op]
-        (#{:and :or} op) (into [] (mapcat unknown-operators) (rest guard))
-        (= :not op) (unknown-operators (second guard))
+        (not (allowed op)) [op]
+        (#{:and :or} op) (into [] (mapcat #(unknown-operators allowed %))
+                               (rest guard))
+        (= :not op) (unknown-operators allowed (second guard))
         :else []))))
 
 (defn- fact-refs [guard]
-  (collect #(when (and (vector? %) (#{:fact :fact= :signed-by} (first %)))
-              (case (first %) :signed-by (nth % 2) (second %)))
+  (collect #(when (vector? %)
+              (case (first %)
+                (:fact :fact=) [(second %)]
+                :signed-by [(nth % 2)]
+                :different-person [(second %) (nth % 2)]
+                nil))
            guard))
 
 (defn- stage-refs [guard]
@@ -167,15 +179,21 @@
                        " Link kb/runbooks/, or a judgment-stage runbook"
                        " saying whose judgment and how to record it, or"
                        " set {:lint {:runbooks :off}}.")}))
-        ;; closed guard basis
-        (for [s stages, g (all-guards s), op (unknown-operators g)]
-          {:level :error
-           :msg (str "stage " (:stage/id s) " uses unknown guard"
-                     " operator " (pr-str op) " — the vocabulary"
-                     " is closed at ten operators.")})
+        ;; closed guard vocabulary, per the DECLARED version
+        (let [vocab (case (:process/guard-vocab process 1)
+                      1 guard-operators-v1
+                      guard-operators)]
+          (for [s stages, g (all-guards s), op (unknown-operators vocab g)]
+            {:level :error
+             :msg (str "stage " (:stage/id s) " uses guard operator "
+                       (pr-str op) " not admitted by guard-vocab "
+                       (:process/guard-vocab process 1)
+                       " (v2 adds :attested-within and"
+                       " :different-person — declare"
+                       " :process/guard-vocab 2 to use them).")}))
         ;; undeclared facts
         (for [s stages, g (all-guards s)
-              path (fact-refs g) :when (not (declared path))]
+              path (apply concat (fact-refs g)) :when (not (declared path))]
           {:level :warning
            :msg (str "stage " (:stage/id s) " references fact " path
                      " not declared in :process/facts (no schema,"
@@ -203,4 +221,41 @@
         (for [id stage-ids :when (not (reachable id))]
           {:level :error
            :msg (str "stage " id
-                     " is unreachable (graph shape alone)")}))))))
+                     " is unreachable (graph shape alone)")})
+        ;; complexity (PLAN §18: how BPMN died) — warnings, opt-out via
+        ;; {:lint {:complexity :off}}
+        (when-not (= :off (get-in process [:lint :complexity]))
+          (letfn [(depth-of [g]
+                    (if (and (vector? g) (#{:and :or :not} (first g)))
+                      (inc (apply max 0 (map depth-of (rest g))))
+                      0))
+                  (contradiction? [g]
+                    ;; [:and ... [:fact= p v1] ... [:fact= p v2] ...]
+                    (and (vector? g) (= :and (first g))
+                         (let [eqs (filter #(and (vector? %)
+                                                 (= :fact= (first %)))
+                                           (rest g))]
+                           (some (fn [[_p vs]] (< 1 (count (distinct vs))))
+                                 (group-by second
+                                           (map (juxt second #(nth % 2))
+                                                eqs))))))]
+            (concat
+             (for [s stages, g (all-guards s)
+                   :when (< 4 (depth-of g))]
+               {:level :warning
+                :msg (str "stage " (:stage/id s) " nests combinators "
+                          (depth-of g) " deep — nobody will read this;"
+                          " name the pieces as separate stages or facts.")})
+             (for [s stages
+                   :when (< 6 (count (:guards s [])))]
+               {:level :warning
+                :msg (str "stage " (:stage/id s) " has "
+                          (count (:guards s [])) " guards — checkbox"
+                          " creep (PLAN §18); consider intermediate"
+                          " stages.")})
+             (for [s stages, g (all-guards s)
+                   :when (contradiction? g)]
+               {:level :error
+                :msg (str "stage " (:stage/id s) " requires the same"
+                          " fact to equal two different values — this"
+                          " guard can NEVER be satisfied.")})))))))))

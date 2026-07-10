@@ -197,7 +197,15 @@ maximality is computed against the `:after` graph only.
 
 ## 5. Guards
 
-Closed vocabulary v1, an orthogonal basis of ten: `:fact`, `:fact=`,
+**Vocabulary v2** (additive over v1; a definition's declared
+`:process/guard-vocab` is enforced by lint, and the runtime stays total
+over both — old definitions evaluate unchanged forever): v2 adds
+**`:attested-within`** (a fresh-enough attestation of a claim exists —
+§18's stale-evidence gap closed; guards read the log, which lives in
+state, so attestations stay out of ticket-state per ADR 0009 yet inside
+derivation's reach) and **`:different-person`** (separation of duties:
+both facts present, different actors — four eyes as a derivable
+condition). Closed vocabulary v1, an orthogonal basis of ten: `:fact`, `:fact=`,
 `:artifact`, `:signed-by`, `:stage-reached`, `:elapsed-since`, `:and`,
 `:or`, `:not`, `:malli`. The v6 subtraction cut everything derivable
 inside the basis: `:if` was boolean algebra over `:and`/`:or`/`:not`;
