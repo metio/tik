@@ -38,7 +38,31 @@
   (:import (java.io File)
            (java.time Duration Instant)))
 
-(defn- root [] (or (System/getenv "TIK_ROOT") "."))
+(defn- discover-root
+  "Git-style upward search from cwd: the nearest ancestor holding a
+  hidden `.tik` store wins, else the nearest holding a classic
+  `tickets/` directory. The walk never climbs past $HOME — a stray
+  store high in the tree must not silently capture unrelated work —
+  though it checks $HOME itself; outside $HOME it walks to the
+  filesystem root like git does."
+  []
+  (let [home (str (.getCanonicalFile (io/file (System/getProperty "user.home"))))]
+    (loop [d (.getCanonicalFile (io/file "."))]
+      (when d
+        (cond
+          (.isDirectory (io/file d ".tik")) (str (io/file d ".tik"))
+          (.isDirectory (io/file d "tickets")) (str d)
+          (= (str d) home) nil
+          :else (recur (.getParentFile d)))))))
+
+(def ^:private discovered-root (delay (discover-root)))
+
+(defn- root
+  "The store root: TIK_ROOT always wins (scripts, multi-store work);
+  else discovery; else the cwd — which is what makes a fresh directory
+  become a store the moment `tik new` runs in it."
+  []
+  (or (System/getenv "TIK_ROOT") @discovered-root "."))
 (defn- now [] (Instant/now))
 
 (defn- eval-instant
@@ -244,6 +268,25 @@
          :when (not (next-lens/settled? process events t roles))]
      {:id id :title (:title state)
       :text (dupe/haystack {:title (:title state) :facts (:facts state)})})))
+
+(defn- cmd-init
+  "init [--hidden]: mark this directory as a store. --hidden puts
+  everything inside .tik/ (one dot-entry beside your repos — the
+  portfolio-store shape); without it the store is the classic visible
+  layout. Either marker makes every tik command work from ANY
+  directory beneath this one."
+  [{:keys [opts]}]
+  (let [here (.getCanonicalFile (io/file "."))
+        store (if (:hidden opts) (io/file here ".tik") here)
+        marker (io/file store "tickets")]
+    (when (.isDirectory marker)
+      (die (str "already a store: " store)))
+    (.mkdirs marker)
+    (println (str "store initialized at " store))
+    (println (str "every tik command run at or below " here
+                  " now uses it — try:"))
+    (println "  tik new track --title \"the first thing\"")
+    (println "  tik author --template bug")))
 
 (defn- cmd-new [{:keys [pos opts]}]
   (let [[proc-name] pos
@@ -2376,6 +2419,12 @@ answers.edn and run: tik author --from answers.edn")
     tik set <id> amount=120          record facts; the stage derives itself
     tik explain <id>                 what is missing, who can act
 
+  tik init [--hidden]                           mark this directory as a store
+                                                (--hidden: everything inside .tik/ —
+                                                one dot-entry, e.g. above many repos).
+                                                Commands find the store git-style:
+                                                TIK_ROOT, else the nearest ancestor
+                                                with .tik/ or tickets/, else here
   tik new <process> [--title T] [--actor A]     mint a ticket (pins process hash)
   tik set <id> k=v [k=v ...] [--actor A]        assert facts (dotted keys nest)
   tik retract <id> <k> [--reason R]             withdraw a fact (no replacement)
@@ -2486,6 +2535,7 @@ answers.edn and run: tik author --from answers.edn")
   (let [[cmd & more] args
         parsed (parse-args (vec more))]
     (case cmd
+      "init"    (cmd-init parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)
