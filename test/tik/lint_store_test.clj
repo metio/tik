@@ -48,3 +48,37 @@
       (let [r (tik* root "lint")]
         (is (not (re-find (re-pattern short) (:out r)))
             (:out r))))))
+
+(deftest prose_rot_heuristics_and_live_links
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-rot" (make-array FileAttribute 0)))
+        _ (io/copy (io/file repo "processes/support-request.edn")
+                   (io/file (doto (io/file root "processes")
+                              (.mkdirs)) "support-request.edn"))
+        a (str/trim (:out (tik* root "new" "support-request"
+                                "--title" "the referenced work")))
+        b (str/trim (:out (tik* root "new" "support-request"
+                                "--title" "the referring ticket")))]
+    (testing "a description reporting another ticket's status is flagged"
+      (tik* root "set" b (str "description=blocked until " (subs a 0 8)
+                              " is finished"))
+      (is (re-find #"reports another ticket's status"
+                   (:out (tik* root "lint")))))
+    (testing "the lint's own advice silences it: a link fact instead"
+      (tik* root "set" b "description=make the follow-up change"
+            (str "link.blocked-by=\"" (subs a 0 8) "\""))
+      (is (not (re-find #"reports another ticket" (:out (tik* root "lint"))))))
+    (testing "the link renders the target's CURRENT derived stage"
+      (is (re-find #"blocked-by -> [0-9a-f]{8} the referenced work \(received\)"
+                   (:out (tik* root "status" b)))))
+    (testing "a description older than the latest landing is flagged"
+      (tik* root "set" b "commit=\"abcdef0\"")
+      (is (re-find #"description predates its latest landing"
+                   (:out (tik* root "lint"))))
+      (tik* root "set" b "description=make the follow-up change, still")
+      (is (not (re-find #"predates" (:out (tik* root "lint"))))))
+    (testing "an unresolvable link degrades, never crashes"
+      (tik* root "set" b "link.see-also=\"ffffffff\"")
+      (let [r (tik* root "status" b)]
+        (is (zero? (:exit r)))
+        (is (re-find #"unresolved" (:out r)))))))

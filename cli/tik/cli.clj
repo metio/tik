@@ -394,6 +394,39 @@
               opts)
     (println "ok" hash)))
 
+(defn- resolve-id-soft
+  "resolve-id without the die: the uuid on a unique match, nil
+  otherwise. Lenses rendering links must degrade, not crash."
+  [s prefix]
+  (let [hits (filter #(str/starts-with? % (str prefix))
+                     (map str (store/ticket-ids s)))]
+    (when (= 1 (count hits))
+      (java.util.UUID/fromString (first hits)))))
+
+(defn- link-facts
+  "[{:rel :target}] for every present [:link <rel>] fact — the
+  reference is DECLARED (an id is stable), the target's stage is
+  DERIVED at render time, which is why links cannot rot the way
+  prose status reports do."
+  [state]
+  (for [[path _] (:facts state)
+        :when (and (= 2 (count path)) (= :link (first path)))
+        :let [{:keys [status value]} (red/fact-status state path)]
+        :when (= :present status)]
+    {:rel (second path) :target (str value)}))
+
+(defn- render-link
+  "\"<rel> -> <short> <title> (<derived current stage, live>)\""
+  [s t {:keys [rel target]}]
+  (if-let [target-id (resolve-id-soft s target)]
+    (let [{:keys [events state process roles]} (ticket-ctx s target-id)
+          current (stage/current-stages
+                   process (stage/effective-reached process events t roles))]
+      (str (name rel) " -> " (subs (str target-id) 0 8) " "
+           (:title state)
+           " (" (str/join ", " (map name current)) ")"))
+    (str (name rel) " -> " target " (no such ticket here — unresolved)")))
+
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
@@ -421,6 +454,10 @@
                  :retracted (str "[retracted by " by "]")
                  :conflicted "[CONFLICTED]"
                  "")))
+    (when-let [links (seq (link-facts state))]
+      (println "links:")
+      (doseq [l links]
+        (println "  " (render-link s t l))))
     (when (:at opts)
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
@@ -559,6 +596,7 @@
                 :describe (let [fm (guard/fact-map state)]
                             (or (some fm [[:description] [:summary] [:statement]])
                                 nil))
+                :links (vec (link-facts state))
                 :haystack (str/lower-case
                            (str (:title state) " "
                                 (pr-str (guard/fact-map state))))
@@ -574,13 +612,16 @@
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
                  visible))
       (do
-        (doseq [{:keys [id current title describe settled?]} visible]
+        (doseq [{:keys [id current title describe settled? links]} visible]
       (println (tint "2" (subs (str id) 0 8))
                (paint-stage (format "%-24s" (str/join "," (map name current)))
                             settled? (contains? current :parked))
                title)
       (when (and (:long opts) describe)
-        (println (tint "2" (str "         " describe)))))
+        (println (tint "2" (str "         " describe))))
+      (when (:long opts)
+        (doseq [l links]
+          (println (tint "2" (str "         ↳ " (render-link s t l)))))))
         (when (empty? visible)
           (if (empty? rows)
             (println (str "no tickets yet — start with:\n"
@@ -2097,11 +2138,28 @@ answers.edn and run: tik author --from answers.edn")
                      short (subs (str id) 0 8)
                      fm (guard/fact-map state)]
                :when (not (next-lens/settled? process events t roles))
+               :let [desc (red/fact-status state [:description])
+                     commit-fact (red/fact-status state [:commit])]
                problem
                [(when (str/blank? (:title state))
                   (str short " has no title — tik set " short " … happened at create; open a fresh ticket with --title"))
                 (when-not (some fm [[:description] [:summary] [:statement]])
                   (str short " has no description — tik set " short " description=<one line: what is this ticket about?>"))
+                ;; prose about the world can't be derived, but its AGE
+                ;; can: a description older than the ticket's latest
+                ;; landing is the prose most likely to be stale
+                (when (and (= :present (:status desc))
+                           (= :present (:status commit-fact))
+                           (< (inst-ms (:at desc))
+                              (inst-ms (:at commit-fact))))
+                  (str short " description predates its latest landing — re-read it, then re-assert or amend"))
+                ;; status reports about OTHER work belong in link facts
+                ;; (derived live), never in prose (rots silently)
+                (when (and (= :present (:status desc))
+                           (string? (:value desc))
+                           (re-find #"(?i)\b(?:shipped|landed|fixed) in\b|(?<![\w-])[0-9a-f]{8}(?![\w-])"
+                                    (:value desc)))
+                  (str short " description reports another ticket's status — that rots; record tik set " short " link.<rel>=<ticket-id> and let the board derive it live"))
                 (when-let [n (seq (filter #(empty? (sign/sidecars (events-dir id) (:event/id %))) events))]
                   (str short " has " (count n) " unsigned event(s) — tik sign " short " (or export TIK_KEY to sign as you write)"))]
                :when problem]
