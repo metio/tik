@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T07:55:36.435Z" :event/body {:ticket/process :tik-dev :ticket/process-hash "sha256-8081c570fbdef3fc8dfd15b15cb9b52143ac42553599b0aef37387e8014074f1" :ticket/process-version 1 :ticket/title "ls: hide settled tickets by default"} :event/parents #{} :event/ticket #uuid "7ba13bf7-048f-49a9-bced-68c447f8538d" :event/type :ticket/create}
