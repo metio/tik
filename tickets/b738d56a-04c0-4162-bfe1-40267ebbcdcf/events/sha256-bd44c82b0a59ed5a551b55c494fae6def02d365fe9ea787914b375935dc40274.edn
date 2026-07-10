@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T13:20:03.176Z" :event/body {:fact/path [:summary] :fact/value "any LLM plus author --from equals prose to linted process"} :event/parents #{"sha256-11b5b8413a4641bbb6aad19d99ac4975ebd3146e2f37d227bc2b600f39fcb913"} :event/ticket #uuid "b738d56a-04c0-4162-bfe1-40267ebbcdcf" :event/type :fact/assert}
