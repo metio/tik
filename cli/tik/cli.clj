@@ -21,6 +21,7 @@
             [tik.oidc :as oidc]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
+            [tik.dupe :as dupe]
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.guard :as guard]
@@ -232,17 +233,38 @@
 
 ;; ---------------------------------------------------------------- commands
 
+(defn- open-ticket-rows
+  "{:id :title :text} for every unsettled ticket — the duplicate
+  radar's comparison set."
+  [s t]
+  (vec
+   (for [id (store/ticket-ids s)
+         :let [{:keys [events state process roles]} (ticket-ctx s id)]
+         :when (not (next-lens/settled? process events t roles))]
+     {:id id :title (:title state)
+      :text (dupe/haystack {:title (:title state) :facts (:facts state)})})))
+
 (defn- cmd-new [{:keys [pos opts]}]
   (let [[proc-name] pos
         proc (load-process proc-name)
+        s (the-store)
+        t (now)
+        similar (when-let [title (:title opts)]
+                  (take 3 (dupe/radar title (open-ticket-rows s t) 0.4)))
         id (random-uuid)
-        e (event/create-ticket {:ticket id :actor (actor opts) :at (now)
+        e (event/create-ticket {:ticket id :actor (actor opts) :at t
                                 :title (or (:title opts) "")
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]
-    (append!* (the-store) e opts)
-    (println (str id))))
+    (append!* s e opts)
+    (println (str id))
+    (doseq [{existing :id :keys [title score]} similar]
+      (binding [*out* *err*]
+        (println (str "note: looks like " (subs (str existing) 0 8) " \"" title
+                      "\" (" (int (* 100 score)) "% similar) — if this IS "
+                      "that, record it: tik set " (subs (str id) 0 8)
+                      " duplicate-of=\"" (subs (str existing) 0 8) "\""))))))
 
 (defn- cmd-set [{:keys [pos opts]}]
   (let [[ticket & kvs] pos
@@ -1037,6 +1059,15 @@
   (let [s (the-store)
         t (now)
         [q & args] pos
+        _ (when (= "duplicates" q)
+            (let [threshold (or (some-> (:threshold opts) parse-value double) 0.4)
+                  pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
+              (doseq [{:keys [a b score]} pairs]
+                (println (str (subs (str a) 0 8) " ~ " (subs (str b) 0 8)
+                              "  " (int (* 100 score)) "% similar")))
+              (println (count pairs) "lookalike pair(s) at >="
+                       (str (int (* 100 threshold)) "%"))
+              (System/exit 0)))
         rows (for [id (store/ticket-ids s)
                    :let [{:keys [events state process roles]} (ticket-ctx s id)]]
                {:id id :title (:title state) :state state :events events
@@ -1067,7 +1098,7 @@
                                           (get-in % [:event/body
                                                      :artifact/derived-from]))
                                       events))
-               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>|derived-from <hash>"))
+               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>|derived-from <hash>|duplicates [--threshold 0.4]"))
         hits (filter hit? rows)]
     (if (:edn opts)
       (prn (mapv #(select-keys % [:id :title :reached]) hits))
@@ -2058,7 +2089,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                 (negatable); search titles+facts
   tik search <text...>                          search ALL tickets, titles and facts
   tik query <question> [args]                   across every log: disputed|conflicted|
-                                                unsigned|fact <k> [v]|actor <n>|stage <:s>
+                                                unsigned|fact <k> [v]|actor <n>|stage <:s>|
+                                                duplicates [--threshold 0.4] (lookalike
+                                                open tickets, best match first)
   tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing written
   tik debug <process> [<id>]                    the fixpoint with its working shown
   tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
