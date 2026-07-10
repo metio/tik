@@ -386,6 +386,12 @@
                          reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)]]
                {:id id :title (:title state) :current current
+                ;; the description is a FACT (searchable), not a comment:
+                ;; summary on work tickets, statement on hypotheses, plus
+                ;; the parked/verdict context where present
+                :describe (let [fm (guard/fact-map state)]
+                            (or (some fm [[:summary] [:statement]])
+                                nil))
                 :haystack (str/lower-case
                            (str (:title state) " "
                                 (pr-str (guard/fact-map state))))
@@ -397,10 +403,12 @@
                                         (:haystack %)
                                         (str/lower-case (str (:search opts))))))
         visible (if (:all opts) rows (remove :settled? rows))]
-    (doseq [{:keys [id current title]} visible]
+    (doseq [{:keys [id current title describe]} visible]
       (println (subs (str id) 0 8)
                (format "%-24s" (str/join "," (map name current)))
-               title))
+               title)
+      (when (and (:long opts) describe)
+        (println (str "         " describe))))
     (when (empty? visible) (println "no matching tickets"))
     (let [hidden (- (count rows) (count visible))]
       (when (pos? hidden)
@@ -768,9 +776,10 @@
   tik status <id>                               derived stage, facts, what's next
   tik explain <id>                              what is needed to advance
   tik log <id>                                  the event history
-  tik ls [--all] [--filter ':a :b'|':not :a']   open tickets with derived stages;
-         [--search TEXT]                        filter by current stage (negatable),
-                                                search titles+facts (--all: settled too)
+  tik ls [--all] [--long]                       open tickets with derived stages;
+         [--filter ':a :b'|':not :a']           --long adds each ticket's description
+         [--search TEXT]                        fact; filter by current stage
+                                                (negatable); search titles+facts
   tik search <text...>                          search ALL tickets, titles and facts
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
