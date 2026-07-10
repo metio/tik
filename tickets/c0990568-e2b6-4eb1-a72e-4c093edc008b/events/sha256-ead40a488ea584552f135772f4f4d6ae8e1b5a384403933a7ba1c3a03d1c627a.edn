@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T12:24:59.064Z" :event/body {:fact/path [:summary] :fact/value "lookalike warnings at create plus a sweep query"} :event/parents #{"sha256-4fc57d9a9f2398a25434814fcc16fa07e43f142ac71dfc54913c5b27c16905f3"} :event/ticket #uuid "c0990568-e2b6-4eb1-a72e-4c093edc008b" :event/type :fact/assert}
