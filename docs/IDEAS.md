@@ -173,6 +173,22 @@ abstractions generalize.
   repeatedly disagree, which integration is the noisy source — ADR
   0003's health metric made measurable). All pure derivations over logs
   and definitions.
+- **Duplicate radar and duplicate-of folding** — ticket identity is a
+  minted UUID on purpose (two reports of one outage are two claim
+  streams; their two-ness is frequency information), and the kernel
+  must never merge referents — but *evidence-indistinguishability* is
+  derivable: two tickets under the same pinned process with equal
+  effective fact-maps share a semantic state address
+  (`hash(process-hash, fact-map)`), meaning the system cannot tell
+  them apart. Indistinguishable = genuinely duplicate OR
+  under-evidenced, and only a human knows which — so the lens
+  surfaces collisions (the ADR 0003 shape: detect, never resolve) and
+  the resolution is a fact either way: `[:link :duplicate-of]` (v6
+  links-are-facts gives dispute/retract for free) or the
+  distinguishing fact that separates them. ls/next then fold linked
+  duplicates into their canonical the way settled tickets already
+  fold away. Work needs no dedup at all: next already groups by
+  action, so N duplicate tickets are one inbox row unlocking N.
 - **Causal view** — DAG analysis as a lens (ADR 0004): which assertions
   were made from which evidence, which actors were working from an
   outdated head, where a branch diverged, which conflicts came from
