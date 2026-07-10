@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-10T21:39:45.449Z" :event/body {:fact/path [:summary] :fact/value "repo dimension derives itself; markers refine it; overrides never error"} :event/parents #{"sha256-66287749b0e1d035062184e45acc23fe46e1cf23134df057996c0588056c2f64"} :event/ticket #uuid "c71c999d-8410-473e-bb39-15f17e837607" :event/type :fact/assert}
