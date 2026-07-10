@@ -14,8 +14,10 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.java.shell :as sh]
+            [clojure.pprint :as pp]
             [clojure.set :as set]
             [clojure.string :as str]
+            [tik.author :as author]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
             [tik.event :as event]
@@ -1505,6 +1507,65 @@
 
       (die "usage: tik work record|week|cost ..."))))
 
+(defn- author-write! [^File f content force?]
+  (when (and (.exists f) (not force?))
+    (die (str (.getPath f) " already exists — pass --force to overwrite")))
+  (io/make-parents f)
+  (spit f content))
+
+(defn- author-render [definition]
+  (str ";; SPDX-FileCopyrightText: The tik Authors\n"
+       ";; SPDX-License-Identifier: 0BSD\n"
+       ";;\n"
+       ";; Written by `tik author`. Edit freely — the definition is plain\n"
+       ";; EDN; `tik lint` checks it, `tik sim` runs it live, `tik test`\n"
+       ";; runs the scripted cases next to it.\n"
+       (with-out-str (pp/pprint definition))))
+
+(defn- cmd-author
+  "The authoring lens (H11): interview -> linted definition + a test
+  skeleton. --from <answers.edn> skips the interview (agents, tests)."
+  [{:keys [opts]}]
+  (let [answers (if-let [f (:from opts)]
+                  (edn/read-string (slurp f))
+                  (author/interview read-line #(do (print %) (flush))))
+        _ (when (str/blank? (:name answers))
+            (die "the process needs a name — run tik author again"))
+        pname (:name answers)
+        definition (author/with-runbook-hints
+                    (author/build-process answers) pname)
+        def-file (io/file (root) "processes" (str pname ".edn"))
+        tests-file (io/file (root) "processes" (str pname ".tests.edn"))
+        problems (process/lint definition)]
+    (author-write! def-file (author-render definition) (:force opts))
+    (author-write! tests-file
+                   (str ";; SPDX-FileCopyrightText: The tik Authors\n"
+                        ";; SPDX-License-Identifier: 0BSD\n"
+                        ";;\n"
+                        ";; Starter cases from `tik author` — one per outcome. Each\n"
+                        ";; fails until you state HOW the outcome is reached; the\n"
+                        ";; failure prints explain, which shows what is missing.\n"
+                        (with-out-str
+                          (pp/pprint (author/tests-skeleton definition
+                                                            (str pname ".edn")))))
+                   (:force opts))
+    (doseq [[path content] (author/runbook-stubs answers)]
+      (let [f (io/file (root) path)]
+        (author-write! f content (:force opts))
+        (println (str "wrote " (.getPath f)))))
+    (println (str "wrote " (.getPath def-file)))
+    (println (str "wrote " (.getPath tests-file)))
+    (if (empty? problems)
+      (println "lint: clean")
+      (doseq [{:keys [level msg]} problems]
+        (println (str "[" (name level) "] " msg))))
+    (println)
+    (println "next steps:")
+    (println (str "  bb tik sim " (.getPath def-file) "     try it live on a scratch ticket"))
+    (println (str "  bb tik test " (.getPath tests-file) "  make the outcome cases pass"))
+    (println (str "  bb tik new " pname "                    first real ticket"))
+    (when (some #(= :error (:level %)) problems) (System/exit 1))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (let [proc (edn/read-string (slurp (first pos)))
         missing-runbooks (for [s (:process/stages proc)
@@ -1758,6 +1819,9 @@
                 [--apply]                       definition; dry-run unless --apply
   tik export <dir>                              materialize any store as the file/git
                                                 format (the audit interchange)
+  tik author [--from answers.edn] [--force]     guided interview -> a linted process
+                                                definition + test skeleton; no EDN
+                                                knowledge needed
   tik lint <process.edn>                        lint a process definition
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
@@ -1791,6 +1855,7 @@
       "effects" (cmd-effects parsed)
       "verify"  (cmd-verify parsed)
       "root"    (cmd-root parsed)
+      "author"  (cmd-author parsed)
       "lint"    (cmd-lint parsed)
       "actor"   (cmd-actor parsed)
       "attest"  (cmd-attest parsed)

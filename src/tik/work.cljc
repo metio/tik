@@ -40,7 +40,6 @@
   carries the event ids that produced it."
   [events]
   (let [gap (Duration/parse (:gap method))
-        floor (Duration/parse (:floor method))
         sorted (sort-by (comp str :event/at) events)]
     (reduce
      (fn [acc e]
