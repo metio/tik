@@ -363,15 +363,28 @@
                     " finished ticket(s) hidden (--all shows their"
                     " escape hatches)")))))
 
-(defn- cmd-ls [_]
-  (let [s (the-store)]
-    (doseq [id (store/ticket-ids s)
-            :let [{:keys [events state process roles]} (ticket-ctx s id)
-                  reached (stage/effective-reached process events (now) roles)
-                  current (stage/current-stages process reached)]]
+(defn- cmd-ls
+  "Open tickets by default; settled ones (sticky terminal reached —
+  :landed, :closed, :validated, :killed) hide behind --all, same
+  policy as the inbox."
+  [{:keys [opts]}]
+  (let [s (the-store)
+        t (now)
+        rows (for [id (store/ticket-ids s)
+                   :let [{:keys [events state process roles]} (ticket-ctx s id)
+                         reached (stage/effective-reached process events t roles)
+                         current (stage/current-stages process reached)]]
+               {:id id :title (:title state) :current current
+                :settled? (next-lens/settled? process events t roles)})
+        visible (if (:all opts) rows (remove :settled? rows))]
+    (doseq [{:keys [id current title]} visible]
       (println (subs (str id) 0 8)
                (format "%-24s" (str/join "," (map name current)))
-               (:title state)))))
+               title))
+    (let [hidden (- (count rows) (count visible))]
+      (when (pos? hidden)
+        (println (str "settled: " hidden
+                      " finished ticket(s) hidden (--all shows)"))))))
 
 (defn- apply-step
   "One scripted step against sim/test state {:events :now :actor}. Steps:
@@ -729,7 +742,8 @@
   tik status <id>                               derived stage, facts, what's next
   tik explain <id>                              what is needed to advance
   tik log <id>                                  the event history
-  tik ls                                        all tickets with derived stages
+  tik ls [--all]                                open tickets with derived stages
+                                                (--all includes settled ones)
   tik next [--actor A] [--all]                  the inbox: what unlocks the most work
                                                 (--all includes settled tickets)
   tik verify <id>                               the verify ladder (L0/L1/L2)
