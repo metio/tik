@@ -54,3 +54,13 @@
       (and (every? string?
                    (mapcat #(map explain/reason->text (:missing %)) blocks))
            (string? (explain/render blocks))))))
+
+(defspec missing-is-ranked-by-actionability 60
+  ;; ADR 0016: :missing is sorted most-actionable-first, stably — the
+  ;; rank sequence is non-decreasing on every block, always
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
+    (every? (fn [{:keys [missing]}]
+              (let [ranks (map explain/actionability missing)]
+                (apply <= 0 (concat ranks [10]))))
+            (explain/explain ge/process events now ge/roles))))

@@ -28,8 +28,27 @@
                    (every? reached (:after s [])))]
     s))
 
+(defn actionability
+  "Rank of a reason by who can act on it RIGHT NOW, ascending: values
+  anyone can supply, then corrections, then artifacts, then specific
+  people, then attestations, then other stages, then time (nobody can
+  act on time). Part of the ADR 0016 contract: :missing is sorted by
+  this rank (stably — ties keep guard order), so every renderer shows
+  the most actionable step first."
+  [{:keys [reason]}]
+  (case reason
+    (:fact/missing :fact/mismatch :fact/invalid) 0
+    (:fact/retracted :fact/disputed :fact/conflicted) 1
+    :artifact/missing 2
+    (:role/unsatisfied :role/same-person) 3
+    (:attestation/missing :attestation/stale) 4
+    :stage/not-reached 5
+    :time/not-elapsed 6
+    9))
+
 (defn explain
-  "[{:stage :satisfied :missing :blocks :hint?} ...] for the frontier."
+  "[{:stage :satisfied :missing :blocks :hint?} ...] for the frontier.
+  :missing is sorted by `actionability`."
   [process events now roles]
   (let [state (red/ticket-state events)
         reached (stage/effective-reached process events now roles)
@@ -42,9 +61,11 @@
                  satisfied (into [] (comp (filter (comp :satisfied? second))
                                           (map first))
                                  evaluated)
-                 missing (into [] (comp (mapcat (comp :reasons second))
-                                        (distinct))
-                               evaluated)]
+                 missing (vec (sort-by actionability
+                                       (sequence
+                                        (comp (mapcat (comp :reasons second))
+                                              (distinct))
+                                        evaluated)))]
            :when (seq missing)]
        (cond-> {:stage (:stage/id s)
                 :satisfied satisfied
