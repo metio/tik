@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T20:29:12.381Z" :event/body {:fact/path [:summary] :fact/value "one hostile GET or one bad JSON line can no longer take the whole server down"} :event/parents #{"sha256-66b99e8fb2d01815d640896c6dacdb429ef71dcd8b9c6ef3cae1c78eed129a51"} :event/ticket #uuid "df197fbd-7c26-4857-aff5-0042787b319c" :event/type :fact/assert}
