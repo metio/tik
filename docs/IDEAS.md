@@ -245,6 +245,26 @@ abstractions generalize.
   outdated head, where a branch diverged, which conflicts came from
   independent replicas. Becomes interesting with Phase 1 multi-replica
   sync; pure `tik.dag` computation, no kernel change.
+- **Formal verification of the user's process definition** — turn the
+  formal-methods investment outward: a process definition IS a small
+  state machine over a closed guard basis, so it is a natural target
+  for a checker, and this makes "provably-correct workflow" a product
+  feature, not just kernel assurance. Two shapes. **SMT-backed
+  reachability** (encode the guard basis into Z3): statically answer
+  "can this stage ever fire?", "are these two stages mutually
+  exclusive?", "is there a dead stage no evidence can reach?" — the
+  linter already does graph sanity (ADR: reachable, stratified, acyclic
+  `:after`); this adds *semantic* reachability the graph cannot see.
+  **Author-stated invariants, machine-checked** (TLC/Apalache over the
+  definition as a state machine): let an author write a property about
+  their OWN process — `paid ⇒ approved`, "no stage reached without its
+  signature" — and prove the definition cannot violate it. tik-shaped
+  because the process is already the spec: no separate model to keep in
+  sync, the `.edn` is the thing checked. The kernel stays out of it —
+  this is an authoring-time analysis over the definition (ADR 0009
+  authoring data), never a runtime gate. Composes with the process
+  debugger and governance analyses: reachability failures ARE dead
+  stages, invariant violations ARE the counterexample trace to show.
 
 ## Commercial
 
@@ -289,6 +309,27 @@ where they stop:
   (HTTP), FlowStorm (walking derivation), tools.namespace reload,
   next.jdbc with `events(id TEXT PRIMARY KEY, bytes BLOB)` for the
   SQLite backend. Adopt opportunistically; none are load-bearing.
+- **Deeper formal verification of the kernel itself** — beyond the
+  current TLA+ (merge, fixpoint) + reference-oracle + corpus + golden
+  bytes + totality registry, several additions with real leverage on a
+  small pure kernel. **Cross-runtime differential property** (cheapest,
+  highest ratio): generate inputs, assert the JVM and babashka runtimes
+  produce *byte-identical* canonical output and identical derivations —
+  a direct guard on the content-addressing forever-promise against
+  runtime drift. **Metamorphic properties** (no oracle needed):
+  retract-then-reassert ≡ never-touched, replay-with-duplicates ≡
+  replay, timestamp permutation stable up to `(at, id)` — catch bugs
+  the reference oracle cannot see because they need no known answer.
+  **Stateful model-based testing**: generate random *sequences* of CLI
+  commands, run against the real store and a tiny in-memory model,
+  assert agreement — interaction bugs per-function fuzzing misses.
+  **Machine-checked proofs** (Lean 4 / Isabelle) of the crown-jewel
+  laws — reducer commutativity/associativity/idempotence over the event
+  set, canonical determinism — turning statistical confidence into
+  certainty for the theorems everything rests on. **Apalache** beside
+  TLC: symbolic checking proves inductive invariants rather than
+  BFS-exploring a bounded space. The cross-runtime property is the one
+  to build first.
 - ~~**MCP per-call latency**~~ — shipped: the stdio MCP server called
   a fresh `bb tik` subprocess per `tools/call`, paying babashka's
   ~0.85s load-from-source cost each time. `tik.cli/run-argv` is now a
