@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T10:25:28.313Z" :event/body {:fact/path [:summary] :fact/value "one pack per settled ticket; the slices still hash to their ids"} :event/parents #{"sha256-28deda0e1a1550f2e56fccfbcc5cf34bec79282d1ff0456c50b73de16d677bb8"} :event/ticket #uuid "0ed9ec5e-8527-43d0-b24a-8829cfa21541" :event/type :fact/assert}
