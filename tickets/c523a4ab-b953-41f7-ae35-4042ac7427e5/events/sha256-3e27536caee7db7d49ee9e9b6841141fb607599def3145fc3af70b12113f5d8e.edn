@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T19:54:16.535Z" :event/body {:fact/path [:summary] :fact/value "the store can now swallow a 100k-deep recursion bomb and answer with words"} :event/parents #{"sha256-b3d4f96a836a695509a7934daeb3d0ee45ffa2c22f5a89a27fd676d9744a4b3d"} :event/ticket #uuid "c523a4ab-b953-41f7-ae35-4042ac7427e5" :event/type :fact/assert}
