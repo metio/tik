@@ -145,6 +145,20 @@ abstractions generalize.
   whether read access wants gating at all, or stays wide (the board is
   already "derived, not secret") with only writes and store-visibility
   scoped.
+- **OIDC bridge captures group claims** — the bridge (§9) already binds
+  an IdP subject to a signing key as a signed attestation, the
+  tik-native enrollment path; it records `sub`/`preferred_username` but
+  drops the token's `groups`/`roles` claims. Capturing them into the
+  binding event would give the access-derivation above richer material:
+  "who may touch this store" could then derive from a signed record of
+  *both* the key→identity binding and the identity's group membership
+  at bind time — still one signed attestation, still offline-verifiable,
+  the group snapshot itself becoming auditable evidence (and rotation
+  just a newer binding). Enrollment stays the bridge's job, authorization
+  stays a derivation; this only widens what the bridge signs. Care
+  point: group claims are the IdP's word at a moment, so the event must
+  record *when* and *from which issuer*, and downstream guards treat
+  stale membership the way any time-bound fact is treated.
 - **Customer information-request loop** — when a process needs facts
   only the customer can provide, everything decomposes into existing
   machinery: the *request* is an effect (ADR 0019: an email from an

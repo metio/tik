@@ -26,6 +26,7 @@
             [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
+            [tik.oidc :as oidc]
             [tik.reduce :as red]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -925,3 +926,59 @@
         (is (every? #(str/includes? (:out %) "ticket-0") results))
         (is (every? #(str/blank? (:err %)) results)
             "no call's stderr bled into another's")))))
+
+;; ------------------- the OIDC bridge over a hostile identity provider
+
+(defn- b64url [s]
+  (.encodeToString (java.util.Base64/getUrlEncoder) (.getBytes ^String s "UTF-8")))
+
+(defspec decode_jwt_payload_is_total_over_hostile_tokens n
+  ;; the bridge takes the token endpoint's word for the JWT payload
+  ;; (ns docstring), but a broken or hostile IdP can return anything
+  ;; where an id_token should be — no dots, non-base64url, base64 of
+  ;; non-JSON. Decoding must fail well (the IdP's fault, an ex-info),
+  ;; never a raw NPE or decoder/parser throw reworded as a tik bug
+  (prop/for-all [token (gen/one-of
+                        [gen/string
+                         (gen/fmap #(str "h." % ".s") gen/string)
+                         (gen/fmap #(str "h." (b64url %) ".s") gen/string)])]
+    (fails-well? #(oidc/decode-jwt-payload token))))
+
+(deftest oidc_flows_fail_well_over_hostile_idp_bodies
+  ;; discover / password-flow / token->binding parse whatever the IdP
+  ;; sends; a non-JSON body, a JSON non-object, or a token response
+  ;; missing id_token must all be data-carrying rejections
+  (let [bodies ["not json at all {{{" "[1,2,3]" "5" "null" ""
+                "{\"token_endpoint\":42}" "\"a bare string\""]]
+    (testing "discover over hostile discovery documents"
+      (doseq [body bodies]
+        (is (fails-well? #(oidc/discover (constantly body) "https://idp"))
+            body)))
+    (testing "password-flow over hostile token responses"
+      (doseq [body bodies]
+        (is (fails-well?
+             #(oidc/password-flow (fn [_ _] body) {:token "t"} "c" "u" "p"))
+            body)))
+    (testing "a valid JSON response with no id_token names the IdP error"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"no id_token"
+           (oidc/token->binding {:error "access_denied"
+                                 :error_description "user said no"}
+                                {:actor "a" :public-key "k"
+                                 :issuer "https://idp"}))))
+    (testing "a non-JSON body specifically throws an ex-info, not a raw parse error"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (oidc/discover (constantly "definitely not json")
+                                  "https://idp"))))))
+
+(deftest oidc_device_flow_survives_a_hostile_poll
+  ;; device-flow's poll re-parses the token endpoint each tick; a
+  ;; hostile endpoint that flips to garbage mid-poll must fail well,
+  ;; and the injected sleep keeps the test instant
+  (let [responses (atom ["{\"interval\":0,\"device_code\":\"d\",\"user_code\":\"U\"}"
+                         "garbage not json"])
+        post (fn [_ _] (let [[h & t] @responses]
+                         (reset! responses (or t ["{}"])) h))
+        {:keys [poll]} (oidc/device-flow post {:device "d" :token "t"}
+                                         "client" (fn [_] nil))]
+    (is (fails-well? poll))))

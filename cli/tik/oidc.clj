@@ -43,8 +43,19 @@
                       (.build))
                   (HttpResponse$BodyHandlers/ofString)))))
 
-(defn- json-parse [s]
-  ((requiring-resolve 'cheshire.core/parse-string) s true))
+(defn- json-parse
+  "Parse an IdP-sourced JSON body. A broken or hostile IdP that returns
+  non-JSON is THE IdP's fault, not a tik bug — fail well with a
+  data-carrying error so the message names the IdP, never a raw
+  JsonParseException reworded as a this-is-a-bug line."
+  [s]
+  (try
+    ((requiring-resolve 'cheshire.core/parse-string) s true)
+    (catch Exception e
+      (throw (ex-info "the identity provider returned a body that is not valid JSON"
+                      {:reason :oidc/bad-response
+                       :body (when (string? s) (subs s 0 (min 200 (count s))))}
+                      e)))))
 
 ;; ---------------------------------------------------------------- pure
 
@@ -53,11 +64,19 @@
 
 (defn decode-jwt-payload
   "The claims map of a JWT, no signature check (see the ns docstring
-  for why that is honest here)."
+  for why that is honest here). Total over a hostile id_token: a
+  missing payload segment, non-base64url bytes, or non-JSON content is
+  the IdP's fault and fails well, never a raw NPE or decoder throw."
   [token]
-  (let [[_ payload _] (str/split token #"\.")]
-    (json-parse (String. (.decode (Base64/getUrlDecoder) ^String payload)
-                         "UTF-8"))))
+  (let [payload (second (str/split (str token) #"\."))]
+    (when (str/blank? payload)
+      (throw (ex-info "the id_token is not a JWT (no payload segment)"
+                      {:reason :oidc/bad-token})))
+    (let [bytes (try (.decode (Base64/getUrlDecoder) ^String payload)
+                     (catch Exception e
+                       (throw (ex-info "the id_token payload is not valid base64url"
+                                       {:reason :oidc/bad-token} e))))]
+      (json-parse (String. ^bytes bytes "UTF-8")))))
 
 (defn binding-claim
   "The attestation body binding an IdP subject to an actor's key —
