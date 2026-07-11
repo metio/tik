@@ -74,16 +74,12 @@
          (try (event/valid? (event/mint garbage))
               (catch clojure.lang.ExceptionInfo _ true)))))
 
-(defspec the_reducer_is_total_over_garbage_event_sets n
-  ;; events that bypassed minting (a hostile store) must not crash the
-  ;; fold — reduction is a pure fn of the set, garbage included
-  (prop/for-all [garbage (gen/vector gen-garbage 0 5)
-                 valid ge/gen-events]
-    (fails-well? #(red/ticket-state (into (vec valid) garbage)))))
-
 ;; --------------------------------------------------- malformed guards
 
 (def gen-garbage-guard
+  "A guard vector with a real-or-nonsense operator and arbitrary args —
+  the domain generator for guard/eval-guard and the fixpoint in the
+  totality registry below."
   (gen/one-of
    [gen/any-equatable
     (gen/vector gen/keyword 0 4)
@@ -92,29 +88,6 @@
                                 :not :nonsense])
               args (gen/vector gen/any-equatable 0 3)]
       (gen/return (into [op] args)))]))
-
-(defspec guard_evaluation_is_total_or_fails_well n
-  ;; the runtime's closed-vocabulary throw is ex-info by contract; a
-  ;; NullPointerException from a mangled argument list is a finding
-  (prop/for-all [g gen-garbage-guard
-                 events ge/gen-events]
-    (fails-well?
-     #(guard/eval-guard g {:state (red/ticket-state events)
-                           :now (Instant/now)
-                           :roles ge/roles
-                           :reached #{}}))))
-
-(defspec the_fixpoint_is_total_over_garbage_processes n
-  (prop/for-all [stages (gen/vector
-                         (gen/let [id gen/keyword
-                                   guards (gen/vector gen-garbage-guard 0 2)]
-                           (gen/return {:stage/id id :guards guards}))
-                         0 4)
-                 events ge/gen-events]
-    (fails-well?
-     #(stage/effective-reached {:process/id :fuzz :process/version 1
-                                :process/stages stages}
-                               events (Instant/now) ge/roles))))
 
 ;; ------------------------------------------------- corrupted stores
 
@@ -155,16 +128,10 @@
     (is (= @total @caught)
         "every single-byte flip must change the content address")))
 
-;; ------------------------------------------------ round 2: the porcelain
+;; ------------------------------------------------ the porcelain parsers
 
 (def ^:private cli-parse-value @#'tik.cli/parse-value)
 (def ^:private cli-parse-key @#'tik.cli/parse-key)
-
-(defspec parse-value-is-total-over-arbitrary-text n
-  ;; whatever a human or a hostile probe prints, the parser answers
-  ;; with a VALUE — never a throw
-  (prop/for-all [s gen/string]
-    (fails-well? #(cli-parse-value s))))
 
 (defspec parse-key-is-total-over-plausible-keys n
   (prop/for-all [s (gen/such-that seq gen/string-alphanumeric)]
@@ -177,20 +144,109 @@
       (and (<= 0.0 score 1.0)
            (= score (tik.dupe/similarity b a))))))
 
-(defspec author-check-is-total-over-garbage n
-  ;; whatever an LLM or a corrupted answers.edn hands it, check
-  ;; answers with findings — the error finding IS the clean rejection
-  (prop/for-all [garbage gen/any-equatable]
-    (fails-well? #(doall (tik.author/check garbage)))))
+;; ------------------------------------- the totality registry
 
-(defspec usage-totals-is-total-over-hostile-telemetry n
-  ;; agent telemetry is attestation BODY — unvalidated by schema; a
-  ;; hostile or buggy agent's usage map must not crash the money lens
-  (prop/for-all [records (gen/vector
-                          (gen/map gen/keyword gen/any-equatable
-                                   {:max-elements 4})
-                          0 4)]
-    (fails-well? #(work/usage-totals records {"m" {:input 3.0}}))))
+(def ^:private gen-hostile-events
+  "Events whose parent references may form cycles or dangle —
+  impossible to MINT (hashes), trivial for a hostile store to write."
+  (gen/fmap
+   (fn [edges]
+     (mapv (fn [[id parents]]
+             {:event/id id :event/parents (set parents)
+              :event/at (Instant/parse "2026-01-01T00:00:00Z")
+              :event/type :fact/assert
+              :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
+              :event/actor "x" :event/body {:fact/path [:x] :fact/value 1}})
+           edges))
+   (gen/map (gen/fmap #(str "id" %) gen/small-integer)
+            (gen/set (gen/fmap #(str "id" %) gen/small-integer)
+                     {:max-elements 3})
+            {:max-elements 8})))
+
+(def ^:private one (partial gen/fmap vector))   ; a one-argument arg-vector
+
+(def totality-registry
+  "The explicit set of PURE boundary functions that promise TOTALITY:
+  over their whole domain they return a value or throw ex-info — never
+  another Throwable, never a silent wrong answer. One table so the
+  boundary set is auditable in one place and one property (below)
+  enforces the floor uniformly; a new untrusted-input surface joins
+  here or it is not covered.
+
+  Each entry is {:label :f :gen}; :gen produces the full argument
+  VECTOR that :f is applied to. The generator is shaped to the
+  function's real domain — feeding gen/any to a fn whose domain is
+  event maps would only ever exercise the reject path — so both the
+  compute and the reject sides are hit. I/O boundaries (the store
+  readers, run-argv, the MCP loop) need filesystem/process context and
+  are driven by their own deftests, not this pure-args table."
+  [{:label "canonical/emit" :f canonical/emit
+    :gen (one gen/any-equatable)}
+   {:label "canonical/content-address" :f canonical/content-address
+    :gen (one gen/any-equatable)}
+   {:label "canonical/check-nesting" :f canonical/check-nesting
+    :gen (one gen/string)}
+   {:label "event/mint" :f event/mint
+    :gen (one gen-garbage)}
+   {:label "reduce/ticket-state" :f red/ticket-state
+    :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
+                   valid ge/gen-events]
+           [(into (vec valid) garbage)])}
+   {:label "guard/eval-guard" :f guard/eval-guard
+    :gen (gen/let [g gen-garbage-guard
+                   events ge/gen-events]
+           [g {:state (red/ticket-state events) :now (Instant/now)
+               :roles ge/roles :reached #{}}])}
+   {:label "stage/effective-reached" :f stage/effective-reached
+    :gen (gen/let [stages (gen/vector
+                           (gen/let [id gen/keyword
+                                     guards (gen/vector gen-garbage-guard 0 2)]
+                             {:stage/id id :guards guards})
+                           0 4)
+                   events ge/gen-events]
+           [{:process/id :fuzz :process/version 1 :process/stages stages}
+            events (Instant/now) ge/roles])}
+   {:label "cli/parse-value" :f cli-parse-value
+    :gen (one gen/string)}
+   {:label "cli/parse-key" :f cli-parse-key
+    :gen (one gen/string)}
+   {:label "dupe/similarity" :f tik.dupe/similarity
+    :gen (gen/tuple (gen/one-of [gen/string (gen/return nil)])
+                    (gen/one-of [gen/string (gen/return nil)]))}
+   {:label "author/check" :f tik.author/check
+    :gen (one gen/any-equatable)}
+   {:label "work/usage-totals" :f work/usage-totals
+    :gen (gen/fmap (fn [records] [records {"m" {:input 3.0}}])
+                   (gen/vector (gen/map gen/keyword gen/any-equatable
+                                        {:max-elements 4})
+                               0 4))}
+   {:label "dag/heads" :f tik.dag/heads :gen (one gen-hostile-events)}
+   {:label "dag/roots" :f tik.dag/roots :gen (one gen-hostile-events)}
+   {:label "dag/missing-parents" :f tik.dag/missing-parents
+    :gen (one gen-hostile-events)}
+   {:label "explain/render" :f tik.explain/render
+    :gen (gen/fmap (fn [reasons]
+                     [[{:stage :fuzz :satisfied [] :missing reasons
+                        :blocks #{}}]])
+                   (gen/vector (gen/map gen/keyword gen/any-equatable
+                                        {:max-elements 4})
+                               0 4))}])
+
+(defspec every_registered_boundary_is_total (* 3 n)
+  ;; pick a boundary, generate an argument vector in ITS domain, apply,
+  ;; and force any lazy result — the answer must be a value or an
+  ;; ex-info, never another Throwable. The label rides along so a
+  ;; failure names the function, not just an opaque fn object.
+  (prop/for-all [[label f args]
+                 (gen/let [{:keys [label f gen]} (gen/elements totality-registry)
+                           args gen]
+                   [label f args])]
+    (let [result (fails-well?
+                  #(let [r (apply f args)]
+                     (when (seqable? r) (doall r))
+                     nil))]
+      (when-not result (println "NOT TOTAL:" label "on" (pr-str args)))
+      result)))
 
 ;; -------------------------------- hash-valid garbage in a store file
 
@@ -255,7 +311,7 @@
                           (str (:out r) (:err r))))
             (str (pr-str argv) "\n" (:err r)))))))
 
-;; -------------------------------------------- round 3: garbage configs
+;; -------------------------------------------- garbage config files
 
 (deftest garbage_configs_answer_with_words_never_traces
   ;; every EDN file an operator can typo must produce a message naming
@@ -328,7 +384,7 @@
           "the healthy sink delivered despite the dead one")
       (is (not (re-find #"Exception in thread|\tat " (str (:err r))))))))
 
-;; ------------------------------------- round 4: packs, cache, dir names
+;; ------------------------------- packs, caches, hostile directory names
 
 (defspec minted_events_always_read_back n
   ;; the corrupt-on-write guard: whatever survives mint must re-emit
@@ -421,34 +477,20 @@
         (is (zero? (:exit r)) payload)
         (is (re-find #"cache fodder" (:out r)) payload)))))
 
-;; ------------------------------- round 5: hostile DAGs, poisoned boards
+;; ------------------------------- hostile DAGs and poisoned boards
 
-(defspec graph_walks_terminate_on_hostile_dags n
-  ;; a crafted store can contain parent references that form cycles or
-  ;; point nowhere — impossible to MINT (hashes), trivial to WRITE.
-  ;; Every graph function must terminate and answer
-  (prop/for-all [edges (gen/map (gen/fmap #(str "id" %) gen/small-integer)
-                                (gen/set (gen/fmap #(str "id" %)
-                                                   gen/small-integer)
-                                         {:max-elements 3})
-                                {:max-elements 8})]
-    (let [events (mapv (fn [[id parents]]
-                         {:event/id id :event/parents (set parents)
-                          :event/at (Instant/parse "2026-01-01T00:00:00Z")
-                          :event/type :fact/assert
-                          :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
-                          :event/actor "x"
-                          :event/body {:fact/path [:x] :fact/value 1}})
-                       edges)]
-      (and (fails-well? #(doall (tik.dag/heads events)))
-           (fails-well? #(doall (tik.dag/missing-parents events)))
-           (fails-well? #(doall (tik.dag/roots events)))
-           (fails-well? #(red/ticket-state events))))))
+(defspec ticket_state_folds_a_hostile_dag n
+  ;; the dag graph walks (heads/roots/missing-parents) are in the
+  ;; totality registry; this pins the extra: the reducer FOLDS a set of
+  ;; events whose parents cycle or dangle — parents are integrity, not
+  ;; order, so a broken DAG must still fold, never loop
+  (prop/for-all [events gen-hostile-events]
+    (fails-well? #(red/ticket-state events))))
 
-(defspec reason_rendering_is_total_over_garbage n
-  ;; lenses render whatever reasons arrive — including from stores
-  ;; written by future or hostile versions with reason keys we never
-  ;; defined. render answers with a string, always
+(defspec reason_rendering_is_a_string_over_garbage n
+  ;; render is in the registry for totality; this asserts the STRONGER
+  ;; shape contract: whatever reasons arrive — including keys from tik
+  ;; versions that do not exist yet — render answers with a STRING
   (prop/for-all [reasons (gen/vector
                           (gen/map gen/keyword gen/any-equatable
                                    {:max-elements 4})
@@ -496,7 +538,7 @@
         (is (re-find #"ok 1 event\(s\)" (:out r))
             "the audit covered the healthy ticket too")))))
 
-;; ---------------- round 6: recursion bombs, sqlite hostility, sidecars
+;; ---------------- recursion bombs, sqlite hostility, signature sidecars
 
 (deftest recursion_bombs_are_rejected_never_overflow
   ;; the emitter and every EDN reader recurse per nesting level, so a
@@ -619,7 +661,7 @@
       (is (not (re-find #"Exception in thread|\tat "
                         (str (:out r) (:err r))))))))
 
-;; ----------------- round 7: the HTTP serve and MCP stdio surfaces
+;; ----------------- the HTTP serve and MCP stdio surfaces
 
 (defn- http-status
   "GET path off the local server; the status code, or -1 on a
@@ -721,7 +763,7 @@
     (testing "a garbage line answers with a parse error, not silence"
       (is (re-find #"-32700|parse error" (:out r))))))
 
-;; ---------------------- round 8: the run-argv in-process seam
+;; ---------------------- the run-argv in-process seam
 
 (defn- with-store
   "Run f with the CLI's private root accessor pinned to a temp dir, so
