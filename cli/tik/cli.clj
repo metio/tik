@@ -171,9 +171,11 @@
   \"a051932\". Everything else parses exactly as before."
   [proc path raw]
   (let [parsed (parse-value raw)]
-    (if (and (keyword? parsed)
-             (not (str/starts-with? (str/trim raw) ":"))
-             (declared-string? proc path))
+    (if (and (declared-string? proc path)
+             (not (string? parsed)))
+      ;; the declaration wants a string: bare hex, all-digit hashes,
+      ;; words — the raw text IS the value (a quoted "..." already
+      ;; parsed to a string and kept its EDN reading)
       (str/trim raw)
       parsed)))
 

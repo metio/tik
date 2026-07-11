@@ -94,6 +94,10 @@
       (tik* root "set" id "commit=a051932f")
       (is (re-find #"\[:commit\] = \"a051932f\""
                    (:out (tik* root "status" id)))))
+    (testing "an all-digit hash stays a string too"
+      (tik* root "set" id "commit=4118197")
+      (is (re-find #"\[:commit\] = \"4118197\""
+                   (:out (tik* root "status" id)))))
     (testing "an explicit :colon still means keyword"
       (tik* root "set" id "gate=:green")
       (is (re-find #"\[:gate\] = :green" (:out (tik* root "status" id)))))
