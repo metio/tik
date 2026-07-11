@@ -60,13 +60,21 @@
                              e)))))))
 
 (defn pack-slice
-  "The exact hashed byte region of one packed event."
-  ^bytes [^File dir {:keys [offset length]}]
-  (let [out (byte-array length)]
-    (with-open [raf (java.io.RandomAccessFile. (pack-file dir) "r")]
-      (.seek raf (long offset))
-      (.readFully raf out))
-    out))
+  "The exact hashed byte region of one packed event. An index lying
+  about offsets, or a truncated pack, fails WELL — the rejection
+  names the pack, never a raw EOF from the depths of RandomAccessFile."
+  ^bytes [^File dir {:keys [id offset length]}]
+  (try
+    (let [out (byte-array (max 0 (long length)))]
+      (with-open [raf (java.io.RandomAccessFile. (pack-file dir) "r")]
+        (.seek raf (max 0 (long offset)))
+        (.readFully raf out))
+      out)
+    (catch Exception e
+      (throw (ex-info "pack slice unreadable — index and pack disagree"
+                      {:reason :pack/unreadable :file (str (pack-file dir))
+                       :id id :offset offset :length length}
+                      e)))))
 
 (defn- read-packed-events [^File dir]
   (if-let [{:keys [entries]} (read-pack-index dir)]

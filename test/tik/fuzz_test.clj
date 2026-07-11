@@ -8,7 +8,8 @@
   — never an unexpected exception class, and above all never a silent
   pass. TIK_FUZZ_N scales the iteration counts (default keeps the
   gate fast; crank it for a soak run)."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -323,3 +324,96 @@
       (is (.exists outfile)
           "the healthy sink delivered despite the dead one")
       (is (not (re-find #"Exception in thread|\tat " (str (:err r))))))))
+
+;; ------------------------------------- round 4: packs, cache, dir names
+
+(defspec minted_events_always_read_back n
+  ;; the corrupt-on-write guard: whatever survives mint must re-emit
+  ;; to the same bytes after a plain EDN read — no store can gain a
+  ;; hash-valid but forever-unreadable file through the front door
+  (prop/for-all [v gen/any-equatable]
+    (let [minted (try (event/assert-fact
+                       {:ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
+                        :actor "seb" :at (Instant/parse "2026-01-01T00:00:00Z")
+                        :parents #{"sha256-x"} :path [:x] :value v})
+                      (catch clojure.lang.ExceptionInfo _ ::refused))]
+      (or (= ::refused minted)
+          (let [bytes (canonical/emit (dissoc minted :event/id))]
+            (= bytes (canonical/emit (edn/read-string bytes))))))))
+
+(deftest hostile_directory_names_never_corrupt_a_store
+  (let [top (.toFile (Files/createTempDirectory
+                      "tik-dirs" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [dir & args]
+              (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
+                                   args
+                                   [:dir (str dir)
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ACTOR" "fuzz")])))]
+    (doseq [evil ["my repo" "wei{rd" "tick] et"]]
+      (.mkdirs (io/file top evil ".git")))
+    (run top "init" "--hidden")
+    (testing "rollout across hostile names: strings, not broken keywords"
+      (let [r (run top "rollout" "track")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"3 ticket\(s\) created" (:out r)))))
+    (testing "context facts from inside a hostile dir"
+      (let [inside (io/file top "my repo")
+            r (run inside "new" "track" "--title" "from within")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"context: repo=\"my repo\"" (str (:err r))))))
+    (testing "the whole store still verifies"
+      (is (re-find #"verify: PASS" (:out (run top "verify")))))))
+
+(deftest lying_pack_indexes_fail_well
+  (let [dir (.toFile (Files/createTempDirectory
+                      "tik-pack-fuzz" (make-array FileAttribute 0)))
+        s (fstore/file-store (str dir))
+        ticket (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")
+        evs (event/chain
+             (fn [_] (event/create-ticket {:ticket ticket :actor "seb"
+                                           :at t :title "packed"
+                                           :process :p}))
+             #(event/assert-fact {:ticket ticket :actor "seb"
+                                  :at (.plusSeconds t 1) :parents %
+                                  :path [:x] :value 1}))
+        _ (doseq [e evs] (store/append! s e))
+        _ (fstore/pack! (str dir) ticket)
+        evdir (io/file dir "tickets" (str ticket) "events")
+        idx (io/file evdir "events.pack.idx")
+        good (slurp idx)]
+    (testing "the packed store reads and folds"
+      (is (= 2 (count (store/events s ticket)))))
+    (testing "garbage index fails well"
+      (spit idx "{{{ not edn")
+      (is (fails-well? #(doall (store/events s ticket))))
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (doall (store/events s ticket)))))
+    (testing "an index lying about offsets fails well, never EOFs raw"
+      (spit idx (str/replace good #":offset 0" ":offset 999999"))
+      (is (fails-well? #(doall (store/events s ticket)))))
+    (testing "a truncated pack fails well"
+      (spit idx good)
+      (spit (io/file evdir "events.pack") "short")
+      (is (fails-well? #(doall (store/events s ticket)))))))
+
+(deftest corrupt_caches_are_misses_never_crashes
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-cache-fuzz" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))]
+    (run "new" "track" "--title" "cache fodder")
+    (run "ls")                                   ; builds the cache
+    (doseq [payload ["%%% not json" "[1,2,3]" "{\"x\": {\"row\": 7}}"
+                     "{\"unclosed\": "]]
+      (spit (io/file root ".derived-cache.json") payload)
+      (let [r (run "ls")]
+        (is (zero? (:exit r)) payload)
+        (is (re-find #"cache fodder" (:out r)) payload)))))

@@ -486,7 +486,10 @@
                      (take-while #(and % (not= (str %) (str holder))))
                      reverse))                       ; holder-side first
         repo (some #(when (.exists (io/file % ".git"))
-                      (keyword (.getName ^File %)))
+                      (let [n (.getName ^File %)]
+                        (if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" n)
+                          (keyword n)
+                          n)))
                    (reverse chain))                  ; nearest git wins
         ;; a marker AT the holder applies store-wide; deeper wins
         markers (apply merge
@@ -532,7 +535,12 @@
         repos (sort (mapcat #(walk % (.getName ^File %))
                             (filter #(.isDirectory ^File %)
                                     (or (.listFiles holder) []))))
-        repo-value #(if (str/includes? % "/") % (keyword %))
+        repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
+                      (keyword %)
+                      ;; spaces, slashes, EDN-hostile characters: the
+                      ;; name rides as a string (mint would refuse a
+                      ;; keyword that cannot round-trip)
+                      %)
         _ (when (empty? repos)
             (die (str "no git repositories directly under " holder)))
         s (the-store)
@@ -591,14 +599,17 @@
                           :parents (dag/heads (store/events s child))
                           :path [:title] :value child-title})
                       opts)))
-        (when-not (= (str child)
-                     (red/fact-value state [:link (keyword (str/replace repo "/" "."))]))
-          (append!* s (event/assert-fact
-                       {:ticket parent-id :actor (actor opts) :at (now)
-                        :parents (dag/heads (store/events s parent-id))
-                        :path [:link (keyword (str/replace repo "/" "."))]
-                        :value (str child)})
-                    opts))))
+        (let [rel (keyword (str/replace
+                            (str/replace repo "/" ".")
+                            #"[^a-zA-Z0-9_.-]" "_"))]
+          (when-not (= (str child)
+                       (red/fact-value state [:link rel]))
+            (append!* s (event/assert-fact
+                         {:ticket parent-id :actor (actor opts) :at (now)
+                          :parents (dag/heads (store/events s parent-id))
+                          :path [:link rel]
+                          :value (str child)})
+                      opts)))))
     (println (str @created " ticket(s) created, "
                   (- (count repos) @created) " already covered, "
                   (count repos) " repo(s) total — the living checklist:"))

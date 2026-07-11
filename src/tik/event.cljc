@@ -15,7 +15,9 @@
   Merkle DAG — one head commits to all of history. Parents are for
   integrity, concurrency detection, and sync; deliberately NOT for
   reduction order, which stays (at, id) over the event set."
-  (:require [malli.core :as m]
+  (:require #?(:clj [clojure.edn :as edn]
+               :cljs [cljs.reader :as edn])
+            [malli.core :as m]
             [tik.canonical :as canonical]))
 
 (def event-types
@@ -61,6 +63,20 @@
   (let [e (assoc event :event/id (event-id event))]
     (when-not (valid? e)
       (throw (ex-info "invalid event" {:explain (explain-event e)})))
+    ;; the stored bytes must READ BACK to the event, or the store gains
+    ;; a file whose hash is honest and whose content is unreachable
+    ;; forever (a keyword with a space, an unprintable value). Refusing
+    ;; at mint closes corrupt-on-write for every producer at once.
+    (let [bytes (canonical/emit (dissoc e :event/id))
+          reread (try (edn/read-string bytes)
+                      (catch #?(:clj Exception :cljs :default) _ ::unreadable))]
+      ;; byte-level round trip: what parses back must re-emit to the
+      ;; very same bytes (Instant and Date print identically, so time
+      ;; types pass; a keyword with a space cannot)
+      (when (or (= ::unreadable reread)
+                (not= bytes (canonical/emit reread)))
+        (throw (ex-info "event does not survive serialization — a value cannot be written that could never be read"
+                        {:reason :event/unwritable :event e}))))
     (let [root? (= :ticket/create (:event/type e))
           empty-parents? (empty? (:event/parents e))]
       (when (and root? (not empty-parents?))

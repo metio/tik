@@ -24,7 +24,7 @@
         blocks (re-seq #"(?s)```sh\n(.*?)```" text)]
     (for [[_ block] blocks
           line (str/split-lines block)
-          :let [line (str/trim line)]
+          :let [line (str/trim (first (str/split line #"\s+# " 2)))]
           :when (and (seq line)
                      (not (str/starts-with? line "#"))
                      (re-find #"^(mkdir|tik|bb tik)" line))]
