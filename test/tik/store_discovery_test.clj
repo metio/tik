@@ -300,3 +300,19 @@
           (is (re-find #"links:  \(started 2 · done 1\)" out))
           (is (re-find #"mig: beta" out))
           (is (not (re-find #"mig: alpha" out))))))))
+
+(deftest status_names_the_pinned_definition_after_migration
+  (let [top (tmpdir)]
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "second.edn")
+          (pr-str {:process/id :second :process/version 3
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/stages [{:stage/id :here :guards []}]}))
+    (let [id (str/trim (:out (tik-at top nil "new" "track" "--title" "mover")))]
+      (is (re-find #"rules:   :track v1" (:out (tik-at top nil "status" id))))
+      (tik-at top nil "migrate" id ".tik/processes/second.edn" "--apply"
+              "--reason" "moving on")
+      (testing "the pinned definition names the rules, not the create label"
+        (is (re-find #"rules:   :second v3"
+                     (:out (tik-at top nil "status" id))))))))

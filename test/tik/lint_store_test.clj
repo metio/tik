@@ -82,3 +82,28 @@
       (let [r (tik* root "status" b)]
         (is (zero? (:exit r)))
         (is (re-find #"unresolved" (:out r)))))))
+
+(deftest declared_types_end_the_quoting_wars
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-typed" (make-array FileAttribute 0)))
+        _ (io/copy (io/file repo "processes/tik-dev.edn")
+                   (io/file (doto (io/file root "processes") (.mkdirs))
+                            "tik-dev.edn"))
+        id (str/trim (:out (tik* root "new" "tik-dev" "--title" "typed")))]
+    (testing "a bare hex commit stays a string because the process says string"
+      (tik* root "set" id "commit=a051932f")
+      (is (re-find #"\[:commit\] = \"a051932f\""
+                   (:out (tik* root "status" id)))))
+    (testing "an explicit :colon still means keyword"
+      (tik* root "set" id "gate=:green")
+      (is (re-find #"\[:gate\] = :green" (:out (tik* root "status" id)))))
+    (testing "undeclared facts keep the old bare-word-is-keyword behavior"
+      (tik* root "set" id "mood=curious")
+      (is (re-find #"\[:mood\] = :curious" (:out (tik* root "status" id)))))
+    (testing "ls --where matches facts either spelling"
+      (is (re-find #"typed" (:out (tik* root "ls" "--where" "gate=:green"))))
+      (is (not (re-find #"typed"
+                        (:out (tik* root "ls" "--where" "gate=:red"))))))
+    (testing "new prints a stage hint on stderr"
+      (let [r (tik* root "new" "tik-dev" "--title" "hinted")]
+        (is (re-find #"stage: captured — next: tik explain" (:err r)))))))

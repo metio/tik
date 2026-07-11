@@ -144,6 +144,27 @@
       (symbol? v) (keyword (str v))
       :else v)))
 
+(defn- declared-string?
+  "Does the process declare this fact path as a string type? Then a
+  bare token the parser would keywordize is really the user's string."
+  [proc path]
+  (let [t (get-in proc [:process/facts path])]
+    (boolean (or (= :string t)
+                 (and (vector? t) (= :string (first t)))))))
+
+(defn- typed-value
+  "parse-value informed by the DECLARED type: when the declaration
+  says string and the raw text is a bare word (no explicit :colon),
+  the raw text wins over keywordization — commit=a051932 lands as
+  \"a051932\". Everything else parses exactly as before."
+  [proc path raw]
+  (let [parsed (parse-value raw)]
+    (if (and (keyword? parsed)
+             (not (str/starts-with? (str/trim raw) ":"))
+             (declared-string? proc path))
+      (str/trim raw)
+      parsed)))
+
 (defn- process-file ^File [name] (io/file (root) "processes" (str name ".edn")))
 
 (defn- by-hash-file ^File [hash] (io/file (root) "processes" "by-hash" (str hash ".edn")))
@@ -475,7 +496,7 @@
                       :let [[_ k v] (re-matches #"\s*([^=\s]+)=(.*)" line)]
                       :when k
                       :let [path (parse-key k)
-                            value (parse-value (str/trim v))]
+                            value (typed-value process path (str/trim v))]
                       :when (not= value (red/fact-value
                                          (red/ticket-state (store/events s id))
                                          path))]
@@ -539,6 +560,12 @@
         (println (str "context: " (str/join "." (map name path)) "="
                       (pr-str value)))))
     (println (str id))
+    (let [{:keys [events process roles]} (ticket-ctx s id)
+          current (stage/current-stages
+                   process (stage/effective-reached process events (now) roles))]
+      (binding [*out* *err*]
+        (println (str "stage: " (str/join ", " (map name current))
+                      " — next: tik explain " (subs (str id) 0 8)))))
     (doseq [{existing :id :keys [title score]} similar]
       (binding [*out* *err*]
         (println (str "note: looks like " (subs (str existing) 0 8) " \"" title
@@ -562,13 +589,15 @@
                         :else (conj (pop acc) (str (peek acc) " " kv))))
                     [] kvs)
         s (the-store)
-        id (resolve-id s ticket)]
+        id (resolve-id s ticket)
+        proc (:process (ticket-ctx s id))]
     ;; heads recomputed per event: linear chain within one command
-    (doseq [kv kvs :let [[k v] (str/split kv #"=" 2)]]
+    (doseq [kv kvs :let [[k v] (str/split kv #"=" 2)
+                         path (parse-key k)]]
       (append!* s (event/assert-fact
                    {:ticket id :actor (actor opts) :at (now)
                     :parents (dag/heads (store/events s id))
-                    :path (parse-key k) :value (parse-value v)})
+                    :path path :value (typed-value proc path v)})
                 opts))
     (println "ok")))
 
@@ -755,8 +784,11 @@
     (println "title:  " (display-title state))
     ;; the hash is the RULE SET's identity, never the ticket's — label
     ;; it so nobody misreads the pin as a mutable ticket id
-    (println "rules:  " (:process state)
-             (str "v" (:process-version state))
+    ;; the PINNED definition names the rules — after a migration the
+    ;; create-time label would lie
+    (println "rules:  " (or (:process/id process) (:process state))
+             (str "v" (or (:process/version process)
+                          (:process-version state)))
              (str "(pinned @ " (some-> (:process-hash state) (subs 0 19))
                   "…)"))
     (println "stage:  " (str/join ", " (map name current))
@@ -933,7 +965,19 @@
                                             :current))
                (:search opts) (filter #(str/includes?
                                         (:haystack %)
-                                        (str/lower-case (str (:search opts))))))
+                                        (str/lower-case (str (:search opts)))))
+               (string? (:where opts))
+               (filter (let [[k v] (str/split (:where opts) #"=" 2)
+                             _ (when-not v
+                                 (die "usage: tik ls --where key=value"))
+                             path (parse-key k)
+                             want (parse-value v)]
+                         #(let [fv (red/fact-value (:state %) path)]
+                            (or (= want fv)
+                                ;; keyword/string spellings of the same
+                                ;; name match — repo=:jaas finds both
+                                (and fv (= (str/replace (str want) #"^:" "")
+                                           (str/replace (str fv) #"^:" ""))))))))
         visible (if (:all opts) rows (remove :settled? rows))]
     (if (:edn opts)
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
@@ -1703,10 +1747,12 @@
         ;; the reply convention: `tik> key=value` lines become signed
         ;; facts — the other half of the info-request loop (the email
         ;; sink teaches exactly this syntax)
-        (let [facts (for [line (str/split-lines (or body ""))
+        (let [proc (:process (ticket-ctx s id))
+              facts (for [line (str/split-lines (or body ""))
                           :let [[_ k v] (re-matches #"\s*tik>\s*([^=\s]+)=(.*)" line)]
-                          :when k]
-                      [(parse-key k) (parse-value (str/trim v))])]
+                          :when k
+                          :let [path (parse-key k)]]
+                      [path (typed-value proc path (str/trim v))])]
           (doseq [[path value] facts]
             (append!* s (event/assert-fact
                          {:ticket id :actor actor-name :at (now)
@@ -2788,14 +2834,17 @@ Each entry in :needs is one of:
                                                 honestly) — the auditor's \"prove it\"
   tik ls [--all] [--long]                       open tickets with derived stages;
          [--filter ':a :b'|':not :a']           --long adds each ticket's description
-         [--search TEXT]                        fact; filter by current stage
-                                                (negatable); search titles+facts
+         [--search TEXT] [--where k=v]          fact; filter by current stage
+                                                (negatable), search titles+facts, or
+                                                match any fact (--where repo=:jaas)
   tik search <text...>                          search ALL tickets, titles and facts
   tik query <question> [args]                   across every log: disputed|conflicted|
                                                 unsigned|fact <k> [v]|actor <n>|stage <:s>|
                                                 duplicates [--threshold 0.4] (lookalike
                                                 open tickets, best match first)
-  tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing written
+  tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing
+                                                written — e.g. tik whatif 3184 sev=:low
+                                                +P2D (two days pass) retract:category
   tik debug <process> [<id>]                    the fixpoint with its working shown
   tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
   tik board [<file.html>]                       the whole board as ONE dependency-free
