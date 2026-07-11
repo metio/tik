@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T08:01:38.651Z" :event/body {:fact/path [:summary] :fact/value "the checklist gains a scoreboard, a slicer, and colors"} :event/parents #{"sha256-3c97b16514ec685268946aa0d0cd9c02ea6d7bb63ecb2d8ea1e61dd485e27515"} :event/ticket #uuid "c8d7b5e9-8b3b-4b60-89f7-d6d05890d253" :event/type :fact/assert}
