@@ -144,6 +144,18 @@
       (symbol? v) (keyword (str v))
       :else v)))
 
+(defn- read-edn-file
+  "EDN from a file, failing WELL: a malformed config names itself
+  instead of exploding the reader. nil when the file is absent."
+  [^File f]
+  (when (.exists f)
+    (try (edn/read-string (slurp f))
+         (catch Exception e
+           (throw (ex-info (str "malformed EDN in " f " — "
+                                (ex-message e))
+                           {:reason :config/malformed :file (str f)}
+                           e))))))
+
 (defn- declared-string?
   "Does the process declare this fact path as a string type? Then a
   bare token the parser would keywordize is really the user's string."
@@ -205,7 +217,7 @@
                   (str "available: " (str/join ", " ps)
                        "\nor `tik author` to create one")
                   "none exist yet — `tik author` writes your first one"))))
-    (edn/read-string (slurp f))))
+    (read-edn-file f)))
 
 (defn- load-pinned-process
   "The definition a ticket derives under: its pinned hash from the
@@ -216,7 +228,7 @@
   (let [hash (:process-hash state)
         archived (some-> hash by-hash-file)]
     (if (and archived (.exists ^File archived))
-      (edn/read-string (slurp archived))
+      (read-edn-file archived)
       (let [proc (load-process (name (:process state)))]
         (when (and hash (not= hash (process/process-hash proc)))
           (binding [*out* *err*]
@@ -325,11 +337,12 @@
         repo (some #(when (.exists (io/file % ".git"))
                       (keyword (.getName ^File %)))
                    (reverse chain))                  ; nearest git wins
+        ;; a marker AT the holder applies store-wide; deeper wins
         markers (apply merge
-                       (for [^File d chain
+                       (for [^File d (when below? (cons holder chain))
                              :let [f (io/file d ".tik-facts.edn")]
                              :when (.isFile f)]
-                         (edn/read-string (slurp f))))
+                         (read-edn-file f)))
         explicit (into {}
                        (for [[k v] markers]
                          [(if (vector? k) k [k]) v]))]
@@ -473,7 +486,7 @@
                   probe (or (:command opts)
                             (let [f (process-file (name (:process state)))]
                               (when (.exists f)
-                                (:probe (edn/read-string (slurp f))))))]]
+                                (:probe (read-edn-file f)))))]]
       (cond
         (nil? probe) nil
         (not (.isDirectory dir))
@@ -1061,7 +1074,7 @@
   (empty line re-renders; the process file reloads automatically on change)")
 
 (defn- sim-load [^File f]
-  (let [p (edn/read-string (slurp f))
+  (let [p (read-edn-file f)
         problems (process/lint p)]
     (doseq [{:keys [level msg]} problems]
       (println (str "[" (name level) "] " msg)))
@@ -1137,9 +1150,9 @@
   [{:keys [pos]}]
   (let [f (resolve-file (first pos))
         _ (when-not (.exists f) (die "no such file:" (str f)))
-        {:test/keys [process cases]} (edn/read-string (slurp f))
-        proc (edn/read-string (slurp (io/file (.getParentFile (.getAbsoluteFile f))
-                                              process)))
+        {:test/keys [process cases]} (read-edn-file f)
+        proc (read-edn-file (io/file (.getParentFile (.getAbsoluteFile f))
+                                     process))
         roles (:process/roles proc {})
         lint-errors (filter #(= :error (:level %)) (process/lint proc))
         failures (atom 0)]
@@ -1189,7 +1202,7 @@
         id (resolve-id s (first pos))
         new-file (or (second pos) (die "usage: tik migrate <id> <new.edn> [--apply]"))
         _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
-        new-proc (edn/read-string (slurp new-file))
+        new-proc (read-edn-file (io/file new-file))
         problems (process/lint new-proc)
         _ (do (doseq [{:keys [level msg]} problems]
                 (println (str "[" (name level) "] " msg)))
@@ -1667,7 +1680,7 @@
   [opts]
   (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
         cfg (if (.exists (io/file cfg-file))
-              (edn/read-string (slurp cfg-file)) {})
+              (read-edn-file (io/file cfg-file)) {})
         issuer (or (:issuer opts) (:issuer cfg)
                    (die "no OIDC issuer — pass --issuer or put :issuer in oidc.edn"))
         client-id (or (:client-id opts) (:client-id cfg) "tik")
@@ -1720,7 +1733,7 @@
     (die "usage: tik bridge email [--config bridge.edn] < message\n       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]"))
   (let [cfg-file (or (:config opts) (str (io/file (root) "bridge.edn")))
         cfg (if (.exists (io/file cfg-file))
-              (edn/read-string (slurp cfg-file))
+              (read-edn-file (io/file cfg-file))
               {})
         {:keys [from subject body]} (parse-rfc822 (slurp *in*))
         actor-name (or (get-in cfg [:from->actor from])
@@ -1930,13 +1943,14 @@
   (let [cfg-file (or (:config opts) (str (io/file (root) "effects.edn")))
         _ (when-not (.exists (io/file cfg-file))
             (die "no effects config:" cfg-file))
-        {:keys [sinks stages]} (edn/read-string (slurp cfg-file))
+        {:keys [sinks stages]} (read-edn-file (io/file cfg-file))
         ledger-file (io/file (root) ".effects-sent")
         sent (if (.exists ledger-file)
                (set (str/split-lines (slurp ledger-file)))
                #{})
         s (the-store)
-        fired (atom 0)]
+        fired (atom 0)
+        failed (atom 0)]
     (doseq [id (store/ticket-ids s)
             :let [{:keys [events state process roles]} (ticket-ctx s id)
                   timeline (:timeline (stage/evolve process events roles))
@@ -1958,7 +1972,11 @@
       (if (:dry-run opts)
         (println "would send" (name (:type sink)) "<-"
                  (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
-        (do (case (:type sink)
+        ;; one dead endpoint must not abandon the other sinks: failures
+        ;; report and count, the ledger stays unmarked (retry next run),
+        ;; the loop continues — at-least-once, per sink
+        (try
+          (case (:type sink)
               ;; sendmail-compatible: the :command reads RFC822 on stdin
               ;; (default sendmail -t); MTA-agnostic like the inbound
               ;; bridge — procmail in, sendmail out, tik stays porcelain
@@ -1984,14 +2002,25 @@
                   (die (str "command sink failed: " (:err r)))))
               (post! (:url sink) (json-str (effect-payload sink tr))
                      (:headers sink)))
-            (spit ledger-file (str key "\n") :append true)
-            (swap! fired inc)
-            (println "sent" (name (:type sink)) "<-"
-                     (str (subs (str (:ticket tr)) 0 8) " "
-                          (:stage tr))))))
+              (spit ledger-file (str key "\n") :append true)
+              (swap! fired inc)
+              (println "sent" (name (:type sink)) "<-"
+                       (str (subs (str (:ticket tr)) 0 8) " "
+                            (:stage tr)))
+          (catch Exception e
+            (swap! failed inc)
+            (binding [*out* *err*]
+              (println (str "failed " (name (:type sink)) " <- "
+                            (subs (str (:ticket tr)) 0 8) " " (:stage tr)
+                            ": " (ex-message e)
+                            " — will retry next run")))))))
     (when-not (:dry-run opts)
       (println @fired "effect(s) fired — delivery state is disposable,"
-               "truth untouched"))))
+               "truth untouched")
+      (when (pos? @failed)
+        (println @failed "delivery failure(s) — unmarked in the ledger,"
+                 "next run retries")
+        (System/exit 1)))))
 
 (declare root-dir-roots verify-roots)
 
@@ -2422,7 +2451,7 @@ Each entry in :needs is one of:
   tighten together."
   []
   (let [f (io/file (root) "authoring-rules.edn")]
-    (author/merge-rules (when (.exists f) (edn/read-string (slurp f))))))
+    (author/merge-rules (read-edn-file f))))
 
 (defn- author-llm-prompt
   "Philosophy first, then the ACTIVE rule set — the same data check
@@ -2485,7 +2514,7 @@ Each entry in :needs is one of:
     (let [f (resolve-file (or (second pos)
                               (die "usage: tik author check <answers.edn>")))
           _ (when-not (.exists f) (die (str "no such file: " (second pos))))
-          findings (author/check (edn/read-string (slurp f))
+          findings (author/check (read-edn-file f)
                                  (authoring-rules))]
       (doseq [{:keys [level msg]} findings]
         (println (str "[" (name level) "] " msg)))
@@ -2499,7 +2528,7 @@ Each entry in :needs is one of:
                   (or (get author/templates (:template opts))
                       (die (str "no template '" (:template opts) "' — available: "
                                 (str/join ", " (sort (keys author/templates))))))
-                  (:from opts) (edn/read-string (slurp (:from opts)))
+                  (:from opts) (read-edn-file (resolve-file (:from opts)))
                   :else (author/interview read-line #(do (print %) (flush))))
         answers (if (string? (:name opts))
                   (assoc answers :name (:name opts))
@@ -2602,7 +2631,7 @@ Each entry in :needs is one of:
           _ (when-not (.exists f)
               (die (str "no such file: " (first pos)
                         " — `tik lint` with no argument lints the store")))
-          proc (edn/read-string (slurp f))
+          proc (read-edn-file f)
           missing-runbooks (for [s (:process/stages proc)
                                  :let [h (:hint s)]
                                  :when (and h (not (.exists (io/file h))))]
@@ -2936,10 +2965,8 @@ Each entry in :needs is one of:
   tik test <tests.edn>                          run scripted process tests (steps in,
                                                 expected stages out)")
 
-(defn -main [& args]
-  (let [[cmd & more] args
-        parsed (parse-args (vec more))]
-    (case cmd
+(defn- dispatch [cmd parsed]
+  (case cmd
       "init"    (cmd-init parsed)
       "rollout" (cmd-rollout parsed)
       "probe"   (cmd-probe parsed)
@@ -2984,4 +3011,31 @@ Each entry in :needs is one of:
       "test"    (cmd-test parsed)
       ("help" "--help" "-h" nil) (println usage)
       (do (println (str "tik: '" cmd "' is not a command — the full list:\n"))
-          (println usage)))))
+          (println usage))))
+
+(defn -main
+  "Every escape LANDS here: an ex-info becomes its own one-line
+  message (the kernel already words its rejections), anything else
+  becomes a this-is-a-bug line — both exit 1, neither ever shows a
+  stack trace to a user. TIK_DEBUG=1 rethrows for developers.
+  System/exit calls inside commands pass through untouched."
+  [& args]
+  (let [[cmd & more] args
+        parsed (parse-args (vec more))]
+    (if (System/getenv "TIK_DEBUG")
+      (dispatch cmd parsed)
+      (try
+        (dispatch cmd parsed)
+        (catch clojure.lang.ExceptionInfo e
+          (binding [*out* *err*]
+            (println (str "tik: " (ex-message e)))
+            (when-let [file (:file (ex-data e))]
+              (println (str "  in: " file))))
+          (System/exit 1))
+        (catch Throwable e
+          (binding [*out* *err*]
+            (println (str "tik: unexpected error ("
+                          (.getSimpleName (class e)) "): "
+                          (or (ex-message e) "no message")))
+            (println "  this is a bug in tik — TIK_DEBUG=1 shows the trace"))
+          (System/exit 1))))))

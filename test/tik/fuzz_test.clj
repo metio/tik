@@ -11,7 +11,7 @@
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
@@ -250,3 +250,76 @@
         (is (not (re-find #"Exception in thread|clojure\.lang\.|StackTrace|\tat "
                           (str (:out r) (:err r))))
             (str (pr-str argv) "\n" (:err r)))))))
+
+;; -------------------------------------------- round 3: garbage configs
+
+(deftest garbage_configs_answer_with_words_never_traces
+  ;; every EDN file an operator can typo must produce a message naming
+  ;; the file and exit 1 — the top-level landing guarantees no trace
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-cfg" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))
+        garbage "{:unclosed [vector :and (garbage"]
+    (.mkdirs (io/file root "processes"))
+    (doseq [[file argv]
+            [["effects.edn" ["effects" "run"]]
+             ["bridge.edn" ["bridge" "email"]]
+             ["authoring-rules.edn" ["author" "prompt"]]
+             ["answers.edn" ["author" "check" "answers.edn"]]
+             ["processes/broken.edn" ["new" "broken"]]
+             ["processes/broken.edn" ["lint" "processes/broken.edn"]]]]
+      (spit (io/file root file) garbage)
+      (let [r (if (= "email" (second argv))
+                (apply run (concat argv [:in "From: a@b\nSubject: x\n\nhi"]))
+                (apply run argv))]
+        (is (= 1 (:exit r)) (pr-str [file argv]))
+        (is (re-find #"malformed EDN in .*" (str (:err r)))
+            (pr-str [file argv (:err r)]))
+        (is (not (re-find #"Exception in thread|clojure\.lang\.|\tat "
+                          (str (:out r) (:err r))))
+            (pr-str [file argv]))))
+    (testing "a garbage context marker fails new with the file named"
+      ;; markers are read only when cwd sits beneath the store holder,
+      ;; so this invocation runs FROM the store directory
+      (spit (io/file root ".tik-facts.edn") garbage)
+      (.mkdirs (io/file root "tickets"))
+      (let [sub (doto (io/file root "inside") (.mkdirs))
+            r (sh/sh "bb" "--config" (str repo "/bb.edn")
+                     "tik" "new" "track" "--title" "x"
+                     :dir (str sub)
+                     :env (assoc (into {} (System/getenv))
+                                 "TIK_ROOT" (str root)
+                                 "TIK_ACTOR" "fuzz"))]
+        (is (= 1 (:exit r)) (:err r))
+        (is (re-find #"malformed EDN" (str (:err r))))))))
+
+(deftest one_dead_sink_does_not_abandon_the_rest
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-sink" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        outfile (io/file root "delivered.json")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))]
+    (run "new" "track" "--title" "sink isolation")
+    (spit (io/file root "effects.edn")
+          (pr-str {:sinks [{:type :slack
+                            :url "http://127.0.0.1:1/unroutable"}
+                           {:type :command
+                            :command ["sh" "-c" (str "cat >> " outfile)]}]}))
+    (let [r (run "effects" "run" "--config"
+                 (str (io/file root "effects.edn")))]
+      (is (= 1 (:exit r)) "delivery failures exit nonzero")
+      (is (re-find #"failed slack .* will retry next run" (str (:err r))))
+      (is (.exists outfile)
+          "the healthy sink delivered despite the dead one")
+      (is (not (re-find #"Exception in thread|\tat " (str (:err r))))))))
