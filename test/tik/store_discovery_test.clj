@@ -78,9 +78,20 @@
   ;; temp dirs live outside $HOME with no ancestor markers: the cwd
   ;; must win, exactly as before discovery existed
   (let [lonely (tmpdir)]
-    (is (re-find #"no tickets yet" (:out (tik-at lonely nil "ls"))))
+    (testing "with no store reachable, ls leads with how to establish one"
+      (let [out (:out (tik-at lonely nil "ls"))]
+        (is (re-find #"no tik store here yet" out))
+        (is (re-find #"tik init" out)
+            "the guidance names tik init, not just author/new")))
     (tik-at lonely nil "new" "track" "--title" "born here")
-    (is (.isDirectory (io/file lonely "tickets")))))
+    (is (.isDirectory (io/file lonely "tickets")))
+    (testing "once a store exists, the empty-board hint drops the init lines"
+      (let [top (tmpdir)]
+        (tik-at top nil "init")
+        (let [out (:out (tik-at top nil "ls"))]
+          (is (re-find #"no tickets yet" out))
+          (is (not (re-find #"tik init" out))
+              "an established store must not tell you to init again"))))))
 
 (deftest init_refuses_to_double_init
   (let [top (tmpdir)]

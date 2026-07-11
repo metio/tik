@@ -64,6 +64,15 @@
   become a store the moment `tik new` runs in it."
   []
   (or (System/getenv "TIK_ROOT") @discovered-root "."))
+
+(defn- store-established?
+  "Is a real store reachable — a marker found on the upward walk, or
+  TIK_ROOT pointing at one — versus `root` falling back to the cwd? The
+  empty-board guidance leads with `tik init` only when it is NOT, so a
+  fresh directory is told how to become a store deliberately."
+  []
+  (boolean (or (System/getenv "TIK_ROOT") @discovered-root)))
+
 (defn- now [] (Instant/now))
 
 (defn- eval-instant
@@ -1264,11 +1273,16 @@
           (println (tint "2" (str "         ↳ " line))))))
         (when (empty? visible)
           (if (empty? rows)
-            (println (str "no tickets yet — start with:\n"
-                          "  tik author                  describe your process; tik writes the definition\n"
-                          "  tik author --template bug   or start from a known-good shape\n"
-                          "  tik new track --title ...   or skip process design: just track a thing\n"
-                          "  tik set <id> key=value      record what is true; the stage derives itself"))
+            (println
+             (str (if (store-established?)
+                    "no tickets yet — start with:\n"
+                    (str "no tik store here yet — establish one, then start:\n"
+                         "  tik init                    make this directory a store\n"
+                         "  tik init --hidden           or keep it in .tik/ (e.g. above many repos)\n"))
+                  "  tik author                  describe your process; tik writes the definition\n"
+                  "  tik author --template bug   or start from a known-good shape\n"
+                  "  tik new track --title ...   or skip process design: just track a thing\n"
+                  "  tik set <id> key=value      record what is true; the stage derives itself"))
             (println "no matching tickets")))
         (let [hidden (- (count rows) (count visible))]
           (when (pos? hidden)
