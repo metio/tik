@@ -68,6 +68,20 @@ abstractions generalize.
   is deterministic and reviewed. The model never participates in
   runtime truth; it only drafts artifacts. The one place an LLM slots
   into tik without touching the trust story.
+- **Claude skill for tik** — package "how to drive tik and author a
+  proper process" as a Claude skill (or equivalent agent playbook), so
+  an agent picks up the workflow and the design law without a human
+  transcribing them each time. Distinct from LLM-drafted definitions
+  (that produces one artifact) and from `tik author prompt` (that emits
+  a one-shot recipe): a skill is the durable, reusable know-how — the
+  CLI verbs and when to reach for each (`new`/`set`/`explain`/`next`),
+  and the authoring discipline the linter already enforces (closed
+  guard basis, facts-over-flags, stratified negation, declared facts
+  before rules reference them, derived-beats-declared). The natural
+  source of truth is the code, not a hand-written doc that rots: the
+  skill should draw from what `tik author prompt` and the lint rules
+  already encode, so it stays honest as the vocabulary evolves — the
+  same anti-staleness discipline tik applies to its own docs.
 - **Task-oriented web UI** — the 90%-of-users surface: current state as
   checkmarks, frontier as checkboxes, blocked-because from explain,
   action buttons generated from the missing facts' schemas. Entirely a
