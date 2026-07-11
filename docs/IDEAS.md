@@ -238,18 +238,11 @@ where they stop:
   (HTTP), FlowStorm (walking derivation), tools.namespace reload,
   next.jdbc with `events(id TEXT PRIMARY KEY, bytes BLOB)` for the
   SQLite backend. Adopt opportunistically; none are load-bearing.
-- **MCP per-call latency** — the stdio MCP server (`cli/tik/mcp.clj`)
-  is a long-lived babashka process the agent host launches once; the
-  agent only ever speaks the protocol. But per `tools/call` the server
-  shells out to a *fresh* `bb tik` subprocess (`sh/sh "bb" "tik" …`),
-  paying babashka's ~0.85s load-CLI-from-source cost every time —
-  babashka spawning babashka to do work it already has on its own
-  classpath. (For comparison: the native binary starts in ~10ms.) The
-  agent never invokes a local tool; it just waits ~0.85s per call.
-  Preferred fix: drop the subprocess and call the `tik.cli` namespaces
-  in-process (the server is already loaded). Second-best for a
-  non-babashka host: shell the native binary when it is on PATH. Pure
-  porcelain — no derivation, no wire format, no kernel — so it
-  graduates only when the agent path is hot enough to matter (an H7
-  datapoint, not a guess). Same shape applies to any surface that
-  shells `bb tik` in a loop.
+- ~~**MCP per-call latency**~~ — shipped: the stdio MCP server called
+  a fresh `bb tik` subprocess per `tools/call`, paying babashka's
+  ~0.85s load-from-source cost each time. `tik.cli/run-argv` is now a
+  second entry point beside `-main` — same `dispatch`, output captured,
+  process-exit trapped into a code via the `*exit-fn*` indirection — so
+  the server (and any embedder) reuses the whole CLI in-process, no
+  subprocess. Per-call latency dropped ~850ms → sub-ms. The same seam
+  serves any future surface that would otherwise shell `bb tik`.
