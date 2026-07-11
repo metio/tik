@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T08:19:47.927Z" :event/body {:fact/path [:summary] :fact/value "the schema ends the quoting wars; migrated tickets stop lying"} :event/parents #{"sha256-c9508bfab35371aaab179ec0c61e37bf15552b2c1563dbfa1802e9efb9cb3698"} :event/ticket #uuid "59b43fc3-ba5d-4bc8-95fc-87af72c76c6d" :event/type :fact/assert}
