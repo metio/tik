@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T11:02:36.712Z" :event/body {:fact/path [:summary] :fact/value "round 4 caught corrupt-on-write; mint now refuses the unreadable"} :event/parents #{"sha256-96afd1245e1817f9ac260140d55742f5db5c5dd1301cf47bd9fabb207ff6f67b"} :event/ticket #uuid "8fbac9f8-2ccc-4b36-90e4-19108083de95" :event/type :fact/assert}
