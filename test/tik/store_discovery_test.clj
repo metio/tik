@@ -143,8 +143,8 @@
         (is (zero? (:exit r)) (:err r))
         (is (re-find #"4 ticket\(s\) created, 0 already covered, 4 repo\(s\) total"
                      (:out r)))
-        (is (re-find #"\(started\)  [0-9a-f]{8} mig: alpha" (:out r)))
-        (is (re-find #"\(started\)  [0-9a-f]{8} mig: group/subgroup/delta"
+        (is (re-find #"\(started\)\s+[0-9a-f]{8} mig: alpha" (:out r)))
+        (is (re-find #"\(started\)\s+[0-9a-f]{8} mig: group/subgroup/delta"
                      (:out r))
             "GitLab-style nested repos are found; identity is the path")
         (is (not (re-find #"not-a-repo" (:out r))))))
@@ -156,7 +156,7 @@
         (tik-at top nil "set" beta-id "proof=\"pr-42\"")
         (let [r (tik-at top nil "rollout" "mig")]
           (is (re-find #"0 ticket\(s\) created, 4 already covered" (:out r)))
-          (is (re-find #"\(done\)  [0-9a-f]{8} mig: beta" (:out r))
+          (is (re-find #"\(done\)\s+[0-9a-f]{8} mig: beta" (:out r))
               "the checkmark derived itself from the child's evidence"))))))
 
 (deftest probe_derives_facts_from_the_world

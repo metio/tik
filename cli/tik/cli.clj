@@ -712,17 +712,28 @@
           stages (str/join ", " (map name (sort-by str current)))
           title (display-title state)]
       {:sort [0 depth stages title]
-       :text (str "(" stages ")  " (subs (str target-id) 0 8) " " title
-                  (when-not (str/includes? title (name rel))
+       :stage (str "(" stages ")")
+       :rest (str (subs (str target-id) 0 8) " " title
+                  ;; nested-repo rels dot their slashes; either spelling
+                  ;; in the title makes the suffix redundant
+                  (when-not (or (str/includes? title (name rel))
+                                (str/includes? title (str/replace (name rel)
+                                                                  "." "/")))
                     (str "  [" (name rel) "]")))})
     {:sort [1 0 "" (str target)]
-     :text (str "(unresolved)  " target "  [" (name rel) "]")}))
+     :stage "(unresolved)"
+     :rest (str target "  [" (name rel) "]")}))
 
 (defn- link-lines
   "Every link of `state`, rendered and ordered for humans: least
-  progressed first, per the targets\u2019 own process ordering."
+  progressed first, per the targets\u2019 own process ordering. The stage
+  column pads to the widest stage on THIS list, so ids and titles
+  align whatever the stage names\u2019 lengths."
   [s t state]
-  (map :text (sort-by :sort (map #(link-row s t %) (link-facts state)))))
+  (let [rows (sort-by :sort (map #(link-row s t %) (link-facts state)))
+        width (transduce (map (comp count :stage)) max 0 rows)]
+    (for [{:keys [stage rest]} rows]
+      (format (str "%-" (max 1 width) "s  %s") stage rest))))
 
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
@@ -897,6 +908,7 @@
                             (or (some fm [[:description] [:summary] [:statement]])
                                 nil))
                 :links (vec (link-facts state))
+                :state state
                 :haystack (str/lower-case
                            (str (display-title state) " "
                                 (pr-str (guard/fact-map state))))
@@ -912,7 +924,7 @@
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
                  visible))
       (do
-        (doseq [{:keys [id current title describe settled? links]} visible]
+        (doseq [{:keys [id current title describe settled? links state]} visible]
       (println (tint "2" (subs (str id) 0 8))
                (paint-stage (format "%-24s" (str/join "," (map name current)))
                             settled? (contains? current :parked))
@@ -920,7 +932,7 @@
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe))))
       (when (and (:long opts) (seq links))
-        (doseq [line (map :text (sort-by :sort (map #(link-row s t %) links)))]
+        (doseq [line (link-lines s t state)]
           (println (tint "2" (str "         ↳ " line))))))
         (when (empty? visible)
           (if (empty? rows)
