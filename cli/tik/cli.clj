@@ -17,6 +17,7 @@
             [clojure.pprint :as pp]
             [clojure.set :as set]
             [clojure.string :as str]
+            [clojure.walk :as walk]
             [tik.author :as author]
             [tik.oidc :as oidc]
             [tik.canonical :as canonical]
@@ -291,6 +292,154 @@
      :roles (:process/roles proc {})
      :heads (dag/heads evs)}))
 
+
+(declare display-title link-facts ticket-ctx)
+
+;; ------------------------------------------------ derived-state cache
+;; ADR 0013 made disposable caches legal; ticket 11ae2438 settled this
+;; design; the 10k-ticket benchmark (3.6s ls) fired its trigger. The
+;; KEY is the input identity itself: event filenames ARE content
+;; addresses, so the sorted directory listing hashes to a complete
+;; fingerprint of everything derivation consumes — invalidation cannot
+;; be got wrong because a changed input IS a changed key. Time-guarded
+;; tickets carry a validity horizon (the earliest unsatisfied :due);
+;; processes reading the log clock (:attested-within) never cache.
+;; Deleting the cache file can only cost a recompute, never truth.
+
+(def ^:private cache-state (atom nil))   ; {:entries {} :dirty? bool}
+
+(defn- cache-file ^File [] (io/file (root) ".derived-cache.json"))
+
+;; JSON, not EDN, purely for parse speed: reading a 10k-entry EDN
+;; cache cost 0.8s — more than the folds it saved. Keywords ride as
+;; \":kw\" strings and round-trip on load; the cache stays disposable,
+;; so a decode surprise is a miss, never an error.
+(defn- cache-encode [x]
+  (cond
+    (keyword? x) (str x)
+    (map? x) (into {} (map (fn [[k v]] [(cache-encode k)
+                                        (cache-encode v)]) x))
+    (sequential? x) (mapv cache-encode x)
+    (set? x) (mapv cache-encode x)
+    :else x))
+
+(defn- cache-decode [x]
+  (cond
+    (and (string? x) (str/starts-with? x ":")) (keyword (subs x 1))
+    (map? x) (into {} (map (fn [[k v]] [(cache-decode k)
+                                        (cache-decode v)]) x))
+    (sequential? x) (mapv cache-decode x)
+    :else x))
+
+(defn- cache-entries []
+  (:entries
+   (or @cache-state
+       (reset! cache-state
+               {:dirty? false
+                :entries
+                (or (try
+                      (when (.exists (cache-file))
+                        (let [parse (requiring-resolve
+                                     'cheshire.core/parse-string)]
+                          (into {}
+                                (map (fn [[k v]] [k (cache-decode v)]))
+                                (parse (slurp (cache-file))))))
+                      ;; a corrupt cache is not an error, it is a miss
+                      (catch Exception _ nil))
+                    {})}))))
+
+(defn- cache-flush! []
+  (when (:dirty? @cache-state)
+    (let [emit (requiring-resolve 'cheshire.core/generate-string)]
+      (spit (cache-file) (emit (into {}
+                                     (map (fn [[k v]] [k (cache-encode v)]))
+                                     (:entries @cache-state)))))
+    (swap! cache-state assoc :dirty? false)))
+
+(defn- event-ids-fingerprint
+  "sha256 over the sorted event filenames — the complete input identity
+  of one ticket's derivation, read from the directory listing alone.
+  nil when the store is not file-backed (cache bypassed)."
+  [id]
+  (let [d (io/file (root) "tickets" (str id) "events")]
+    (when (and (nil? (db-path)) (.isDirectory d))
+      (canonical/sha256-hex
+       (str/join "\n" (sort (keep #(let [n (.getName ^File %)]
+                                      (when (str/ends-with? n ".edn") n))
+                                   (.listFiles d))))))))
+
+(defn- guard-ops [proc]
+  (let [ops (volatile! #{})]
+    (doseq [{:keys [guards]} (:process/stages proc)]
+      (walk/postwalk
+       #(do (when (and (vector? %) (keyword? (first %)))
+              (vswap! ops conj (first %)))
+            %)
+       guards))
+    @ops))
+
+(defn- compute-row
+  "The full derivation for one ticket, shaped for the board lenses,
+  plus its cache validity: nil valid-until means the row holds until
+  the event set changes (reached is monotone without time guards);
+  a time-guarded ticket expires at the earliest unsatisfied :due;
+  :attested-within makes the ticket uncacheable."
+  [s t id]
+  (let [{:keys [events state process roles]} (ticket-ctx s id)
+        reached (stage/effective-reached process events t roles)
+        current (stage/current-stages process reached)
+        ops (guard-ops process)
+        blocks (when (contains? ops :elapsed-since)
+                 (explain/explain process events t roles))
+        dues (keep :due (mapcat :missing blocks))
+        fm (guard/fact-map state)]
+    {:valid-until (cond
+                    (contains? ops :attested-within) :never-cache
+                    (and (contains? ops :elapsed-since) (seq dues))
+                    (inst-ms (first (sort dues)))
+                    :else nil)
+     :row {:title (display-title state)
+           :depth (if (seq current)
+                    (apply min (map #(count (stage/ancestor-closure
+                                             process %))
+                                    current))
+                    -1)
+           :repo (red/fact-value state [:repo])
+           :describe (some fm [[:description] [:summary] [:statement]])
+           :current (vec (sort-by str current))
+           :reached (vec (sort-by str reached))
+           :settled? (next-lens/settled? process events t roles)
+           :last-event-ms (reduce (fn [acc e]
+                                    (max acc (inst-ms (:event/at e))))
+                                  0 events)
+           :links (vec (link-facts state))
+           :process-id (or (:process/id process) (:process state))
+           :haystack (str/lower-case
+                      (str (display-title state) " "
+                           (str/join " " (map (comp str :value)
+                                              (vals (:facts state))))))}}))
+
+(defn- ticket-row
+  "The board row for one ticket, cached when the store is file-backed:
+  a hit costs one directory listing, a miss folds and remembers."
+  [s t id]
+  (if-let [fp (event-ids-fingerprint id)]
+    (let [entry (get (cache-entries) (str id))]
+      (if (and entry
+               (= fp (:fp entry))
+               (let [vu (:valid-until entry)]
+                 (and (not= :never-cache vu)
+                      (or (nil? vu) (< (inst-ms t) vu)))))
+        (:row entry)
+        (let [{:keys [valid-until row]} (compute-row s t id)]
+          (swap! cache-state #(-> %
+                                  (assoc-in [:entries (str id)]
+                                            {:fp fp :valid-until valid-until
+                                             :row row})
+                                  (assoc :dirty? true)))
+          row)))
+    (:row (compute-row s t id))))
+
 (defn- display-title
   "The title a lens shows: a [:title] fact supersedes the created
   title — creation is immutable, names are corrections like any other
@@ -306,10 +455,9 @@
   [s t]
   (vec
    (for [id (store/ticket-ids s)
-         :let [{:keys [events state process roles]} (ticket-ctx s id)]
-         :when (not (next-lens/settled? process events t roles))]
-     {:id id :title (display-title state)
-      :text (dupe/haystack {:title (display-title state) :facts (:facts state)})})))
+         :let [{:keys [settled? title haystack]} (ticket-row s t id)]
+         :when (not settled?)]
+     {:id id :title title :text haystack})))
 
 (defn- store-holder
   "The directory the store sits IN: the parent of a hidden .tik root,
@@ -586,7 +734,8 @@
         (println (str "note: looks like " (subs (str existing) 0 8) " \"" title
                       "\" (" (int (* 100 score)) "% similar) — if this IS "
                       "that, record it: tik set " (subs (str id) 0 8)
-                      " duplicate-of=\"" (subs (str existing) 0 8) "\""))))))
+                      " duplicate-of=\"" (subs (str existing) 0 8) "\""))))
+    (cache-flush!)))
 
 (defn- cmd-set [{:keys [pos opts]}]
   (let [[ticket & kvs] pos
@@ -746,19 +895,12 @@
   to the end instead of crashing a lens."
   [s t {:keys [rel target]}]
   (if-let [target-id (resolve-id-soft s target)]
-    (let [{:keys [events state process roles]} (ticket-ctx s target-id)
-          current (stage/current-stages
-                   process (stage/effective-reached process events t roles))
-          depth (if (seq current)
-                  (apply min (map #(count (stage/ancestor-closure process %))
-                                  current))
-                  -1)
-          stages (str/join ", " (map name (sort-by str current)))
-          title (display-title state)]
+    (let [{:keys [current title depth settled?]} (ticket-row s t target-id)
+          stages (str/join ", " (map name current))]
       {:sort [0 depth stages title]
        :stage (str "(" stages ")")
        :stage-kws (set current)
-       :settled? (next-lens/settled? process events t roles)
+       :settled? settled?
        :parked? (contains? (set current) :parked)
        :rest (str (subs (str target-id) 0 8) " " title
                   ;; nested-repo rels dot their slashes; either spelling
@@ -779,8 +921,8 @@
   pads to the widest stage on THIS list and paints like ls does."
   ([s t state] (link-lines s t state nil))
   ([s t state only]
-   (let [rows (cond->> (sort-by :sort (map #(link-row s t %)
-                                           (link-facts state)))
+   (let [links (if (map? state) (link-facts state) state)
+         rows (cond->> (sort-by :sort (map #(link-row s t %) links))
                 only (filter #(contains? (:stage-kws %) only)))
          width (transduce (map (comp count :stage)) max 0 rows)]
      (for [{:keys [stage rest settled? parked?]} rows]
@@ -834,7 +976,8 @@
     (when (:at opts)
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
-    (print (paint-explain (explain/render (explain/explain process events t roles))))))
+    (print (paint-explain (explain/render (explain/explain process events t roles))))
+    (cache-flush!)))
 
 (defn- cmd-explain [{:keys [pos opts]}]
   (let [s (the-store)
@@ -901,13 +1044,22 @@
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
+        include-settled? (:all opts)
+        ;; the cache answers settled? from a directory listing; only
+        ;; live tickets pay for the full contributions fold
         per-ticket (for [id (store/ticket-ids s)
+                         :let [row (ticket-row s t id)]
+                         :when (or include-settled? (not (:settled? row)))
                          :let [{:keys [events process roles]} (ticket-ctx s id)]]
                      (next-lens/contributions id process events t roles))
+        settled-skipped (when-not include-settled?
+                          (count (filter #(:settled? (ticket-row s t %))
+                                         (store/ticket-ids s))))
         {:keys [items waiting settled] :as inbox}
         (next-lens/inbox per-ticket (:actor opts)
                          {:include-settled? (:all opts)
-                          :role (some-> (:role opts) parse-value)})]
+                          :role (some-> (:role opts) parse-value)})
+        settled (or settled-skipped settled)]
     (if (:edn opts)
       (prn inbox)
       (do
@@ -939,7 +1091,8 @@
         (when (and (pos? (or settled 0)) (not (:all opts)))
           (println (str "settled: " settled
                         " finished ticket(s) hidden (--all shows their"
-                        " escape hatches)")))))))
+                        " escape hatches)")))))
+    (cache-flush!)))
 
 (defn- stage-filter
   "--filter ':a :b' matches tickets whose current stage is any of them;
@@ -958,7 +1111,17 @@
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
-        rows (for [id (store/ticket-ids s)
+        rows (if-not (:where opts)
+               ;; the cached fast path: one directory listing per
+               ;; unchanged ticket, zero event reads
+               (for [id (store/ticket-ids s)
+                     :let [row (ticket-row s t id)]]
+                 (assoc row
+                        :id id
+                        :current (set (:current row))
+                        :stale-ms (max 0 (- (inst-ms t)
+                                            (:last-event-ms row 0)))))
+               (for [id (store/ticket-ids s)
                    :let [{:keys [events state process roles]} (ticket-ctx s id)
                          reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)]]
@@ -974,7 +1137,7 @@
                 :haystack (str/lower-case
                            (str (display-title state) " "
                                 (pr-str (guard/fact-map state))))
-                :settled? (next-lens/settled? process events t roles)})
+                :settled? (next-lens/settled? process events t roles)}))
         rows (cond->> rows
                (:filter opts) (filter (comp (stage-filter (:filter opts))
                                             :current))
@@ -998,7 +1161,7 @@
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
                  visible))
       (do
-        (doseq [{:keys [id current title describe settled? links state]} visible]
+        (doseq [{:keys [id current title describe settled? links]} visible]
       (println (tint "2" (subs (str id) 0 8))
                (paint-stage (format "%-24s" (str/join "," (map name current)))
                             settled? (contains? current :parked))
@@ -1006,7 +1169,7 @@
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe))))
       (when (and (:long opts) (seq links))
-        (doseq [line (link-lines s t state)]
+        (doseq [line (link-lines s t links)]
           (println (tint "2" (str "         ↳ " line))))))
         (when (empty? visible)
           (if (empty? rows)
@@ -1019,7 +1182,8 @@
         (let [hidden (- (count rows) (count visible))]
           (when (pos? hidden)
             (println (str "settled: " hidden
-                          " finished ticket(s) hidden (--all shows)"))))))))
+                          " finished ticket(s) hidden (--all shows)"))))))
+    (cache-flush!)))
 
 (defn- cmd-search
   "tik search <text…> = ls --search over everything, settled included."

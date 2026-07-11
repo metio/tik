@@ -35,4 +35,9 @@
   repl {:doc "JVM nREPL with dev+test paths"
         :task (shell "clojure -M:dev")}
   build-native {:doc "Single-binary tik (GraalVM native-image -> target/tik)"
-                :task (shell "sh dev/build-native.sh")}}}
+                :task (shell "sh dev/build-native.sh")}
+  bench {:doc "Kernel micro-benchmarks (criterium; JMH-grade stats)"
+         :task (shell "clojure -M:bench")}
+  bench-store {:doc "Macro benchmark: N-ticket store, cold/warm (bb bench-store 5000)"
+               :task (shell (str "sh dev/bench-store.sh "
+                                 (or (first *command-line-args*) "")))}}}

@@ -55,8 +55,22 @@
 
 (declare eval-guard)
 
-(defn- eval-fact [[_ path] {:keys [state process]}]
-  (let [{:keys [status] :as fs} (red/fact-status state path)
+(defn- fact-status*
+  "fact-status through the ctx memo when one rides along: guard
+  evaluation asks about the same (state, path) many times per sweep
+  and per fixpoint, and conflict detection walks the DAG each time —
+  the memo makes each pair cost one walk per EVALUATION, not one per
+  ask. Purely an evaluation-local cache: same inputs, same answer."
+  [ctx path]
+  (if-let [memo (:fact-memo ctx)]
+    (or (get @memo path)
+        (let [r (red/fact-status (:state ctx) path)]
+          (vswap! memo assoc path r)
+          r))
+    (red/fact-status (:state ctx) path)))
+
+(defn- eval-fact [[_ path] {:keys [process] :as ctx}]
+  (let [{:keys [status] :as fs} (fact-status* ctx path)
         schema (get-in process [:process/facts path])]
     (case status
       :absent    (fail {:reason :fact/missing :path path :schema schema})
@@ -83,7 +97,7 @@
     (if-not (:satisfied? base)
       base
       (let [members (set (get-in roles [role :members]))
-            by (:by (red/fact-status (:state ctx) path))]
+            by (:by (fact-status* ctx path))]
         (if (contains? members by)
           ok
           (fail {:reason :role/unsatisfied :role role :path path :by by}))))))
@@ -113,8 +127,8 @@
   "Present AND equal, with exactly one reason per failure mode: absent
   reports :fact/missing carrying :expected (the lens can say what to
   set it TO); a different value reports :fact/mismatch."
-  [[_ path expected] {:keys [state]}]
-  (let [{:keys [status value]} (red/fact-status state path)]
+  [[_ path expected] ctx]
+  (let [{:keys [status value]} (fact-status* ctx path)]
     (cond
       (not= :present status)
       (fail {:reason :fact/missing :path path :expected expected})
@@ -157,9 +171,9 @@
   "[:different-person path-a path-b]: separation of duties — both facts
   present AND asserted by different actors. The four-eyes principle as
   a derivable condition."
-  [[_ path-a path-b] {:keys [state]}]
-  (let [a (red/fact-status state path-a)
-        b (red/fact-status state path-b)]
+  [[_ path-a path-b] ctx]
+  (let [a (fact-status* ctx path-a)
+        b (fact-status* ctx path-b)]
     (cond
       (not= :present (:status a))
       (fail {:reason :fact/missing :path path-a})

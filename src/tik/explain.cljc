@@ -53,7 +53,7 @@
   (let [state (red/ticket-state events)
         reached (stage/effective-reached process events now roles)
         ctx {:state state :process process :now now
-             :roles roles :reached reached}]
+             :roles roles :reached reached :fact-memo (volatile! {})}]
     (vec
      (for [s (frontier process reached ctx)
            :let [evaluated (map (fn [g] [g (guard/eval-guard g ctx)])

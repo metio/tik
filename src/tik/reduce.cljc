@@ -166,24 +166,34 @@
 (defn conflicting-claims
   "The causally-maximal writes on `path` when they disagree, else nil.
   Concurrent writes that agree (same value, or both retracts) are not a
-  conflict — there is no disagreement to surface."
+  conflict — there is no disagreement to surface.
+
+  Fast path for the overwhelmingly common shape: when every other
+  write is an ancestor of the newest write (a linear or converging
+  history), exactly one write is maximal and no conflict can exist —
+  W-1 walks instead of the W\u00b2 pairwise maximality check."
   [state path]
   (let [writes (path-writes (:log state) path)]
     (when (< 1 (count writes))
       (let [index (into {} (map (juxt :event/id :event/parents))
-                        (:log state))
-            maximal (filterv (fn [w]
-                               (not-any? #(and (not= (:event %) (:event w))
-                                               (ancestor? index (:event w)
-                                                          (:event %)))
-                                         writes))
-                             writes)
-            outcomes (distinct (map #(if (= :assert (:kind %))
-                                       [:value (:value %)]
-                                       [:retracted])
-                                    maximal))]
-        (when (and (< 1 (count maximal)) (< 1 (count outcomes)))
-          maximal)))))
+                        (:log state))]
+        ;; consecutive ancestry composes: every write is then an
+        ;; ancestor of the newest, exactly one write is maximal, no
+        ;; conflict — and each hop is usually a single parent step
+        (when-not (every? (fn [[a b]] (ancestor? index (:event a) (:event b)))
+                          (partition 2 1 writes))
+          (let [maximal (filterv (fn [w]
+                                   (not-any? #(and (not= (:event %) (:event w))
+                                                   (ancestor? index (:event w)
+                                                              (:event %)))
+                                             writes))
+                                 writes)
+                outcomes (distinct (map #(if (= :assert (:kind %))
+                                           [:value (:value %)]
+                                           [:retracted])
+                                        maximal))]
+            (when (and (< 1 (count maximal)) (< 1 (count outcomes)))
+              maximal)))))))
 
 (defn fact-status
   "THE choke point. Returns

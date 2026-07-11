@@ -41,16 +41,17 @@
   the correct answer."
   ([process state now roles] (reached-set process state now roles #{}))
   ([process state now roles base]
-   (loop [reached base]
-     (let [ctx {:state state :process process :now now
-                :roles roles :reached reached}
-           r' (into reached
-                    (for [s (:process/stages process)
-                          :when (and (not (contains? reached (:stage/id s)))
-                                     (every? reached (:after s []))
-                                     (guards-ok? s ctx))]
-                      (:stage/id s)))]
-       (if (= r' reached) reached (recur r'))))))
+   (let [memo (volatile! {})]
+     (loop [reached base]
+       (let [ctx {:state state :process process :now now
+                  :roles roles :reached reached :fact-memo memo}
+             r' (into reached
+                      (for [s (:process/stages process)
+                            :when (and (not (contains? reached (:stage/id s)))
+                                       (every? reached (:after s []))
+                                       (guards-ok? s ctx))]
+                        (:stage/id s)))]
+         (if (= r' reached) reached (recur r')))))))
 
 (defn evolve
   "THE fold. One pass over the deduped, ordered event set, producing
@@ -82,7 +83,8 @@
   [process state now roles]
   (loop [reached #{} sweeps []]
     (let [ctx {:state state :process process :now now
-               :roles roles :reached reached}
+               :roles roles :reached reached
+               :fact-memo (volatile! {})}
           evaluated (for [s (:process/stages process)
                           :when (not (contains? reached (:stage/id s)))]
                       {:stage (:stage/id s)

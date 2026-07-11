@@ -5,3 +5,4 @@
 board.html
 .verify-cache
 /target/
+/.derived-cache.edn
