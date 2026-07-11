@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T11:20:42.998Z" :event/body {:fact/path [:summary] :fact/value "one poisoned ticket can no longer hide 9999 healthy ones"} :event/parents #{"sha256-e55d862c85143fa0a25bdd1484bf1ff3fd2fb9f33ce2b85762f7cefc5538f5aa"} :event/ticket #uuid "8be256ff-7e33-4d79-af1f-b340e7edb366" :event/type :fact/assert}
