@@ -23,11 +23,23 @@
 
 (defn read-event
   "The file holds exactly the hashed region (ADR 0007); the id IS the
-  filename and is attached on read. `verify` recomputes it from the bytes."
+  filename and is attached on read. `verify` recomputes it from the
+  bytes. A file that is not one well-formed EDN map fails WELL here —
+  a correct hash of garbage bytes is still garbage, and the rejection
+  must name the file, not explode in the reader."
   [^File f]
-  (let [stem (str/replace (.getName f) #"\.edn$" "")]
-    (assoc (edn/read-string {:readers edn-readers} (slurp f))
-           :event/id stem)))
+  (let [stem (str/replace (.getName f) #"\.edn$" "")
+        parsed (try (edn/read-string {:readers edn-readers} (slurp f))
+                    (catch Exception e
+                      (throw (ex-info "unreadable event file"
+                                      {:reason :event/unreadable
+                                       :file (str f)}
+                                      e))))]
+    (when-not (map? parsed)
+      (throw (ex-info "event file does not hold an event map"
+                      {:reason :event/unreadable :file (str f)
+                       :read (pr-str parsed)})))
+    (assoc parsed :event/id stem)))
 
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))

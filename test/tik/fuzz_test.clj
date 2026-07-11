@@ -9,13 +9,18 @@
   pass. TIK_FUZZ_N scales the iteration counts (default keeps the
   gate fast; crank it for a soak run)."
   (:require [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
+            [tik.author]
             [tik.canonical :as canonical]
+            [tik.cli]
+            [tik.dupe]
             [tik.event :as event]
+            [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
             [tik.reduce :as red]
@@ -145,3 +150,103 @@
           (swap! caught inc))))
     (is (= @total @caught)
         "every single-byte flip must change the content address")))
+
+;; ------------------------------------------------ round 2: the porcelain
+
+(def ^:private cli-parse-value @#'tik.cli/parse-value)
+(def ^:private cli-parse-key @#'tik.cli/parse-key)
+
+(defspec parse-value-is-total-over-arbitrary-text n
+  ;; whatever a human or a hostile probe prints, the parser answers
+  ;; with a VALUE — never a throw
+  (prop/for-all [s gen/string]
+    (fails-well? #(cli-parse-value s))))
+
+(defspec parse-key-is-total-over-plausible-keys n
+  (prop/for-all [s (gen/such-that seq gen/string-alphanumeric)]
+    (vector? (cli-parse-key s))))
+
+(defspec similarity-is-total-and-bounded n
+  (prop/for-all [a (gen/one-of [gen/string (gen/return nil)])
+                 b (gen/one-of [gen/string (gen/return nil)])]
+    (let [score (tik.dupe/similarity a b)]
+      (and (<= 0.0 score 1.0)
+           (= score (tik.dupe/similarity b a))))))
+
+(defspec author-check-is-total-over-garbage n
+  ;; whatever an LLM or a corrupted answers.edn hands it, check
+  ;; answers with findings — the error finding IS the clean rejection
+  (prop/for-all [garbage gen/any-equatable]
+    (fails-well? #(doall (tik.author/check garbage)))))
+
+(defspec usage-totals-is-total-over-hostile-telemetry n
+  ;; agent telemetry is attestation BODY — unvalidated by schema; a
+  ;; hostile or buggy agent's usage map must not crash the money lens
+  (prop/for-all [records (gen/vector
+                          (gen/map gen/keyword gen/any-equatable
+                                   {:max-elements 4})
+                          0 4)]
+    (fails-well? #(work/usage-totals records {"m" {:input 3.0}}))))
+
+;; -------------------------------- hash-valid garbage in a store file
+
+(deftest hash_valid_garbage_is_rejected_cleanly_at_read_time
+  ;; byte flips are caught by the name/content check — the sharper
+  ;; attack stores GARBAGE whose name honestly hashes its bytes. The
+  ;; reader must reject it with a data-carrying error, never explode.
+  (let [dir (.toFile (Files/createTempDirectory
+                      "tik-fuzz2" (make-array FileAttribute 0)))
+        ticket (random-uuid)
+        evdir (io/file dir "tickets" (str ticket) "events")]
+    (.mkdirs evdir)
+    (doseq [payload ["%%% not edn at all"
+                     "{:not-an-event true}"
+                     "[1 2 3"
+                     "#=(java.lang.Runtime/getRuntime)"]]
+      (let [bytes (.getBytes ^String payload "UTF-8")
+            name (str "sha256-" (canonical/sha256-hex-bytes bytes) ".edn")]
+        (java.nio.file.Files/write
+         (.toPath (io/file evdir name)) ^bytes bytes
+         ^"[Ljava.nio.file.OpenOption;"
+         (make-array java.nio.file.OpenOption 0))))
+    (let [s (fstore/file-store (str dir))]
+      (is (fails-well? #(doall (red/ticket-state (store/events s ticket))))
+          "reading a hostile store must be a clean rejection")
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (doall (red/ticket-state (store/events s ticket))))
+          "and specifically an ex-info, not a silent empty fold"))))
+
+;; --------------------------------------------------- the argv surface
+
+(deftest hostile_argv_never_stack_traces
+  ;; every invocation a confused human or hostile script can produce
+  ;; must exit 0 or 1 with WORDS on stderr — a stack trace on the
+  ;; first contact is an H9 killer and a fuzz finding
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-argv" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        zalgo (apply str "ch" (map char [0x0341 0x0327 0x036 97 111 115]))
+        run (fn [& args]
+              (apply sh/sh
+                     (concat ["bb" "tik"] args
+                             [:dir repo
+                              :env (assoc (into {} (System/getenv))
+                                          "TIK_ROOT" (str root)
+                                          "TIK_ACTOR" "fuzz")])))]
+    (doseq [argv [["set"] ["set" "="] ["set" "x" "=y"]
+                  ["status"] ["explain"] ["log"] ["causal"]
+                  ["new" "\ud83c\udfab"] ["new" "track" "--title"]
+                  ["ls" "--where" "="] ["ls" "--filter" "%%%"]
+                  ["query"] ["query" "fact"]
+                  ["whatif" "zzzz" "+NOT-A-DURATION"]
+                  ["migrate" "zzzz"] ["bundle"] ["witness" "zzzz"]
+                  ["attest" "zzzz"] ["work" "??"]
+                  ["author" "--from" "/nonexistent.edn"]
+                  ["author" "check"] ["rollout"] ["probe" "zzzz"]
+                  ["lint" " "] ["--" "--" "--"]
+                  [zalgo]]]
+      (let [r (apply run argv)]
+        (is (contains? #{0 1} (:exit r)) (pr-str argv))
+        (is (not (re-find #"Exception in thread|clojure\.lang\.|StackTrace|\tat "
+                          (str (:out r) (:err r))))
+            (str (pr-str argv) "\n" (:err r)))))))
