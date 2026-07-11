@@ -238,3 +238,13 @@ where they stop:
   (HTTP), FlowStorm (walking derivation), tools.namespace reload,
   next.jdbc with `events(id TEXT PRIMARY KEY, bytes BLOB)` for the
   SQLite backend. Adopt opportunistically; none are load-bearing.
+- **MCP per-call latency** — every `tik_*` tool in `cli/tik/mcp.clj`
+  shells out to `bb tik` as a subprocess, so each call pays babashka's
+  ~0.85s load-CLI-from-source cost; the native binary starts in
+  ~10ms. An agent making many `tik_explain`/`tik_assert` calls in one
+  session feels the difference. Fix options: point the shell at the
+  native binary when it is on PATH, or drop the subprocess and call
+  the CLI namespaces in-process. Pure porcelain — no derivation, no
+  wire format, no kernel — so it graduates only when the agent path is
+  hot enough to matter (an H7 datapoint, not a guess). Same shape
+  would apply to any future surface that shells `bb tik` in a loop.
