@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T08:59:43.337Z" :event/body {:fact/path [:summary] :fact/value "every escape lands as words; one dead sink cannot sink the rest"} :event/parents #{"sha256-b2c8c62129fd482ce49eb15e6d375d510423252ddbf3e9baa202cdf8c247bd6e"} :event/ticket #uuid "32a86895-62aa-4b51-b4eb-875aa5bae69e" :event/type :fact/assert}
