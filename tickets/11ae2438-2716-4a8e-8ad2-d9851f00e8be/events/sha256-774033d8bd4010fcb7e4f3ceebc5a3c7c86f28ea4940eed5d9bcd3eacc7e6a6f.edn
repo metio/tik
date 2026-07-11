@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T09:57:01.118Z" :event/body {:fact/path [:summary] :fact/value "trigger measured and fired: 73x kernel, 4.3x warm board at 10k tickets"} :event/parents #{"sha256-47fe5812ca138f407deda880c3a40aa83c7be0773fb46aa7b8c5231a7e515edf"} :event/ticket #uuid "11ae2438-2716-4a8e-8ad2-d9851f00e8be" :event/type :fact/assert}
