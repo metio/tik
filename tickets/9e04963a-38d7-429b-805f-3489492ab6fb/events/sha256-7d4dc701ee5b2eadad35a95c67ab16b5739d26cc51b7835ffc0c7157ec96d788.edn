@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T21:17:49.714Z" :event/body {:fact/path [:summary] :fact/value "an MCP tool call now costs a function call, not a fresh babashka startup (~850ms -> sub-ms)"} :event/parents #{"sha256-8ef1ae194d544fda92fc5e3f74407ad7c53b4fa23a2a90c86c4bdce57a80b361"} :event/ticket #uuid "9e04963a-38d7-429b-805f-3489492ab6fb" :event/type :fact/assert}
