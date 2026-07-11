@@ -364,9 +364,10 @@
   (let [d (io/file (root) "tickets" (str id) "events")]
     (when (and (nil? (db-path)) (.isDirectory d))
       (canonical/sha256-hex
-       (str/join "\n" (sort (keep #(let [n (.getName ^File %)]
-                                      (when (str/ends-with? n ".edn") n))
-                                   (.listFiles d))))))))
+       (str (:pack (fstore/read-pack-index d)) "\n"
+            (str/join "\n" (sort (keep #(let [n (.getName ^File %)]
+                                           (when (str/ends-with? n ".edn") n))
+                                        (.listFiles d)))))))))
 
 (defn- guard-ops [proc]
   (let [ops (volatile! #{})]
@@ -679,6 +680,36 @@
                                 (tint "32" (str/join ", " (map name gained))))))))))))
     (println (str @changed " fact(s) derived from the world — signed like"
                   " any other claim"))))
+
+(defn- cmd-pack
+  "pack [<id>]: consolidate settled tickets' loose event files into
+  one content-addressed events.pack + index per ticket (given an id,
+  pack that ticket regardless of settledness). The pack holds the
+  exact per-event hashed byte regions, so verify still checks every
+  event against its id — as a slice. Appends after packing land loose
+  and merge on read; re-packing folds them in. Fewer inodes, fewer
+  git objects, and the board fingerprints a packed ticket by one
+  address instead of a directory listing."
+  [{:keys [pos]}]
+  (when (db-path)
+    (die "pack is for the file store — the SQLite backend is already one file"))
+  (let [s (the-store)
+        t (now)
+        ids (if (seq pos)
+              [(resolve-id s (first pos))]
+              (for [id (store/ticket-ids s)
+                    :let [{:keys [events process roles]} (ticket-ctx s id)]
+                    :when (next-lens/settled? process events t roles)]
+                id))
+        packed (atom 0)]
+    (doseq [id ids
+            :let [r (fstore/pack! (root) id)]
+            :when r]
+      (swap! packed inc)
+      (println (str (subs (str id) 0 8) " packed " (:packed r)
+                    " event(s) -> " (subs (:pack r) 0 19) "…")))
+    (println (str @packed " ticket(s) packed"))
+    (cache-flush!)))
 
 (defn- cmd-init
   "init [--hidden]: mark this directory as a store. --hidden puts
@@ -2923,7 +2954,20 @@ Each entry in :needs is one of:
         (check (= raw (canonical/emit (dissoc e :event/id)))
                (str (subs eid 0 19) "… bytes are exactly the hashed region"))
         (check (event/valid? e) (str (subs eid 0 19) "… schema-valid")))
-      (doseq [^File f files
+      (do
+        (when-let [{:keys [entries pack]} (fstore/read-pack-index dir)]
+          (let [pack-bytes (java.nio.file.Files/readAllBytes
+                            (.toPath (io/file dir "events.pack")))]
+            (check (= pack (str "sha256-"
+                                (canonical/sha256-hex-bytes pack-bytes)))
+                   (str "pack " (subs (str pack) 0 19)
+                        "… bytes hash to the index's pack address"))
+            (doseq [{:keys [id] :as entry} entries
+                    :let [slice (fstore/pack-slice dir entry)]]
+              (check (= id (str "sha256-"
+                                (canonical/sha256-hex-bytes slice)))
+                     (str (subs id 0 19) "… packed slice hashes to id")))))
+        (doseq [^File f files
               :let [e (fstore/read-event f)
                     bytes-on-disk (slurp f)
                     stem (str/replace (.getName f) #"\.edn$" "")]]
@@ -2931,7 +2975,7 @@ Each entry in :needs is one of:
                (str stem " bytes are exactly the canonical hashed region"))
         (check (= stem (event/event-id e))
                (str stem " sha256(bytes) = filename = id"))
-        (check (event/valid? e) (str stem " schema-valid"))))
+        (check (event/valid? e) (str stem " schema-valid")))))
     (let [evs (store/events s id)]
       (check (empty? (dag/missing-parents evs)) "all parents present")
       (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
@@ -3082,6 +3126,11 @@ Each entry in :needs is one of:
                                                 quiet tickets rising; --actor = what I
                                                 can do, --role = what a role is being
                                                 waited on for (--all adds settled)
+  tik pack [<id>]                               consolidate settled tickets into one
+                                                content-addressed pack file each —
+                                                fewer inodes and git objects; verify
+                                                checks every packed slice against its
+                                                id; later events land loose and merge
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
                                                 (--changed: skip unchanged heads —
                                                 drift check, not the full audit)
@@ -3136,6 +3185,7 @@ Each entry in :needs is one of:
       "init"    (cmd-init parsed)
       "rollout" (cmd-rollout parsed)
       "probe"   (cmd-probe parsed)
+      "pack"    (cmd-pack parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)

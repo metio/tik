@@ -316,3 +316,34 @@
       (testing "the pinned definition names the rules, not the create label"
         (is (re-find #"rules:   :second v3"
                      (:out (tik-at top nil "status" id))))))))
+
+(deftest packing_changes_layout_never_truth
+  (let [top (tmpdir)]
+    (tik-at top nil "init" "--hidden")
+    (let [id (str/trim (:out (tik-at top nil "new" "track" "--title" "packable")))
+          evdir (io/file top ".tik" "tickets" id "events")]
+      (tik-at top nil "set" id "note=\"gathering\"")
+      (tik-at top nil "set" id "outcome=\"all wrapped up\"")
+      (let [before (:out (tik-at top nil "status" id))
+            loose-before (count (.listFiles evdir))]
+        (testing "pack consolidates the settled ticket"
+          (let [r (tik-at top nil "pack")]
+            (is (re-find #"1 ticket\(s\) packed" (:out r)))
+            (is (.isFile (io/file evdir "events.pack")))
+            (is (< (count (.listFiles evdir)) loose-before))))
+        (testing "derivation is byte-identical after packing"
+          (is (= before (:out (tik-at top nil "status" id)))))
+        (testing "verify checks every packed slice against its id"
+          (let [r (tik-at top nil "verify" id)]
+            (is (re-find #"packed slice hashes to id" (:out r)))
+            (is (re-find #"verify: PASS" (:out r)))))
+        (testing "appends after packing land loose and merge on read"
+          (tik-at top nil "comment" id "postscript")
+          (is (re-find #"attach .*comment/"
+                       (:out (tik-at top nil "log" id))))
+          (is (some #(str/ends-with? (.getName ^java.io.File %) ".edn")
+                    (.listFiles evdir))))
+        (testing "re-packing folds the loose newcomers in"
+          (tik-at top nil "pack" id)
+          (let [r (tik-at top nil "verify" id)]
+            (is (re-find #"verify: PASS" (:out r)))))))))
