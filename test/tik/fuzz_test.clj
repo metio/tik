@@ -173,31 +173,33 @@
   enforces the floor uniformly; a new untrusted-input surface joins
   here or it is not covered.
 
-  Each entry is {:label :f :gen}; :gen produces the full argument
-  VECTOR that :f is applied to. The generator is shaped to the
-  function's real domain — feeding gen/any to a fn whose domain is
-  event maps would only ever exercise the reject path — so both the
-  compute and the reject sides are hit. I/O boundaries (the store
-  readers, run-argv, the MCP loop) need filesystem/process context and
-  are driven by their own deftests, not this pure-args table."
-  [{:label "canonical/emit" :f canonical/emit
+  Each entry is {:sym :f :gen}; :sym is the fully-qualified var (the
+  meta-check below reconciles it against the live public API), :gen
+  produces the full argument VECTOR that :f is applied to. The
+  generator is shaped to the function's real domain — feeding gen/any
+  to a fn whose domain is event maps would only ever exercise the
+  reject path — so both the compute and the reject sides are hit. I/O
+  boundaries (the store readers, run-argv, the MCP loop) need
+  filesystem/process context and are driven by their own deftests, not
+  this pure-args table."
+  [{:sym 'tik.canonical/emit :f canonical/emit
     :gen (one gen/any-equatable)}
-   {:label "canonical/content-address" :f canonical/content-address
+   {:sym 'tik.canonical/content-address :f canonical/content-address
     :gen (one gen/any-equatable)}
-   {:label "canonical/check-nesting" :f canonical/check-nesting
+   {:sym 'tik.canonical/check-nesting :f canonical/check-nesting
     :gen (one gen/string)}
-   {:label "event/mint" :f event/mint
+   {:sym 'tik.event/mint :f event/mint
     :gen (one gen-garbage)}
-   {:label "reduce/ticket-state" :f red/ticket-state
+   {:sym 'tik.reduce/ticket-state :f red/ticket-state
     :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
                    valid ge/gen-events]
            [(into (vec valid) garbage)])}
-   {:label "guard/eval-guard" :f guard/eval-guard
+   {:sym 'tik.guard/eval-guard :f guard/eval-guard
     :gen (gen/let [g gen-garbage-guard
                    events ge/gen-events]
            [g {:state (red/ticket-state events) :now (Instant/now)
                :roles ge/roles :reached #{}}])}
-   {:label "stage/effective-reached" :f stage/effective-reached
+   {:sym 'tik.stage/effective-reached :f stage/effective-reached
     :gen (gen/let [stages (gen/vector
                            (gen/let [id gen/keyword
                                      guards (gen/vector gen-garbage-guard 0 2)]
@@ -206,28 +208,37 @@
                    events ge/gen-events]
            [{:process/id :fuzz :process/version 1 :process/stages stages}
             events (Instant/now) ge/roles])}
-   {:label "cli/parse-value" :f cli-parse-value
-    :gen (one gen/string)}
-   {:label "cli/parse-key" :f cli-parse-key
-    :gen (one gen/string)}
-   {:label "dupe/similarity" :f tik.dupe/similarity
-    :gen (gen/tuple (gen/one-of [gen/string (gen/return nil)])
-                    (gen/one-of [gen/string (gen/return nil)]))}
-   {:label "author/check" :f tik.author/check
-    :gen (one gen/any-equatable)}
-   {:label "work/usage-totals" :f work/usage-totals
-    :gen (gen/fmap (fn [records] [records {"m" {:input 3.0}}])
-                   (gen/vector (gen/map gen/keyword gen/any-equatable
-                                        {:max-elements 4})
-                               0 4))}
-   {:label "dag/heads" :f tik.dag/heads :gen (one gen-hostile-events)}
-   {:label "dag/roots" :f tik.dag/roots :gen (one gen-hostile-events)}
-   {:label "dag/missing-parents" :f tik.dag/missing-parents
-    :gen (one gen-hostile-events)}
-   {:label "explain/render" :f tik.explain/render
+   {:sym 'tik.explain/explain :f tik.explain/explain
+    :gen (gen/let [stages (gen/vector
+                           (gen/let [id gen/keyword
+                                     guards (gen/vector gen-garbage-guard 0 2)]
+                             {:stage/id id :guards guards})
+                           0 4)
+                   events ge/gen-events]
+           [{:process/id :fuzz :process/version 1 :process/stages stages}
+            events (Instant/now) ge/roles])}
+   {:sym 'tik.explain/render :f tik.explain/render
     :gen (gen/fmap (fn [reasons]
                      [[{:stage :fuzz :satisfied [] :missing reasons
                         :blocks #{}}]])
+                   (gen/vector (gen/map gen/keyword gen/any-equatable
+                                        {:max-elements 4})
+                               0 4))}
+   {:sym 'tik.dag/heads :f tik.dag/heads :gen (one gen-hostile-events)}
+   {:sym 'tik.dag/roots :f tik.dag/roots :gen (one gen-hostile-events)}
+   {:sym 'tik.dag/missing-parents :f tik.dag/missing-parents
+    :gen (one gen-hostile-events)}
+   {:sym 'tik.cli/parse-value :f cli-parse-value
+    :gen (one gen/string)}
+   {:sym 'tik.cli/parse-key :f cli-parse-key
+    :gen (one gen/string)}
+   {:sym 'tik.dupe/similarity :f tik.dupe/similarity
+    :gen (gen/tuple (gen/one-of [gen/string (gen/return nil)])
+                    (gen/one-of [gen/string (gen/return nil)]))}
+   {:sym 'tik.author/check :f tik.author/check
+    :gen (one gen/any-equatable)}
+   {:sym 'tik.work/usage-totals :f work/usage-totals
+    :gen (gen/fmap (fn [records] [records {"m" {:input 3.0}}])
                    (gen/vector (gen/map gen/keyword gen/any-equatable
                                         {:max-elements 4})
                                0 4))}])
@@ -235,18 +246,96 @@
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
   ;; and force any lazy result — the answer must be a value or an
-  ;; ex-info, never another Throwable. The label rides along so a
-  ;; failure names the function, not just an opaque fn object.
-  (prop/for-all [[label f args]
-                 (gen/let [{:keys [label f gen]} (gen/elements totality-registry)
+  ;; ex-info, never another Throwable. The sym rides along so a failure
+  ;; names the function, not just an opaque fn object.
+  (prop/for-all [[sym f args]
+                 (gen/let [{:keys [sym f gen]} (gen/elements totality-registry)
                            args gen]
-                   [label f args])]
+                   [sym f args])]
     (let [result (fails-well?
                   #(let [r (apply f args)]
                      (when (seqable? r) (doall r))
                      nil))]
-      (when-not result (println "NOT TOTAL:" label "on" (pr-str args)))
+      (when-not result (println "NOT TOTAL:" sym "on" (pr-str args)))
       result)))
+
+;; --------- the meta-check: no boundary function goes uncovered
+
+(def ^:private boundary-namespaces
+  "The pure derivation core. Every PUBLIC fn in these namespaces must
+  either promise totality (appear in totality-registry) or be listed in
+  totality-exemptions with the reason it need not — the meta-check
+  below fails otherwise. This is the forcing function: a new public
+  kernel fn cannot slip in without a verdict on its fail-well contract.
+  The porcelain namespaces (cli, author, dupe, work) also contribute
+  registry entries but are not swept here — their public surface is
+  mostly I/O and rendering, where 'total over garbage' is not the
+  uniform law it is for the kernel."
+  '[tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
+    tik.explain])
+
+(def ^:private totality-exemptions
+  "Public kernel fns deliberately NOT in the registry, each with why.
+  Explicit so the exemption is a decision on the record, not an
+  oversight the sweep silently tolerates."
+  '{tik.canonical/sha256-hex        "total by construction: SHA-256 over any string"
+    tik.canonical/sha256-hex-bytes  "total by construction: SHA-256 over any byte array"
+    tik.event/valid?                "malli validator over the Event schema: a boolean over any input"
+    tik.event/explain-event         "malli explainer over the Event schema: an explanation or nil over any input"
+    tik.event/event-id              "content-address of a map; the hashing core of mint (registered)"
+    tik.event/create-ticket         "thin constructor over mint (registered)"
+    tik.event/migrate-process       "thin constructor over mint (registered)"
+    tik.event/assert-fact           "thin constructor over mint (registered)"
+    tik.event/dispute-fact          "thin constructor over mint (registered)"
+    tik.event/retract-fact          "thin constructor over mint (registered)"
+    tik.event/attach-artifact       "thin constructor over mint (registered)"
+    tik.event/add-attestation       "thin constructor over mint (registered)"
+    tik.event/chain                 "test/script helper: threads parents over caller-supplied steps"
+    tik.reduce/dedupe-events        "internal to the fold; exercised via ticket-state (registered)"
+    tik.reduce/order                "internal to the fold; exercised via ticket-state (registered)"
+    tik.reduce/ordered              "internal to the fold; exercised via ticket-state (registered)"
+    tik.reduce/apply-event          "single-step reducer under the fold's invariants; via ticket-state"
+    tik.reduce/fact-entry           "lens over a derived state map, not raw input"
+    tik.reduce/conflicting-claims   "internal to the fold; exercised via ticket-state (registered)"
+    tik.reduce/fact-status          "lens over a derived state map; consulted only by eval-guard (registered)"
+    tik.reduce/fact-value           "lens over a derived state map, not raw input"
+    tik.guard/fact-map              "internal to eval-guard (registered)"
+    tik.stage/sticky-ids            "internal to the fixpoint; exercised via effective-reached (registered)"
+    tik.stage/reached-set           "internal to the fixpoint; exercised via effective-reached (registered)"
+    tik.stage/evolve                "internal to the fixpoint; exercised via effective-reached (registered)"
+    tik.stage/trace-sweeps          "internal to the fixpoint; exercised via effective-reached (registered)"
+    tik.stage/stage-timeline        "lens over derived stages, driven by the stage property tests"
+    tik.stage/ancestor-closure      "pure graph helper over a stage's :after, under process-lint invariants"
+    tik.stage/downstream            "pure graph helper over a stage's :after, under process-lint invariants"
+    tik.stage/current-stages        "lens over derived reached-set, not raw input"
+    tik.explain/frontier            "internal to explain (registered)"
+    tik.explain/actionability       "internal to explain (registered)"
+    tik.explain/actionable-by?      "predicate over a derived reason, exercised via for-actor/explain"
+    tik.explain/for-actor           "capability filter over explain's output (registered), not raw input"
+    tik.explain/reason->text        "renders one derived reason to English; exercised via render (registered)"})
+
+(deftest every_public_boundary_fn_is_registered_or_exempt
+  ;; the sweep that keeps the registry honest as the code grows: every
+  ;; public fn in the kernel namespaces must carry a verdict — a
+  ;; registry entry (it promises totality) or an exemption (with the
+  ;; reason it need not). A newly added public kernel fn fails this
+  ;; until it is classified; that is the whole point.
+  (let [registered (set (map :sym totality-registry))]
+    (doseq [ns-sym boundary-namespaces]
+      (require ns-sym)
+      (doseq [[fn-name v] (ns-publics ns-sym)
+              :when (fn? (deref v))
+              :let [qsym (symbol (name ns-sym) (name fn-name))]]
+        (is (or (contains? registered qsym)
+                (contains? totality-exemptions qsym))
+            (str qsym " is a public boundary fn with no totality verdict"
+                 " — add it to totality-registry (it promises the"
+                 " fail-well floor) or to totality-exemptions (with the"
+                 " reason it need not)"))))
+    (testing "no stale exemptions: every exempted sym still exists"
+      (doseq [[qsym _] totality-exemptions]
+        (is (resolve qsym)
+            (str qsym " is exempted but no longer a public fn — drop it"))))))
 
 ;; -------------------------------- hash-valid garbage in a store file
 
