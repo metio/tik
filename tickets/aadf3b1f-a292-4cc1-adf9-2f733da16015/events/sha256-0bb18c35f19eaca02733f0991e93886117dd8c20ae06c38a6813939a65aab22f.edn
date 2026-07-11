@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T21:40:16.840Z" :event/body {:fact/path [:summary] :fact/value "the in-process seam is now total — a non-string argv is a clean exit-1, never a raw NPE"} :event/parents #{"sha256-5ee647d4886adf885d93410887a757959b0fd0a3119cc3a00abbbcbfaa666c6b"} :event/ticket #uuid "aadf3b1f-a292-4cc1-adf9-2f733da16015" :event/type :fact/assert}
