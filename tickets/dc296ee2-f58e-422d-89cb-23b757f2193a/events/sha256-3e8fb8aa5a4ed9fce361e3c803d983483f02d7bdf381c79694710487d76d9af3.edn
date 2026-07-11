@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-11T08:37:04.754Z" :event/body {:fact/path [:summary] :fact/value "round 2 found the hash-valid-garbage hole; the reader now fails well"} :event/parents #{"sha256-fb42dde6ae8da0eb10f448f209ffde2c6b2fd02ad71058ffef69a7da6338454c"} :event/ticket #uuid "dc296ee2-f58e-422d-89cb-23b757f2193a" :event/type :fact/assert}
