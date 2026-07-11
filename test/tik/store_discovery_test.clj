@@ -143,8 +143,8 @@
         (is (zero? (:exit r)) (:err r))
         (is (re-find #"4 ticket\(s\) created, 0 already covered, 4 repo\(s\) total"
                      (:out r)))
-        (is (re-find #"alpha -> [0-9a-f]{8} alpha \(started\)" (:out r)))
-        (is (re-find #"group.subgroup.delta -> [0-9a-f]{8} group/subgroup/delta \(started\)"
+        (is (re-find #"\(started\)  [0-9a-f]{8} mig: alpha" (:out r)))
+        (is (re-find #"\(started\)  [0-9a-f]{8} mig: group/subgroup/delta"
                      (:out r))
             "GitLab-style nested repos are found; identity is the path")
         (is (not (re-find #"not-a-repo" (:out r))))))
@@ -156,7 +156,7 @@
         (tik-at top nil "set" beta-id "proof=\"pr-42\"")
         (let [r (tik-at top nil "rollout" "mig")]
           (is (re-find #"0 ticket\(s\) created, 4 already covered" (:out r)))
-          (is (re-find #"beta -> [0-9a-f]{8} beta \(done\)" (:out r))
+          (is (re-find #"\(done\)  [0-9a-f]{8} mig: beta" (:out r))
               "the checkmark derived itself from the child's evidence"))))))
 
 (deftest probe_derives_facts_from_the_world
@@ -207,3 +207,66 @@
     (testing "the prompt teaches the very same rule"
       (is (re-find #"metio house style: never name a stage"
                    (:out (tik-at top nil "author" "prompt")))))))
+
+(deftest rollout_reruns_converge_titles
+  ;; a child created under an old naming scheme gets retitled by the
+  ;; next rollout run — as a superseding fact, never by editing history
+  (let [top (tmpdir)]
+    (.mkdirs (io/file top "alpha" ".git"))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "mig.edn")
+          (pr-str {:process/id :mig :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/stages [{:stage/id :started :guards []}]}))
+    (let [old (str/trim (:out (tik-at top nil "new" "mig" "--title" "alpha")))]
+      (tik-at top nil "set" old "repo=:alpha")
+      (tik-at top nil "rollout" "mig")
+      (testing "adopted, not duplicated; renamed, not rewritten"
+        (let [out (:out (tik-at top nil "ls"))]
+          (is (re-find #"mig: alpha" out))
+          (is (= 1 (count (re-seq #"alpha" out))))))
+      (testing "the original title survives in the log"
+        (is (re-find #"create .*:title \"alpha\""
+                     (:out (tik-at top nil "log" old))))))))
+
+(deftest link_section_orders_by_the_target_process_and_deduplicates
+  (let [top (tmpdir)]
+    (doseq [r ["alpha" "beta" "gamma"]]
+      (.mkdirs (io/file top r ".git")))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "mig.edn")
+          (pr-str {:process/id :mig :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/facts {[:proof] [:string {:min 2}]
+                                   [:ack] [:string {:min 2}]}
+                   :process/stages [{:stage/id :started :guards []}
+                                    {:stage/id :proven :after [:started]
+                                     :guards [[:fact [:proof]]]}
+                                    {:stage/id :acked :after [:proven]
+                                     :stage/sticky? true
+                                     :guards [[:fact [:ack]]]}]}))
+    (tik-at top nil "rollout" "mig")
+    (let [find-child (fn [r] (-> (tik-at top nil "query" "fact" "repo"
+                                         (str ":" r))
+                                 :out str/split-lines first
+                                 (str/split #"\s+") first))
+          parent (-> (tik-at top nil "ls") :out str/split-lines
+                     (->> (filter #(re-find #"rollout" %)))
+                     first (str/split #"\s+") first)]
+      (tik-at top nil "set" (find-child "gamma") "proof=\"pr-1\"" "ack=\"ok\"")
+      (tik-at top nil "set" (find-child "alpha") "proof=\"pr-2\"")
+      (let [links (->> (tik-at top nil "status" parent) :out
+                       str/split-lines
+                       (filter #(re-find #"^\s+\([a-z]" %))
+                       vec)]
+        (testing "least progressed first, per the process's own ordering"
+          (is (re-find #"\(started\).*beta" (first links)) (pr-str links))
+          (is (re-find #"\(proven\).*alpha" (second links)))
+          (is (re-find #"\(acked\).*gamma" (nth links 2))))
+        (testing "the rel is omitted when the title already says it"
+          (is (not-any? #(re-find #"\[beta\]" %) links))))
+      (testing "link facts stay out of the rendered facts table"
+        (is (not (re-find #"\[:link"
+                          (:out (tik-at top nil "status" parent)))))))))

@@ -69,7 +69,7 @@
             (str "link.blocked-by=\"" (subs a 0 8) "\""))
       (is (not (re-find #"reports another ticket" (:out (tik* root "lint"))))))
     (testing "the link renders the target's CURRENT derived stage"
-      (is (re-find #"blocked-by -> [0-9a-f]{8} the referenced work \(received\)"
+      (is (re-find #"\(received\)  [0-9a-f]{8} the referenced work.*\[blocked-by\]"
                    (:out (tik* root "status" b)))))
     (testing "a description older than the latest landing is flagged"
       (tik* root "set" b "commit=\"abcdef0\"")

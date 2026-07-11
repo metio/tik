@@ -256,6 +256,13 @@
      :roles (:process/roles proc {})
      :heads (dag/heads evs)}))
 
+(defn- display-title
+  "The title a lens shows: a [:title] fact supersedes the created
+  title — creation is immutable, names are corrections like any other
+  fact. The create event keeps the original forever."
+  [state]
+  (or (red/fact-value state [:title]) (:title state)))
+
 ;; ---------------------------------------------------------------- commands
 
 (defn- open-ticket-rows
@@ -266,8 +273,8 @@
    (for [id (store/ticket-ids s)
          :let [{:keys [events state process roles]} (ticket-ctx s id)]
          :when (not (next-lens/settled? process events t roles))]
-     {:id id :title (:title state)
-      :text (dupe/haystack {:title (:title state) :facts (:facts state)})})))
+     {:id id :title (display-title state)
+      :text (dupe/haystack {:title (display-title state) :facts (:facts state)})})))
 
 (defn- store-holder
   "The directory the store sits IN: the parent of a hidden .tik root,
@@ -310,7 +317,7 @@
             [])
           explicit)))
 
-(declare link-facts render-link resolve-file)
+(declare link-facts link-row link-lines resolve-file)
 
 (defn- cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T]
@@ -357,7 +364,7 @@
         parent-id
         (or (when-let [p (:parent opts)] (resolve-id s p))
             (some (fn [{:keys [id state events process roles]}]
-                    (when (and (= parent-title (:title state))
+                    (when (and (= parent-title (display-title state))
                                (not (next-lens/settled? process events t roles)))
                       id))
                   all)
@@ -373,10 +380,11 @@
               (:event/ticket e)))
         created (atom 0)]
     (doseq [repo repos]
-      (let [child (or (child-of repo)
+      (let [child-title (str proc-name ": " repo)
+            child (or (child-of repo)
                       (let [e (event/create-ticket
                                {:ticket (random-uuid) :actor (actor opts)
-                                :at (now) :title repo
+                                :at (now) :title child-title
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]
@@ -390,6 +398,14 @@
                         (swap! created inc)
                         (:event/ticket e)))
             {:keys [state]} (ticket-ctx s parent-id)]
+        ;; re-runs converge names too: retitling is a superseding fact
+        (let [cstate (:state (ticket-ctx s child))]
+          (when-not (= child-title (display-title cstate))
+            (append!* s (event/assert-fact
+                         {:ticket child :actor (actor opts) :at (now)
+                          :parents (dag/heads (store/events s child))
+                          :path [:title] :value child-title})
+                      opts)))
         (when-not (= (str child)
                      (red/fact-value state [:link (keyword (str/replace repo "/" "."))]))
           (append!* s (event/assert-fact
@@ -402,8 +418,8 @@
                   (- (count repos) @created) " already covered, "
                   (count repos) " repo(s) total — the living checklist:"))
     (let [{:keys [state]} (ticket-ctx s parent-id)]
-      (doseq [l (sort-by :rel (link-facts state))]
-        (println "  " (render-link s t l))))
+      (doseq [line (link-lines s t state)]
+        (println "  " line)))
     (println (str "watch it: tik status " (subs (str parent-id) 0 8)))))
 
 (defn- cmd-probe
@@ -678,17 +694,35 @@
         :when (= :present status)]
     {:rel (second path) :target (str value)}))
 
-(defn- render-link
-  "\"<rel> -> <short> <title> (<derived current stage, live>)\""
+(defn- link-row
+  "One link as data for sorted display: the derived stage leads, the
+  rel shows only when the title does not already say it, and :sort
+  orders by the TARGET process\u2019s own stage depth (ancestor count) —
+  parallel branches tie and fall back to names. Unresolved links sink
+  to the end instead of crashing a lens."
   [s t {:keys [rel target]}]
   (if-let [target-id (resolve-id-soft s target)]
     (let [{:keys [events state process roles]} (ticket-ctx s target-id)
           current (stage/current-stages
-                   process (stage/effective-reached process events t roles))]
-      (str (name rel) " -> " (subs (str target-id) 0 8) " "
-           (:title state)
-           " (" (str/join ", " (map name current)) ")"))
-    (str (name rel) " -> " target " (no such ticket here — unresolved)")))
+                   process (stage/effective-reached process events t roles))
+          depth (if (seq current)
+                  (apply min (map #(count (stage/ancestor-closure process %))
+                                  current))
+                  -1)
+          stages (str/join ", " (map name (sort-by str current)))
+          title (display-title state)]
+      {:sort [0 depth stages title]
+       :text (str "(" stages ")  " (subs (str target-id) 0 8) " " title
+                  (when-not (str/includes? title (name rel))
+                    (str "  [" (name rel) "]")))})
+    {:sort [1 0 "" (str target)]
+     :text (str "(unresolved)  " target "  [" (name rel) "]")}))
+
+(defn- link-lines
+  "Every link of `state`, rendered and ordered for humans: least
+  progressed first, per the targets\u2019 own process ordering."
+  [s t state]
+  (map :text (sort-by :sort (map #(link-row s t %) (link-facts state)))))
 
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
@@ -698,7 +732,7 @@
         reached (stage/effective-reached process events t roles)
         current (stage/current-stages process reached)]
     (println "ticket: " id)
-    (println "title:  " (:title state))
+    (println "title:  " (display-title state))
     ;; the hash is the RULE SET's identity, never the ticket's — label
     ;; it so nobody misreads the pin as a mutable ticket id
     (println "rules:  " (:process state)
@@ -709,6 +743,9 @@
              (str "(reached: " (str/join ", " (map name (sort-by str reached))) ")"))
     (println "facts:")
     (doseq [[path _] (sort-by (comp pr-str first) (:facts state))
+            ;; links and the title override render in their own homes;
+            ;; repeating them here would just be the same data twice
+            :when (not (or (= :link (first path)) (= [:title] path)))
             :let [{:keys [status value by note]} (red/fact-status state path)]]
       (println " " path "=" (pr-str value)
                (case status
@@ -717,10 +754,10 @@
                  :retracted (str "[retracted by " by "]")
                  :conflicted "[CONFLICTED]"
                  "")))
-    (when-let [links (seq (link-facts state))]
+    (when (seq (link-facts state))
       (println "links:")
-      (doseq [l links]
-        (println "  " (render-link s t l))))
+      (doseq [line (link-lines s t state)]
+        (println "  " line)))
     (when (:at opts)
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
@@ -852,7 +889,7 @@
                    :let [{:keys [events state process roles]} (ticket-ctx s id)
                          reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)]]
-               {:id id :title (:title state) :current current
+               {:id id :title (display-title state) :current current
                 ;; the description is a FACT (searchable), not a comment:
                 ;; summary on work tickets, statement on hypotheses, plus
                 ;; the parked/verdict context where present
@@ -861,7 +898,7 @@
                                 nil))
                 :links (vec (link-facts state))
                 :haystack (str/lower-case
-                           (str (:title state) " "
+                           (str (display-title state) " "
                                 (pr-str (guard/fact-map state))))
                 :settled? (next-lens/settled? process events t roles)})
         rows (cond->> rows
@@ -882,9 +919,9 @@
                title)
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe))))
-      (when (:long opts)
-        (doseq [l links]
-          (println (tint "2" (str "         ↳ " (render-link s t l)))))))
+      (when (and (:long opts) (seq links))
+        (doseq [line (map :text (sort-by :sort (map #(link-row s t %) links)))]
+          (println (tint "2" (str "         ↳ " line))))))
         (when (empty? visible)
           (if (empty? rows)
             (println (str "no tickets yet — start with:\n"
@@ -1417,7 +1454,7 @@
               (System/exit 0)))
         rows (for [id (store/ticket-ids s)
                    :let [{:keys [events state process roles]} (ticket-ctx s id)]]
-               {:id id :title (:title state) :state state :events events
+               {:id id :title (display-title state) :state state :events events
                 :reached (stage/effective-reached process events t roles)})
         hit? (case q
                "disputed" (fn [{:keys [state]}]
@@ -1472,7 +1509,7 @@
                          reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)
                          settled? (next-lens/settled? process events t roles)]]
-               {:id id :title (:title state) :process (:process state)
+               {:id id :title (display-title state) :process (:process state)
                 :current current :settled? settled?
                 :parked? (contains? current :parked)
                 :facts (sort-by (comp pr-str key) (guard/fact-map state))
@@ -1836,7 +1873,7 @@
                          stage-id (sort-by str (remove (:reached prev #{})
                                                        (:reached entry)))
                          :when (or (nil? stages) (contains? stages stage-id))]
-                     {:ticket id :title (:title state) :stage stage-id}))]
+                     {:ticket id :title (display-title state) :stage stage-id}))]
             tr transitions
             sink sinks
             :let [key (canonical/sha256-hex
