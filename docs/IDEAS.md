@@ -122,6 +122,29 @@ abstractions generalize.
 - **`tik pack` / signed bundles / registry / federated discovery** —
   the distribution ladder beyond git-first. Transport porcelain only;
   hash stays identity, signature stays authority (§6).
+- **Multi-store MCP/HTTP gateway with mapped access** — today a server
+  process is one store (`TIK_ROOT`), one claimed identity (`TIK_ACTOR`,
+  taken on trust), write-authorized by the derived frontier and made
+  accountable only after the fact by the event signature; reads are
+  ungated. A gateway would serve many stores at once and map an
+  authenticated caller to the stores and actor identity they may use.
+  Strictly porcelain — access-to-a-store is a "what should happen"
+  policy the kernel deliberately does not answer (§12); the frontier
+  still gates every write, and the signed event stays the accountable
+  record. Mapping options, cheapest first: a **static map**
+  (caller → {stores, actor}) for small deployments; **OIDC group
+  claims** → store/role, the login half of the existing OIDC bridge
+  (§9) taken to authorization. Two options that fit the offline law
+  better than an IdP call per request: **derive access from the
+  store's own `actors` registry + role facts** — who is a registered
+  signer with a role IS the access list, derived not declared, the
+  most tik-shaped answer; and **macaroons** — caveat-scoped bearer
+  tokens (`store=x`, `read-only`, `expires=…`) verifiable *without*
+  the issuer, exactly as signatures and witness sidecars are checkable
+  offline-forever, with OIDC groups as the mint step. Open question:
+  whether read access wants gating at all, or stays wide (the board is
+  already "derived, not secret") with only writes and store-visibility
+  scoped.
 - **Customer information-request loop** — when a process needs facts
   only the customer can provide, everything decomposes into existing
   machinery: the *request* is an effect (ADR 0019: an email from an
