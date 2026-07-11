@@ -29,7 +29,8 @@
             [tik.reduce :as red]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
-            [tik.store.protocol :as store])
+            [tik.store.protocol :as store]
+            [tik.store.sqlite])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
            (java.time Instant)))
@@ -494,3 +495,126 @@
         (is (re-find #"verify: FAIL" (:out r)))
         (is (re-find #"ok 1 event\(s\)" (:out r))
             "the audit covered the healthy ticket too")))))
+
+;; ---------------- round 6: recursion bombs, sqlite hostility, sidecars
+
+(deftest recursion_bombs_are_rejected_never_overflow
+  ;; the emitter and every EDN reader recurse per nesting level, so a
+  ;; 100k-deep vector is a stack bomb — and StackOverflowError is an
+  ;; Error no fail-well guard catches. Write side and read side must
+  ;; both answer with ex-info (or a value) long before the stack does
+  (let [deep-value (reduce (fn [acc _] (vector acc)) 1 (range 100000))
+        deep-text (str (str/join (repeat 100000 "["))
+                       "1"
+                       (str/join (repeat 100000 "]")))]
+    (testing "emit rejects cleanly"
+      (is (thrown? clojure.lang.ExceptionInfo (canonical/emit deep-value))))
+    (testing "mint rejects cleanly"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (event/assert-fact
+                    {:ticket (random-uuid) :actor "x" :at (Instant/now)
+                     :parents #{"sha256-x"} :path [:x] :value deep-value}))))
+    (testing "check-nesting rejects the raw text before any reader"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (canonical/check-nesting deep-text))))
+    (testing "brackets inside strings and char literals don't count"
+      (is (nil? (canonical/check-nesting
+                 "{:a \"[[[[[[\" :b \\[ :c [1 2 3]}"))))
+    (testing "parse-value answers with the literal string"
+      (is (= deep-text (cli-parse-value deep-text))))))
+
+(deftest hash_valid_recursion_bomb_in_a_store_fails_well
+  ;; the sharpest form: a store file whose name honestly hashes a
+  ;; 100k-deep vector. Reading must reject with words; the whole-store
+  ;; audit must report THAT ticket and still finish
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-bomb" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))]
+    (run "new" "track" "--title" "healthy neighbor")
+    (run "new" "track" "--title" "the bombed one")
+    (let [evdirs (->> (io/file root "tickets") .listFiles
+                      (map #(io/file % "events")))
+          bomb (.getBytes (str (str/join (repeat 100000 "["))
+                               "1"
+                               (str/join (repeat 100000 "]")))
+                          "UTF-8")
+          name (str "sha256-" (canonical/sha256-hex-bytes bomb) ".edn")]
+      (java.nio.file.Files/write
+       (.toPath (io/file (first evdirs) name)) ^bytes bomb
+       ^"[Ljava.nio.file.OpenOption;"
+       (make-array java.nio.file.OpenOption 0)))
+    (testing "ls isolates the bombed ticket"
+      (let [r (run "ls")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"healthy neighbor" (:out r)))
+        (is (re-find #"error\s+cannot derive" (:out r)))))
+    (testing "verify reports and finishes the audit"
+      (let [r (run "verify")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"unreadable" (:out r)))
+        (is (re-find #"verify: FAIL" (:out r)))
+        (is (re-find #"ok 1 event\(s\)" (:out r))
+            "the audit covered the healthy ticket too")
+        (is (not (re-find #"StackOverflow|\tat " (str (:out r) (:err r)))))))))
+
+(deftest hostile_sqlite_rows_fail_well
+  ;; rows written around append! — garbage bytes under an honest id, a
+  ;; ticket column that is not a uuid, a db that is not a db — must all
+  ;; reject with ex-info, never a raw cast or parse exception
+  (let [db (str (System/getProperty "java.io.tmpdir")
+                "/tik-fuzz-" (random-uuid) ".db")
+        s (tik.store.sqlite/sqlite-store db)
+        t #uuid "11111111-1111-1111-1111-111111111111"]
+    (sh/sh "sqlite3" db
+           (str "INSERT INTO events(id,ticket,bytes) VALUES"
+                "('sha256-abc','" t "', X'25252520676172626167');"
+                "INSERT INTO events(id,ticket,bytes) VALUES"
+                "('sha256-def','not-a-uuid', X'6e696c');"))
+    (testing "garbage bytes name the row"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (doall (store/events s t)))))
+    (testing "a non-uuid ticket column names the value"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (doall (store/ticket-ids s)))))
+    (testing "a corrupt db file is an ex-info, not a raw shell error"
+      (spit db "NOT A DATABASE")
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (doall (store/ticket-ids s)))))
+    (io/delete-file db true)))
+
+(deftest garbage_signature_sidecars_never_trace
+  ;; sidecar verification shells to ssh-keygen; whatever bytes sit in a
+  ;; .sig file — prose, truncated armor, nothing — the audit answers
+  ;; with verdict lines, never a trace
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-sig" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))]
+    (run "new" "track" "--title" "sig fodder")
+    (let [evdir (->> (io/file root "tickets") .listFiles first
+                     (#(io/file % "events")))
+          id (-> ^java.io.File (first (.listFiles ^java.io.File evdir))
+                 .getName
+                 (str/replace #"\.edn$" ""))]
+      (spit (io/file evdir (str id ".sig.deadbeefdeadbeef")) "garbage")
+      (spit (io/file evdir (str id ".sig.0123456789abcdef"))
+            "-----BEGIN SSH SIGNATURE-----\ntrunc")
+      (spit (io/file evdir (str id ".sig.ffffffffffffffff")) ""))
+    (spit (io/file root "actors")
+          "fuzz namespaces=\"tik-*\" garbage-not-a-key\n")
+    (let [r (run "verify")]
+      (is (contains? #{0 1} (:exit r)))
+      (is (re-find #"verify: (PASS|FAIL)" (:out r)))
+      (is (not (re-find #"Exception in thread|\tat "
+                        (str (:out r) (:err r))))))))

@@ -1,0 +1,3 @@
+[babashka] WARNING: task(s) 'repl' override built-in command(s). Use :override-builtin true to disable warning.
+tik: event file does not hold an event map
+  in: /tmp/nix-shell.kOcJEX/tmp.AWWnT1PZym/tickets/23da855a-17b0-4284-bae0-03f632b8fc78/events/sha256-6842872c3f1e4dc33d045b9615e30d0d571646ab03e4c7caccd2cd9b3e9c04a4.edn

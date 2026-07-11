@@ -134,6 +134,9 @@
   should need to know EDN quoting to record a description."
   [s]
   (let [[v ok?] (try
+                  ;; depth precheck: a recursion-bomb argument must land
+                  ;; as a literal string, not overflow the reader
+                  (canonical/check-nesting s)
                   (with-open [r (java.io.PushbackReader.
                                  (java.io.StringReader. s))]
                     (let [form (edn/read {:eof ::eof} r)
@@ -150,7 +153,9 @@
   instead of exploding the reader. nil when the file is absent."
   [^File f]
   (when (.exists f)
-    (try (edn/read-string (slurp f))
+    (try (let [text (slurp f)]
+           (canonical/check-nesting text)
+           (edn/read-string text))
          (catch Exception e
            (throw (ex-info (str "malformed EDN in " f " — "
                                 (ex-message e))
@@ -2937,11 +2942,17 @@ Each entry in :needs is one of:
           skipped (atom 0)
           verified (atom {})]
       (doseq [id ids
-              :let [heads (dag/heads (store/events s id))]]
+              ;; even LISTING a ticket's events can raise on a hostile
+              ;; store; the audit reports that ticket and continues
+              :let [heads (try (dag/heads (store/events s id))
+                               (catch Exception _ ::unreadable))]]
         (if (= heads (get cache id))
           (do (swap! skipped inc)
               (swap! verified assoc id heads))
-          (let [r (with-out-str (verify-ticket parsed id))]
+          (let [r (try (with-out-str (verify-ticket parsed id))
+                       (catch Exception e
+                         (str "  FAIL  " (subs (str id) 0 8)
+                              " unverifiable: " (ex-message e) "\n")))]
             (if (str/includes? r "FAIL")
               (do (print r) (swap! failures inc))
               (do (swap! verified assoc id heads)
@@ -2986,9 +2997,23 @@ Each entry in :needs is one of:
       ;; SQLite: the raw BLOB must be the exact hashed region — checked
       ;; against storage, not against this process's parsing (ADR 0020)
       (doseq [[eid hex] (sqlite/raw-rows db id)
-              :let [raw (String. ^bytes (sqlite/hex->bytes hex) "UTF-8")
-                    e (assoc (edn/read-string {:readers fstore/edn-readers} raw)
-                             :event/id eid)]]
+              :let [raw (try (String. ^bytes (sqlite/hex->bytes hex) "UTF-8")
+                             (catch Exception ex
+                               (check false (str (subs eid 0 19)
+                                                 "… row bytes unreadable: "
+                                                 (ex-message ex)))
+                               nil))
+                    e (when raw
+                        (try (canonical/check-nesting raw)
+                             (assoc (edn/read-string
+                                     {:readers fstore/edn-readers} raw)
+                                    :event/id eid)
+                             (catch Exception ex
+                               (check false (str (subs eid 0 19)
+                                                 "… row unreadable: "
+                                                 (ex-message ex)))
+                               nil)))]
+              :when e]
         (check (= eid (str "sha256-" (canonical/sha256-hex raw)))
                (str (subs eid 0 19) "… hash(stored bytes) = id"))
         (check (= raw (canonical/emit (dissoc e :event/id)))
@@ -3008,15 +3033,26 @@ Each entry in :needs is one of:
                                 (canonical/sha256-hex-bytes slice)))
                      (str (subs id 0 19) "… packed slice hashes to id")))))
         (doseq [^File f files
-              :let [e (fstore/read-event f)
-                    bytes-on-disk (slurp f)
-                    stem (str/replace (.getName f) #"\.edn$" "")]]
-        (check (= bytes-on-disk (canonical/emit (dissoc e :event/id)))
-               (str stem " bytes are exactly the canonical hashed region"))
-        (check (= stem (event/event-id e))
-               (str stem " sha256(bytes) = filename = id"))
-        (check (event/valid? e) (str stem " schema-valid")))))
-    (let [evs (store/events s id)]
+                :let [stem (str/replace (.getName f) #"\.edn$" "")
+                      e (try (fstore/read-event f)
+                             (catch Exception ex
+                               (check false (str stem " unreadable: "
+                                                 (ex-message ex)))
+                               nil))]
+                :when e
+                :let [bytes-on-disk (slurp f)]]
+          (check (= bytes-on-disk (canonical/emit (dissoc e :event/id)))
+                 (str stem " bytes are exactly the canonical hashed region"))
+          (check (= stem (event/event-id e))
+                 (str stem " sha256(bytes) = filename = id"))
+          (check (event/valid? e) (str stem " schema-valid")))))
+    ;; the audit reports and continues even when the event SET cannot be
+    ;; assembled — L0 above already named the offending file/row
+    (when-let [evs (try (store/events s id)
+                        (catch Exception e
+                          (check false (str "events unreadable: "
+                                            (ex-message e)))
+                          nil))]
       (check (empty? (dag/missing-parents evs)) "all parents present")
       (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
       (println "L1 authenticity")

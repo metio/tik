@@ -1,0 +1,3 @@
+[babashka] WARNING: task(s) 'repl' override built-in command(s). Use :override-builtin true to disable warning.
+tik: unexpected error (StackOverflowError): no message
+  this is a bug in tik — TIK_DEBUG=1 shows the trace

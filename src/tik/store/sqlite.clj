@@ -72,10 +72,22 @@
    (q! db (str "SELECT id, hex(bytes) FROM events WHERE ticket='"
                (safe-id ticket-id) "';"))))
 
-(defn- row->event [[id hex]]
-  (assoc (edn/read-string {:readers fstore/edn-readers}
-                          (String. (hex->bytes hex) "UTF-8"))
-         :event/id id))
+(defn- row->event
+  "Rows are written only through append!, but a hostile or corrupted db
+  can hold anything; garbage bytes fail WELL, naming the row's id."
+  [[id hex]]
+  (let [parsed (try (let [text (String. (hex->bytes hex) "UTF-8")]
+                      (canonical/check-nesting text)
+                      (edn/read-string {:readers fstore/edn-readers} text))
+                    (catch Exception e
+                      (throw (ex-info "unreadable event row"
+                                      {:reason :event/unreadable :id id}
+                                      e))))]
+    (when-not (map? parsed)
+      (throw (ex-info "event row does not hold an event map"
+                      {:reason :event/unreadable :id id
+                       :read (pr-str parsed)})))
+    (assoc parsed :event/id id)))
 
 (defrecord SqliteStore [db]
   p/EventStore
@@ -90,7 +102,12 @@
   (events [_ ticket-id]
     (mapv row->event (raw-rows db ticket-id)))
   (ticket-ids [_]
-    (mapv #(java.util.UUID/fromString (first %))
+    (mapv (fn [[t]]
+            (try (java.util.UUID/fromString t)
+                 (catch Exception e
+                   (throw (ex-info "ticket column does not hold a uuid"
+                                   {:reason :store/corrupt :value t}
+                                   e)))))
           (q! db "SELECT DISTINCT ticket FROM events;")))
   (has-event? [_ event-id]
     (boolean (seq (q! db (str "SELECT 1 FROM events WHERE id='"

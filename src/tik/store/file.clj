@@ -29,7 +29,11 @@
   must name the file, not explode in the reader."
   [^File f]
   (let [stem (str/replace (.getName f) #"\.edn$" "")
-        parsed (try (edn/read-string {:readers edn-readers} (slurp f))
+        parsed (try (let [text (slurp f)]
+                      ;; depth precheck: a 100k-deep vector overflows the
+                      ;; recursive reader with an Error no guard catches
+                      (canonical/check-nesting text)
+                      (edn/read-string {:readers edn-readers} text))
                     (catch Exception e
                       (throw (ex-info "unreadable event file"
                                       {:reason :event/unreadable
@@ -80,8 +84,9 @@
   (if-let [{:keys [entries]} (read-pack-index dir)]
     (mapv (fn [{:keys [id] :as entry}]
             (let [bytes (pack-slice dir entry)
-                  parsed (try (edn/read-string {:readers edn-readers}
-                                               (String. bytes "UTF-8"))
+                  parsed (try (let [text (String. bytes "UTF-8")]
+                                (canonical/check-nesting text)
+                                (edn/read-string {:readers edn-readers} text))
                               (catch Exception e
                                 (throw (ex-info "unreadable packed event"
                                                 {:reason :event/unreadable
