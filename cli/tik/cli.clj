@@ -2378,27 +2378,43 @@
   (let [run-server (requiring-resolve 'org.httpkit.server/run-server)
         port (if (:port opts) (Long/parseLong (str (:port opts))) 7777)
         handler
+        ;; a server request must NEVER reach a die/System-exit path —
+        ;; one hostile GET would take the board down for everyone. Ids
+        ;; resolve softly (404, not exit) and everything else that
+        ;; raises answers 500 with words, request-scoped
         (fn [{:keys [uri]}]
-          (cond
-            (= uri "/")
-            {:status 200
-             :headers {"Content-Type" "text/html; charset=utf-8"}
-             :body (with-out-str (cmd-board {:pos []}))}
+          (try
+            (cond
+              (= uri "/")
+              {:status 200
+               :headers {"Content-Type" "text/html; charset=utf-8"}
+               :body (with-out-str (cmd-board {:pos []}))}
 
-            (= uri "/tickets.edn")
-            {:status 200
-             :headers {"Content-Type" "application/edn"}
-             :body (with-out-str
-                     (cmd-ls {:opts {:edn true :all true}}))}
-
-            (re-matches #"/explain/[0-9a-f-]+\.edn" uri)
-            (let [id (second (re-matches #"/explain/([0-9a-f-]+)\.edn" uri))]
+              (= uri "/tickets.edn")
               {:status 200
                :headers {"Content-Type" "application/edn"}
                :body (with-out-str
-                       (cmd-explain {:pos [id] :opts {:edn true}}))})
+                       (cmd-ls {:opts {:edn true :all true}}))}
 
-            :else {:status 404 :body "tik: not found\n"}))]
+              (re-matches #"/explain/[0-9a-f-]+\.edn" uri)
+              (let [prefix (second (re-matches #"/explain/([0-9a-f-]+)\.edn"
+                                               uri))]
+                (if-let [id (resolve-id-soft (the-store) prefix)]
+                  {:status 200
+                   :headers {"Content-Type" "application/edn"}
+                   :body (with-out-str
+                           (cmd-explain {:pos [(str id)] :opts {:edn true}}))}
+                  {:status 404
+                   :headers {"Content-Type" "text/plain; charset=utf-8"}
+                   :body (str "tik: no unique ticket matching '" prefix
+                              "'\n")}))
+
+              :else {:status 404 :body "tik: not found\n"})
+            (catch Throwable e
+              {:status 500
+               :headers {"Content-Type" "text/plain; charset=utf-8"}
+               :body (str "tik: " (or (ex-message e)
+                                      (.getName (class e))) "\n")})))]
     (run-server handler {:port port})
     (println (str "tik board live at http://127.0.0.1:" port
                   "  (read-only; ctrl-c stops)"))

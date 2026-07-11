@@ -13,7 +13,8 @@
   accountability trail is the ticket itself (PLAN §12/§13).
 
   Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… bb mcp"
-  (:require [clojure.java.shell :as sh]))
+  (:require [clojure.java.shell :as sh]
+            [clojure.string :as str]))
 
 ;; cheshire ships inside babashka; resolved lazily so JVM tooling can
 ;; load this namespace without the dependency
@@ -56,35 +57,73 @@
 
 (defn- actor [] (or (System/getenv "TIK_ACTOR") "agent"))
 
-(defn- call-tool [name {:strs [ticket key value claim]}]
+(defn- need
+  "The named string arguments, or an :err when any is blank/missing —
+  a required argument the client omitted is a client error, answered
+  with words, never a shell-out with an empty placeholder."
+  [args ks]
+  (let [missing (remove #(let [v (get args %)]
+                           (and (string? v) (not (str/blank? v))))
+                        ks)]
+    (when (seq missing)
+      {:err (str "missing required argument(s): "
+                 (str/join ", " missing))})))
+
+(defn- call-tool [name {:strs [ticket key value claim] :as args}]
   (case name
     "tik_board" (tik "ls" "--edn")
-    "tik_explain" (tik "explain" ticket "--edn")
-    "tik_actions" (tik "agent" "actions" ticket "--actor" (actor))
-    "tik_assert" (tik "agent" "set" ticket (str key "=" value)
-                      "--actor" (actor))
-    "tik_attest" (tik "agent" "attest" ticket claim "--actor" (actor))
+    "tik_explain" (or (need args ["ticket"]) (tik "explain" ticket "--edn"))
+    "tik_actions" (or (need args ["ticket"])
+                      (tik "agent" "actions" ticket "--actor" (actor)))
+    "tik_assert" (or (need args ["ticket" "key" "value"])
+                     (tik "agent" "set" ticket (str key "=" value)
+                          "--actor" (actor)))
+    "tik_attest" (or (need args ["ticket" "claim"])
+                     (tik "agent" "attest" ticket claim "--actor" (actor)))
     {:err (str "unknown tool " name)}))
 
 (defn- respond [id result]
   (println (json-emit
             {:jsonrpc "2.0" :id id :result result})))
 
+(defn- respond-error [id code message]
+  (println (json-emit
+            {:jsonrpc "2.0" :id id
+             :error {:code code :message message}})))
+
+(defn- handle-line
+  "One request, fully isolated: a line that is not JSON, not a map, or
+  whose handling raises answers with a JSON-RPC error object — the
+  session survives whatever the client sends."
+  [line]
+  (let [msg (try (json-parse line)
+                 (catch Exception _ ::unparseable))]
+    (if (or (= ::unparseable msg) (not (map? msg)))
+      (respond-error nil -32700 "parse error: not a JSON object")
+      (let [{:strs [id method params]} msg]
+        (try
+          (case method
+            "initialize"
+            (respond id {:protocolVersion "2024-11-05"
+                         :capabilities {:tools {}}
+                         :serverInfo {:name "tik" :version "1"}})
+            "notifications/initialized" nil
+            "tools/list" (respond id {:tools tools})
+            "tools/call"
+            (let [args (get params "arguments")
+                  {:keys [ok err]} (call-tool (get params "name")
+                                              (if (map? args) args {}))]
+              (respond id {:content [{:type "text" :text (or ok err)}]
+                           :isError (boolean err)}))
+            (when id (respond id {})))
+          (catch Throwable e
+            (respond-error id -32603
+                           (str "internal error: "
+                                (or (ex-message e)
+                                    (.getName (class e)))))))))))
+
 (defn -main [& _]
   (loop []
     (when-let [line (read-line)]
-      (let [{:strs [id method params]} (json-parse line)]
-        (case method
-          "initialize"
-          (respond id {:protocolVersion "2024-11-05"
-                       :capabilities {:tools {}}
-                       :serverInfo {:name "tik" :version "1"}})
-          "notifications/initialized" nil
-          "tools/list" (respond id {:tools tools})
-          "tools/call"
-          (let [{:keys [ok err]} (call-tool (get params "name")
-                                            (get params "arguments"))]
-            (respond id {:content [{:type "text" :text (or ok err)}]
-                         :isError (boolean err)}))
-          (when id (respond id {})))
-        (recur)))))
+      (handle-line line)
+      (recur))))

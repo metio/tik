@@ -618,3 +618,105 @@
       (is (re-find #"verify: (PASS|FAIL)" (:out r)))
       (is (not (re-find #"Exception in thread|\tat "
                         (str (:out r) (:err r))))))))
+
+;; ----------------- round 7: the HTTP serve and MCP stdio surfaces
+
+(defn- http-status
+  "GET path off the local server; the status code, or -1 on a
+  connection error (the server refusing/closing, never our test)."
+  [port path]
+  (try
+    (let [url (.toURL (java.net.URI. (str "http://127.0.0.1:" port path)))
+          c (doto ^java.net.HttpURLConnection (.openConnection url)
+              (.setConnectTimeout 2000)
+              (.setReadTimeout 2000))]
+      (try (.getResponseCode c) (finally (.disconnect c))))
+    (catch Exception _ -1)))
+
+(deftest serve_survives_every_hostile_request
+  ;; the board server is read-only, but a hostile GET must not reach a
+  ;; die/System-exit path — one bad request would take the board down
+  ;; for everyone. Unknown ids 404, everything is request-scoped, and
+  ;; the process is still answering after the whole barrage
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-serve" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        port 7801
+        _ (sh/sh "bb" "tik" "new" "track" "--title" "served"
+                 :dir repo
+                 :env (assoc (into {} (System/getenv))
+                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))
+        cmd ^"[Ljava.lang.String;" (into-array
+                                    String
+                                    ["bb" "tik" "serve" "--port" (str port)])
+        proc (.start (doto (ProcessBuilder. cmd)
+                       (.directory (io/file repo))
+                       (.redirectErrorStream true)
+                       (.. environment (put "TIK_ROOT" (str root)))
+                       (.. environment (put "TIK_ACTOR" "fuzz"))))]
+    (try
+      ;; wait for the port to answer
+      (loop [tries 60]
+        (when (and (pos? tries) (neg? (http-status port "/")))
+          (Thread/sleep 250)
+          (recur (dec tries))))
+      (testing "the known routes serve"
+        (is (= 200 (http-status port "/")))
+        (is (= 200 (http-status port "/tickets.edn"))))
+      (testing "hostile ids and paths are 404, never a crash"
+        (doseq [path ["/explain/ffff.edn"
+                      "/explain/.edn"
+                      "/explain/-------.edn"
+                      "/explain/deadbeef-0000.edn"
+                      "/nonsense"
+                      "/explain/00000000-0000-0000-0000-000000000000.edn"]]
+          (is (contains? #{404 400} (http-status port path)) path)))
+      (testing "the server is still alive after the barrage"
+        (is (= 200 (http-status port "/")))
+        (is (.isAlive proc)))
+      (finally (.destroy proc)
+               (.waitFor proc 5 java.util.concurrent.TimeUnit/SECONDS)))))
+
+(deftest mcp_session_survives_every_hostile_line
+  ;; the MCP server reads one JSON-RPC request per line off stdio; a
+  ;; line that is not JSON, not an object, names no tool, or omits a
+  ;; required argument must answer with a JSON-RPC result/error and
+  ;; leave the SESSION intact — a later well-formed request still works
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-mcp" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        _ (sh/sh "bb" "tik" "new" "track" "--title" "mcp fodder"
+                 :dir repo
+                 :env (assoc (into {} (System/getenv))
+                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))
+        lines (str/join
+               "\n"
+               ["{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}"
+                "not json at all {{{"
+                "[1,2,3]"
+                "5"
+                "null"
+                "\"a bare string\""
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"tik_explain\",\"arguments\":\"not-a-map\"}}"
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"tik_explain\",\"arguments\":{}}}"
+                "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"tik_assert\",\"arguments\":{\"ticket\":null,\"key\":7,\"value\":[1]}}}"
+                "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"no_such_tool\"}}"
+                "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":9}"
+                ;; the canary: a well-formed request AFTER all the abuse
+                "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/list\"}"])
+        r (sh/sh "bb" "mcp"
+                 :in lines :dir repo
+                 :env (assoc (into {} (System/getenv))
+                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))]
+    (is (zero? (:exit r)) (:err r))
+    (is (not (re-find #"Exception in thread|\tat |----- Error"
+                      (str (:out r) (:err r))))
+        "no line stack-traces the session")
+    (testing "every emitted line is a valid JSON-RPC object"
+      (doseq [line (remove str/blank? (str/split-lines (:out r)))]
+        (is (re-find #"\"jsonrpc\":\"2\.0\"" line) line)))
+    (testing "the canary after the abuse still gets its answer"
+      (is (re-find #"\"id\":99.*tik_board" (:out r))
+          "the session survived every hostile line"))
+    (testing "a garbage line answers with a parse error, not silence"
+      (is (re-find #"-32700|parse error" (:out r))))))
