@@ -29,6 +29,7 @@
             [tik.gen-events :as ge]
             [tik.guard :as guard]
             [tik.oidc :as oidc]
+            [tik.process]
             [tik.reduce :as red]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -183,6 +184,19 @@
     [{:process/id :fuzz :process/version 1 :process/stages stages}
      events (Instant/now) ge/roles]))
 
+(def ^:private gen-garbage-definition
+  "A process definition, structurally garbage or plausible-but-broken —
+  the domain for the linter and definition lenses."
+  (gen/one-of
+   [gen/any-equatable
+    (gen/let [stages (gen/vector
+                      (gen/let [id gen/keyword
+                                after (gen/vector gen/keyword 0 2)
+                                guards (gen/vector gen-garbage-guard 0 2)]
+                        {:stage/id id :after after :guards guards})
+                      0 4)]
+      {:process/id :fuzz :process/version 1 :process/stages stages})]))
+
 (def totality-registry
   "The explicit set of PURE boundary functions that promise TOTALITY:
   over their whole domain they return a value or throw ex-info — never
@@ -250,7 +264,11 @@
     :gen (gen/fmap (fn [records] [records {"m" {:input 3.0}}])
                    (gen/vector (gen/map gen/keyword gen/any-equatable
                                         {:max-elements 4})
-                               0 4))}])
+                               0 4))}
+   {:sym 'tik.process/lint :f tik.process/lint
+    :gen (one gen-garbage-definition)}
+   {:sym 'tik.process/signing-roles :f tik.process/signing-roles
+    :gen (one gen-garbage-guard)}])
 
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
@@ -270,18 +288,36 @@
 
 ;; --------- the meta-check: no boundary function goes uncovered
 
-(def ^:private boundary-namespaces
-  "The pure derivation core. Every PUBLIC fn in these namespaces must
-  either promise totality (appear in totality-registry) or be listed in
-  totality-exemptions with the reason it need not — the meta-check
-  below fails otherwise. This is the forcing function: a new public
-  kernel fn cannot slip in without a verdict on its fail-well contract.
-  The porcelain namespaces (cli, author, dupe, work) also contribute
-  registry entries but are not swept here — their public surface is
-  mostly I/O and rendering, where 'total over garbage' is not the
-  uniform law it is for the kernel."
-  '[tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-    tik.explain tik.causal tik.next])
+(defn- kernel-namespaces
+  "Every pure-kernel namespace, DERIVED from the source tree — the .cljc
+  files under src/tik. Deriving the set instead of hand-listing it is
+  the point: a newly added kernel namespace appears here automatically
+  and must then be classified (swept or excluded), so it cannot slip
+  past the sweep the way a hand-list silently would."
+  []
+  (->> (.listFiles (io/file (System/getProperty "user.dir") "src" "tik"))
+       (keep (fn [^java.io.File f]
+               (let [nm (.getName f)]
+                 (when (str/ends-with? nm ".cljc")
+                   (symbol (str "tik."
+                                (-> nm (str/replace #"\.cljc$" "")
+                                    (str/replace "_" "-"))))))))
+       set))
+
+(def ^:private swept-namespaces
+  "Kernel namespaces whose ENTIRE public surface is under the totality
+  sweep: every public fn must promise totality (appear in
+  totality-registry) or be listed in totality-exemptions with the
+  reason it need not. This is the forcing function at the fn level."
+  '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
+     tik.explain tik.causal tik.next tik.process})
+
+(def ^:private excluded-namespaces
+  "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
+  the reason. Excluding a whole namespace is itself a recorded verdict —
+  the derived check below still forces every kernel namespace into one
+  bucket or the other."
+  '{tik.work "activity/telemetry drafting porcelain with its own work-test suite; the one untrusted-body boundary (usage-totals) is in the registry, the rest are lenses over drafted telemetry"})
 
 (def ^:private totality-exemptions
   "Public kernel fns deliberately NOT in the registry, each with why.
@@ -324,16 +360,41 @@
     tik.explain/reason->text        "renders one derived reason to English; exercised via render (registered)"
     tik.causal/support              "internal to causal (registered): the events one guard consumes"
     tik.next/settled?               "predicate over a derived reached-set, not raw input"
-    tik.next/inbox                  "combiner over already-derived contributions output (registered), not raw input"})
+    tik.next/inbox                  "combiner over already-derived contributions output (registered), not raw input"
+    tik.process/valid?              "malli validator over the Process schema: a boolean over any input"
+    tik.process/explain-process     "malli explainer over the Process schema: an explanation or nil over any input"
+    tik.process/process-hash        "content-address of a definition via canonical/emit (registered)"
+    tik.process/roles-gating        "lens over a definition; total, exercised via lint (registered) and process-test"})
+
+(deftest every_kernel_namespace_is_swept_or_excluded
+  ;; the namespace-level forcing function, DERIVED from the source tree:
+  ;; a hand-listed swept set can silently omit a namespace (it did —
+  ;; causal and next were missed until a fuzz round noticed). Deriving
+  ;; the kernel set from src/tik/*.cljc and requiring each to be swept
+  ;; or excluded means a brand-new kernel file cannot slip past — it
+  ;; appears here automatically and fails until classified.
+  (let [discovered (kernel-namespaces)]
+    (is (seq discovered) "the kernel namespace discovery found files")
+    (doseq [ns-sym discovered]
+      (is (or (contains? swept-namespaces ns-sym)
+              (contains? excluded-namespaces ns-sym))
+          (str ns-sym " is a kernel namespace with no sweep verdict —"
+               " add it to swept-namespaces (its public fns get the"
+               " registered-or-exempt treatment) or to"
+               " excluded-namespaces (with the reason it need not)")))
+    (testing "no stale classifications: every swept/excluded ns still exists"
+      (doseq [ns-sym (concat swept-namespaces (keys excluded-namespaces))]
+        (is (contains? discovered ns-sym)
+            (str ns-sym " is classified but is no longer a kernel"
+                 " .cljc namespace — drop it"))))))
 
 (deftest every_public_boundary_fn_is_registered_or_exempt
-  ;; the sweep that keeps the registry honest as the code grows: every
-  ;; public fn in the kernel namespaces must carry a verdict — a
-  ;; registry entry (it promises totality) or an exemption (with the
-  ;; reason it need not). A newly added public kernel fn fails this
-  ;; until it is classified; that is the whole point.
+  ;; within each SWEPT namespace, every public fn must carry a verdict —
+  ;; a registry entry (it promises totality) or an exemption (with the
+  ;; reason it need not). A newly added public fn in a swept namespace
+  ;; fails this until it is classified; that is the whole point.
   (let [registered (set (map :sym totality-registry))]
-    (doseq [ns-sym boundary-namespaces]
+    (doseq [ns-sym swept-namespaces]
       (require ns-sym)
       (doseq [[fn-name v] (ns-publics ns-sym)
               :when (fn? (deref v))
