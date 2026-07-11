@@ -713,6 +713,9 @@
           title (display-title state)]
       {:sort [0 depth stages title]
        :stage (str "(" stages ")")
+       :stage-kws (set current)
+       :settled? (next-lens/settled? process events t roles)
+       :parked? (contains? (set current) :parked)
        :rest (str (subs (str target-id) 0 8) " " title
                   ;; nested-repo rels dot their slashes; either spelling
                   ;; in the title makes the suffix redundant
@@ -722,18 +725,24 @@
                     (str "  [" (name rel) "]")))})
     {:sort [1 0 "" (str target)]
      :stage "(unresolved)"
+     :stage-kws #{}
      :rest (str target "  [" (name rel) "]")}))
 
 (defn- link-lines
   "Every link of `state`, rendered and ordered for humans: least
-  progressed first, per the targets\u2019 own process ordering. The stage
-  column pads to the widest stage on THIS list, so ids and titles
-  align whatever the stage names\u2019 lengths."
-  [s t state]
-  (let [rows (sort-by :sort (map #(link-row s t %) (link-facts state)))
-        width (transduce (map (comp count :stage)) max 0 rows)]
-    (for [{:keys [stage rest]} rows]
-      (format (str "%-" (max 1 width) "s  %s") stage rest))))
+  progressed first, per the targets\u2019 own process ordering; `only`
+  narrows to rows whose current stages include it. The stage column
+  pads to the widest stage on THIS list and paints like ls does."
+  ([s t state] (link-lines s t state nil))
+  ([s t state only]
+   (let [rows (cond->> (sort-by :sort (map #(link-row s t %)
+                                           (link-facts state)))
+                only (filter #(contains? (:stage-kws %) only)))
+         width (transduce (map (comp count :stage)) max 0 rows)]
+     (for [{:keys [stage rest settled? parked?]} rows]
+       (str (paint-stage (format (str "%-" (max 1 width) "s") stage)
+                         settled? parked?)
+            "  " rest)))))
 
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
@@ -765,10 +774,16 @@
                  :retracted (str "[retracted by " by "]")
                  :conflicted "[CONFLICTED]"
                  "")))
-    (when (seq (link-facts state))
-      (println "links:")
-      (doseq [line (link-lines s t state)]
-        (println "  " line)))
+    (when-let [links (seq (link-facts state))]
+      (let [rows (sort-by :sort (map #(link-row s t %) links))
+            counts (->> rows (map :stage) (partition-by identity)
+                        (map #(str (str/replace (first %) #"[()]" "")
+                                   " " (count %))))]
+        (println (str "links:  (" (str/join " · " counts) ")"))
+        (doseq [line (link-lines s t state
+                                 (when (string? (:links opts))
+                                   (parse-value (:links opts))))]
+          (println "  " line))))
     (when (:at opts)
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
@@ -2759,7 +2774,9 @@ Each entry in :needs is one of:
   tik attach <id> <file>                        attach an artifact (stored by hash)
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
   tik status <id> [--at <instant>]              derived stage, facts, what's next
-                                                (--at: the state at ANY moment)
+                  [--links :stage]              (--at: the state at ANY moment;
+                                                --links: only that stage's links —
+                                                the header still counts them all)
   tik explain <id> [--actor A] [--edn]          what is needed to advance
                                                 (--actor: only what THIS person can
                                                 act on, with a count of the rest;

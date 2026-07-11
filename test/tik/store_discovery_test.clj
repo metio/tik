@@ -270,3 +270,33 @@
       (testing "link facts stay out of the rendered facts table"
         (is (not (re-find #"\[:link"
                           (:out (tik-at top nil "status" parent)))))))))
+
+(deftest link_section_summarizes_and_filters
+  (let [top (tmpdir)]
+    (doseq [r ["alpha" "beta" "gamma"]]
+      (.mkdirs (io/file top r ".git")))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "mig.edn")
+          (pr-str {:process/id :mig :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/facts {[:proof] [:string {:min 2}]}
+                   :process/stages [{:stage/id :started :guards []}
+                                    {:stage/id :done :after [:started]
+                                     :stage/sticky? true
+                                     :guards [[:fact [:proof]]]}]}))
+    (tik-at top nil "rollout" "mig")
+    (let [child (-> (tik-at top nil "query" "fact" "repo" ":beta")
+                    :out str/split-lines first (str/split #"\s+") first)
+          parent (-> (tik-at top nil "ls") :out str/split-lines
+                     (->> (filter #(re-find #"rollout" %)))
+                     first (str/split #"\s+") first)]
+      (tik-at top nil "set" child "proof=\"pr-9\"")
+      (testing "the header counts per stage, in process order"
+        (is (re-find #"links:  \(started 2 · done 1\)"
+                     (:out (tik-at top nil "status" parent)))))
+      (testing "--links narrows the rows; the header still counts all"
+        (let [out (:out (tik-at top nil "status" parent "--links" ":done"))]
+          (is (re-find #"links:  \(started 2 · done 1\)" out))
+          (is (re-find #"mig: beta" out))
+          (is (not (re-find #"mig: alpha" out))))))))
