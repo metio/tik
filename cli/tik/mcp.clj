@@ -13,19 +13,23 @@
   accountability trail is the ticket itself (PLAN §12/§13).
 
   Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… bb mcp"
-  (:require [clojure.java.shell :as sh]
-            [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [tik.cli :as cli]))
 
 ;; cheshire ships inside babashka; resolved lazily so JVM tooling can
 ;; load this namespace without the dependency
 (defn- json-parse [s] ((requiring-resolve 'cheshire.core/parse-string) s))
 (defn- json-emit [x] ((requiring-resolve 'cheshire.core/generate-string) x))
 
-(defn- tik [& args]
-  (let [r (apply sh/sh "bb" "tik" (map str args))]
-    (if (zero? (:exit r))
-      {:ok (:out r)}
-      {:err (str (:out r) (:err r))})))
+(defn- tik
+  "Run a tik CLI invocation IN-PROCESS (cli/run-argv): same dispatch the
+  binary uses, output captured, exit trapped — no subprocess, so an MCP
+  tool call costs a function call, not a fresh babashka startup."
+  [& args]
+  (let [{:keys [exit out err]} (cli/run-argv (mapv str args))]
+    (if (zero? exit)
+      {:ok out}
+      {:err (str out err)})))
 
 (def ^:private tools
   [{:name "tik_board"

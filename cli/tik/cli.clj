@@ -74,9 +74,24 @@
     (Instant/parse at)
     (now)))
 
+(defn- process-exit!
+  "The one true process boundary: really terminate. Bound as the default
+  *exit-fn* for the binary entry point."
+  [code]
+  (System/exit code))
+
+(def ^:dynamic *exit-fn*
+  "How a command terminates. The binary leaves this as process-exit!;
+  the in-process runner (run-argv) binds a throw, so one embedded call —
+  an MCP tool, a test — can never take the host process down. Commands
+  call (exit! code); only process-exit! calls System/exit."
+  process-exit!)
+
+(defn- exit! [code] (*exit-fn* code))
+
 (defn- die [& msg]
   (binding [*out* *err*] (apply println msg))
-  (System/exit 1))
+  (exit! 1))
 
 ;; ---------------------------------------------------------------- color
 ;; Color is porcelain: tty-detected, NO_COLOR honored, and the kernel
@@ -1432,7 +1447,7 @@
                                   #"(?m)^" "        "))))))
     (if (zero? @failures)
       (println "test: PASS")
-      (do (println (str "test: FAIL (" @failures ")")) (System/exit 1)))))
+      (do (println (str "test: FAIL (" @failures ")")) (exit! 1)))))
 
 (defn- cmd-migrate
   "Dry-run BY DEFAULT (ADR 0002): a migration is a consequence-bearing
@@ -1556,7 +1571,7 @@
              "frontier for actor" actor-name)
     (println "admissible now:"
              (pr-str (mapv :action admissible))))
-  (System/exit 3))
+  (exit! 3))
 
 (defn- cmd-agent
   "The gated surface an agent works through (H7):
@@ -1777,7 +1792,7 @@
                               "  " (int (* 100 score)) "% similar")))
               (println (count pairs) "lookalike pair(s) at >="
                        (str (int (* 100 threshold)) "%"))
-              (System/exit 0)))
+              (exit! 0)))
         rows (for [id (store/ticket-ids s)
                    :let [{:keys [events state process roles]} (ticket-ctx s id)]]
                {:id id :title (display-title state) :state state :events events
@@ -1958,7 +1973,7 @@
                   (:identity/subject claim) " (" (:identity/username claim)
                   ") to actor '" who "' — attestation " (subs (:event/id e) 0 15)
                   "… on " registry-id))
-    (System/exit 0)))
+    (exit! 0)))
 
 (defn- cmd-bridge
   "bridge email [--config bridge.edn] < message
@@ -2262,7 +2277,7 @@
       (when (pos? @failed)
         (println @failed "delivery failure(s) — unmarked in the ledger,"
                  "next run retries")
-        (System/exit 1)))))
+        (exit! 1)))))
 
 (declare root-dir-roots verify-roots)
 
@@ -2767,7 +2782,7 @@ Each entry in :needs is one of:
   [{:keys [pos opts]}]
   (when (= "prompt" (first pos))
     (println (author-llm-prompt (authoring-rules)))
-    (System/exit 0))
+    (exit! 0))
   (when (= "check" (first pos))
     (let [f (resolve-file (or (second pos)
                               (die "usage: tik author check <answers.edn>")))
@@ -2779,8 +2794,8 @@ Each entry in :needs is one of:
       (if (empty? findings)
         (println "clean — build it: tik author --from" (str f))
         (when (some #(= :error (:level %)) findings)
-          (System/exit 1)))
-      (System/exit 0)))
+          (exit! 1)))
+      (exit! 0)))
   (let [answers (cond
                   (:template opts)
                   (or (get author/templates (:template opts))
@@ -2832,7 +2847,7 @@ Each entry in :needs is one of:
     (println (str "  bb tik sim " (.getPath def-file) "     try it live on a scratch ticket"))
     (println (str "  bb tik test " (.getPath tests-file) "  make the outcome cases pass"))
     (println (str "  bb tik new " pname "                    first real ticket"))
-    (when (some #(= :error (:level %)) problems) (System/exit 1))))
+    (when (some #(= :error (:level %)) problems) (exit! 1))))
 
 (defn- lint-store
   "Hygiene over every open ticket — the things verify (integrity) and
@@ -2880,7 +2895,7 @@ Each entry in :needs is one of:
     (if (empty? findings)
       (println "store: clean")
       (do (println (str (count findings) " finding(s)"))
-          (System/exit 1)))))
+          (exit! 1)))))
 
 (defn- cmd-lint [{:keys [pos]}]
   (if (empty? pos)
@@ -2899,7 +2914,7 @@ Each entry in :needs is one of:
           problems (concat (process/lint proc) missing-runbooks)]
       (doseq [{:keys [level msg]} problems]
         (println (str "[" (name level) "] " msg)))
-      (when (some #(= :error (:level %)) problems) (System/exit 1))
+      (when (some #(= :error (:level %)) problems) (exit! 1))
       (when (empty? problems) (println "clean")))))
 
 (declare verify-ticket)
@@ -2986,13 +3001,13 @@ Each entry in :needs is one of:
             (println (tint "32" (str "verify: PASS (" (count ids)
                                      " tickets)"))))
         (do (println (tint "31" (str "verify: FAIL (" @failures ")")))
-            (System/exit 1))))
+            (exit! 1))))
     (let [f (verify-ticket parsed (resolve-id (the-store) (first pos)))]
       (verify-definitions
        (fn [ok? msg]
          (println (str (if ok? "  ok    " "  FAIL  ") msg))
-         (when-not ok? (System/exit 1))))
-      (when (pos? f) (System/exit 1)))))
+         (when-not ok? (exit! 1))))
+      (when (pos? f) (exit! 1)))))
 
 (defn- verify-ticket
   "The per-ticket ladder; prints, exits nonzero on failure when run for
@@ -3326,29 +3341,65 @@ Each entry in :needs is one of:
       (do (println (str "tik: '" cmd "' is not a command — the full list:\n"))
           (println usage))))
 
-(defn -main
-  "Every escape LANDS here: an ex-info becomes its own one-line
-  message (the kernel already words its rejections), anything else
-  becomes a this-is-a-bug line — both exit 1, neither ever shows a
-  stack trace to a user. TIK_DEBUG=1 rethrows for developers.
-  System/exit calls inside commands pass through untouched."
-  [& args]
-  (let [[cmd & more] args
-        parsed (parse-args (vec more))]
-    (if (System/getenv "TIK_DEBUG")
+(defn- dispatch-guarded
+  "dispatch with the standard escape handling every entry point shares:
+  an ex-info becomes its own one-line message (the kernel already words
+  its rejections), anything else a this-is-a-bug line — both exit 1 via
+  exit!, so the caller (binary vs in-process runner) decides whether
+  that ends the process or is captured. The exit SIGNAL that exit! may
+  throw in-process is re-thrown untouched, never reworded as a command
+  error. TIK_DEBUG=1 rethrows for developers."
+  [cmd parsed]
+  (if (System/getenv "TIK_DEBUG")
+    (dispatch cmd parsed)
+    (try
       (dispatch cmd parsed)
+      (catch clojure.lang.ExceptionInfo e
+        (if (contains? (ex-data e) ::exit)
+          (throw e)
+          (do (binding [*out* *err*]
+                (println (str "tik: " (ex-message e)))
+                (when-let [file (:file (ex-data e))]
+                  (println (str "  in: " file))))
+              (exit! 1))))
+      (catch Throwable e
+        (binding [*out* *err*]
+          (println (str "tik: unexpected error ("
+                        (.getSimpleName (class e)) "): "
+                        (or (ex-message e) "no message")))
+          (println "  this is a bug in tik — TIK_DEBUG=1 shows the trace"))
+        (exit! 1)))))
+
+(defn -main
+  "The binary entry point: dispatch with the shared escape handling,
+  every exit! terminating the process (the default *exit-fn*)."
+  [& args]
+  (let [[cmd & more] args]
+    (dispatch-guarded cmd (parse-args (vec more)))))
+
+(defn run-argv
+  "The IN-PROCESS entry point beside -main: run one CLI invocation with
+  the exact same dispatch and escape handling, but stdout/stderr are
+  captured and every exit! — a command's own die/refuse, or the escape
+  handler's — is trapped into an exit CODE instead of terminating.
+  Returns {:exit int :out string :err string}. The MCP server (and any
+  embedder) reuse the whole CLI through this, no subprocess."
+  [argv]
+  (let [out (java.io.StringWriter.)
+        err (java.io.StringWriter.)
+        code (volatile! 0)
+        [cmd & more] argv]
+    (binding [*out* out
+              *err* err
+              *exit-fn* (fn [c]
+                          (vreset! code c)
+                          (throw (ex-info "tik exit" {::exit c})))]
       (try
-        (dispatch cmd parsed)
+        (dispatch-guarded cmd (parse-args (vec more)))
         (catch clojure.lang.ExceptionInfo e
-          (binding [*out* *err*]
-            (println (str "tik: " (ex-message e)))
-            (when-let [file (:file (ex-data e))]
-              (println (str "  in: " file))))
-          (System/exit 1))
-        (catch Throwable e
-          (binding [*out* *err*]
-            (println (str "tik: unexpected error ("
-                          (.getSimpleName (class e)) "): "
-                          (or (ex-message e) "no message")))
-            (println "  this is a bug in tik — TIK_DEBUG=1 shows the trace"))
-          (System/exit 1))))))
+          ;; the only ex-info that reaches here is the exit signal —
+          ;; dispatch-guarded handles every real command escape and
+          ;; re-throws this one; @code already carries the exit value
+          (when-not (contains? (ex-data e) ::exit)
+            (vreset! code 1)))))
+    {:exit @code :out (str out) :err (str err)}))
