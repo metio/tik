@@ -17,10 +17,12 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [tik.author]
+            [tik.dag]
             [tik.canonical :as canonical]
             [tik.cli]
             [tik.dupe]
             [tik.event :as event]
+            [tik.explain]
             [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
@@ -417,3 +419,78 @@
       (let [r (run "ls")]
         (is (zero? (:exit r)) payload)
         (is (re-find #"cache fodder" (:out r)) payload)))))
+
+;; ------------------------------- round 5: hostile DAGs, poisoned boards
+
+(defspec graph_walks_terminate_on_hostile_dags n
+  ;; a crafted store can contain parent references that form cycles or
+  ;; point nowhere — impossible to MINT (hashes), trivial to WRITE.
+  ;; Every graph function must terminate and answer
+  (prop/for-all [edges (gen/map (gen/fmap #(str "id" %) gen/small-integer)
+                                (gen/set (gen/fmap #(str "id" %)
+                                                   gen/small-integer)
+                                         {:max-elements 3})
+                                {:max-elements 8})]
+    (let [events (mapv (fn [[id parents]]
+                         {:event/id id :event/parents (set parents)
+                          :event/at (Instant/parse "2026-01-01T00:00:00Z")
+                          :event/type :fact/assert
+                          :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
+                          :event/actor "x"
+                          :event/body {:fact/path [:x] :fact/value 1}})
+                       edges)]
+      (and (fails-well? #(doall (tik.dag/heads events)))
+           (fails-well? #(doall (tik.dag/missing-parents events)))
+           (fails-well? #(doall (tik.dag/roots events)))
+           (fails-well? #(red/ticket-state events))))))
+
+(defspec reason_rendering_is_total_over_garbage n
+  ;; lenses render whatever reasons arrive — including from stores
+  ;; written by future or hostile versions with reason keys we never
+  ;; defined. render answers with a string, always
+  (prop/for-all [reasons (gen/vector
+                          (gen/map gen/keyword gen/any-equatable
+                                   {:max-elements 4})
+                          0 4)]
+    (string? (tik.explain/render
+              [{:stage :fuzz :satisfied [] :missing reasons :blocks #{}}]))))
+
+(deftest one_poisoned_ticket_never_hides_the_healthy
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-poison" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [& args]
+              (apply sh/sh (concat ["bb" "tik"] args
+                                   [:dir repo
+                                    :env (assoc (into {} (System/getenv))
+                                                "TIK_ROOT" (str root)
+                                                "TIK_ACTOR" "fuzz")])))]
+    (.mkdirs (io/file root "processes"))
+    (spit (io/file root "processes" "poison.edn")
+          (pr-str {:process/id :poison :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/stages
+                   [{:stage/id :a :guards []}
+                    {:stage/id :b :after [:a]
+                     :guards [[:elapsed-since :ticket/create "garbage"]]}]}))
+    (run "new" "track" "--title" "healthy neighbor")
+    (run "new" "poison" "--title" "the poisoned one")
+    (testing "lint refuses the poison at authoring time"
+      (is (re-find #"not ISO-8601"
+                   (:out (run "lint" "processes/poison.edn")))))
+    (testing "ls shows the healthy ticket AND a visible error row"
+      (let [r (run "ls")]
+        (is (zero? (:exit r)))
+        (is (re-find #"healthy neighbor" (:out r)))
+        (is (re-find #"error\s+cannot derive" (:out r)))))
+    (testing "next works around the poison and says so"
+      (let [r (run "next" "--actor" "fuzz")]
+        (is (zero? (:exit r)))
+        (is (re-find #"skipping .*malformed guard" (str (:err r))))
+        (is (re-find #"outcome" (:out r)))))
+    (testing "verify reports the poison as a FAIL line and finishes"
+      (let [r (run "verify")]
+        (is (re-find #"FAIL  derivation raises" (:out r)))
+        (is (re-find #"verify: FAIL" (:out r)))
+        (is (re-find #"ok 1 event\(s\)" (:out r))
+            "the audit covered the healthy ticket too")))))

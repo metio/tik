@@ -420,26 +420,47 @@
                            (str/join " " (map (comp str :value)
                                               (vals (:facts state))))))}}))
 
+(defn- error-row
+  "A poisoned ticket (unreadable event, unevaluable guard) must not
+  hide its healthy neighbors: aggregate lenses render it as a visible
+  error row and keep going. verify and single-ticket commands still
+  fail loudly — isolation is for LISTS, never for audits."
+  [id e]
+  {:title (str "cannot derive: " (ex-message e))
+   :error (ex-message e)
+   :current [:error]
+   :reached []
+   :settled? false
+   :depth -1
+   :last-event-ms 0
+   :links []
+   :haystack (str/lower-case (str id " " (ex-message e)))})
+
 (defn- ticket-row
   "The board row for one ticket, cached when the store is file-backed:
-  a hit costs one directory listing, a miss folds and remembers."
+  a hit costs one directory listing, a miss folds and remembers.
+  Failures isolate into an error row (cached under the same
+  fingerprint, so a fixed ticket recovers on its next event)."
   [s t id]
-  (if-let [fp (event-ids-fingerprint id)]
-    (let [entry (get (cache-entries) (str id))]
-      (if (and entry
-               (= fp (:fp entry))
-               (let [vu (:valid-until entry)]
-                 (and (not= :never-cache vu)
-                      (or (nil? vu) (< (inst-ms t) vu)))))
-        (:row entry)
-        (let [{:keys [valid-until row]} (compute-row s t id)]
-          (swap! cache-state #(-> %
-                                  (assoc-in [:entries (str id)]
-                                            {:fp fp :valid-until valid-until
-                                             :row row})
-                                  (assoc :dirty? true)))
-          row)))
-    (:row (compute-row s t id))))
+  (try
+    (if-let [fp (event-ids-fingerprint id)]
+      (let [entry (get (cache-entries) (str id))]
+        (if (and entry
+                 (= fp (:fp entry))
+                 (let [vu (:valid-until entry)]
+                   (and (not= :never-cache vu)
+                        (or (nil? vu) (< (inst-ms t) vu)))))
+          (:row entry)
+          (let [{:keys [valid-until row]} (compute-row s t id)]
+            (swap! cache-state #(-> %
+                                    (assoc-in [:entries (str id)]
+                                              {:fp fp :valid-until valid-until
+                                               :row row})
+                                    (assoc :dirty? true)))
+            row)))
+      (:row (compute-row s t id)))
+    (catch Exception e
+      (error-row id e))))
 
 (defn- display-title
   "The title a lens shows: a [:title] fact supersedes the created
@@ -1092,6 +1113,12 @@
         per-ticket (for [id (store/ticket-ids s)
                          :let [row (ticket-row s t id)]
                          :when (or include-settled? (not (:settled? row)))
+                         :when (or (nil? (:error row))
+                                   (do (binding [*out* *err*]
+                                         (println (str "skipping "
+                                                       (subs (str id) 0 8)
+                                                       ": " (:error row))))
+                                       false))
                          :let [{:keys [events process roles]} (ticket-ctx s id)]]
                      (next-lens/contributions id process events t roles))
         settled-skipped (when-not include-settled?
@@ -1203,10 +1230,12 @@
       (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
                  visible))
       (do
-        (doseq [{:keys [id current title describe settled? links]} visible]
+        (doseq [{:keys [id current title describe settled? links error]} visible]
       (println (tint "2" (subs (str id) 0 8))
-               (paint-stage (format "%-24s" (str/join "," (map name current)))
-                            settled? (contains? current :parked))
+               (if error
+                 (tint "31" (format "%-24s" "error"))
+                 (paint-stage (format "%-24s" (str/join "," (map name current)))
+                              settled? (contains? current :parked)))
                title)
       (when (and (:long opts) describe)
         (println (tint "2" (str "         " describe))))
@@ -3033,10 +3062,15 @@ Each entry in :needs is one of:
         (check (or (nil? (:process-hash state))
                    (= (:process-hash state) (process/process-hash proc)))
                "pinned process hash resolves to its definition")
-        (let [reached (stage/effective-reached proc evs (now)
-                                               (:process/roles proc {}))]
-          (println (str "  ok    derived: "
-                        (str/join ", " (map str (sort-by str reached))))))))
+        ;; an audit reports and continues — a derivation that raises is
+        ;; a FAIL line for THIS ticket, never an aborted audit
+        (try
+          (let [reached (stage/effective-reached proc evs (now)
+                                                 (:process/roles proc {}))]
+            (println (str "  ok    derived: "
+                          (str/join ", " (map str (sort-by str reached))))))
+          (catch Exception e
+            (check false (str "derivation raises: " (ex-message e)))))))
     (if (zero? @failures)
       (println "verify: PASS")
       (println (str "verify: FAIL (" @failures ")")))

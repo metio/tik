@@ -128,6 +128,16 @@
                 nil))
            guard))
 
+(defn- duration-args
+  "[op duration-string] pairs for the time operators in a guard tree."
+  [guard]
+  (collect #(when (vector? %)
+              (case (first %)
+                (:elapsed-since :attested-within)
+                [(first %) (nth % 2 nil)]
+                nil))
+           guard))
+
 (defn- stage-refs [guard]
   (collect #(when (and (vector? %) (= :stage-reached (first %)))
               (second %))
@@ -232,6 +242,18 @@
           {:level :error
            :msg (str "stage " (:stage/id s)
                      " references unknown stage " target)})
+        ;; time operators must carry parseable ISO-8601 durations — an
+        ;; unparseable one would poison every derivation of every
+        ;; ticket pinned to this definition, forever
+        (for [s stages, g (all-guards s)
+              [op dur] (duration-args g)
+              :when (or (not (string? dur))
+                        #?(:clj (try (java.time.Duration/parse dur) false
+                                     (catch Exception _ true))
+                           :cljs false))]
+          {:level :error
+           :msg (str "stage " (:stage/id s) " " op " duration "
+                     (pr-str dur) " is not ISO-8601 (PT48H, P7D, PT30M)")})
         ;; ADR 0005: stratified negation
         (for [s stages, g (all-guards s)
               target (negated-stage-refs g)
