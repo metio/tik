@@ -17,12 +17,14 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [tik.author]
+            [tik.causal]
             [tik.dag]
             [tik.canonical :as canonical]
             [tik.cli]
             [tik.dupe]
             [tik.event :as event]
             [tik.explain]
+            [tik.next]
             [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.guard :as guard]
@@ -166,6 +168,21 @@
 
 (def ^:private one (partial gen/fmap vector))   ; a one-argument arg-vector
 
+(def ^:private gen-proc-events-now-roles
+  "The (process events now roles) argument vector shared by every
+  derivation lens — effective-reached, explain, causal, and (with a
+  ticket-id prepended) next/contributions. A process whose stages carry
+  garbage guards, over real events, so both the compute and reject
+  sides are hit."
+  (gen/let [stages (gen/vector
+                    (gen/let [id gen/keyword
+                              guards (gen/vector gen-garbage-guard 0 2)]
+                      {:stage/id id :guards guards})
+                    0 4)
+            events ge/gen-events]
+    [{:process/id :fuzz :process/version 1 :process/stages stages}
+     events (Instant/now) ge/roles]))
+
 (def totality-registry
   "The explicit set of PURE boundary functions that promise TOTALITY:
   over their whole domain they return a value or throw ex-info — never
@@ -201,23 +218,14 @@
            [g {:state (red/ticket-state events) :now (Instant/now)
                :roles ge/roles :reached #{}}])}
    {:sym 'tik.stage/effective-reached :f stage/effective-reached
-    :gen (gen/let [stages (gen/vector
-                           (gen/let [id gen/keyword
-                                     guards (gen/vector gen-garbage-guard 0 2)]
-                             {:stage/id id :guards guards})
-                           0 4)
-                   events ge/gen-events]
-           [{:process/id :fuzz :process/version 1 :process/stages stages}
-            events (Instant/now) ge/roles])}
+    :gen gen-proc-events-now-roles}
    {:sym 'tik.explain/explain :f tik.explain/explain
-    :gen (gen/let [stages (gen/vector
-                           (gen/let [id gen/keyword
-                                     guards (gen/vector gen-garbage-guard 0 2)]
-                             {:stage/id id :guards guards})
-                           0 4)
-                   events ge/gen-events]
-           [{:process/id :fuzz :process/version 1 :process/stages stages}
-            events (Instant/now) ge/roles])}
+    :gen gen-proc-events-now-roles}
+   {:sym 'tik.causal/causal :f tik.causal/causal
+    :gen gen-proc-events-now-roles}
+   {:sym 'tik.next/contributions :f tik.next/contributions
+    :gen (gen/fmap #(into [#uuid "018f2f6e-7c1a-7000-8000-00000000beef"] %)
+                   gen-proc-events-now-roles)}
    {:sym 'tik.explain/render :f tik.explain/render
     :gen (gen/fmap (fn [reasons]
                      [[{:stage :fuzz :satisfied [] :missing reasons
@@ -273,7 +281,7 @@
   mostly I/O and rendering, where 'total over garbage' is not the
   uniform law it is for the kernel."
   '[tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-    tik.explain])
+    tik.explain tik.causal tik.next])
 
 (def ^:private totality-exemptions
   "Public kernel fns deliberately NOT in the registry, each with why.
@@ -313,7 +321,10 @@
     tik.explain/actionability       "internal to explain (registered)"
     tik.explain/actionable-by?      "predicate over a derived reason, exercised via for-actor/explain"
     tik.explain/for-actor           "capability filter over explain's output (registered), not raw input"
-    tik.explain/reason->text        "renders one derived reason to English; exercised via render (registered)"})
+    tik.explain/reason->text        "renders one derived reason to English; exercised via render (registered)"
+    tik.causal/support              "internal to causal (registered): the events one guard consumes"
+    tik.next/settled?               "predicate over a derived reached-set, not raw input"
+    tik.next/inbox                  "combiner over already-derived contributions output (registered), not raw input"})
 
 (deftest every_public_boundary_fn_is_registered_or_exempt
   ;; the sweep that keeps the registry honest as the code grows: every
