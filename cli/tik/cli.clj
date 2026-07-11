@@ -3348,34 +3348,37 @@ Each entry in :needs is one of:
   exit!, so the caller (binary vs in-process runner) decides whether
   that ends the process or is captured. The exit SIGNAL that exit! may
   throw in-process is re-thrown untouched, never reworded as a command
-  error. TIK_DEBUG=1 rethrows for developers."
-  [cmd parsed]
-  (if (System/getenv "TIK_DEBUG")
-    (dispatch cmd parsed)
-    (try
-      (dispatch cmd parsed)
-      (catch clojure.lang.ExceptionInfo e
-        (if (contains? (ex-data e) ::exit)
-          (throw e)
-          (do (binding [*out* *err*]
-                (println (str "tik: " (ex-message e)))
-                (when-let [file (:file (ex-data e))]
-                  (println (str "  in: " file))))
-              (exit! 1))))
-      (catch Throwable e
-        (binding [*out* *err*]
-          (println (str "tik: unexpected error ("
-                        (.getSimpleName (class e)) "): "
-                        (or (ex-message e) "no message")))
-          (println "  this is a bug in tik — TIK_DEBUG=1 shows the trace"))
-        (exit! 1)))))
+  error. Argument parsing runs INSIDE the guard, so a hostile argv
+  (a non-string element from an embedder) fails well like any other
+  input, on both entry points. TIK_DEBUG=1 rethrows for developers."
+  [argv]
+  (letfn [(run [] (let [[cmd & more] argv]
+                    (dispatch cmd (parse-args (vec more)))))]
+    (if (System/getenv "TIK_DEBUG")
+      (run)
+      (try
+        (run)
+        (catch clojure.lang.ExceptionInfo e
+          (if (contains? (ex-data e) ::exit)
+            (throw e)
+            (do (binding [*out* *err*]
+                  (println (str "tik: " (ex-message e)))
+                  (when-let [file (:file (ex-data e))]
+                    (println (str "  in: " file))))
+                (exit! 1))))
+        (catch Throwable e
+          (binding [*out* *err*]
+            (println (str "tik: unexpected error ("
+                          (.getSimpleName (class e)) "): "
+                          (or (ex-message e) "no message")))
+            (println "  this is a bug in tik — TIK_DEBUG=1 shows the trace"))
+          (exit! 1))))))
 
 (defn -main
   "The binary entry point: dispatch with the shared escape handling,
   every exit! terminating the process (the default *exit-fn*)."
   [& args]
-  (let [[cmd & more] args]
-    (dispatch-guarded cmd (parse-args (vec more)))))
+  (dispatch-guarded (vec args)))
 
 (defn run-argv
   "The IN-PROCESS entry point beside -main: run one CLI invocation with
@@ -3383,23 +3386,30 @@ Each entry in :needs is one of:
   captured and every exit! — a command's own die/refuse, or the escape
   handler's — is trapped into an exit CODE instead of terminating.
   Returns {:exit int :out string :err string}. The MCP server (and any
-  embedder) reuse the whole CLI through this, no subprocess."
+  embedder) reuse the whole CLI through this, no subprocess.
+
+  argv must be a sequence of strings; a non-string element is a caller
+  error answered as a clean exit-1 result, never a raw NPE from the
+  parser (the fail-well contract reaches the embedding seam too)."
   [argv]
   (let [out (java.io.StringWriter.)
         err (java.io.StringWriter.)
-        code (volatile! 0)
-        [cmd & more] argv]
+        code (volatile! 0)]
     (binding [*out* out
               *err* err
               *exit-fn* (fn [c]
                           (vreset! code c)
                           (throw (ex-info "tik exit" {::exit c})))]
-      (try
-        (dispatch-guarded cmd (parse-args (vec more)))
-        (catch clojure.lang.ExceptionInfo e
-          ;; the only ex-info that reaches here is the exit signal —
-          ;; dispatch-guarded handles every real command escape and
-          ;; re-throws this one; @code already carries the exit value
-          (when-not (contains? (ex-data e) ::exit)
-            (vreset! code 1)))))
+      (if-not (and (sequential? argv) (every? string? argv))
+        (do (vreset! code 1)
+            (binding [*out* *err*]
+              (println "tik: run-argv requires a sequence of string arguments")))
+        (try
+          (dispatch-guarded argv)
+          (catch clojure.lang.ExceptionInfo e
+            ;; the only ex-info that reaches here is the exit signal —
+            ;; dispatch-guarded handles every real command escape and
+            ;; re-throws this one; @code already carries the exit value
+            (when-not (contains? (ex-data e) ::exit)
+              (vreset! code 1))))))
     {:exit @code :out (str out) :err (str err)}))

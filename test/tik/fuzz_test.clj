@@ -720,3 +720,77 @@
           "the session survived every hostile line"))
     (testing "a garbage line answers with a parse error, not silence"
       (is (re-find #"-32700|parse error" (:out r))))))
+
+;; ---------------------- round 8: the run-argv in-process seam
+
+(defn- with-store
+  "Run f with the CLI's private root accessor pinned to a temp dir, so
+  run-argv calls resolve an isolated store with no TIK_ROOT env."
+  [f]
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-runargv" (make-array FileAttribute 0)))]
+    (with-redefs-fn {#'tik.cli/root (constantly (str root))} f)))
+
+(defspec run_argv_is_total_over_arbitrary_argv n
+  ;; the in-process entry point the MCP server rides on: whatever an
+  ;; embedder passes — empty, garbage tokens, unknown commands — it
+  ;; must ANSWER with {:exit :out :err}, never throw, never write to
+  ;; the real stdout (that would corrupt a host's JSON-RPC stream)
+  (prop/for-all [argv (gen/vector
+                       (gen/one-of [gen/string
+                                    (gen/elements ["ls" "explain" "set"
+                                                   "agent" "status" "--edn"
+                                                   "--actor" "next"])])
+                       0 5)]
+    (with-store
+      (fn []
+        (let [leaked (java.io.StringWriter.)
+              r (binding [*out* leaked] (tik.cli/run-argv argv))]
+          (and (map? r)
+               (integer? (:exit r))
+               (string? (:out r))
+               (string? (:err r))
+               (zero? (.length (.getBuffer leaked)))))))))
+
+(deftest run_argv_rejects_non_string_argv_cleanly
+  ;; a non-string element used to reach parse-args and raise a raw NPE
+  ;; out of the runner's return contract; now it is a clean exit-1
+  (with-store
+    (fn []
+      (doseq [argv [[nil] ["ls" nil] [42] [["ls"]] "not-a-seq" [:ls]]]
+        (let [r (tik.cli/run-argv argv)]
+          (is (map? r) (pr-str argv))
+          (is (= 1 (:exit r)) (pr-str argv))
+          (is (str/blank? (:out r)) (pr-str argv)))))))
+
+(deftest run_argv_traps_every_exit_path
+  ;; success, a die (unknown id -> 1), and a gated refusal (-> 3) all
+  ;; come back as CODES; none terminates or escapes the process
+  (with-store
+    (fn []
+      (System/setProperty "user.name" "tester")
+      (is (zero? (:exit (tik.cli/run-argv ["new" "track" "--title" "t"]))))
+      (is (= 1 (:exit (tik.cli/run-argv ["explain" "nomatch"]))))
+      (let [id (->> (:out (tik.cli/run-argv ["ls" "--edn"]))
+                    (re-seq #"[0-9a-f]{8}-[0-9a-f-]{27}")
+                    first)]
+        (is (= 3 (:exit (tik.cli/run-argv
+                         ["agent" "set" id "x=1" "--actor" "outsider"]))))))))
+
+(deftest run_argv_is_concurrency_safe
+  ;; each call binds its OWN *out*/*err*/*exit-fn* (thread-local), so
+  ;; parallel embedders never cross output or exit codes — only the
+  ;; shared derived-cache atom is touched concurrently, and it is
+  ;; content-addressed so it cannot serve a wrong answer
+  (with-store
+    (fn []
+      (System/setProperty "user.name" "tester")
+      (dotimes [i 8]
+        (tik.cli/run-argv ["new" "track" "--title" (str "ticket-" i)]))
+      (let [results (->> (range 24)
+                         (mapv (fn [_] (future (tik.cli/run-argv ["ls" "--edn"]))))
+                         (mapv deref))]
+        (is (every? #(zero? (:exit %)) results))
+        (is (every? #(str/includes? (:out %) "ticket-0") results))
+        (is (every? #(str/blank? (:err %)) results)
+            "no call's stderr bled into another's")))))
