@@ -772,6 +772,53 @@
     (println (str @packed " ticket(s) packed"))
     (cache-flush!)))
 
+(defn- cmd-gc
+  "gc [--apply]: collect ORPHANED archived process definitions — files
+  in processes/by-hash/ that NO ticket currently pins (every ticket that
+  once used one has since migrated away). Dry-run BY DEFAULT (ADR 0002
+  caution): lists candidates and states the one cost.
+
+  Removing an orphan is safe for the load-bearing surfaces: `verify`
+  stays PASS and every CURRENT derivation is unchanged — the pinned hash
+  of every live ticket still resolves, because an orphan is by definition
+  pinned by none. The only thing lost is historical time-travel: `status
+  <id> --at <before the migration that abandoned it>` then derives under
+  the current named rules with a warning, instead of the exact old
+  definition. The store is a git repo, so a removed definition is
+  recoverable from history. Value is tidiness, not disk — definitions are
+  a few KB."
+  [{:keys [opts]}]
+  (let [s (the-store)
+        ;; live = every process-hash a ticket currently pins
+        live (into #{}
+                   (keep #(:process-hash (red/ticket-state (store/events s %))))
+                   (store/ticket-ids s))
+        dir (io/file (root) "processes" "by-hash")
+        archives (when (.isDirectory dir)
+                   (filter #(str/ends-with? (.getName ^File %) ".edn")
+                           (.listFiles dir)))
+        orphans (remove #(contains? live (str/replace (.getName ^File %)
+                                                      #"\.edn$" ""))
+                        archives)]
+    (if (empty? orphans)
+      (println (str "gc: no orphaned definitions — every archived process"
+                    " is currently pinned by a ticket"))
+      (do
+        (println (str (count orphans) " orphaned definition(s), pinned by no"
+                      " ticket:"))
+        (doseq [^File f (sort-by #(.getName ^File %) orphans)]
+          (println (str "  " (str/replace (.getName f) #"\.edn$" ""))))
+        (println (str "removing these keeps `verify` PASS and every current"
+                      " derivation intact;"))
+        (println (str "only `status --at <before a migration>` degrades to a"
+                      " warning + current-"))
+        (println "rules fallback for tickets that once used them.")
+        (if (:apply opts)
+          (do (doseq [^File f orphans] (io/delete-file f))
+              (println (str "removed " (count orphans) " definition(s)."
+                            " Recoverable from git history if needed.")))
+          (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
+
 (defn- cmd-init
   "init [--hidden]: mark this directory as a store. --hidden puts
   everything inside .tik/ (one dot-entry beside your repos — the
@@ -3257,6 +3304,10 @@ Each entry in :needs is one of:
                                                 fewer inodes and git objects; verify
                                                 checks every packed slice against its
                                                 id; later events land loose and merge
+  tik gc [--apply]                              remove archived process definitions no
+                                                ticket pins (migrated-away versions);
+                                                dry-run by default, verify stays PASS,
+                                                only historical --at degrades
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
                                                 (--changed: skip unchanged heads —
                                                 drift check, not the full audit)
@@ -3312,6 +3363,7 @@ Each entry in :needs is one of:
       "rollout" (cmd-rollout parsed)
       "probe"   (cmd-probe parsed)
       "pack"    (cmd-pack parsed)
+      "gc"      (cmd-gc parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)

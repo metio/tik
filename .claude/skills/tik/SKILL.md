@@ -46,6 +46,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik whatif <id> k=v +PT48H retract:k` — counterfactual stage diff,
   nothing written. Use to check what a fact *would* unlock before setting it.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
+- `tik gc [--apply]` — remove archived process definitions no ticket pins
+  (versions everything migrated away from). Dry-run by default; `verify`
+  stays PASS, only historical `--at` degrades. Tidiness, not disk.
 
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a
 keyword (`sev=high` → `:high`), a number stays a number, and anything the
