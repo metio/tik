@@ -1178,6 +1178,33 @@
             (is (h/clean-output? (str (:out r) (:err r)))
                 (str (pr-str argv) "\n" (:err r)))))))))
 
+(deftest every_whole_store_lens_isolates_a_poison
+  ;; one unreadable ticket must never take down a WHOLE-STORE view — the
+  ;; invariant ls/next honor, now shared by every consumer of
+  ;; all-ticket-ctx (roles, plan, board, work, selectors). A poison ticket
+  ;; is skipped and named on stderr; the command still succeeds.
+  (let [{:keys [root store]} (h/temp-store!)
+        healthy (random-uuid) hostile (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")
+        board-html (str (io/file root "b.html"))]
+    (h/seed-ticket! store {:ticket healthy :at t :title "ok"})
+    (h/seed-ticket! store {:ticket hostile :at t :title "bad" :process 42})
+    (h/with-cli-root root
+      (fn []
+        (doseq [argv [["roles"]
+                      ["plan"]
+                      ["board" board-html]
+                      ["work" "week" "--actor" "seb"]
+                      ["ls" "--where" "stage=:open"]
+                      ["query" "stage=:open"]
+                      ["next" "--actor" "seb"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (zero? (:exit r)) (str (pr-str argv) "\n" (:err r)))
+            (is (h/clean-output? (str (:out r) (:err r)))
+                (str (pr-str argv) "\n" (:err r)))
+            (is (re-find #"skipping" (:err r))
+                (str (pr-str argv) " should name the skipped poison"))))))))
+
 (deftest garbage_time_args_fail_well
   ;; whatif's +duration, --at, and work week --from/--to parse ISO-8601
   ;; via Duration/Instant, which throw DateTimeParseException — an

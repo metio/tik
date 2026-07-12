@@ -444,11 +444,20 @@
 
 (defn- all-ticket-ctx
   "Every ticket's context (ticket-ctx plus :id), lazily — the opener of
-  every whole-store lens. Cache-gated loops (cmd-next) that avoid the
-  full fold on purpose do NOT use this."
+  every whole-store lens (roles, plan, board, report, work, selectors).
+  ISOLATES a ticket whose log cannot derive: it is skipped and named on
+  stderr, never taking a whole-store view down. This is the one-poisoned-
+  ticket-never-hides-the-healthy invariant, shared by every consumer
+  instead of re-implemented (or forgotten) per command. Cache-gated
+  loops (cmd-next) that avoid the full fold on purpose do NOT use this."
   [s]
-  (for [id (store/ticket-ids s)]
-    (assoc (ticket-ctx s id) :id id)))
+  (keep (fn [id]
+          (try (assoc (ticket-ctx s id) :id id)
+               (catch clojure.lang.ExceptionInfo e
+                 (binding [*out* *err*]
+                   (println (str "skipping " (sid id) ": " (ex-message e))))
+                 nil)))
+        (store/ticket-ids s)))
 
 (declare display-title link-facts)
 
@@ -810,13 +819,14 @@
   (let [s (the-store)
         t (now)
         holder (store-holder)
-        ids (if (seq pos)
-              [(resolve-id s (first pos))]
-              (store/ticket-ids s))
+        ;; a named ticket derives strictly (die if it cannot); the whole
+        ;; store isolates per ticket, so one poison never aborts the sweep
+        ctxs (if (seq pos)
+               [(load-ticket s (first pos))]
+               (all-ticket-ctx s))
         changed (atom 0)]
-    (doseq [id ids
-            :let [{:keys [events state process roles]} (ticket-ctx s id)
-                  repo (red/fact-value state [:repo])]
+    (doseq [{:keys [id events state process roles]} ctxs
+            :let [repo (red/fact-value state [:repo])]
             :when (and repo
                        (or (seq pos)
                            (not (next-lens/settled? process events t roles))))
@@ -1533,8 +1543,8 @@
   target is kept as its raw string — a node with no prerequisites that
   is never settled, so it blocks conservatively (matching `next`)."
   [s t]
-  (let [ids (vec (store/ticket-ids s))
-        ctx (into {} (map (fn [id] [id (ticket-ctx s id)])) ids)
+  (let [ctx (into {} (map (juxt :id identity)) (all-ticket-ctx s))
+        ids (vec (keys ctx))
         edges (into {}
                     (for [id ids]
                       [id (->> (link-facts (:state (ctx id)))
@@ -1726,23 +1736,18 @@
        (catch clojure.lang.ExceptionInfo e (die (ex-message e)))))
 
 (defn- selector-rows
-  "A selector-row for every ticket, ISOLATING per-ticket derivation
-  failures the way `ls`/`next` do: a ticket whose log cannot derive is
-  skipped and named on stderr, never taking the whole selection down —
-  one poisoned ticket must not hide the healthy from a `--where` query."
+  "A selector-row per ticket, over the already-isolated whole-store
+  opener; a ticket whose DEEPER derivation (the stage fixpoint, facts)
+  throws is skipped and named too, so one poison never hides a `--where`
+  match. (ticket-ctx failures are already isolated by all-ticket-ctx.)"
   [s t]
-  (let [skipped (volatile! [])
-        rows (into []
-                   (keep (fn [id]
-                           (try (selector-row t (assoc (ticket-ctx s id) :id id))
-                                (catch clojure.lang.ExceptionInfo e
-                                  (vswap! skipped conj [id (ex-message e)])
-                                  nil))))
-                   (store/ticket-ids s))]
-    (doseq [[id msg] @skipped]
-      (binding [*out* *err*]
-        (println (str "skipping " (sid id) ": " msg))))
-    rows))
+  (keep (fn [ctx]
+          (try (selector-row t ctx)
+               (catch clojure.lang.ExceptionInfo e
+                 (binding [*out* *err*]
+                   (println (str "skipping " (sid (:id ctx)) ": " (ex-message e))))
+                 nil)))
+        (all-ticket-ctx s)))
 
 (defn- cmd-ls
   "Open tickets by default; settled ones (sticky terminal reached —
@@ -2732,9 +2737,8 @@
         s (the-store)
         fired (atom 0)
         failed (atom 0)]
-    (doseq [id (store/ticket-ids s)
-            :let [{:keys [events state process roles]} (ticket-ctx s id)
-                  timeline (:timeline (stage/evolve process events roles))
+    (doseq [{:keys [id events state process roles]} (all-ticket-ctx s)
+            :let [timeline (:timeline (stage/evolve process events roles))
                   transitions
                   (distinct
                    (for [[prev entry] (map vector (cons nil timeline) timeline)
