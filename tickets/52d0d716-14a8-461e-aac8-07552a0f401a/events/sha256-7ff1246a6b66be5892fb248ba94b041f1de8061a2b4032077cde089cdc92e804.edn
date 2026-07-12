@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-12T10:15:27.842Z" :event/body {:fact/path [:summary] :fact/value "dependencies between tickets are now respected by the inbox"} :event/parents #{"sha256-7de08b33400b0a3f30008a4fd54a82fc8fa87f67ab0d3816d04fe38fbb335c43"} :event/ticket #uuid "52d0d716-14a8-461e-aac8-07552a0f401a" :event/type :fact/assert}
