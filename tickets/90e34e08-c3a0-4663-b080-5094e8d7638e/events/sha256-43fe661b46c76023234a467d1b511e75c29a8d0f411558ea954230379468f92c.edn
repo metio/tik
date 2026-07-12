@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-12T00:33:29.402Z" :event/body {:fact/path [:summary] :fact/value "the CRDT convergence tik relies on is now machine-proved, not just property-sampled"} :event/parents #{"sha256-a5bb5d94b3de2af5cc52b7f81dc2e19717f1b04f4ded496826177000223f83ec"} :event/ticket #uuid "90e34e08-c3a0-4663-b080-5094e8d7638e" :event/type :fact/assert}
