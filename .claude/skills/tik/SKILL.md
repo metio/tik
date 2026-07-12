@@ -77,6 +77,12 @@ in the tool (not transcribed here) is what stops it from rotting:
   smells) without writing. Iterate against it until clean.
 - `tik lint <process.edn>` — the full linter on a saved definition (closed
   guard basis, graph sanity, stratified negation, facts-over-flags).
+- `tik show <process|file.edn>` — draw the process as a vertical ASCII stage
+  graph: stages top-to-bottom, a single child continuing the lane (`│`/`▼`),
+  forks branching (`├─▶`/`└─▶`), a join (diamond) drawn once under its deepest
+  parent with `⋈ after …`, and a terse guard gloss per stage. A pure picture
+  of the definition — the fastest way to see a process's shape, and what the
+  `tik-processes` README diagrams are rendered from.
 - `tik adopt <file>` — install a process from the shared library into this
   store. A plain `.edn` definition is copied verbatim; a `.tmpl.edn`
   **template** is expanded first — tik reads the template's own malli

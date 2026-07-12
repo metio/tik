@@ -28,6 +28,7 @@
             [tik.explain :as explain]
             [tik.guard :as guard]
             [tik.next :as next-lens]
+            [tik.draw :as draw]
             [tik.plan :as plan]
             [tik.template :as template]
             [tik.work :as work]
@@ -3357,6 +3358,27 @@ Each entry in :needs is one of:
       (do (println (str (count findings) " finding(s)"))
           (exit! 1)))))
 
+(defn- cmd-show
+  "show <process|file.edn>: draw the process as a vertical stage graph —
+  a pure picture of the definition (stages, guards, forks, and joins),
+  the same f(definition) the lint and plan lenses derive from. Reads a
+  .edn path directly, or a process name from this store's processes/."
+  [{:keys [pos]}]
+  (let [arg (or (first pos) (die "usage: tik show <process|file.edn>"))
+        f (resolve-file arg)
+        proc (if (.exists f) (read-edn-file f) (load-process arg))
+        roles (keys (:process/roles proc))
+        lines (draw/process proc)]
+    (println (tint "1" (str (safe-name (:process/id proc))
+                            (when-let [v (:process/version proc)] (str "  (v" v ")")))))
+    (when-let [p (:process/purpose proc)] (println (tint "2" (str "  " p))))
+    (when (seq roles)
+      (println (tint "2" (str "  roles: " (str/join ", " (map safe-name roles))))))
+    (println)
+    (if (seq lines)
+      (doseq [l lines] (println l))
+      (println "(no stages)"))))
+
 (defn- cmd-lint [{:keys [pos]}]
   (if (empty? pos)
     (lint-store)
@@ -3762,6 +3784,9 @@ Each entry in :needs is one of:
   tik lint [<process.edn>]                      lint a process definition; with no
                                                 argument, lint the STORE — open tickets
                                                 missing descriptions/titles/signatures
+  tik show <process|file.edn>                   draw the process as a vertical stage
+                                                graph — stages, guards, forks, joins;
+                                                a pure picture of the definition
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
   tik test <tests.edn>                          run scripted process tests (steps in,
@@ -3775,6 +3800,7 @@ Each entry in :needs is one of:
       "pack"    (cmd-pack parsed)
       "gc"      (cmd-gc parsed)
       "plan"    (cmd-plan parsed)
+      "show"    (cmd-show parsed)
       "new"     (cmd-new parsed)
       "adopt"   (cmd-adopt parsed)
       "set"     (cmd-set parsed)
