@@ -520,6 +520,13 @@ where they stop:
   when wanted: keep `tint`/plain output as the universal fallback,
   charm.clj behind a requiring-resolve seam for the native binary's
   pretty/interactive mode. Keep plain data/`--edn` for pipes either way.
+  **Decision (2026-07-12): parked, not rejected — do NOT adopt yet.**
+  bb is the dev/test/verification harness (instant source loop, the
+  cross-runtime differential's second runtime), so the seam is workable
+  but not worth carrying until the upstream gap closes. Trigger to
+  revisit: babashka bundling `org.jline.utils.AttributedString`, or
+  charm.clj dropping the JLine import from its pure-styling namespace
+  (an upstream issue is the cheap nudge).
 - **Interpreter-agnostic probes** — `tik probe` runs a probe as
   `["sh" <file>]`, always wrapping in a POSIX shell, so the current
   `git grep` probes need `sh` (fine on Linux/macOS and Git-for-Windows,
