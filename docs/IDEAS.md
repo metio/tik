@@ -491,6 +491,25 @@ where they stop:
   (HTTP), FlowStorm (walking derivation), tools.namespace reload,
   next.jdbc with `events(id TEXT PRIMARY KEY, bytes BLOB)` for the
   SQLite backend. Adopt opportunistically; none are load-bearing.
+- **charm.clj for an interactive TUI** (github TimoKramer/charm.clj) — a
+  rare fit: pure Clojure (JLine 3 + core.async, no native/Go wrapping)
+  that explicitly targets JVM, GraalVM native-image, AND babashka — tik's
+  exact three runtimes. It offers Lip-Gloss-style styling (256/true
+  colour, borders, tables, layout) AND an Elm-architecture TUI (inputs,
+  lists, tables, viewports, keyboard/mouse, line-diff rendering). Fits
+  the architecture cleanly: another RENDERER of the same derived data
+  (plan/summary, explain), never a new data layer — "one derivation,
+  many renderings" (plain text + HTML today, a TUI next). What it opens:
+  an interactive `tik` dashboard — navigate the board, drill into a
+  blocked ticket, walk the plan graph, act inline. Concrete caveats to
+  clear in a SPIKE before adopting: (1) it wants JDK 22+, but the devShell
+  is JDK 21 (the native build is GraalVM 24 = fine; a JDK bump is needed
+  for JVM tests) — a flake change; (2) JLine 3 + core.async add
+  native-image reflection config and binary weight, versus today's
+  dependency-free ANSI (`tint`) — measure the size delta; (3) core.async
+  is already in babashka, but confirm `bb tik` loads charm.clj (JLine 3
+  on bb). Keep the plain data/ANSI output for pipes and `--edn`; charm.clj
+  is the pretty/interactive MODE, not a replacement for scriptable output.
 - **Interpreter-agnostic probes** — `tik probe` runs a probe as
   `["sh" <file>]`, always wrapping in a POSIX shell, so the current
   `git grep` probes need `sh` (fine on Linux/macOS and Git-for-Windows,
