@@ -251,6 +251,29 @@ abstractions generalize.
 - **`tik pack` / signed bundles / registry / federated discovery** —
   the distribution ladder beyond git-first. Transport porcelain only;
   hash stays identity, signature stays authority (§6).
+- **Shareable process library (the process bundle)** — publish process
+  definitions so others adopt them: a good process is expensive to
+  design and cheap to copy, so sharing MULTIPLIES (one definition, many
+  orgs). The convergence point of pieces that already exist or are
+  filed: a process definition is already content-addressed (hash-pinned)
+  and publication-SIGNABLE (ADR 0015, `namespace-process`); each stage's
+  `:hint` already points at OKF runbook knowledge; so the shareable UNIT
+  is a **process bundle = the .edn definition + the OKF runbooks it
+  references**, hashed and signed together — exactly the "contains both"
+  the OKF↔`:hint` link implies. A registry is then a collection of such
+  signed bundles anyone can discover, VERIFY (the signature proves
+  provenance, the hash proves integrity), and adopt (`tik author --from
+  <registry>/okf-publish`), offline-forever like everything else. This
+  is the distribution ladder above applied to process+knowledge bundles,
+  and the substrate for the commercial "compliance process libraries"
+  (below). Meta-nice: publishing a bundle is itself an `okf-publish`-
+  shaped process (draft → reviewed → approved → published), so the
+  library dogfoods its own governance. Scope note: this is DISTRIBUTION
+  of whole bundles, NOT author-time composition (imports/gates) — that
+  stays §19-deferred until copy-paste across real processes hurts; a
+  registry of complete, hash-pinned bundles needs none of it. A generic
+  home ("tik-processes") can hold both the definitions and their OKF
+  knowledge, versioned together.
 - **Multi-store MCP/HTTP gateway with mapped access** — today a server
   process is one store (`TIK_ROOT`), one claimed identity (`TIK_ACTOR`,
   taken on trust), write-authorized by the derived frontier and made
