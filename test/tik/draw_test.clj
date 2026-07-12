@@ -48,13 +48,15 @@
       (is (re-find #"statement · ✎maintainer" text))
       (is (re-find #"verdict = validated" text)))))
 
-(deftest a_join_is_drawn_once_under_its_deepest_parent
+(deftest a_join_is_drawn_once_and_stubbed_from_every_branch
   (let [lines (draw/process diamond)
         text (str/join "\n" lines)]
-    (testing "ready appears exactly once"
-      (is (= 1 (count (filter #(re-find #"\bready\b" %) lines)))))
-    (testing "and its line names every input as a join"
+    (testing "ready's full node is drawn exactly once, under its deepest parent"
+      (is (= 1 (count (filter #(re-find #"▼ ready" %) lines)))))
+    (testing "and that node names every input as a join"
       (is (re-find #"ready.*⋈ after equipped, accounts" text)))
+    (testing "the non-primary branch carries a dashed stub to the join"
+      (is (some #(re-find #"┈▶ ready" %) lines)))
     (testing "its two inputs both appear, forked under hired"
       (is (some #(str/starts-with? % "├─▶ equipped") lines))
       (is (some #(str/starts-with? % "└─▶ accounts") lines)))))

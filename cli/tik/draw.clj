@@ -108,27 +108,53 @@
                                   p (primary id)]
                               (cond-> m p (update p (fnil conj []) id))))
                           {} stages)
+        ;; a join child also leaves a DASHED stub (`┈▶`) under each of its
+        ;; non-primary parents, so the merge is visible from every incoming
+        ;; branch — not only on the join node's `⋈ after …` line
+        ref-map (reduce (fn [m s]
+                          (let [id (:stage/id s)
+                                ps (parents-of id)
+                                prim (primary id)]
+                            (if (> (count ps) 1)
+                              (reduce (fn [m p]
+                                        (cond-> m (not= p prim)
+                                                (update p (fnil conj []) id)))
+                                      m ps)
+                              m)))
+                        {} stages)
         roots (->> stages (map :stage/id) (filter #(empty? (parents-of %))))]
     (letfn [(walk [id own-prefix connector desc-prefix]
               (let [stage (by-id id)
                     ps (parents-of id)
                     label (str (nm id) (when (:stage/sticky? stage) " ★"))
                     gloss (stage-gloss stage (when (> (count ps) 1) ps))
-                    kids (child-map id)
-                    n (count kids)]
+                    ;; real children draw their full subtree; refs are leaf
+                    ;; stubs pointing at a join drawn under its primary parent
+                    entries (concat (map (fn [c] {:id c}) (child-map id))
+                                    (map (fn [c] {:id c :ref? true}) (ref-map id)))
+                    n (count entries)]
                 (concat
                  [{:left (str own-prefix connector label) :gloss gloss}]
                  (when (pos? n)
                    (concat
                     [{:sep (str desc-prefix "│")}]
                     (if (= n 1)
-                      (walk (first kids) desc-prefix "▼ " desc-prefix)
-                      (mapcat (fn [i c]
-                                (let [last? (= i (dec n))]
-                                  (walk c desc-prefix
-                                        (if last? "└─▶ " "├─▶ ")
-                                        (str desc-prefix (if last? "    " "│   ")))))
-                              (range) kids)))))))]
+                      (let [e (first entries)]
+                        (if (:ref? e)
+                          [{:left (str desc-prefix "┈▶ " (nm (:id e))) :gloss ""}]
+                          (walk (:id e) desc-prefix "▼ " desc-prefix)))
+                      (mapcat (fn [i {:keys [id ref?]}]
+                                (let [last? (= i (dec n))
+                                      arrow (cond
+                                              (and ref? last?) "└┈▶ "
+                                              ref? "├┈▶ "
+                                              last? "└─▶ "
+                                              :else "├─▶ ")]
+                                  (if ref?
+                                    [{:left (str desc-prefix arrow (nm id)) :gloss ""}]
+                                    (walk id desc-prefix arrow
+                                          (str desc-prefix (if last? "    " "│   "))))))
+                              (range) entries)))))))]
       (let [rows (mapcat (fn [r] (cons {:sep ""} (walk r "" "● " "")))
                          roots)
             rows (rest rows)                       ; drop the leading blank
