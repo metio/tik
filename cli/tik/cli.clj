@@ -28,6 +28,7 @@
             [tik.explain :as explain]
             [tik.guard :as guard]
             [tik.next :as next-lens]
+            [tik.plan :as plan]
             [tik.work :as work]
             [tik.process :as process]
             [tik.reduce :as red]
@@ -1291,6 +1292,165 @@
                         " finished ticket(s) hidden (--all shows their"
                         " escape hatches)")))))
     (cache-flush!)))
+
+(defn- plan-graph
+  "The cross-ticket dependency graph from the store as tik.plan input:
+  edges keyed by ticket id -> the set of resolved `:depends-on` target
+  ids, the settled set, and a display-title per node. An unresolvable
+  target is kept as its raw string — a node with no prerequisites that
+  is never settled, so it blocks conservatively (matching `next`)."
+  [s t]
+  (let [ids (vec (store/ticket-ids s))
+        ctx (into {} (map (fn [id] [id (ticket-ctx s id)])) ids)
+        edges (into {}
+                    (for [id ids]
+                      [id (->> (link-facts (:state (ctx id)))
+                               (filter #(= :depends-on (:rel %)))
+                               (map #(or (resolve-id-soft s (:target %))
+                                         (:target %)))
+                               set)]))
+        settled (set
+                 (for [id ids
+                       :let [{:keys [process events roles]} (ctx id)]
+                       :when (next-lens/settled? process events t roles)]
+                   id))
+        title (fn [n] (if-let [c (ctx n)]
+                        (display-title (:state c))
+                        (str n)))]
+    {:edges edges :settled settled :title title}))
+
+(defn- short-title
+  "A node label for one line: 8-char id + trimmed title."
+  [title n]
+  (let [t (title n)
+        s (str n)]
+    (str (if (re-matches #"[0-9a-f-]{8,}" s) (subs s 0 8) s)
+         (when (and t (not= t s)) (str " " (subs t 0 (min 32 (count t))))))))
+
+(defn- plan-html
+  "One self-contained HTML page: the plan as a roadmap — a critical-path
+  track, then Ready / Blocked / Done columns of cards, cycles flagged in
+  red. No scripts, no network; a rendering of tik.plan/summary."
+  [{:keys [edges settled title]} summary]
+  (let [{:keys [ready blocked cyclic critical-path unlocks status]} summary
+        esc (fn [x] (-> (str x) (str/replace "&" "&amp;")
+                        (str/replace "<" "&lt;") (str/replace ">" "&gt;")))
+        card (fn [n]
+               (let [st (status n)
+                     u (get unlocks n 0)
+                     deps (remove settled (get edges n))]
+                 (str "<div class='card " (name st) "'>"
+                      "<div class='t'>" (esc (title n)) "</div>"
+                      "<div class='id'>" (esc (subs (str n) 0 (min 8 (count (str n))))) "</div>"
+                      (when (pos? u) (str "<div class='u'>unlocks " u "</div>"))
+                      (when (seq deps)
+                        (str "<div class='w'>waiting on "
+                             (str/join ", " (map #(esc (subs (str %) 0 (min 8 (count (str %))))) deps))
+                             "</div>"))
+                      "</div>")))
+        column (fn [label ns]
+                 (str "<section><h2>" label " <span class='n'>" (count ns) "</span></h2>"
+                      (str/join (map card (sort-by str ns))) "</section>"))]
+    (str "<!doctype html><meta charset=utf-8><title>tik plan</title>"
+         "<style>"
+         ":root{--bg:#fff;--fg:#111;--dim:#666;--line:#e2e2e2;--ready:#128a3a;"
+         "--blocked:#b7791f;--done:#888;--cyc:#c0392b;--cp:#2456c9}"
+         "@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e8e8e8;"
+         "--dim:#9aa;--line:#2a2e35;--ready:#3ddc84;--blocked:#e0b050;"
+         "--done:#777;--cyc:#ff6b5e;--cp:#6aa1ff}}"
+         "body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}"
+         "header{padding:20px 28px;border-bottom:1px solid var(--line)}"
+         "h1{font-size:18px;margin:0}"
+         ".sum{color:var(--dim);margin-top:6px;font-size:13px}"
+         ".cyc-banner{background:var(--cyc);color:#fff;padding:10px 28px;font-weight:600}"
+         ".cp{padding:16px 28px;border-bottom:1px solid var(--line)}"
+         ".cp h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:0 0 10px}"
+         ".track{display:flex;flex-wrap:wrap;gap:8px;align-items:center}"
+         ".step{background:color-mix(in srgb,var(--cp) 15%,transparent);border:1px solid var(--cp);"
+         "border-radius:8px;padding:6px 12px;font-weight:600}"
+         ".arr{color:var(--cp)}"
+         ".cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;padding:24px 28px}"
+         "section h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin:0 0 12px}"
+         "section h2 .n{color:var(--fg);opacity:.6}"
+         ".card{border:1px solid var(--line);border-left:4px solid var(--done);"
+         "border-radius:8px;padding:10px 12px;margin-bottom:10px;background:color-mix(in srgb,var(--fg) 2%,transparent)}"
+         ".card.ready{border-left-color:var(--ready)}"
+         ".card.blocked{border-left-color:var(--blocked)}"
+         ".card.cyclic{border-left-color:var(--cyc)}"
+         ".card .t{font-weight:600}"
+         ".card .id{color:var(--dim);font-size:12px;font-family:ui-monospace,monospace}"
+         ".card .u{color:var(--ready);font-size:12px;margin-top:4px}"
+         ".card .w{color:var(--blocked);font-size:12px;margin-top:4px}"
+         "</style>"
+         "<header><h1>tik plan</h1><div class='sum'>"
+         (count ready) " ready · " (count blocked) " blocked · "
+         (count settled) " done · "
+         (if (seq cyclic) (str (count cyclic) " in a cycle") "no cycles")
+         "</div></header>"
+         (when (seq cyclic)
+           (str "<div class='cyc-banner'>⚠ dependency cycle — "
+                (str/join ", " (map #(esc (title %)) (sort-by str cyclic)))
+                " can never proceed; break an edge</div>"))
+         (when (seq critical-path)
+           (str "<div class='cp'><h2>critical path — " (count critical-path)
+                " step(s) remaining</h2><div class='track'>"
+                (str/join "<span class='arr'>→</span>"
+                          (map #(str "<span class='step'>" (esc (title %)) "</span>")
+                               critical-path))
+                "</div></div>"))
+         "<div class='cols'>"
+         (column "Ready" ready)
+         (column "Blocked" blocked)
+         (column "Done" settled)
+         (when (seq cyclic) (column "Cyclic" cyclic))
+         "</div>")))
+
+(defn- cmd-plan
+  "plan [<file.html>]: the dependency-link roadmap — a derived reading of
+  every ticket, its `:depends-on` edges, and which are settled: what is
+  ready, blocked, done, or caught in a cycle, plus the critical path and
+  each item's downstream unlock impact. Not a scheduler (§19): it
+  re-derives from current facts every read, so it never goes stale. With
+  a .html argument, writes the fancy self-contained roadmap page."
+  [{:keys [pos]}]
+  (let [s (the-store)
+        t (now)
+        {:keys [edges settled title] :as g} (plan-graph s t)
+        {:keys [ready blocked cyclic critical-path unlocks] :as summary}
+        (plan/summary edges settled)]
+    (if-let [out (first pos)]
+      (do (spit out (plan-html g summary))
+          (println (str "wrote " out " — the plan as a roadmap page")))
+      (do
+        (println (str (tint "1" "PLAN") "  "
+                      (tint "32" (str (count ready) " ready")) " · "
+                      (tint "33" (str (count blocked) " blocked")) " · "
+                      (tint "2" (str (count settled) " done"))
+                      (when (seq cyclic)
+                        (str " · " (tint "31" (str (count cyclic) " in a cycle"))))))
+        (when (seq cyclic)
+          (println (tint "31" (str "\n⚠ dependency cycle (deadlock — break an edge): "
+                                   (str/join ", " (map title (sort-by str cyclic)))))))
+        (when (seq critical-path)
+          (println (str "\ncritical path (" (count critical-path)
+                        " step(s) remaining):"))
+          (println (str "  " (str/join (tint "34" " → ")
+                                       (map title critical-path)))))
+        (when (seq ready)
+          (println "\nready now:")
+          (doseq [n (sort-by #(- (get unlocks % 0)) ready)]
+            (println (str "  " (tint "32" "▸") " " (short-title title n)
+                          (when (pos? (get unlocks n 0))
+                            (tint "2" (str "   unlocks " (get unlocks n 0))))))))
+        (when (seq blocked)
+          (println "\nblocked:")
+          (doseq [n (sort-by str blocked)
+                  :let [deps (remove settled (get edges n))]]
+            (println (str "  " (tint "33" "⏳") " " (short-title title n)
+                          (tint "2" (str "   waiting on "
+                                         (str/join ", " (map #(short-title title %) deps))))))))
+        (when (and (empty? ready) (empty? blocked) (empty? cyclic))
+          (println "\nno dependency links yet — `tik set <id> link.depends-on=<other>`"))))))
 
 (defn- stage-filter
   "--filter ':a :b' matches tickets whose current stage is any of them;
@@ -3357,6 +3517,11 @@ Each entry in :needs is one of:
                                                 fewer inodes and git objects; verify
                                                 checks every packed slice against its
                                                 id; later events land loose and merge
+  tik plan [<file.html>]                        the dependency-link roadmap: ready /
+                                                blocked / done / cyclic, the critical
+                                                path, and each item's unlock impact —
+                                                derived, never stale. .html arg writes
+                                                the fancy self-contained page
   tik gc [--apply]                              remove archived process definitions no
                                                 ticket pins (migrated-away versions);
                                                 dry-run by default, verify stays PASS,
@@ -3417,6 +3582,7 @@ Each entry in :needs is one of:
       "probe"   (cmd-probe parsed)
       "pack"    (cmd-pack parsed)
       "gc"      (cmd-gc parsed)
+      "plan"    (cmd-plan parsed)
       "new"     (cmd-new parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)

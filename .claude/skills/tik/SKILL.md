@@ -47,6 +47,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   fact; the stage **regresses by derivation** (no manual rollback).
 - `tik whatif <id> k=v +PT48H retract:k` — counterfactual stage diff,
   nothing written. Use to check what a fact *would* unlock before setting it.
+- `tik plan [<file.html>]` — the dependency-link roadmap: ready / blocked /
+  done / cyclic, the critical path, and each item's unlock impact — all
+  derived, never stale. A `.html` argument writes a fancy self-contained page.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
   (versions everything migrated away from). Dry-run by default; `verify`

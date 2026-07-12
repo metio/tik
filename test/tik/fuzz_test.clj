@@ -29,6 +29,7 @@
             [tik.gen-events :as ge]
             [tik.guard :as guard]
             [tik.oidc :as oidc]
+            [tik.plan]
             [tik.process]
             [tik.reduce :as red]
             [tik.stage :as stage]
@@ -169,6 +170,18 @@
 
 (def ^:private one (partial gen/fmap vector))   ; a one-argument arg-vector
 
+(def ^:private gen-dep-graph
+  "A cross-ticket dependency graph, hostile by construction — small node
+  set so cycles and dangling prerequisites arise; a `:depends-on` fact
+  can be hand-set to anything, so the plan lens must stay total over
+  these."
+  (gen/map (gen/elements [:a :b :c :d :e])
+           (gen/set (gen/elements [:a :b :c :d :e :ghost]) {:max-elements 3})
+           {:max-elements 5}))
+
+(def ^:private gen-settled (gen/set (gen/elements [:a :b :c :d :e])
+                                    {:max-elements 5}))
+
 (def ^:private gen-proc-events-now-roles
   "The (process events now roles) argument vector shared by every
   derivation lens — effective-reached, explain, causal, and (with a
@@ -268,7 +281,15 @@
    {:sym 'tik.process/lint :f tik.process/lint
     :gen (one gen-garbage-definition)}
    {:sym 'tik.process/signing-roles :f tik.process/signing-roles
-    :gen (one gen-garbage-guard)}])
+    :gen (one gen-garbage-guard)}
+   {:sym 'tik.plan/summary :f tik.plan/summary
+    :gen (gen/tuple gen-dep-graph gen-settled)}
+   {:sym 'tik.plan/critical-path :f tik.plan/critical-path
+    :gen (gen/tuple gen-dep-graph gen-settled)}
+   {:sym 'tik.plan/cyclic-nodes :f tik.plan/cyclic-nodes
+    :gen (one gen-dep-graph)}
+   {:sym 'tik.plan/ready :f tik.plan/ready
+    :gen (gen/tuple gen-dep-graph gen-settled)}])
 
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
@@ -310,7 +331,7 @@
   totality-registry) or be listed in totality-exemptions with the
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-     tik.explain tik.causal tik.next tik.process})
+     tik.explain tik.causal tik.next tik.process tik.plan})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
@@ -364,7 +385,14 @@
     tik.process/valid?              "malli validator over the Process schema: a boolean over any input"
     tik.process/explain-process     "malli explainer over the Process schema: an explanation or nil over any input"
     tik.process/process-hash        "content-address of a definition via canonical/emit (registered)"
-    tik.process/roles-gating        "lens over a definition; total, exercised via lint (registered) and process-test"})
+    tik.process/roles-gating        "lens over a definition; total, exercised via lint (registered) and process-test"
+    tik.plan/nodes                  "structural: the node set of an edge map; total by construction"
+    tik.plan/prereqs                "structural: one node's prerequisite set; total by construction"
+    tik.plan/dependents             "structural: reverse edges of an edge map; total by construction"
+    tik.plan/in-cycle?              "per-node cycle check; exercised via cyclic-nodes (registered)"
+    tik.plan/blocked?               "per-node predicate over prereqs+settled; exercised via summary (registered)"
+    tik.plan/status                 "per-node status; exercised via summary (registered)"
+    tik.plan/unlocks                "per-node downstream impact; exercised via summary (registered)"})
 
 (deftest every_kernel_namespace_is_swept_or_excluded
   ;; the namespace-level forcing function, DERIVED from the source tree:

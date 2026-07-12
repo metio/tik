@@ -18,6 +18,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.set :as set]
             [tik.event :as event]
+            [tik.plan :as plan]
             [tik.stage :as stage])
   (:import (java.time Instant)))
 
@@ -88,3 +89,27 @@
       (is (set/subset? just-x full))
       (is (= #{:a :c} none) "without facts, only the unguarded stages")
       (is (= #{:a :b :c} just-x) "x reaches b but not d (needs y)"))))
+
+;; --- the exact PlanReadiness.tla dependency graph, via real tik.plan ---
+
+(def ^:private plan-edges
+  ;; a -> b -> c (chain) and d <-> e (cycle), matching PlanReadiness.tla
+  {:a #{:b} :b #{:c} :d #{:e} :e #{:d}})
+
+(deftest kernel_matches_PlanReadiness
+  ;; PlanReadiness.tla asserts NoCyclicSettles (the cycle never settles)
+  ;; and Completes (the acyclic chain always does). The real tik.plan
+  ;; must reproduce both over the same graph.
+  (testing "the cycle is detected — d,e can never become ready"
+    (is (= #{:d :e} (plan/cyclic-nodes plan-edges)))
+    (is (empty? (set/intersection #{:d :e} (plan/ready plan-edges #{})))))
+  (testing "ready-progression settles exactly the acyclic chain (any order)"
+    (let [final (loop [settled #{} steps 0]
+                  (let [r (plan/ready plan-edges settled)]
+                    (if (or (empty? r) (> steps 20))
+                      settled
+                      (recur (into settled r) (inc steps)))))]
+      (is (= #{:a :b :c} final)
+          "the acyclic nodes all settle; the cyclic ones never do")))
+  (testing "the critical path is the whole remaining chain"
+    (is (= [:c :b :a] (plan/critical-path plan-edges #{})))))
