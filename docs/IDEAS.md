@@ -126,7 +126,55 @@ abstractions generalize.
 - **Task-oriented web UI** — the 90%-of-users surface: current state as
   checkmarks, frontier as checkboxes, blocked-because from explain,
   action buttons generated from the missing facts' schemas. Entirely a
-  rendering of `status` + `explain`; no new kernel surface.
+  rendering of `status` + `explain`; no new kernel surface. The FORM is
+  derived: each missing reason maps to a control from its declared type —
+  `:enum` → dropdown, `:string`/`:number` → input, `:artifact :prefix`
+  → file upload, `:signed-by :role` → an "Approve" button (or "waiting
+  on <role>", capability-filtered), `:elapsed-since` → "available <when>"
+  disabled. A new process gets working forms for free.
+  HOW WRITES GET SIGNED (the real design question — a browser cannot
+  hold a signing key, and every event is a signed authorship claim,
+  ADR 0010). Two tiers, both reusing existing machinery, no kernel
+  change:
+  - **Tier 1, the bridge pattern (build first).** The UI never writes;
+    "Submit" POSTs the intended action to a small signing service that
+    (1) authenticates the session (OIDC — identity rung 2, §9),
+    (2) GATES it against the frontier via the SAME `agent-admissible?`
+    check the MCP write tools use (H7: enforcement is derivation, never
+    the UI), refusing anything the frontier does not admit for this user
+    BEFORE signing, and (3) signs + appends through the existing gated
+    write path (`tik agent set/attest/attach`) as a web-bridge actor
+    whose event records the authenticated subject. Accountability =
+    bridge signature + OIDC identity attestation + frontier gate —
+    exactly the email/OIDC bridge trust model (ADR 0019 inbound). The
+    web UI is a browser front-end to the write path the MCP server
+    already exposes.
+  - **Tier 2, the user actually signs (WebAuthn/passkeys rung).** Add a
+    WebAuthn signature sidecar kind (a new identity-ladder rung): the
+    user signs client-side with a hardware-backed passkey (Touch ID, a
+    security key) — non-exportable, biometric-simple, yet the USER's own
+    signature, not the bridge's. tik verifies the WebAuthn/COSE
+    assertion against a credential in the actors registry, the way it
+    verifies SSH sidecars today. Strong per-user authorship with zero
+    key management: a tap to sign.
+  - **Keyless / ephemeral-per-login (the Sigstore convergence, §9 rung
+    3).** On each OIDC/SSO login the client mints a FRESH ephemeral
+    keypair; the bridge issues a signed attestation binding {ephemeral
+    pubkey → OIDC subject → validity window}; the user signs their own
+    events with the ephemeral key during the session; the private key is
+    discarded at logout. This is exactly Fulcio: the bridge is a trusted
+    CA for the binding, but the USER's key signs the events (stronger
+    than Tier 1's bridge-signs), with NO long-lived key to manage
+    (better than Tier 2's persistent key). Verification is offline: sig
+    checks against the ephemeral pubkey, the pubkey is bound to the
+    identity by the attestation, and timestamp-anchoring (Rekor/OTS)
+    proves the signing fell within the validity window — so a leaked
+    ephemeral key or a backdated event is caught. Needs the validity
+    window + the anchor to be safe; the design is settled (§9 rung 3).
+  Read is the existing status+explain rendering; write maps to the
+  existing gated `agent set` path; signing is the existing bridge
+  pattern (Tier 1) or a new sidecar-kind rung (Tier 2). No new event
+  type, no new guard.
 - **`:purpose` / `:question` authoring annotations** — per-stage prose
   ("why this stage exists", "what question blocks you") carried in the
   definition and surfaced by explain. Pure authoring data, no kernel
