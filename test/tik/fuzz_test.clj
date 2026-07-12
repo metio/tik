@@ -919,6 +919,35 @@
       (is (re-find #"verify: (PASS|FAIL)" (:out r)))
       (is (h/clean-output? (str (:out r) (:err r)))))))
 
+(deftest hostile_filenames_in_roots_and_stores_verify_well
+  ;; verify derives display ids from FILENAMES — a witness sidecar's
+  ;; attested-root, an event file's stem, a by-hash name. A hostile short
+  ;; or empty name must not drive `(subs … 0 19)` past the end and crash
+  ;; the whole audit: sid/shash are total, so these display as-is.
+  (let [root (h/temp-dir! "tik-roots")
+        run (h/tik-runner root)]
+    (run "new" "track" "--title" "root fodder")
+    (spit (io/file root "actors")
+          "fuzz namespaces=\"tik-*\" ssh-ed25519 AAAA fuzz\n")
+    (.mkdirs (io/file root "roots"))
+    ;; witness sidecars whose attested-root (before .witness.) is short
+    ;; or empty — the exact filename that used to crash shash
+    (doseq [nm ["x.witness.deadbeefdeadbeef"
+                ".witness.deadbeefdeadbeef"
+                "sha256-ab.witness.0000000000000000"]]
+      (spit (io/file root "roots" nm) "garbage"))
+    ;; a short-named event file and a short by-hash file
+    (let [evdir (->> (io/file root "tickets") .listFiles first
+                     (#(io/file % "events")))]
+      (spit (io/file evdir "short.edn") "{:not :an-event}"))
+    (.mkdirs (io/file root "processes" "by-hash"))
+    (spit (io/file root "processes" "by-hash" "short.edn") "{:x 1}")
+    (let [r (run "verify")]
+      (is (contains? #{0 1} (:exit r)))
+      (is (re-find #"verify: (PASS|FAIL)" (:out r)))
+      (is (h/clean-output? (str (:out r) (:err r)))
+          (str (:out r) (:err r))))))
+
 ;; ----------------- the HTTP serve and MCP stdio surfaces
 
 (defn- http-status

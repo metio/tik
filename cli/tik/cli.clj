@@ -129,14 +129,19 @@
   (.write w (str "#inst \"" i "\"")))
 
 (defn- sid
-  "A ticket id's display form: the first 8 hex chars."
+  "A ticket id's display form: the first 8 hex chars. Total over any
+  input — real ids are long, but hostile FILENAMES (roots/, event and
+  by-hash files) reach the display path too, so a short string returns
+  whole rather than an out-of-bounds crash."
   [x]
-  (subs (str x) 0 8))
+  (let [s (str x)] (subs s 0 (min 8 (count s)))))
 
 (defn- shash
-  "A content hash's display form: `sha256-` plus the first 12 hex chars."
+  "A content hash's display form: `sha256-` plus the first 12 hex chars.
+  Total over any input (see sid): a hostile-short hash-shaped filename
+  displays whole, never crashes."
   [x]
-  (subs (str x) 0 19))
+  (let [s (str x)] (subs s 0 (min 19 (count s)))))
 
 (defn- print-problems
   "Print lint problems as `[level] msg` lines; true when any is an
@@ -1570,11 +1575,11 @@
                      deps (remove settled (get edges n))]
                  (str "<div class='card " (name st) "'>"
                       "<div class='t'>" (esc (title n)) "</div>"
-                      "<div class='id'>" (esc (subs (str n) 0 (min 8 (count (str n))))) "</div>"
+                      "<div class='id'>" (esc (sid n)) "</div>"
                       (when (pos? u) (str "<div class='u'>unlocks " u "</div>"))
                       (when (seq deps)
                         (str "<div class='w'>waiting on "
-                             (str/join ", " (map #(esc (subs (str %) 0 (min 8 (count (str %))))) deps))
+                             (str/join ", " (map #(esc (sid %)) deps))
                              "</div>"))
                       "</div>")))
         column (fn [label ns]
