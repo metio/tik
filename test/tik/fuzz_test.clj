@@ -308,6 +308,8 @@
     :gen (one gen/any-equatable)}
    {:sym 'tik.canonical/check-nesting :f canonical/check-nesting
     :gen (one gen/string)}
+   {:sym 'tik.canonical/parse :f canonical/parse
+    :gen (one gen/string)}
    {:sym 'tik.event/mint :f event/mint
     :gen (one gen-garbage)}
    {:sym 'tik.reduce/ticket-state :f red/ticket-state
@@ -583,8 +585,7 @@
                   [zalgo]]]
       (let [r (apply run argv)]
         (is (contains? #{0 1} (:exit r)) (pr-str argv))
-        (is (not (re-find h/forbidden-output
-                          (str (:out r) (:err r))))
+        (is (h/clean-output? (str (:out r) (:err r)))
             (str (pr-str argv) "\n" (:err r)))))))
 
 (deftest adopt_over_hostile_template_files_never_traces
@@ -593,14 +594,10 @@
   ;; expanded), a malformed marker, or a scalar body must each answer
   ;; with a message and exit 1 — never a ClassCast or other raw trace
   (let [root (h/temp-dir! "tik-adopt")
-        repo (System/getProperty "user.dir")
         run (fn [file body]
               (spit (io/file root file) body)
-              (sh/sh "bb" "tik" "adopt" (str (io/file root file))
-                     :in ":x\n"                 ; feed any interactive prompt
-                     :dir repo
-                     :env (assoc (into {} (System/getenv))
-                                 "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz")))]
+              (h/run-tik! {:root root :in ":x\n"}
+                          "adopt" (str (io/file root file))))]
     (.mkdirs (io/file root "processes"))
     (doseq [[file body]
             [["a.tmpl.edn" "{:tik/template {:a 1}}"]                 ; no :process/id
@@ -611,8 +608,7 @@
              ["f.edn" "{:not :a-process}"]]]                         ; plain, no id
       (let [r (run file body)]
         (is (contains? #{0 1} (:exit r)) (pr-str [file (:exit r)]))
-        (is (not (re-find h/forbidden-output
-                          (str (:out r) (:err r))))
+        (is (h/clean-output? (str (:out r) (:err r)))
             (str file "\n" (:out r) (:err r)))))))
 
 ;; -------------------------------------------- garbage config files
@@ -639,8 +635,7 @@
         (is (= 1 (:exit r)) (pr-str [file argv]))
         (is (re-find #"malformed EDN in .*" (str (:err r)))
             (pr-str [file argv (:err r)]))
-        (is (not (re-find h/forbidden-output
-                          (str (:out r) (:err r))))
+        (is (h/clean-output? (str (:out r) (:err r)))
             (pr-str [file argv]))))
     (testing "a garbage context marker fails new with the file named"
       ;; markers are read only when cwd sits beneath the store holder,
@@ -673,7 +668,7 @@
       (is (re-find #"failed slack .* will retry next run" (str (:err r))))
       (is (.exists outfile)
           "the healthy sink delivered despite the dead one")
-      (is (not (re-find h/forbidden-output (str (:err r))))))))
+      (is (h/clean-output? (str (:err r)))))))
 
 ;; ------------------------------- packs, caches, hostile directory names
 
@@ -871,7 +866,7 @@
         (is (re-find #"verify: FAIL" (:out r)))
         (is (re-find #"ok 1 event\(s\)" (:out r))
             "the audit covered the healthy ticket too")
-        (is (not (re-find h/forbidden-output (str (:out r) (:err r)))))))))
+        (is (h/clean-output? (str (:out r) (:err r))))))))
 
 (deftest hostile_sqlite_rows_fail_well
   ;; rows written around append! — garbage bytes under an honest id, a
@@ -919,8 +914,7 @@
     (let [r (run "verify")]
       (is (contains? #{0 1} (:exit r)))
       (is (re-find #"verify: (PASS|FAIL)" (:out r)))
-      (is (not (re-find h/forbidden-output
-                        (str (:out r) (:err r))))))))
+      (is (h/clean-output? (str (:out r) (:err r)))))))
 
 ;; ----------------- the HTTP serve and MCP stdio surfaces
 
@@ -944,10 +938,7 @@
   (let [root (h/temp-dir! "tik-serve")
         repo (System/getProperty "user.dir")
         port 7801
-        _ (sh/sh "bb" "tik" "new" "track" "--title" "served"
-                 :dir repo
-                 :env (assoc (into {} (System/getenv))
-                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))
+        _ (h/tik! {:root root} "new" "track" "--title" "served")
         cmd ^"[Ljava.lang.String;" (into-array
                                     String
                                     ["bb" "tik" "serve" "--port" (str port)])
@@ -986,10 +977,7 @@
   ;; leave the SESSION intact — a later well-formed request still works
   (let [root (h/temp-dir! "tik-mcp")
         repo (System/getProperty "user.dir")
-        _ (sh/sh "bb" "tik" "new" "track" "--title" "mcp fodder"
-                 :dir repo
-                 :env (assoc (into {} (System/getenv))
-                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))
+        _ (h/tik! {:root root} "new" "track" "--title" "mcp fodder")
         lines (str/join
                "\n"
                ["{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}"
@@ -1010,8 +998,7 @@
                  :env (assoc (into {} (System/getenv))
                              "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))]
     (is (zero? (:exit r)) (:err r))
-    (is (not (re-find h/forbidden-output
-                      (str (:out r) (:err r))))
+    (is (h/clean-output? (str (:out r) (:err r)))
         "no line stack-traces the session")
     (testing "every emitted line is a valid JSON-RPC object"
       (doseq [line (remove str/blank? (str/split-lines (:out r)))]
@@ -1101,13 +1088,11 @@
   ;; link's rel, and a raw (name 42) would cast-crash — poisoning the
   ;; whole board, since `ls --long` renders every ticket. Every render
   ;; must tolerate any rel.
-  (let [root (h/temp-dir! "tik-linkfuzz")
-        s (fstore/file-store (str root))
+  (let [{:keys [root store]} (h/temp-store!)
+        s store
         ticket (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
-    (store/append! s (event/create-ticket
-                      {:ticket ticket :actor "seb" :at t
-                       :title "linky" :process :track}))
+    (h/seed-ticket! s {:ticket ticket :at t :title "linky"})
     ;; only rels the kernel will actually STORE — a double is refused at
     ;; mint by the canonical emitter, so it never reaches a render
     (doseq [[i rel] (map-indexed vector [42 true "str" :depends-on])]
@@ -1121,8 +1106,7 @@
         (doseq [argv [["status" (str ticket)] ["ls" "--long"] ["ls"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (map? r) (pr-str argv))
-            (is (not (re-find h/forbidden-output
-                              (str (:out r) (:err r))))
+            (is (h/clean-output? (str (:out r) (:err r)))
                 (str (pr-str argv) "\n" (:err r)))))))))
 
 (deftest hostile_process_field_derives_cleanly_never_casts
@@ -1131,16 +1115,12 @@
   ;; single-ticket lens must surface that as a clean derivation error
   ;; (ex-info -> message, exit 1), never a raw ClassCast reported as a
   ;; bug; ls keeps isolating it per ticket and still shows the healthy.
-  (let [root (h/temp-dir! "tik-procfuzz")
-        s (fstore/file-store (str root))
+  (let [{:keys [root store]} (h/temp-store!)
+        s store
         healthy (random-uuid) hostile (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
-    (store/append! s (event/create-ticket
-                      {:ticket healthy :actor "seb" :at t
-                       :title "ok" :process :track}))
-    (store/append! s (event/create-ticket
-                      {:ticket hostile :actor "seb" :at t
-                       :title "bad" :process 42}))
+    (h/seed-ticket! s {:ticket healthy :at t :title "ok"})
+    (h/seed-ticket! s {:ticket hostile :at t :title "bad" :process 42})
     (h/with-cli-root root
       (fn []
         (doseq [argv [["status" (str hostile)]
@@ -1148,16 +1128,14 @@
                       ["whatif" (str hostile) "x=1"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (= 1 (:exit r)) (pr-str argv))
-            (is (not (re-find h/forbidden-output
-                              (str (:out r) (:err r))))
+            (is (h/clean-output? (str (:out r) (:err r)))
                 (str (pr-str argv) "\n" (:err r)))
             (is (re-find #"process is not a name" (:err r))
                 (str (pr-str argv) "\n" (:err r)))))
         (let [r (tik.cli/run-argv ["ls"])]
           (is (zero? (:exit r)))
           (is (re-find #"ok" (:out r)) "the healthy ticket still lists")
-          (is (not (re-find h/forbidden-output
-                            (str (:out r) (:err r))))))))))
+          (is (h/clean-output? (str (:out r) (:err r)))))))))
 
 (deftest garbage_time_args_fail_well
   ;; whatif's +duration, --at, and work week --from/--to parse ISO-8601
@@ -1165,13 +1143,11 @@
   ;; ordinary exception, not ex-info. A natural typo (a wall-clock +2d, a
   ;; bare date) must be a clean, example-carrying message + exit 1, never
   ;; surfaced as 'a bug in tik'.
-  (let [root (h/temp-dir! "tik-timefuzz")
-        s (fstore/file-store (str root))
+  (let [{:keys [root store]} (h/temp-store!)
+        s store
         id (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
-    (store/append! s (event/create-ticket
-                      {:ticket id :actor "seb" :at t
-                       :title "t" :process :track}))
+    (h/seed-ticket! s {:ticket id :at t :title "t"})
     (h/with-cli-root root
       (fn []
         (doseq [argv [["whatif" (str id) "+2d"]
@@ -1184,8 +1160,7 @@
             (is (= 1 (:exit r)) (pr-str argv))
             (is (re-find #"ISO-8601" (:err r))
                 (str (pr-str argv) "\n" (:err r)))
-            (is (not (re-find h/forbidden-output
-                              (str (:out r) (:err r))))
+            (is (h/clean-output? (str (:out r) (:err r)))
                 (str (pr-str argv) "\n" (:err r)))))
         (testing "the valid forms still work"
           (is (zero? (:exit (tik.cli/run-argv ["whatif" (str id) "+PT48H"]))))

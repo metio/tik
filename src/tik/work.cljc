@@ -17,7 +17,6 @@
   euros. Money is a fold over usage × pricing-table-at-date, supplied
   by the caller; totals are always derived, never stored (a stored
   aggregate can drift from its log; a derived one cannot)."
-  (:require [tik.stage :as stage])
   #?(:clj (:import (java.time Duration Instant))))
 
 (defn- ->instant ^Instant [t]
@@ -135,11 +134,3 @@
                               (/ (:cache-read p 0) 1e6))
                            (* (:cache-write-tokens u 0)
                               (/ (:cache-write p 0) 1e6)))]))})))
-
-(defn stage-at
-  "Which stages were reached when this event landed — the evolve
-  timeline gives cost-per-stage attribution with zero instrumentation
-  (PLAN §13)."
-  [process events roles event-id]
-  (some #(when (= event-id (:event-id %)) (:reached %))
-        (:timeline (stage/evolve process events roles))))

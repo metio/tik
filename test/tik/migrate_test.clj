@@ -10,9 +10,7 @@
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -20,8 +18,7 @@
   (:out (apply h/tik! {:root root :actor "seb"} args)))
 
 (deftest migrate-dry-run-then-apply
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-migrate" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-migrate")
         _ (io/make-parents (io/file root "processes" "x"))
         _ (io/copy (io/file repo "processes/tik-dev.edn")
                    (io/file root "processes/tik-dev.edn"))

@@ -14,7 +14,8 @@
   EDN (no pr-str quirks), which babashka reads with the default reader
   and must re-emit to the very same bytes. Events cross as a real file
   store both runtimes read identically."
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
@@ -24,9 +25,8 @@
             [tik.reduce :as red]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)
-           (java.time Instant)))
+  (:import
+   (java.time Instant)))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -136,8 +136,7 @@
   ;; a step up from canonical: the same file store must reduce to the
   ;; same ticket-state on both runtimes. The events are minted and
   ;; written by the JVM; babashka reads the identical store and derives.
-  (let [dir (.toFile (Files/createTempDirectory
-                      "tik-xrt" (make-array FileAttribute 0)))
+  (let [dir (h/temp-dir! "tik-xrt")
         s (fstore/file-store (str dir))
         t (random-uuid)
         i0 (Instant/parse "2026-01-01T00:00:00Z")

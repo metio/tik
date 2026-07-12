@@ -16,9 +16,7 @@
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private v1
   (str "{:process/id :gct :process/version 1 :process/guard-vocab 1"
@@ -38,8 +36,7 @@
          args))
 
 (deftest orphaned_definitions_are_collectable_without_touching_verify
-  (let [store (.toFile (Files/createTempDirectory
-                        "tik-gc" (make-array FileAttribute 0)))
+  (let [store (h/temp-dir! "tik-gc")
         procs (doto (io/file store "processes") .mkdirs)]
     (.mkdirs (io/file store "tickets"))
     ;; a ticket under v1, then the named file moves on to v2 and the

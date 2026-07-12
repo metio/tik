@@ -3,11 +3,10 @@
 (ns tik.cli-test
   "The porcelain's parsing contract — the H9 surface: values people
   actually type must round-trip without EDN knowledge."
-  (:require [clojure.string :as str]
+  (:require [tik.harness :as h]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [tik.cli :as cli])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [tik.cli :as cli]))
 
 (def parse-value #'cli/parse-value)
 
@@ -39,8 +38,7 @@
   ;; every exit! trapped into a CODE instead of killing the process —
   ;; this is what lets the MCP server reuse the whole CLI without a
   ;; subprocess (cli/tik/mcp.clj)
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-runargv" (make-array FileAttribute 0)))]
+  (let [root (h/temp-dir! "tik-runargv")]
     (System/setProperty "user.name" "tester")
     (testing "a successful command returns exit 0 and captures stdout"
       (let [_ (in root "new" "track" "--title" "in-process ticket")

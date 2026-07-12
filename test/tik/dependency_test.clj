@@ -9,9 +9,7 @@
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private task-process
   (str "{:process/id :task :process/version 1 :process/guard-vocab 1"
@@ -27,8 +25,7 @@
          args))
 
 (deftest depends_on_holds_a_ticket_back_until_its_upstream_settles
-  (let [store (.toFile (Files/createTempDirectory
-                        "tik-dep" (make-array FileAttribute 0)))]
+  (let [store (h/temp-dir! "tik-dep")]
     (.mkdirs (io/file store "processes"))
     (spit (io/file store "processes" "task.edn") task-process)
     (let [a (str/trim (:out (tik store "new" "task" "--title" "upstream A")))
@@ -55,8 +52,7 @@
 (deftest a_dangling_dependency_blocks_conservatively
   ;; an unresolvable :depends-on target counts as unmet — never call a
   ;; ticket ready on a dependency the store cannot even find
-  (let [store (.toFile (Files/createTempDirectory
-                        "tik-dep2" (make-array FileAttribute 0)))]
+  (let [store (h/temp-dir! "tik-dep2")]
     (.mkdirs (io/file store "processes"))
     (spit (io/file store "processes" "task.edn") task-process)
     (let [b (str/trim (:out (tik store "new" "task" "--title" "orphan B")))]

@@ -6,3 +6,4 @@ board.html
 .verify-cache
 /target/
 /.derived-cache.json
+/.derived-cache.edn

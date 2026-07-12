@@ -8,9 +8,7 @@
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -18,8 +16,7 @@
   (apply h/run-tik! {:root root :actor "seb"} args))
 
 (deftest store_lint_names_the_fix_and_spares_the_settled
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-lint" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-lint")
         _ (io/copy (io/file repo "processes/support-request.edn")
                    (io/file (doto (io/file root "processes")
                               (.mkdirs)) "support-request.edn"))
@@ -46,8 +43,7 @@
             (:out r))))))
 
 (deftest prose_rot_heuristics_and_live_links
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-rot" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-rot")
         _ (io/copy (io/file repo "processes/support-request.edn")
                    (io/file (doto (io/file root "processes")
                               (.mkdirs)) "support-request.edn"))
@@ -80,8 +76,7 @@
         (is (re-find #"unresolved" (:out r)))))))
 
 (deftest declared_types_end_the_quoting_wars
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-typed" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-typed")
         _ (io/copy (io/file repo "processes/tik-dev.edn")
                    (io/file (doto (io/file root "processes") (.mkdirs))
                             "tik-dev.edn"))

@@ -9,9 +9,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [tik.cli :as cli])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [tik.cli :as cli]))
 
 (def ^:private payload #'cli/effect-payload)
 
@@ -41,8 +39,7 @@
            (set (keys (payload {:type :something-new} tr)))))))
 
 (deftest the_command_sink_pipes_webhook_json_to_any_program
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-fx" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-fx")
         outfile (io/file root "received.json")
         tik! (fn [& args]
                (:out (apply h/tik! {:root root :actor "seb"} args)))

@@ -9,9 +9,7 @@
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (defn- tik! [root & args]
   (let [in (when (= :in (first (take-last 2 args))) (last args))
@@ -19,8 +17,7 @@
     (:out (apply h/tik! {:root root :actor "agent" :in in} args))))
 
 (deftest the_round_trip_asks_and_the_answer_advances_the_stage
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-loop" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-loop")
         outbox (io/file root "outbox.eml")
         id (str/trim (tik! root "new" "track" "--title" "need the invoice id"))]
     (spit (io/file root "effects.edn")

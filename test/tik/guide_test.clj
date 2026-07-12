@@ -7,11 +7,8 @@
   interactive skip-list — so the doc and the software cannot drift
   apart without this test failing."
   (:require [tik.harness :as h]
-            [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -41,8 +38,7 @@
              (rest (str/split line #"\s+"))))))
 
 (deftest the_guide_is_executable_start_to_finish
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-guide" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-guide")
         state (atom {})
         ;; quoted titles survive word-splitting badly; the two `new`
         ;; commands are run structurally instead
@@ -82,11 +78,8 @@
             (is (zero? (:exit r))
                 (str line "\n" (:out r) "\n" (:err r)))))))
     (testing "the guide's storyline actually happened"
-      (let [status (sh/sh "bb" "tik" "status" (:id @state)
-                          :dir repo
-                          :env (assoc (into {} (System/getenv))
-                                      "TIK_ROOT" (str root)
-                                      "TIK_ACTOR" "alice"))]
+      (let [status (h/run-tik! {:root root :actor "alice"}
+                               "status" (:id @state))]
         (is (re-find #"login fails on Firefox" (:out status)))))))
 
 (deftest every_guide_command_is_covered
