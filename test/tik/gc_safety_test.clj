@@ -70,7 +70,9 @@
 
         (testing "gc --apply removes the orphan"
           (let [r (tik store "gc" "--apply")]
-            (is (re-find #"removed 1 definition" (:out r))))
+            (is (re-find #"removed 1 definition" (:out r)))
+            (is (re-find #"NOT version-controlled" (:out r))
+                "a non-git store must not promise git recovery it cannot give"))
           (is (= 1 (count (.listFiles by-hash)))
               "one archive (the live v2) remains"))
 

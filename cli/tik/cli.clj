@@ -213,6 +213,14 @@
 
 (defn- by-hash-file ^File [hash] (io/file (root) "processes" "by-hash" (str hash ".edn")))
 
+(defn- git-tracked?
+  "Is `dir` inside a git work tree? Governs whether a destructive op can
+  honestly promise git recovery."
+  [dir]
+  (try
+    (zero? (:exit (sh/sh "git" "-C" (str dir) "rev-parse" "--is-inside-work-tree")))
+    (catch Exception _ false)))
+
 (defn- archive-process!
   "Store the definition content-addressed (processes/by-hash/<hash>.edn,
   canonical bytes — sha256sum(file) = filename, the ADR 0007 pattern),
@@ -816,7 +824,11 @@
         (if (:apply opts)
           (do (doseq [^File f orphans] (io/delete-file f))
               (println (str "removed " (count orphans) " definition(s)."
-                            " Recoverable from git history if needed.")))
+                            (if (git-tracked? (root))
+                              " Recoverable from git history if needed."
+                              (str " This store is NOT version-controlled —"
+                                   " back up first (or `git init` the store)"
+                                   " if you might ever need the old rules.")))))
           (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
 
 (defn- cmd-init
