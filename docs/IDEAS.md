@@ -275,6 +275,31 @@ abstractions generalize.
 - **Compliance process libraries as a product** — curated, signed
   definitions (ISO 27001, medical device) sold or maintained as a
   catalog. Depends on banked process composition (§19) proving out.
+- **Software supply-chain security (SLSA / in-toto / SSDF)** — the
+  strongest commercial fit, because in-toto already IS tik's model: a
+  chain of signed attestations about supply-chain steps, verified
+  against a layout (policy). A tik process definition is that layout —
+  stages are steps, guards are "artifact attested by this role, SBOM
+  present, scan passed, build signed by CI" — and the frontier
+  derivation answers "is this release compliant?" offline and forever,
+  with WHY (reasons are the API). The differentiator over the field is
+  derived-beats-declared: SLSA/badge tools *declare* compliance (a
+  signed statement); tik *derives* it from the evidence and proves the
+  derivation to a third party who trusts nothing but the signatures and
+  hashes. The pieces already exist — signed attestations, hash-pinned
+  rulesets, witness countersignatures, banked Rekor/OTS anchoring — and
+  the evidence bundle productizes as "everything a customer or auditor
+  needs to re-derive your SLSA L3 claim offline." Three product shapes:
+  a **compliance-as-derivation** catalog (SLSA/SSDF/EO-14028 definitions,
+  extending the compliance-libraries idea); an **org-wide attestation
+  hub** (collect build/scan/sign/SBOM attestations across every repo —
+  the metio renovate-rollout shape generalized — and derive per-artifact
+  compliance plus a shareable bundle); and an **in-toto-compatible
+  verifier** positioned as the more expressive, explainable,
+  offline-forever alternative. Composes with agent accountability (§13):
+  "which agent built this, from what, who approved" is the same derived
+  provenance question. Sigstore/Rekor is the same transparency-log
+  philosophy tik already speaks.
 
 ## Kernel validation hypotheses
 
