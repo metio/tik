@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-12T08:48:07.022Z" :event/body {:fact/path [:summary] :fact/value "tik gc no longer promises git recovery a non-git store cannot deliver"} :event/parents #{"sha256-3b95c0e18fdc83a95855245655a0bc6d958f992b805a3713f72002c514c91311"} :event/ticket #uuid "b92ab5af-2e73-4345-81fb-2203a899d5b3" :event/type :fact/assert}
