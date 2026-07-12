@@ -1720,6 +1720,25 @@
   (try (select/compile (or expr ""))
        (catch clojure.lang.ExceptionInfo e (die (ex-message e)))))
 
+(defn- selector-rows
+  "A selector-row for every ticket, ISOLATING per-ticket derivation
+  failures the way `ls`/`next` do: a ticket whose log cannot derive is
+  skipped and named on stderr, never taking the whole selection down —
+  one poisoned ticket must not hide the healthy from a `--where` query."
+  [s t]
+  (let [skipped (volatile! [])
+        rows (into []
+                   (keep (fn [id]
+                           (try (selector-row t (assoc (ticket-ctx s id) :id id))
+                                (catch clojure.lang.ExceptionInfo e
+                                  (vswap! skipped conj [id (ex-message e)])
+                                  nil))))
+                   (store/ticket-ids s))]
+    (doseq [[id msg] @skipped]
+      (binding [*out* *err*]
+        (println (str "skipping " (sid id) ": " msg))))
+    rows))
+
 (defn- cmd-ls
   "Open tickets by default; settled ones (sticky terminal reached —
   :landed, :closed, :validated, :killed) hide behind --all. `--where`
@@ -1740,7 +1759,7 @@
                         :stale-ms (max 0 (- (inst-ms t)
                                             (:last-event-ms row 0)))))
                (filter (compiled-selector (:where opts))
-                       (map #(selector-row t %) (all-ticket-ctx s))))
+                       (selector-rows s t)))
         visible (if (:all opts) rows (remove :settled? rows))]
     (when-not (emit-data opts
                          (mapv #(select-keys % [:id :title :current :describe :settled?])
@@ -2326,7 +2345,7 @@
         (println (count pairs) "lookalike pair(s) at >="
                  (str (int (* 100 threshold)) "%")))
       (let [pred (compiled-selector (str/join " " pos))
-            hits (filter pred (map #(selector-row t %) (all-ticket-ctx s)))]
+            hits (filter pred (selector-rows s t))]
         (when-not (emit-data opts (mapv #(select-keys % [:id :title :reached]) hits))
           (doseq [{:keys [id title reached]} hits]
             (println (tint "2" (sid id)) title

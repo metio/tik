@@ -570,8 +570,10 @@
     (doseq [argv [["set"] ["set" "="] ["set" "x" "=y"]
                   ["status"] ["explain"] ["log"] ["causal"]
                   ["new" "\ud83c\udfab"] ["new" "track" "--title"]
-                  ["ls" "--where" "="] ["ls" "--filter" "%%%"]
-                  ["query"] ["query" "fact"]
+                  ["ls" "--where" "="] ["ls" "--where" ":::"]
+                  ["ls" "--where" "not"] ["ls" "--where" "fact:"]
+                  ["ls" "--format" "yaml"] ["ls" "--format"]
+                  ["query"] ["query" "bogus=1"] ["search"]
                   ["whatif" "zzzz" "+NOT-A-DURATION"]
                   ["migrate" "zzzz"] ["bundle"] ["witness" "zzzz"]
                   ["attest" "zzzz"] ["work" "??"]
@@ -1133,10 +1135,19 @@
                 (str (pr-str argv) "\n" (:err r)))
             (is (re-find #"process is not a name" (:err r))
                 (str (pr-str argv) "\n" (:err r)))))
-        (let [r (tik.cli/run-argv ["ls"])]
-          (is (zero? (:exit r)))
-          (is (re-find #"ok" (:out r)) "the healthy ticket still lists")
-          (is (h/clean-output? (str (:out r) (:err r)))))))))
+        ;; the WHOLE-STORE lenses must isolate the poison per ticket — a
+        ;; single unreadable ticket must never hide the healthy from the
+        ;; board (fast path) OR from a selector query (slow path)
+        (doseq [argv [["ls"]
+                      ["ls" "--where" "stage=:open"]
+                      ["query" "stage=:open"]
+                      ["search" "ok"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (zero? (:exit r)) (pr-str argv))
+            (is (re-find #"ok" (:out r))
+                (str (pr-str argv) " — the healthy ticket still lists"))
+            (is (h/clean-output? (str (:out r) (:err r)))
+                (str (pr-str argv) "\n" (:err r)))))))))
 
 (deftest garbage_time_args_fail_well
   ;; whatif's +duration, --at, and work week --from/--to parse ISO-8601
@@ -1204,6 +1215,39 @@
               (is (try (canonical/parse line) true
                        (catch Exception _ false))
                   (str (pr-str argv) " printed unreadable EDN:\n" line)))))))))
+
+(deftest every_json_output_is_readable_json
+  ;; the --format json surface is machine-facing too: every line must
+  ;; parse as JSON. json-safe must coerce what cheshire cannot encode
+  ;; (Instant -> ISO string, set -> array, non-name key -> string), so a
+  ;; time-typed fact or a set-valued reason never emits invalid JSON.
+  (let [{:keys [root store]} (h/temp-store!)
+        id (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")
+        parse-json (requiring-resolve 'cheshire.core/parse-string)]
+    (h/seed-ticket! store {:ticket id :at t :title "json fodder"})
+    (doseq [[i [path value]] (map-indexed vector
+                                          [[[:when] t]
+                                           [[:link :depends-on] "deadbeef"]])]
+      (store/append! store (event/assert-fact
+                            {:ticket id :actor "seb"
+                             :at (.plusSeconds t (inc i))
+                             :parents (tik.dag/heads (store/events store id))
+                             :path path :value value})))
+    (h/with-cli-root root
+      (fn []
+        (doseq [argv [["ls" "--format" "json"]
+                      ["explain" (str id) "--format" "json"]
+                      ["next" "--format" "json"]
+                      ["query" "stage=:open" "--format" "json"]
+                      ["work" "week" "--actor" "seb" "--format" "json"]
+                      ["work" "cost" "--format" "json"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (zero? (:exit r)) (pr-str argv))
+            (doseq [line (remove str/blank? (str/split-lines (:out r)))]
+              (is (try (parse-json line) true
+                       (catch Exception _ false))
+                  (str (pr-str argv) " printed invalid JSON:\n" line)))))))))
 
 ;; ------------------- the OIDC bridge over a hostile identity provider
 
