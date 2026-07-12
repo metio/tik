@@ -7,19 +7,11 @@
   content-addressed, so a git merge of two replicas only ever ADDS files —
   union merge, conflict-free by construction. Blobs live under
   tickets/<uuid>/blobs/, also named by hash."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.store.protocol :as p])
-  (:import (java.io File)
-           (java.time Instant)))
-
-(def edn-readers
-  ;; Read #inst as java.time.Instant so values round-trip through the
-  ;; canonical printer unchanged.
-  {'inst (fn [s] (Instant/parse s))
-   'uuid (fn [s] (java.util.UUID/fromString s))})
+  (:import (java.io File)))
 
 (defn parse-event
   "The one byte->event parse every backend shares: stored text -> event
@@ -31,8 +23,7 @@
   is an ex-info with :reason :event/unreadable carrying `err-data`,
   which names where the caller read from (file, pack, or db row)."
   [text id err-data]
-  (let [parsed (try (canonical/check-nesting text)
-                    (edn/read-string {:readers edn-readers} text)
+  (let [parsed (try (canonical/parse text)
                     (catch Exception e
                       (throw (ex-info "unreadable event"
                                       (assoc err-data :reason :event/unreadable)
@@ -63,7 +54,9 @@
   [^File dir]
   (let [idx (pack-index-file dir)]
     (when (.isFile idx)
-      (try (edn/read-string (slurp idx))
+      ;; through the guarded parse, so a hostile index with pathological
+      ;; nesting is an ex-info here, not a reader stack overflow
+      (try (canonical/parse (slurp idx))
            (catch Exception e
              (throw (ex-info "unreadable pack index"
                              {:reason :pack/unreadable :file (str idx)}

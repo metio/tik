@@ -18,7 +18,8 @@
     uuids, instants (java.time.Instant or java.util.Date)
   - floats, ratios, bigdecimals and everything else are REJECTED: their
     printed forms are not reliably byte-stable across runtimes."
-  (:require [clojure.string :as str])
+  (:require [clojure.edn :as edn]
+            [clojure.string :as str])
   (:import (java.security MessageDigest)
            (java.time Instant)
            (java.time.temporal ChronoUnit)))
@@ -27,6 +28,31 @@
   "Bump on ANY change to canonical output. Events may carry this so future
   verifiers know which rules produced a hash."
   1)
+
+(def edn-readers
+  "The read half of the format: #inst as java.time.Instant and #uuid as
+  UUID, so values round-trip through the canonical printer unchanged.
+  Every reader of canonical bytes — and every porcelain EDN read that
+  may hold such values — uses these, or a written #inst comes back as a
+  java.util.Date and only re-emits by the printer's grace."
+  {'inst (fn [s] (Instant/parse s))
+   'uuid (fn [s] (java.util.UUID/fromString s))})
+
+(declare check-nesting)
+
+(defn parse
+  "The one guarded EDN read: nesting depth precheck (a 100k-deep vector
+  overflows the recursive reader with an Error no fail-well guard
+  catches), then edn/read-string with the canonical readers. Fails WELL
+  — any rejection is an ex-info {:reason :edn/malformed}; callers wrap
+  with their own context (which file, which row, which argument)."
+  [text]
+  (check-nesting text)
+  (try (edn/read-string {:readers edn-readers} text)
+       (catch #?(:clj Exception :cljs :default) e
+         (throw (ex-info (str "malformed EDN — " (ex-message e))
+                         {:reason :edn/malformed}
+                         e)))))
 
 (defn- emit-inst ^String [^Instant i]
   (str "#inst \"" (str (.truncatedTo i ChronoUnit/MILLIS)) "\""))

@@ -68,7 +68,7 @@
     ;; forever (a keyword with a space, an unprintable value). Refusing
     ;; at mint closes corrupt-on-write for every producer at once.
     (let [bytes (canonical/emit (dissoc e :event/id))
-          reread (try (edn/read-string bytes)
+          reread (try (edn/read-string {:readers canonical/edn-readers} bytes)
                       (catch #?(:clj Exception :cljs :default) _ ::unreadable))]
       ;; byte-level round trip: what parses back must re-emit to the
       ;; very same bytes (Instant and Date print identically, so time

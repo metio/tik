@@ -25,7 +25,7 @@
     (is (seq cases) "corpus directories present")
     (doseq [^File dir cases]
       (testing (.getName dir)
-        (let [expected (edn/read-string {:readers fstore/edn-readers}
+        (let [expected (edn/read-string {:readers canonical/edn-readers}
                                         (slurp (io/file dir "expected.edn")))
               s (fstore/file-store (.getPath dir))
               tid (first (store/ticket-ids s))
