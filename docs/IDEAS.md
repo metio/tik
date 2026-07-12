@@ -171,6 +171,17 @@ abstractions generalize.
     proves the signing fell within the validity window — so a leaked
     ephemeral key or a backdated event is caught. Needs the validity
     window + the anchor to be safe; the design is settled (§9 rung 3).
+  - **DPoP (RFC 9449) fits twice.** As TRANSPORT hardening: make the
+    browser→signer POST sender-constrained (a DPoP proof per request),
+    so a stolen session cannot replay writes. And elegantly: the keyless
+    tier needs a client-held, OIDC-bound ephemeral key — which is
+    exactly what DPoP already establishes — so one per-session key does
+    double duty: proves-possession for the token (DPoP) AND signs tik
+    events. Caveat: a DPoP proof is a short-lived request-auth artifact,
+    NOT a durable content signature — reuse the KEY, not the proof; the
+    event still gets a proper content-signature kept domain-separated
+    from DPoP proofs (tik's sign.clj already namespaces tik-event /
+    tik-process / tik-witness for exactly this non-replay reason).
   Read is the existing status+explain rendering; write maps to the
   existing gated `agent set` path; signing is the existing bridge
   pattern (Tier 1) or a new sidecar-kind rung (Tier 2). No new event
@@ -191,6 +202,21 @@ abstractions generalize.
   triggers reassessment; long-ignored tickets accumulate an attention
   signal. Expressible today via `:elapsed-since`; the concepts just
   need naming in `next`.
+- **General ranking over facts + derivations (deadlines are one case)** —
+  the tik-native answer to "sort so the soonest-due ticket is on top."
+  Do NOT special-case a `:deadline` fact: §19 already rejects stored
+  priority/urgency SCORES (materialized derivation that drifts) while
+  keeping declared priority ANNOTATIONS legitimate, and notes `next` is
+  already the priority lens. So a deadline is just an ordinary declared
+  time-fact (`[:due]`, an instant), and "soonest first" is one instance
+  of a general lens ranking: `ls --sort <fact-path>` (chronological for
+  time-facts), and — the tik touch — ranking by a DERIVED signal
+  (time-remaining = f(due, now)), so urgency is never stored, only
+  derived and re-sorted every read. A process may carry an authoring
+  hint ("default-order by [:due] ascending") the kernel ignores
+  (ADR 0009). This subsumes explain-ranking, attention-debt, and
+  unlock-impact (which `next` already does) under one lens mechanism —
+  deadline is a ranking key, not a special path.
 
 ## After H3 — execution, distribution, governance at scale
 
@@ -354,6 +380,28 @@ abstractions generalize.
   outdated head, where a branch diverged, which conflicts came from
   independent replicas. Becomes interesting with Phase 1 multi-replica
   sync; pure `tik.dag` computation, no kernel change.
+- **Plan lens over dependency links (a plan that cannot go stale)** — the
+  tik-native answer to "organize future work into one cohesive plan."
+  NOT a planner: §19 rejects a stored, enforced schedule as "the
+  workflow engine wearing our clothes," and the kernel never answers
+  "what should happen next." The reframe: a plan is not a program to
+  execute, it is a DERIVED reading of "what work exists, what depends on
+  what, and what is ready" — which re-derives from current facts every
+  read, so unlike a maintained Gantt chart it cannot rot. Two pieces,
+  both pure derivation, no kernel change: (1) **first-class cross-ticket
+  dependency links** — `[:link :depends-on]` / `[:link :blocks]` are
+  facts already (the renovate rollout's parent/checklist IS this shape);
+  making `next` and the lens derive readiness across the WHOLE link-DAG
+  (not just within one ticket) is the step. (2) a **roadmap/epic lens**
+  over that DAG: per-item derived status (done / ready / blocked /
+  waiting-on-role) and a CRITICAL PATH derivable from the graph — the
+  `tik query` deferral (§19: explain generalized to the whole estate)
+  applied to dependencies, and a natural companion to the task-oriented
+  web UI. What stays REJECTED (§19): a stored authoritative schedule,
+  time-driven action, kernel-enforced assignment/capacity — a due-date
+  is a fact and "overdue" is a lens, but the system acting on a schedule
+  is not tik. Composes with the general-ranking lens above (order the
+  plan by readiness, critical-path position, or time-remaining).
 - **Formal verification of the user's process definition** — turn the
   formal-methods investment outward: a process definition IS a small
   state machine over a closed guard basis, so it is a natural target
