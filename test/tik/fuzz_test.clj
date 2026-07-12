@@ -12,6 +12,7 @@
             [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [clojure.walk]
             [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
@@ -198,6 +199,80 @@
     [{:process/id :fuzz :process/version 1 :process/stages stages}
      events (Instant/now) ge/roles]))
 
+(def ^:private gen-marker
+  "A template marker — a well-formed one, or a deceptively malformed one
+  (wrong arity, a non-keyword param key). The expander must expand the
+  first and reject the second, never crash on either."
+  (gen/one-of
+   [(gen/fmap (fn [k] [:tik/param k]) gen/keyword)
+    (gen/fmap (fn [k] [:tik/when k [:tik/param k]]) gen/keyword)
+    ;; malformed: right head, wrong shape
+    (gen/return [:tik/param])
+    (gen/fmap (fn [k] [:tik/param k :extra]) gen/keyword)
+    (gen/return [:tik/when])
+    (gen/fmap (fn [k] [:tik/when k]) gen/keyword)]))
+
+(def ^:private gen-template-body
+  "A template body salted with real and malformed markers, nested inside
+  vectors/maps so both the splice path and the substitute path are hit."
+  (gen/recursive-gen
+   (fn [inner]
+     (gen/one-of
+      [(gen/vector (gen/one-of [inner gen-marker]) 0 4)
+       (gen/map gen/keyword (gen/one-of [inner gen-marker]) {:max-elements 3})]))
+   (gen/one-of [gen/small-integer gen/keyword gen/string gen-marker])))
+
+(def ^:private gen-template
+  "A whole template — sometimes structural garbage, sometimes a real
+  :tik/template body with a plausible or hostile :tik/params schema,
+  paired with a param map that may be missing keys or carry wrong types."
+  (gen/let [body gen-template-body
+            schema (gen/one-of
+                    [(gen/return [:map [:x :int] [:y {:optional true} :string]])
+                     (gen/return [:map])
+                     (gen/return :garbage-schema)   ; a non-schema :tik/params
+                     gen/any-equatable])
+            with-schema? gen/boolean
+            params (gen/map (gen/elements [:x :y :z :ghost])
+                            gen/any-equatable {:max-elements 4})]
+    [(cond-> {:tik/template body}
+       with-schema? (assoc :tik/params schema))
+     params]))
+
+(defn- has-template-marker?
+  "Does any node in x still carry an unexpanded :tik/param / :tik/when
+  marker? The expander's soundness contract is that its output has none."
+  [x]
+  (let [found (atom false)]
+    (clojure.walk/postwalk
+     (fn [n]
+       (when (and (vector? n) (#{:tik/param :tik/when} (first n)))
+         (reset! found true))
+       n)
+     x)
+    @found))
+
+(defspec expand_is_total_and_its_output_is_marker_free (* 2 n)
+  ;; the expander eats a template adopted from an untrusted library, so
+  ;; it must fail well over hostile bodies AND — when it DOES return —
+  ;; leave no marker behind (a surviving [:tik/param …] would be a
+  ;; silently half-expanded definition, the worse-than-crashing outcome)
+  (prop/for-all [[template params] gen-template]
+    (let [outcome (try {:ok (tik.template/expand template params)}
+                       (catch clojure.lang.ExceptionInfo _ :rejected)
+                       (catch Throwable t {:crash t}))]
+      (cond
+        (= :rejected outcome) true
+        (:crash outcome) (do (println "NOT TOTAL: expand on"
+                                      (pr-str [template params])
+                                      "->" (class (:crash outcome)))
+                             false)
+        :else (let [marker (has-template-marker? (:ok outcome))]
+                (when marker
+                  (println "MARKER LEAKED: expand on" (pr-str [template params])
+                           "->" (pr-str (:ok outcome))))
+                (not marker))))))
+
 (def ^:private gen-garbage-definition
   "A process definition, structurally garbage or plausible-but-broken —
   the domain for the linter and definition lenses."
@@ -292,13 +367,12 @@
    {:sym 'tik.plan/ready :f tik.plan/ready
     :gen (gen/tuple gen-dep-graph gen-settled)}
    {:sym 'tik.template/expand :f tik.template/expand
-    :gen (gen/tuple
-          ;; sometimes a template (bounded body), sometimes garbage
-          (gen/one-of
-           [gen/any-equatable
-            (gen/fmap (fn [body] {:tik/template body})
-                      (gen/map gen/keyword gen/small-integer {:max-elements 4}))])
-          (gen/map gen/keyword gen/any-equatable {:max-elements 4}))}])
+    ;; gen-template carries real + malformed markers and hostile param
+    ;; specs; a separate defspec pins the marker-freedom of the output
+    :gen (gen/one-of [gen-template
+                      (gen/tuple gen/any-equatable
+                                 (gen/map gen/keyword gen/any-equatable
+                                          {:max-elements 4}))])}])
 
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
@@ -502,6 +576,8 @@
                   ["migrate" "zzzz"] ["bundle"] ["witness" "zzzz"]
                   ["attest" "zzzz"] ["work" "??"]
                   ["author" "--from" "/nonexistent.edn"]
+                  ["adopt"] ["adopt" "/nonexistent.tmpl.edn"]
+                  ["gc" "--apply"] ["plan"]
                   ["author" "check"] ["rollout"] ["probe" "zzzz"]
                   ["lint" " "] ["--" "--" "--"]
                   [zalgo]]]
