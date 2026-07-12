@@ -214,6 +214,26 @@ abstractions generalize.
   point: group claims are the IdP's word at a moment, so the event must
   record *when* and *from which issuer*, and downstream guards treat
   stale membership the way any time-bound fact is treated.
+- **Post-quantum signature rung** — event signatures are `ssh-keygen -Y`
+  ed25519 (EC discrete-log, breakable by Shor), so the identity ladder
+  (§9) wants a PQ rung. It fits without a format break, because the
+  load-bearing layer is NOT signatures: content-addressing is SHA-256,
+  only quadratically weakened by Grover (still ~128-bit) and already an
+  additively-migratable hash policy (ADR 0006, bump to SHA-384/512).
+  Signatures are detached sidecars (ADR 0007), authorship-not-
+  authorization (ADR 0010), so a PQ signature is a NEW sidecar kind
+  beside the ed25519 one — ideally hybrid (both), zero format break. The
+  tik-idiomatic algorithm is **SLH-DSA / SPHINCS+** (FIPS 205,
+  hash-based — its security rests on the same primitives tik already
+  trusts); ML-DSA/Dilithium (FIPS 204, lattice) is the smaller/faster
+  alternative. Not urgent: signatures are not "harvest now, decrypt
+  later" (tik never encrypts), and timestamp-anchoring (§9 upper rungs,
+  OTS/Rekor) already proves a signature predates any future CRQC, so
+  past events stay trustworthy even if ed25519 is later broken — the
+  hash-based anchor is itself PQ-safe. Practical blocker: OpenSSH's
+  `-Y` has PQ key-exchange but not PQ signature ALGORITHMS for user
+  keys yet, so the rung needs a separate ML-DSA/SPHINCS+ signer,
+  coreutils-adjacent like the ssh one.
 - **Customer information-request loop** — when a process needs facts
   only the customer can provide, everything decomposes into existing
   machinery: the *request* is an effect (ADR 0019: an email from an
