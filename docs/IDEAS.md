@@ -82,6 +82,28 @@ abstractions generalize.
   skill should draw from what `tik author prompt` and the lint rules
   already encode, so it stays honest as the vocabulary evolves — the
   same anti-staleness discipline tik applies to its own docs.
+- **`:hint` resolves to an OKF bundle** — the design already half-planted
+  (explain.cljc calls `:hint` "authored knowledge link (OKF bundle)";
+  PLAN §15 calls `kb/` an OKF bundle). Today a `:hint` is a bare path to
+  `kb/runbooks/*.md`; the step is to let it reference a bundle in an
+  Open-Knowledge-Format store — an org-wide, publicly shared knowledge
+  collection (metio/okf). The division of labor stays exactly as it is:
+  guards derive WHAT evidence a stage needs, the OKF bundle holds the
+  HOW, and `:hint` is the join — tik never duplicates the knowledge, it
+  references it (the same "never restate a system of record" law that
+  governs facts). Three things a bare path cannot give: **content-
+  addressing** (a `:hint` pinning a bundle HASH means a hash-pinned
+  process also pins the exact runbook version — knowledge provenance
+  matching event provenance); **public verifiability** (a shared,
+  signed process definition plus its OKF hints is a fully self-
+  describing workflow — what is required AND the authoritative knowledge
+  for each step, both independently checkable offline); and a **closed
+  loop** — org runbooks ARE knowledge, so PUBLISHING them to OKF is
+  itself a tik process (draft → reviewed → approved → published, signed
+  approval), so tik both produces the knowledge and consumes it via
+  hints. Pure authoring/porcelain: the kernel keeps carrying `:hint` as
+  an opaque string (ADR 0009) and never resolves it; resolution and
+  publication live in lenses and an OKF-aware `tik author`.
 - **Task-oriented web UI** — the 90%-of-users surface: current state as
   checkmarks, frontier as checkboxes, blocked-because from explain,
   action buttons generated from the missing facts' schemas. Entirely a
