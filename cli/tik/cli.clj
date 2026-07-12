@@ -188,7 +188,8 @@
                   (canonical/check-nesting s)
                   (with-open [r (java.io.PushbackReader.
                                  (java.io.StringReader. s))]
-                    (let [form (edn/read {:eof ::eof} r)
+                    (let [form (edn/read {:eof ::eof
+                                           :readers canonical/edn-readers} r)
                           rest (edn/read {:eof ::eof} r)]
                       [form (= ::eof rest)]))
                   (catch Exception _ [nil false]))]
@@ -202,9 +203,7 @@
   instead of exploding the reader. nil when the file is absent."
   [^File f]
   (when (.exists f)
-    (try (let [text (slurp f)]
-           (canonical/check-nesting text)
-           (edn/read-string text))
+    (try (canonical/parse (slurp f))
          (catch Exception e
            (throw (ex-info (str "malformed EDN in " f " — "
                                 (ex-message e))
@@ -388,6 +387,14 @@
   (let [id (resolve-id s ref)]
     (assoc (ticket-ctx s id) :id id)))
 
+(defn- all-ticket-ctx
+  "Every ticket's context (ticket-ctx plus :id), lazily — the opener of
+  every whole-store lens. Cache-gated loops (cmd-next) that avoid the
+  full fold on purpose do NOT use this."
+  [s]
+  (for [id (store/ticket-ids s)]
+    (assoc (ticket-ctx s id) :id id)))
+
 (declare display-title link-facts ticket-ctx)
 
 ;; ------------------------------------------------ derived-state cache
@@ -486,7 +493,7 @@
         current (stage/current-stages process reached)
         ops (guard-ops process)
         blocks (when (contains? ops :elapsed-since)
-                 (explain/explain process events t roles))
+                 (explain/explain process events t roles reached))
         dues (keep :due (mapcat :missing blocks))
         fm (guard/fact-map state)]
     {:valid-until (cond
@@ -504,7 +511,7 @@
            :describe (some fm [[:description] [:summary] [:statement]])
            :current (vec (sort-by str current))
            :reached (vec (sort-by str reached))
-           :settled? (next-lens/settled? process events t roles)
+           :settled? (next-lens/settled-reached? process reached)
            :last-event-ms (reduce (fn [acc e]
                                     (max acc (inst-ms (:event/at e))))
                                   0 events)
@@ -661,14 +668,13 @@
             (die (str "no git repositories directly under " holder)))
         s (the-store)
         t (now)
-        all (vec (for [id (store/ticket-ids s)]
-                   (assoc (ticket-ctx s id) :id id)))
+        all (vec (all-ticket-ctx s))
         child-of (into {}
                        (for [{:keys [id state]} all
                              :when (= (keyword proc-name) (:process state))
                              :let [r (red/fact-value state [:repo])]
                              :when r]
-                         [(if (keyword? r) (name r) (str r)) id]))
+                         [(safe-name r) id]))
         parent-title (or (:parent-title opts) (str proc-name " rollout"))
         parent-id
         (or (when-let [p (:parent opts)] (resolve-id s p))
@@ -759,7 +765,7 @@
             :when (and repo
                        (or (seq pos)
                            (not (next-lens/settled? process events t roles))))
-            :let [repo-name (if (keyword? repo) (name repo) (str repo))
+            :let [repo-name (safe-name repo)
                   dir (io/file holder repo-name)
                   probe (or (:command opts)
                             (let [f (process-file (process-name state))]
@@ -824,8 +830,7 @@
         t (now)
         ids (if (seq pos)
               [(resolve-id s (first pos))]
-              (for [id (store/ticket-ids s)
-                    :let [{:keys [events process roles]} (ticket-ctx s id)]
+              (for [{:keys [id events process roles]} (all-ticket-ctx s)
                     :when (next-lens/settled? process events t roles)]
                 id))
         packed (atom 0)]
@@ -934,7 +939,7 @@
                       (remove str/blank? (str/split raw #"[\s,]+"))))
       :enum (let [vs (m/children child)]
               (or (some #(when (= raw (str %)) %) vs) (keyword raw)))
-      (edn/read-string raw))))
+      (canonical/parse raw))))
 
 (defn- template-fields
   "Prompt specs for a template's :tik/params — one per :map entry."
@@ -1092,15 +1097,14 @@
                         :else (conj (pop acc) (str (peek acc) " " kv))))
                     [] kvs)
         s (the-store)
-        id (resolve-id s ticket)
-        proc (:process (ticket-ctx s id))]
+        {:keys [id process]} (load-ticket s ticket)]
     ;; heads recomputed per event: linear chain within one command
     (doseq [kv kvs :let [[k v] (str/split kv #"=" 2)
                          path (parse-key k)]]
       (append!* s (event/assert-fact
                    {:ticket id :actor (actor opts) :at (now)
                     :parents (dag/heads (store/events s id))
-                    :path path :value (typed-value proc path v)})
+                    :path path :value (typed-value process path v)})
                 opts))
     (println "ok")))
 
@@ -1122,9 +1126,8 @@
   changed — never 'transitions performed', because none were."
   [{:keys [pos]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
+        {:keys [events process roles]} (load-ticket s (first pos))
         k (if (second pos) (Long/parseLong (second pos)) 1)
-        {:keys [events process roles]} (ticket-ctx s id)
         ordered (vec (red/ordered events))
         before-events (subvec ordered 0 (max 1 (- (count ordered) k)))
         t (now)
@@ -1340,7 +1343,8 @@
     (when (:at opts)
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
-    (print (paint-explain (explain/render (explain/explain process events t roles))))
+    (print (paint-explain
+            (explain/render (explain/explain process events t roles reached))))
     (cache-flush!)))
 
 (defn- cmd-explain [{:keys [pos opts]}]
@@ -1372,7 +1376,7 @@
             (println (str "  " (pr-str via)))
             (doseq [eid events
                     :let [e (by-id eid)]]
-              (println (tint "2" (str "    ← " (subs eid 0 15) "… "
+              (println (tint "2" (str "    ← " (shash eid) "… "
                                       (name (:event/type e)) " by "
                                       (:event/actor e) " @ "
                                       (:event/at e)))))
@@ -1635,7 +1639,7 @@
   "--filter ':a :b' matches tickets whose current stage is any of them;
   a leading :not negates: --filter ':not :running'."
   [expr]
-  (let [ks (mapv edn/read-string (str/split (str/trim (str expr)) #"[\s,]+"))]
+  (let [ks (mapv canonical/parse (str/split (str/trim (str expr)) #"[\s,]+"))]
     (if (= :not (first ks))
       (let [ex (set (rest ks))] #(empty? (set/intersection ex %)))
       (let [in (set ks)] #(boolean (seq (set/intersection in %)))))))
@@ -1658,9 +1662,8 @@
                         :current (set (:current row))
                         :stale-ms (max 0 (- (inst-ms t)
                                             (:last-event-ms row 0)))))
-               (for [id (store/ticket-ids s)
-                   :let [{:keys [events state process roles]} (ticket-ctx s id)
-                         reached (stage/effective-reached process events t roles)
+               (for [{:keys [id events state process roles]} (all-ticket-ctx s)
+                   :let [reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)]]
                {:id id :title (display-title state) :current current
                 ;; the description is a FACT (searchable), not a comment:
@@ -1674,7 +1677,7 @@
                 :haystack (str/lower-case
                            (str (display-title state) " "
                                 (pr-str (guard/fact-map state))))
-                :settled? (next-lens/settled? process events t roles)}))
+                :settled? (next-lens/settled-reached? process reached)}))
         rows (cond->> rows
                (:filter opts) (filter (comp (stage-filter (:filter opts))
                                             :current))
@@ -1802,7 +1805,8 @@
       (println "  " path "=" (pr-str value)
                (if (= :present status) (str "(by " by ")")
                    (str "[" (name status) "]"))))
-    (print (explain/render (explain/explain proc events sim-now roles)))))
+    (print (explain/render
+            (explain/explain proc events sim-now roles reached)))))
 
 (def ^:private sim-help
   "  set k=v [k=v ...]   assert facts        retract <k>      withdraw a fact
@@ -1891,10 +1895,9 @@
         proc (read-edn-file (io/file (.getParentFile (.getAbsoluteFile f))
                                      process))
         roles (:process/roles proc {})
-        lint-errors (filter #(= :error (:level %)) (process/lint proc))
         failures (atom 0)]
-    (doseq [{:keys [msg]} lint-errors] (println "[error]" msg))
-    (when (seq lint-errors) (die "process definition has lint errors"))
+    (when (print-problems (process/lint proc))
+      (die "process definition has lint errors"))
     (doseq [{:case/keys [name steps expect]} cases]
       (let [create (event/create-ticket {:ticket (random-uuid) :actor "test"
                                          :at test-epoch :title name
@@ -1922,9 +1925,10 @@
           (do (swap! failures inc)
               (println "  FAIL " name)
               (doseq [p problems] (println "        " p))
-              (print (str/replace (explain/render
-                                   (explain/explain proc events now roles))
-                                  #"(?m)^" "        "))))))
+              (print (str/replace
+                      (explain/render
+                       (explain/explain proc events now roles reached))
+                      #"(?m)^" "        "))))))
     (if (zero? @failures)
       (println "test: PASS")
       (do (println (str "test: FAIL (" @failures ")")) (exit! 1)))))
@@ -2019,8 +2023,8 @@
         _ (when-not claim-str (die "usage: tik attest <id> <claim-edn>"))
         s (the-store)
         id (resolve-id s ticket)
-        claim (edn/read-string claim-str)
-        extra (some-> (:body opts) edn/read-string)]
+        claim (canonical/parse claim-str)
+        extra (some-> (:body opts) canonical/parse)]
     (append!* s (event/add-attestation
                  {:ticket id :actor (actor opts) :at (now)
                   :parents (dag/heads (store/events s id))
@@ -2079,7 +2083,7 @@
                             :path path :value (parse-value v)})
                         opts)
               (println "ok" (pr-str attempted)))
-      "attest" (let [claim (edn/read-string (first args))
+      "attest" (let [claim (canonical/parse (first args))
                      attempted [:attest claim]]
                  (when-not (some #(= attempted (:action %)) admissible)
                    (agent-refuse! who attempted admissible))
@@ -2161,7 +2165,8 @@
   [{:keys [pos opts]}]
   (let [proc-name (first pos)
         proc (if (str/ends-with? (str proc-name) ".edn")
-               (edn/read-string (slurp proc-name))
+               (or (read-edn-file (io/file proc-name))
+                   (die (str "no such file: " proc-name)))
                (load-process proc-name))
         s (the-store)
         [state t roles]
@@ -2193,7 +2198,8 @@
   [{:keys [pos]}]
   (let [proc-name (first pos)
         proc (if (str/ends-with? (str proc-name) ".edn")
-               (edn/read-string (slurp proc-name))
+               (or (read-edn-file (io/file proc-name))
+                   (die (str "no such file: " proc-name)))
                (load-process proc-name))
         s (the-store)
         reached (when-let [tid (second pos)]
@@ -2269,8 +2275,7 @@
               (println (count pairs) "lookalike pair(s) at >="
                        (str (int (* 100 threshold)) "%"))
               (exit! 0)))
-        rows (for [id (store/ticket-ids s)
-                   :let [{:keys [events state process roles]} (ticket-ctx s id)]]
+        rows (for [{:keys [id events state process roles]} (all-ticket-ctx s)]
                {:id id :title (display-title state) :state state :events events
                 :reached (stage/effective-reached process events t roles)})
         hit? (case q
@@ -2294,7 +2299,7 @@
                "actor" (fn [{:keys [events]}]
                          (some #(= (first args) (:event/actor %)) events))
                "stage" (fn [{:keys [reached]}]
-                         (contains? reached (edn/read-string (first args))))
+                         (contains? reached (canonical/parse (first args))))
                "derived-from" (fn [{:keys [events]}]
                                 (some #(= (first args)
                                           (get-in % [:event/body
@@ -2322,16 +2327,15 @@
   [{:keys [pos]}]
   (let [s (the-store)
         t (now)
-        rows (for [id (store/ticket-ids s)
-                   :let [{:keys [events state process roles]} (ticket-ctx s id)
-                         reached (stage/effective-reached process events t roles)
+        rows (for [{:keys [id events state process roles]} (all-ticket-ctx s)
+                   :let [reached (stage/effective-reached process events t roles)
                          current (stage/current-stages process reached)
-                         settled? (next-lens/settled? process events t roles)]]
+                         settled? (next-lens/settled-reached? process reached)]]
                {:id id :title (display-title state) :process (:process state)
                 :current current :settled? settled?
                 :parked? (contains? current :parked)
                 :facts (sort-by (comp pr-str key) (guard/fact-map state))
-                :blocks (explain/explain process events t roles)})
+                :blocks (explain/explain process events t roles reached)})
         chip (fn [{:keys [settled? parked?]}]
                (cond settled? "chip done" parked? "chip parked" :else "chip live"))
         html
@@ -2448,7 +2452,7 @@
     (append!* s e opts)
     (println (str "bound " (:identity/issuer claim) " subject "
                   (:identity/subject claim) " (" (:identity/username claim)
-                  ") to actor '" who "' — attestation " (subs (:event/id e) 0 15)
+                  ") to actor '" who "' — attestation " (shash (:event/id e))
                   "… on " registry-id))
     (exit! 0)))
 
@@ -2930,7 +2934,7 @@
     (case sub
       "record"
       (let [id (resolve-id s (second pos))
-            body (edn/read-string (nth pos 2))]
+            body (canonical/parse (nth pos 2))]
         (append!* s (event/add-attestation
                      {:ticket id :actor (actor opts) :at (now)
                       :parents (dag/heads (store/events s id))
@@ -2943,8 +2947,7 @@
       (let [who (or (:actor opts) (die "work week requires --actor"))
             from (some-> (:from opts) parse-instant)
             to (some-> (:to opts) parse-instant)
-            per-ticket (for [id (store/ticket-ids s)
-                             :let [{:keys [events state]} (ticket-ctx s id)]]
+            per-ticket (for [{:keys [id events state]} (all-ticket-ctx s)]
                          {:ticket id :title (:title state) :events events})
             d (work/draft per-ticket who from to)]
         (if (:edn opts)
@@ -2979,7 +2982,7 @@
                                     " you, carried with evidence"))))))))
 
       "cost"
-      (let [pricing (some-> (:pricing opts) slurp edn/read-string)
+      (let [pricing (some-> (:pricing opts) io/file read-edn-file)
             records (mapcat (fn [id]
                               (map #(assoc % :ticket id)
                                    (work/work-records
@@ -3141,8 +3144,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   (let [s (the-store)
         t (now)
         procs (distinct
-               (for [id (store/ticket-ids s)
-                     :let [{:keys [events process roles]} (ticket-ctx s id)]
+               (for [{:keys [events process roles]} (all-ticket-ctx s)
                      :when (not (next-lens/settled? process events t roles))]
                  process))
         ;; distinct on the RENDERED row: several archived versions of
@@ -3330,9 +3332,8 @@ Each entry in :needs is one of:
         t (now)
         findings
         (vec
-         (for [id (store/ticket-ids s)
-               :let [{:keys [events state process roles]} (ticket-ctx s id)
-                     short (sid id)
+         (for [{:keys [id events state process roles]} (all-ticket-ctx s)
+               :let [short (sid id)
                      fm (guard/fact-map state)]
                :when (not (next-lens/settled? process events t roles))
                :let [desc (red/fact-status state [:description])
@@ -3457,7 +3458,8 @@ Each entry in :needs is one of:
           ;; the full run remains the audit, and always outranks.
           cache-file (io/file (root) ".verify-cache")
           cache (if (and (:changed (:opts parsed)) (.exists cache-file))
-                  (edn/read-string (slurp cache-file))
+                  (try (canonical/parse (slurp cache-file))
+                       (catch Exception _ {}))
                   {})
           skipped (atom 0)
           verified (atom {})]
@@ -3524,10 +3526,7 @@ Each entry in :needs is one of:
                                                  (ex-message ex)))
                                nil))
                     e (when raw
-                        (try (canonical/check-nesting raw)
-                             (assoc (edn/read-string
-                                     {:readers fstore/edn-readers} raw)
-                                    :event/id eid)
+                        (try (assoc (canonical/parse raw) :event/id eid)
                              (catch Exception ex
                                (check false (str (shash eid)
                                                  "… row unreadable: "

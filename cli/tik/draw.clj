@@ -109,25 +109,24 @@
         primary (fn [id]
                   (when-let [ps (seq (parents-of id))]
                     (last (sort-by (juxt depth order) ps))))
-        child-map (reduce (fn [m s]
-                            (let [id (:stage/id s)
-                                  p (primary id)]
-                              (cond-> m p (update p (fnil conj []) id))))
-                          {} stages)
-        ;; a join child also leaves a DASHED stub (`┈▶`) under each of its
-        ;; non-primary parents, so the merge is visible from every incoming
-        ;; branch — not only on the join node's `⋈ after …` line
-        ref-map (reduce (fn [m s]
-                          (let [id (:stage/id s)
-                                ps (parents-of id)
-                                prim (primary id)]
-                            (if (> (count ps) 1)
-                              (reduce (fn [m p]
-                                        (cond-> m (not= p prim)
-                                                (update p (fnil conj []) id)))
-                                      m ps)
-                              m)))
-                        {} stages)
+        ;; one pass builds both child maps: each stage hangs off its
+        ;; primary parent (:child), and a join also leaves a DASHED stub
+        ;; (`┈▶`, :ref) under each non-primary parent, so the merge is
+        ;; visible from every incoming branch — not only on the join
+        ;; node's `⋈ after …` line
+        {child-map :child ref-map :ref}
+        (reduce (fn [m s]
+                  (let [id (:stage/id s)
+                        ps (parents-of id)
+                        prim (primary id)]
+                    (as-> m m
+                      (cond-> m prim (update-in [:child prim] (fnil conj []) id))
+                      (reduce (fn [m p]
+                                (cond-> m (not= p prim)
+                                        (update-in [:ref p] (fnil conj []) id)))
+                              m
+                              (if (> (count ps) 1) ps [])))))
+                {} stages)
         roots (->> stages (map :stage/id) (filter #(empty? (parents-of %))))]
     (letfn [(walk [id own-prefix connector desc-prefix]
               (let [stage (by-id id)
@@ -136,8 +135,8 @@
                     gloss (stage-gloss stage (when (> (count ps) 1) ps))
                     ;; real children draw their full subtree; refs are leaf
                     ;; stubs pointing at a join drawn under its primary parent
-                    entries (concat (map (fn [c] {:id c}) (child-map id))
-                                    (map (fn [c] {:id c :ref? true}) (ref-map id)))
+                    entries (concat (map (fn [c] {:id c}) (get child-map id))
+                                    (map (fn [c] {:id c :ref? true}) (get ref-map id)))
                     n (count entries)]
                 (concat
                  [{:left (str own-prefix connector label) :gloss gloss}]
