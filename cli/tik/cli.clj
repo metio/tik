@@ -1178,6 +1178,15 @@
     ;; a hand-edit) still resolves — targets are ids, never keywords
     {:rel (second path) :target (str/replace (str value) #"^:" "")}))
 
+(defn- rel-label
+  "A link rel rendered for display. The rel is a fact-path element, and
+  the kernel accepts a fact path with a non-keyword element (mint does
+  not constrain path element types), so a `[:link 42]` fact is a valid
+  signed event — `name` would cast-crash on it. Render any rel, keyword
+  or not, rather than let one odd link poison a whole board view."
+  [rel]
+  (if (or (keyword? rel) (symbol? rel) (string? rel)) (name rel) (str rel)))
+
 (defn- link-row
   "One link as data for sorted display: the derived stage leads, the
   rel shows only when the title does not already say it, and :sort
@@ -1196,14 +1205,14 @@
        :rest (str (subs (str target-id) 0 8) " " title
                   ;; nested-repo rels dot their slashes; either spelling
                   ;; in the title makes the suffix redundant
-                  (when-not (or (str/includes? title (name rel))
-                                (str/includes? title (str/replace (name rel)
+                  (when-not (or (str/includes? title (rel-label rel))
+                                (str/includes? title (str/replace (rel-label rel)
                                                                   "." "/")))
-                    (str "  [" (name rel) "]")))})
+                    (str "  [" (rel-label rel) "]")))})
     {:sort [1 0 "" (str target)]
      :stage "(unresolved)"
      :stage-kws #{}
-     :rest (str target "  [" (name rel) "]")}))
+     :rest (str target "  [" (rel-label rel) "]")}))
 
 (defn- link-lines
   "Every link of `state`, rendered and ordered for humans: least

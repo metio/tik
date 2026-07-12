@@ -1142,6 +1142,37 @@
         (is (every? #(str/blank? (:err %)) results)
             "no call's stderr bled into another's")))))
 
+(deftest hostile_link_rels_never_crash_a_render
+  ;; mint does not constrain fact-path element types, so a signed
+  ;; [:link <non-keyword>] fact is a valid event. The porcelain renders a
+  ;; link's rel, and a raw (name 42) would cast-crash — poisoning the
+  ;; whole board, since `ls --long` renders every ticket. Every render
+  ;; must tolerate any rel.
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-linkfuzz" (make-array FileAttribute 0)))
+        s (fstore/file-store (str root))
+        ticket (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (store/append! s (event/create-ticket
+                      {:ticket ticket :actor "seb" :at t
+                       :title "linky" :process :track}))
+    ;; only rels the kernel will actually STORE — a double is refused at
+    ;; mint by the canonical emitter, so it never reaches a render
+    (doseq [[i rel] (map-indexed vector [42 true "str" :depends-on])]
+      (store/append! s (event/assert-fact
+                        {:ticket ticket :actor "seb"
+                         :at (.plusSeconds t (inc i))
+                         :parents (tik.dag/heads (store/events s ticket))
+                         :path [:link rel] :value "deadbeef"})))
+    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+      (fn []
+        (doseq [argv [["status" (str ticket)] ["ls" "--long"] ["ls"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (map? r) (pr-str argv))
+            (is (not (re-find #"ClassCast|bug in tik|Exception in thread|\tat "
+                              (str (:out r) (:err r))))
+                (str (pr-str argv) "\n" (:err r)))))))))
+
 ;; ------------------- the OIDC bridge over a hostile identity provider
 
 (defn- b64url [s]
