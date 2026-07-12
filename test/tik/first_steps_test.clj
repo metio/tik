@@ -6,24 +6,18 @@
   guide test proves the DOCUMENT runs; this one pins the EXPERIENCE:
   friendly output for the things a first session actually does,
   including the mistakes."
-  (:require [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [clojure.test :refer [deftest is testing]]))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
 (defn- fresh-root []
-  (.toFile (Files/createTempDirectory
-            "tik-first" (make-array FileAttribute 0))))
+  (h/temp-dir! "tik-first"))
 
 (defn- tik* [root & args]
-  (apply sh/sh (concat ["bb" "tik"] (map str args)
-                       [:dir repo
-                        :env (assoc (into {} (System/getenv))
-                                    "TIK_ROOT" (str root)
-                                    "TIK_ACTOR" "newbie")])))
+  (apply h/run-tik! {:root root :actor "newbie"} args))
 
 (deftest help_is_reachable_every_way_a_newcomer_tries
   (let [root (fresh-root)]

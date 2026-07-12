@@ -5,7 +5,8 @@
   idempotent by id, unordered reads, exact canonical bytes preserved
   (hash(stored bytes) = id, checked against RAW storage, not this
   code's parsing), and identical derivation from either backend."
-  (:require [clojure.java.io :as io]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
@@ -15,12 +16,10 @@
             [tik.reduce :as red]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store]
-            [tik.store.sqlite :as sqlite])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+            [tik.store.sqlite :as sqlite]))
 
 (defn- tmp [name]
-  (str (Files/createTempDirectory name (make-array FileAttribute 0))))
+  (str (h/temp-dir! name)))
 
 (defn- backends []
   [{:name "file"

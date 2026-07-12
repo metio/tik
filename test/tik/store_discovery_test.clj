@@ -6,28 +6,18 @@
   directory, else the cwd. Each test runs tik with a REAL working
   directory (bb --config keeps the repo's task while cwd points into
   the scenario) and no TIK_ROOT in the environment."
-  (:require [clojure.java.io :as io]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.java.shell :as sh]
-            [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
-
-(def ^:private repo (System/getProperty "user.dir"))
+            [clojure.test :refer [deftest is testing]]))
 
 (defn- tmpdir []
-  (.toFile (Files/createTempDirectory "tik-disco" (make-array FileAttribute 0))))
+  (h/temp-dir! "tik-disco"))
 
 (defn- tik-at
   "Run tik with cwd `dir`, TIK_ROOT scrubbed unless supplied."
   [dir env & args]
-  (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
-                       (map str args)
-                       [:dir (str dir)
-                        :env (merge (dissoc (into {} (System/getenv))
-                                            "TIK_ROOT")
-                                    {"TIK_ACTOR" "seb"}
-                                    env)])))
+  (apply h/run-tik! {:root nil :dir dir :actor "seb" :env env} args))
 
 (deftest hidden_store_is_found_from_any_depth
   (let [top (tmpdir)

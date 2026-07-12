@@ -6,9 +6,9 @@
   on READ — an unmigrated ticket keeps deriving under its archived
   definition after the named file moves on (reproducibility over
   freshness), and verify stays green for both."
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
@@ -17,15 +17,7 @@
 (def ^:private repo (System/getProperty "user.dir"))
 
 (defn- tik! [root & args]
-  (let [r (apply sh/sh (concat ["bb" "tik"] (map str args)
-                               [:dir repo
-                                :env (assoc (into {} (System/getenv))
-                                            "TIK_ROOT" (str root)
-                                            "TIK_ACTOR" "seb")]))]
-    (when-not (zero? (:exit r))
-      (throw (ex-info (str "tik " (first args) " failed")
-                      {:out (:out r) :err (:err r)})))
-    (:out r)))
+  (:out (apply h/tik! {:root root :actor "seb"} args)))
 
 (deftest migrate-dry-run-then-apply
   (let [root (.toFile (Files/createTempDirectory

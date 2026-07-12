@@ -6,28 +6,17 @@
   renders explain and teaches the reply convention), the reply's
   `tik> key=value` lines become signed facts through the bridge, and
   the stage advances. Both directions are MTA-agnostic text."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(def ^:private repo (System/getProperty "user.dir"))
-
 (defn- tik! [root & args]
   (let [in (when (= :in (first (take-last 2 args))) (last args))
-        args (if in (drop-last 2 args) args)
-        r (apply sh/sh (concat ["bb" "tik"] (map str args)
-                               (when in [:in in])
-                               [:dir repo
-                                :env (assoc (into {} (System/getenv))
-                                            "TIK_ROOT" (str root)
-                                            "TIK_ACTOR" "agent")]))]
-    (when-not (zero? (:exit r))
-      (throw (ex-info (str "tik " (first args) " failed")
-                      {:out (:out r) :err (:err r)})))
-    (:out r)))
+        args (if in (drop-last 2 args) args)]
+    (:out (apply h/tik! {:root root :actor "agent" :in in} args))))
 
 (deftest the_round_trip_asks_and_the_answer_advances_the_stage
   (let [root (.toFile (Files/createTempDirectory

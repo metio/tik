@@ -6,14 +6,12 @@
   Pure porcelain over the store — dependency-readiness needs many logs,
   so it lives beside `next`, never in the per-ticket kernel. The link
   itself is an ordinary fact (an id reference); readiness is derived."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
-
-(def ^:private repo (System/getProperty "user.dir"))
 
 (def ^:private task-process
   (str "{:process/id :task :process/version 1 :process/guard-vocab 1"
@@ -24,13 +22,9 @@
        "                   :guards [[:fact [:result]]]}]}"))
 
 (defn- tik [store & args]
-  (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
-                       (map str args)
-                       [:dir (str store)
-                        :env (assoc (into {} (System/getenv))
-                                    "TIK_ROOT" (str store)
-                                    "TIK_ACTOR" "seb"
-                                    "NO_COLOR" "1")])))
+  (apply h/run-tik! {:root store :dir store :actor "seb"
+                     :env {"NO_COLOR" "1"}}
+         args))
 
 (deftest depends_on_holds_a_ticket_back_until_its_upstream_settles
   (let [store (.toFile (Files/createTempDirectory

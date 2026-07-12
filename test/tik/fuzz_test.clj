@@ -28,6 +28,7 @@
             [tik.next]
             [tik.work :as work]
             [tik.gen-events :as ge]
+            [tik.harness :as h]
             [tik.guard :as guard]
             [tik.oidc :as oidc]
             [tik.plan]
@@ -39,7 +40,6 @@
             [tik.store.protocol :as store]
             [tik.store.sqlite])
   (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)
            (java.time Instant)))
 
 (def ^:private n
@@ -103,8 +103,7 @@
   ;; corruption of any event file can go unnoticed. We flip one byte
   ;; at every position of every event in a real store and require the
   ;; identity check to catch each one.
-  (let [dir (.toFile (Files/createTempDirectory
-                      "tik-fuzz" (make-array FileAttribute 0)))
+  (let [dir (h/temp-dir! "tik-fuzz")
         s (fstore/file-store (str dir))
         ticket (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")
@@ -537,8 +536,7 @@
   ;; byte flips are caught by the name/content check — the sharper
   ;; attack stores GARBAGE whose name honestly hashes its bytes. The
   ;; reader must reject it with a data-carrying error, never explode.
-  (let [dir (.toFile (Files/createTempDirectory
-                      "tik-fuzz2" (make-array FileAttribute 0)))
+  (let [dir (h/temp-dir! "tik-fuzz2")
         ticket (random-uuid)
         evdir (io/file dir "tickets" (str ticket) "events")]
     (.mkdirs evdir)
@@ -565,17 +563,9 @@
   ;; every invocation a confused human or hostile script can produce
   ;; must exit 0 or 1 with WORDS on stderr — a stack trace on the
   ;; first contact is an H9 killer and a fuzz finding
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-argv" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
+  (let [root (h/temp-dir! "tik-argv")
         zalgo (apply str "ch" (map char [0x0341 0x0327 0x036 97 111 115]))
-        run (fn [& args]
-              (apply sh/sh
-                     (concat ["bb" "tik"] args
-                             [:dir repo
-                              :env (assoc (into {} (System/getenv))
-                                          "TIK_ROOT" (str root)
-                                          "TIK_ACTOR" "fuzz")])))]
+        run (h/tik-runner root)]
     (doseq [argv [["set"] ["set" "="] ["set" "x" "=y"]
                   ["status"] ["explain"] ["log"] ["causal"]
                   ["new" "\ud83c\udfab"] ["new" "track" "--title"]
@@ -593,7 +583,7 @@
                   [zalgo]]]
       (let [r (apply run argv)]
         (is (contains? #{0 1} (:exit r)) (pr-str argv))
-        (is (not (re-find #"Exception in thread|clojure\.lang\.|StackTrace|\tat "
+        (is (not (re-find h/forbidden-output
                           (str (:out r) (:err r))))
             (str (pr-str argv) "\n" (:err r)))))))
 
@@ -602,8 +592,7 @@
   ;; A body with no id, an id that is a marker (not a name until
   ;; expanded), a malformed marker, or a scalar body must each answer
   ;; with a message and exit 1 — never a ClassCast or other raw trace
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-adopt" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-adopt")
         repo (System/getProperty "user.dir")
         run (fn [file body]
               (spit (io/file root file) body)
@@ -622,7 +611,7 @@
              ["f.edn" "{:not :a-process}"]]]                         ; plain, no id
       (let [r (run file body)]
         (is (contains? #{0 1} (:exit r)) (pr-str [file (:exit r)]))
-        (is (not (re-find #"Exception in thread|ClassCast|clojure\.lang\.|\tat |this is a bug in tik"
+        (is (not (re-find h/forbidden-output
                           (str (:out r) (:err r))))
             (str file "\n" (:out r) (:err r)))))))
 
@@ -631,15 +620,9 @@
 (deftest garbage_configs_answer_with_words_never_traces
   ;; every EDN file an operator can typo must produce a message naming
   ;; the file and exit 1 — the top-level landing guarantees no trace
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-cfg" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-cfg")
         repo (System/getProperty "user.dir")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))
+        run (h/tik-runner root)
         garbage "{:unclosed [vector :and (garbage"]
     (.mkdirs (io/file root "processes"))
     (doseq [[file argv]
@@ -656,7 +639,7 @@
         (is (= 1 (:exit r)) (pr-str [file argv]))
         (is (re-find #"malformed EDN in .*" (str (:err r)))
             (pr-str [file argv (:err r)]))
-        (is (not (re-find #"Exception in thread|clojure\.lang\.|\tat "
+        (is (not (re-find h/forbidden-output
                           (str (:out r) (:err r))))
             (pr-str [file argv]))))
     (testing "a garbage context marker fails new with the file named"
@@ -675,16 +658,9 @@
         (is (re-find #"malformed EDN" (str (:err r))))))))
 
 (deftest one_dead_sink_does_not_abandon_the_rest
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-sink" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
+  (let [root (h/temp-dir! "tik-sink")
         outfile (io/file root "delivered.json")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))]
+        run (h/tik-runner root)]
     (run "new" "track" "--title" "sink isolation")
     (spit (io/file root "effects.edn")
           (pr-str {:sinks [{:type :slack
@@ -697,7 +673,7 @@
       (is (re-find #"failed slack .* will retry next run" (str (:err r))))
       (is (.exists outfile)
           "the healthy sink delivered despite the dead one")
-      (is (not (re-find #"Exception in thread|\tat " (str (:err r))))))))
+      (is (not (re-find h/forbidden-output (str (:err r))))))))
 
 ;; ------------------------------- packs, caches, hostile directory names
 
@@ -716,8 +692,7 @@
             (= bytes (canonical/emit (edn/read-string bytes))))))))
 
 (deftest hostile_directory_names_never_corrupt_a_store
-  (let [top (.toFile (Files/createTempDirectory
-                      "tik-dirs" (make-array FileAttribute 0)))
+  (let [top (h/temp-dir! "tik-dirs")
         repo (System/getProperty "user.dir")
         run (fn [dir & args]
               (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
@@ -741,8 +716,7 @@
       (is (re-find #"verify: PASS" (:out (run top "verify")))))))
 
 (deftest lying_pack_indexes_fail_well
-  (let [dir (.toFile (Files/createTempDirectory
-                      "tik-pack-fuzz" (make-array FileAttribute 0)))
+  (let [dir (h/temp-dir! "tik-pack-fuzz")
         s (fstore/file-store (str dir))
         ticket (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")
@@ -774,15 +748,8 @@
       (is (fails-well? #(doall (store/events s ticket)))))))
 
 (deftest corrupt_caches_are_misses_never_crashes
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-cache-fuzz" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))]
+  (let [root (h/temp-dir! "tik-cache-fuzz")
+        run (h/tik-runner root)]
     (run "new" "track" "--title" "cache fodder")
     (run "ls")                                   ; builds the cache
     (doseq [payload ["%%% not json" "[1,2,3]" "{\"x\": {\"row\": 7}}"
@@ -814,15 +781,8 @@
               [{:stage :fuzz :satisfied [] :missing reasons :blocks #{}}]))))
 
 (deftest one_poisoned_ticket_never_hides_the_healthy
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-poison" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))]
+  (let [root (h/temp-dir! "tik-poison")
+        run (h/tik-runner root)]
     (.mkdirs (io/file root "processes"))
     (spit (io/file root "processes" "poison.edn")
           (pr-str {:process/id :poison :process/version 1
@@ -884,15 +844,8 @@
   ;; the sharpest form: a store file whose name honestly hashes a
   ;; 100k-deep vector. Reading must reject with words; the whole-store
   ;; audit must report THAT ticket and still finish
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-bomb" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))]
+  (let [root (h/temp-dir! "tik-bomb")
+        run (h/tik-runner root)]
     (run "new" "track" "--title" "healthy neighbor")
     (run "new" "track" "--title" "the bombed one")
     (let [evdirs (->> (io/file root "tickets") .listFiles
@@ -918,7 +871,7 @@
         (is (re-find #"verify: FAIL" (:out r)))
         (is (re-find #"ok 1 event\(s\)" (:out r))
             "the audit covered the healthy ticket too")
-        (is (not (re-find #"StackOverflow|\tat " (str (:out r) (:err r)))))))))
+        (is (not (re-find h/forbidden-output (str (:out r) (:err r)))))))))
 
 (deftest hostile_sqlite_rows_fail_well
   ;; rows written around append! — garbage bytes under an honest id, a
@@ -949,15 +902,8 @@
   ;; sidecar verification shells to ssh-keygen; whatever bytes sit in a
   ;; .sig file — prose, truncated armor, nothing — the audit answers
   ;; with verdict lines, never a trace
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-sig" (make-array FileAttribute 0)))
-        repo (System/getProperty "user.dir")
-        run (fn [& args]
-              (apply sh/sh (concat ["bb" "tik"] args
-                                   [:dir repo
-                                    :env (assoc (into {} (System/getenv))
-                                                "TIK_ROOT" (str root)
-                                                "TIK_ACTOR" "fuzz")])))]
+  (let [root (h/temp-dir! "tik-sig")
+        run (h/tik-runner root)]
     (run "new" "track" "--title" "sig fodder")
     (let [evdir (->> (io/file root "tickets") .listFiles first
                      (#(io/file % "events")))
@@ -973,7 +919,7 @@
     (let [r (run "verify")]
       (is (contains? #{0 1} (:exit r)))
       (is (re-find #"verify: (PASS|FAIL)" (:out r)))
-      (is (not (re-find #"Exception in thread|\tat "
+      (is (not (re-find h/forbidden-output
                         (str (:out r) (:err r))))))))
 
 ;; ----------------- the HTTP serve and MCP stdio surfaces
@@ -995,8 +941,7 @@
   ;; die/System-exit path — one bad request would take the board down
   ;; for everyone. Unknown ids 404, everything is request-scoped, and
   ;; the process is still answering after the whole barrage
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-serve" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-serve")
         repo (System/getProperty "user.dir")
         port 7801
         _ (sh/sh "bb" "tik" "new" "track" "--title" "served"
@@ -1039,8 +984,7 @@
   ;; line that is not JSON, not an object, names no tool, or omits a
   ;; required argument must answer with a JSON-RPC result/error and
   ;; leave the SESSION intact — a later well-formed request still works
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-mcp" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-mcp")
         repo (System/getProperty "user.dir")
         _ (sh/sh "bb" "tik" "new" "track" "--title" "mcp fodder"
                  :dir repo
@@ -1066,7 +1010,7 @@
                  :env (assoc (into {} (System/getenv))
                              "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))]
     (is (zero? (:exit r)) (:err r))
-    (is (not (re-find #"Exception in thread|\tat |----- Error"
+    (is (not (re-find h/forbidden-output
                       (str (:out r) (:err r))))
         "no line stack-traces the session")
     (testing "every emitted line is a valid JSON-RPC object"
@@ -1084,9 +1028,8 @@
   "Run f with the CLI's private root accessor pinned to a temp dir, so
   run-argv calls resolve an isolated store with no TIK_ROOT env."
   [f]
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-runargv" (make-array FileAttribute 0)))]
-    (with-redefs-fn {#'tik.cli/root (constantly (str root))} f)))
+  (let [root (h/temp-dir! "tik-runargv")]
+    (h/with-cli-root root f)))
 
 (defspec run_argv_is_total_over_arbitrary_argv n
   ;; the in-process entry point the MCP server rides on: whatever an
@@ -1158,8 +1101,7 @@
   ;; link's rel, and a raw (name 42) would cast-crash — poisoning the
   ;; whole board, since `ls --long` renders every ticket. Every render
   ;; must tolerate any rel.
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-linkfuzz" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-linkfuzz")
         s (fstore/file-store (str root))
         ticket (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
@@ -1174,12 +1116,12 @@
                          :at (.plusSeconds t (inc i))
                          :parents (tik.dag/heads (store/events s ticket))
                          :path [:link rel] :value "deadbeef"})))
-    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+    (h/with-cli-root root
       (fn []
         (doseq [argv [["status" (str ticket)] ["ls" "--long"] ["ls"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (map? r) (pr-str argv))
-            (is (not (re-find #"ClassCast|bug in tik|Exception in thread|\tat "
+            (is (not (re-find h/forbidden-output
                               (str (:out r) (:err r))))
                 (str (pr-str argv) "\n" (:err r)))))))))
 
@@ -1189,8 +1131,7 @@
   ;; single-ticket lens must surface that as a clean derivation error
   ;; (ex-info -> message, exit 1), never a raw ClassCast reported as a
   ;; bug; ls keeps isolating it per ticket and still shows the healthy.
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-procfuzz" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-procfuzz")
         s (fstore/file-store (str root))
         healthy (random-uuid) hostile (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
@@ -1200,14 +1141,14 @@
     (store/append! s (event/create-ticket
                       {:ticket hostile :actor "seb" :at t
                        :title "bad" :process 42}))
-    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+    (h/with-cli-root root
       (fn []
         (doseq [argv [["status" (str hostile)]
                       ["explain" (str hostile)]
                       ["whatif" (str hostile) "x=1"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (= 1 (:exit r)) (pr-str argv))
-            (is (not (re-find #"ClassCast|bug in tik|\tat "
+            (is (not (re-find h/forbidden-output
                               (str (:out r) (:err r))))
                 (str (pr-str argv) "\n" (:err r)))
             (is (re-find #"process is not a name" (:err r))
@@ -1215,7 +1156,7 @@
         (let [r (tik.cli/run-argv ["ls"])]
           (is (zero? (:exit r)))
           (is (re-find #"ok" (:out r)) "the healthy ticket still lists")
-          (is (not (re-find #"ClassCast|bug in tik"
+          (is (not (re-find h/forbidden-output
                             (str (:out r) (:err r))))))))))
 
 (deftest garbage_time_args_fail_well
@@ -1224,15 +1165,14 @@
   ;; ordinary exception, not ex-info. A natural typo (a wall-clock +2d, a
   ;; bare date) must be a clean, example-carrying message + exit 1, never
   ;; surfaced as 'a bug in tik'.
-  (let [root (.toFile (Files/createTempDirectory
-                       "tik-timefuzz" (make-array FileAttribute 0)))
+  (let [root (h/temp-dir! "tik-timefuzz")
         s (fstore/file-store (str root))
         id (random-uuid)
         t (Instant/parse "2026-01-01T00:00:00Z")]
     (store/append! s (event/create-ticket
                       {:ticket id :actor "seb" :at t
                        :title "t" :process :track}))
-    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+    (h/with-cli-root root
       (fn []
         (doseq [argv [["whatif" (str id) "+2d"]
                       ["whatif" (str id) "+GARBAGE"]
@@ -1244,7 +1184,7 @@
             (is (= 1 (:exit r)) (pr-str argv))
             (is (re-find #"ISO-8601" (:err r))
                 (str (pr-str argv) "\n" (:err r)))
-            (is (not (re-find #"DateTimeParse|bug in tik|\tat "
+            (is (not (re-find h/forbidden-output
                               (str (:out r) (:err r))))
                 (str (pr-str argv) "\n" (:err r)))))
         (testing "the valid forms still work"

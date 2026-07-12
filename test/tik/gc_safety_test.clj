@@ -13,14 +13,12 @@
   verify re-derive full history under as-of pins would make orphans
   load-bearing — and would break this test, which is the whole point:
   the possibility of GC is now a tested contract."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
-
-(def ^:private repo (System/getProperty "user.dir"))
 
 (def ^:private v1
   (str "{:process/id :gct :process/version 1 :process/guard-vocab 1"
@@ -35,13 +33,9 @@
        "                  {:stage/id :b :after [:a] :guards [[:fact [:x]]]}]}"))
 
 (defn- tik [store & args]
-  (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
-                       (map str args)
-                       [:dir (str store)
-                        :env (assoc (into {} (System/getenv))
-                                    "TIK_ROOT" (str store)
-                                    "TIK_ACTOR" "seb"
-                                    "NO_COLOR" "1")])))
+  (apply h/run-tik! {:root store :dir store :actor "seb"
+                     :env {"NO_COLOR" "1"}}
+         args))
 
 (deftest orphaned_definitions_are_collectable_without_touching_verify
   (let [store (.toFile (Files/createTempDirectory

@@ -9,19 +9,19 @@
   than being resolved by the transport. If this test ever needs
   file-level conflict resolution, the store design failed (H2's kill
   criterion, verbatim)."
-  (:require [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.shell :as sh]
             [clojure.test :refer [deftest is testing]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.reduce :as red]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)
-           (java.time Instant)))
+  (:import
+   (java.time Instant)))
 
 (defn- tmp [name]
-  (.toFile (Files/createTempDirectory name (make-array FileAttribute 0))))
+  (h/temp-dir! name))
 
 (defn- git! [dir & args]
   (let [r (apply sh/sh "git" "-C" (str dir)

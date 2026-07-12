@@ -5,8 +5,8 @@
   between verify (integrity) and explain (derivation): unkempt, not
   wrong. Findings must name the fixing command; settled tickets are
   left in peace."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
@@ -15,11 +15,7 @@
 (def ^:private repo (System/getProperty "user.dir"))
 
 (defn- tik* [root & args]
-  (apply sh/sh (concat ["bb" "tik"] (map str args)
-                       [:dir repo
-                        :env (assoc (into {} (System/getenv))
-                                    "TIK_ROOT" (str root)
-                                    "TIK_ACTOR" "seb")])))
+  (apply h/run-tik! {:root root :actor "seb"} args))
 
 (deftest store_lint_names_the_fix_and_spares_the_settled
   (let [root (.toFile (Files/createTempDirectory

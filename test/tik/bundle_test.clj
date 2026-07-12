@@ -5,29 +5,20 @@
   somewhere tik-less, and require verify.sh (coreutils + ssh-keygen
   only) to pass on honest bytes and fail on one flipped byte or an
   unregistered signer."
-  (:require [clojure.java.io :as io]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)))
+  (:import (java.nio.file Files)))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
 (defn- tmpdir [prefix]
-  (.toFile (Files/createTempDirectory prefix (make-array FileAttribute 0))))
+  (h/temp-dir! prefix))
 
 (defn- tik! [root env & args]
-  (let [r (apply sh/sh (concat ["bb" "tik"] (map str args)
-                               [:dir repo
-                                :env (merge (into {} (System/getenv))
-                                            {"TIK_ROOT" (str root)
-                                             "TIK_ACTOR" "seb"}
-                                            env)]))]
-    (when-not (zero? (:exit r))
-      (throw (ex-info (str "tik " (first args) " failed")
-                      {:out (:out r) :err (:err r)})))
-    (:out r)))
+  (:out (apply h/tik! {:root root :actor "seb" :env env} args)))
 
 (deftest bundle_verifies_without_tik_and_catches_tampering
   (let [root (tmpdir "tik-bundle-store")

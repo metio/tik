@@ -6,7 +6,8 @@
   fresh store, with real ids substituted) or sit on the explicit
   interactive skip-list — so the doc and the software cannot drift
   apart without this test failing."
-  (:require [clojure.java.shell :as sh]
+  (:require [tik.harness :as h]
+            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files)
@@ -36,12 +37,8 @@
       ;; naive word split is fine for the guide as long as the guide
       ;; sticks to unquoted args — which unquoted-prose `set` and
       ;; plain flags make natural
-      (apply sh/sh (concat ["bb" "tik"]
-                           (rest (str/split line #"\s+"))
-                           [:dir repo
-                            :env (assoc (into {} (System/getenv))
-                                        "TIK_ROOT" (str root)
-                                        "TIK_ACTOR" "alice")])))))
+      (apply h/run-tik! {:root root :actor "alice"}
+             (rest (str/split line #"\s+"))))))
 
 (deftest the_guide_is_executable_start_to_finish
   (let [root (.toFile (Files/createTempDirectory
@@ -60,22 +57,16 @@
           (is (some? root) "the temp store stands in for mkdir")
 
           (str/starts-with? line "tik new track")
-          (let [r (sh/sh "bb" "tik" "new" "track" "--title"
-                         "replace the office router"
-                         :dir repo
-                         :env (assoc (into {} (System/getenv))
-                                     "TIK_ROOT" (str root)
-                                     "TIK_ACTOR" "alice"))]
+          (let [r (h/run-tik! {:root root :actor "alice"}
+                              "new" "track" "--title"
+                              "replace the office router")]
             (is (zero? (:exit r)) (:err r))
             (swap! state assoc :id (str/trim (:out r))))
 
           (str/starts-with? line "tik new bug")
-          (let [r (sh/sh "bb" "tik" "new" "bug" "--title"
-                         "login fails on Firefox"
-                         :dir repo
-                         :env (assoc (into {} (System/getenv))
-                                     "TIK_ROOT" (str root)
-                                     "TIK_ACTOR" "alice"))]
+          (let [r (h/run-tik! {:root root :actor "alice"}
+                              "new" "bug" "--title"
+                              "login fails on Firefox")]
             (is (zero? (:exit r)) (:err r))
             (swap! state assoc :id (str/trim (:out r))))
 

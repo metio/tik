@@ -4,18 +4,18 @@
   "Signature sidecars end to end with real ssh-keygen: sign the exact
   stored bytes, verify through the actors registry, and prove that
   tampering with either bytes or claimed authorship fails."
-  (:require [clojure.java.io :as io]
+  (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.test :refer [deftest is testing]]
             [tik.canonical :as canonical]
             [tik.event :as event]
             [tik.sign :as sign])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute)
-           (java.time Instant)))
+  (:import
+   (java.time Instant)))
 
 (defn- tmp-dir []
-  (.toFile (Files/createTempDirectory "tik-sign" (make-array FileAttribute 0))))
+  (h/temp-dir! "tik-sign"))
 
 (defn- gen-key! [dir name]
   (let [f (io/file dir name)]

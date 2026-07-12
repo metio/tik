@@ -4,16 +4,15 @@
   "The sink armory: every adapter is a pure payload mapping (pinned
   here shape by shape), and the :command sink is the universal escape
   hatch — the webhook JSON piped to any program, tested end to end."
-  (:require [cheshire.core :as json]
+  (:require [tik.harness :as h]
+            [cheshire.core :as json]
             [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.cli :as cli])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(def ^:private repo (System/getProperty "user.dir"))
 (def ^:private payload #'cli/effect-payload)
 
 (def tr {:ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
@@ -46,14 +45,7 @@
                        "tik-fx" (make-array FileAttribute 0)))
         outfile (io/file root "received.json")
         tik! (fn [& args]
-               (let [r (apply sh/sh (concat ["bb" "tik"] (map str args)
-                                            [:dir repo
-                                             :env (assoc (into {} (System/getenv))
-                                                         "TIK_ROOT" (str root)
-                                                         "TIK_ACTOR" "seb")]))]
-                 (when-not (zero? (:exit r))
-                   (throw (ex-info "tik failed" {:out (:out r) :err (:err r)})))
-                 (:out r)))
+               (:out (apply h/tik! {:root root :actor "seb"} args)))
         id (str/trim (tik! "new" "track" "--title" "command sink"))]
     (spit (io/file root "effects.edn")
           (pr-str {:sinks [{:type :command
