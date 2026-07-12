@@ -1169,6 +1169,42 @@
                              ["status" (str id) "--at"
                               "2026-06-01T00:00:00Z"])))))))))
 
+(deftest every_edn_output_is_readable_edn
+  ;; --edn output is a machine surface: every form it prints must read
+  ;; back through the format's own readers. A type without a
+  ;; print-method (java.time.Duration, LocalDate, File) prn's as
+  ;; #object[…<identity-hash>…] — silently corrupting the stream — so
+  ;; the rule is stringify-at-the-boundary (work/draft does) or carry a
+  ;; canonical literal (Instant does, via the porcelain print-method).
+  ;; This pins the invariant mechanically instead of type-by-type.
+  (let [{:keys [root store]} (h/temp-store!)
+        id (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (h/seed-ticket! store {:ticket id :at t :title "edn fodder"})
+    ;; a time-typed fact (the class that used to print as #object) and a link
+    (doseq [[i [path value]] (map-indexed vector
+                                          [[[:when] t]
+                                           [[:link :depends-on] "deadbeef"]])]
+      (store/append! store (event/assert-fact
+                            {:ticket id :actor "seb"
+                             :at (.plusSeconds t (inc i))
+                             :parents (tik.dag/heads (store/events store id))
+                             :path path :value value})))
+    (h/with-cli-root root
+      (fn []
+        (doseq [argv [["ls" "--edn"]
+                      ["explain" (str id) "--edn"]
+                      ["causal" (str id) "--edn"]
+                      ["next" "--edn"]
+                      ["work" "week" "--actor" "seb" "--edn"]
+                      ["work" "cost" "--edn"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (zero? (:exit r)) (pr-str argv))
+            (doseq [line (remove str/blank? (str/split-lines (:out r)))]
+              (is (try (canonical/parse line) true
+                       (catch Exception _ false))
+                  (str (pr-str argv) " printed unreadable EDN:\n" line)))))))))
+
 ;; ------------------- the OIDC bridge over a hostile identity provider
 
 (defn- b64url [s]
