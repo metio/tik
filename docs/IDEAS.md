@@ -645,3 +645,10 @@ with simple forks/joins, so a topological-depth layout covers them —
 decide whether to handle the general crossing-edge case or `lint`-bound
 processes to the layout the renderer can draw cleanly. Fits the law
 (derived, no new state); the only cost is layout code in porcelain.
+
+## Org-wide nix flake versioning question
+
+Which nixpkgs upstream version should repos reference — always `unstable` so
+versions never need hand-updating here, with Renovate maintaining `flake.lock`?
+And why does this repo's lock file not exist yet? (Loose note migrated from a
+root scratch file; unjudged.)

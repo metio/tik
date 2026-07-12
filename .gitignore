@@ -1,8 +1,8 @@
 .clj-kondo/.cache/
 .cpcache/
-.eastwood/
+/.eastwood
 .effects-sent
 board.html
 .verify-cache
 /target/
-/.derived-cache.edn
+/.derived-cache.json
