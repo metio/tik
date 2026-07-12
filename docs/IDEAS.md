@@ -501,15 +501,25 @@ where they stop:
   (plan/summary, explain), never a new data layer — "one derivation,
   many renderings" (plain text + HTML today, a TUI next). What it opens:
   an interactive `tik` dashboard — navigate the board, drill into a
-  blocked ticket, walk the plan graph, act inline. Concrete caveats to
-  clear in a SPIKE before adopting: (1) it wants JDK 22+, but the devShell
-  is JDK 21 (the native build is GraalVM 24 = fine; a JDK bump is needed
-  for JVM tests) — a flake change; (2) JLine 3 + core.async add
-  native-image reflection config and binary weight, versus today's
-  dependency-free ANSI (`tint`) — measure the size delta; (3) core.async
-  is already in babashka, but confirm `bb tik` loads charm.clj (JLine 3
-  on bb). Keep the plain data/ANSI output for pipes and `--edn`; charm.clj
-  is the pretty/interactive MODE, not a replacement for scriptable output.
+  blocked ticket, walk the plan graph, act inline.
+  **Spike results (v0.2.71, 2026-07-12):**
+  - **babashka: FAILS.** `charm.style.color` imports
+    `org.jline.utils.AttributedString`, which bb v1.12.200 does not
+    bundle — the repo's babashka badge does not hold for our bb. So
+    charm.clj cannot be a dependency of the shared CLI path; it would
+    have to be native/JVM-only (a requiring-resolve seam with the plain
+    ANSI renderer as the bb fallback), or wait for bb to bundle the
+    class.
+  - **JVM on JDK 21: loads and renders fine** — both charm.style.core
+    and charm.program; the advertised JDK 22+ floor is not a load
+    barrier for our use, no flake bump needed so far.
+  - **native-image: clean.** A minimal styled binary builds in ~60s with
+    zero extra reflection config; adding the dep to TIK's own native
+    build costs **+1.0 MB** (63.8 → 64.8 MB) and the binary works.
+  Verdict: adoption is gated ONLY by the babashka gap. The clean shape
+  when wanted: keep `tint`/plain output as the universal fallback,
+  charm.clj behind a requiring-resolve seam for the native binary's
+  pretty/interactive mode. Keep plain data/`--edn` for pipes either way.
 - **Interpreter-agnostic probes** — `tik probe` runs a probe as
   `["sh" <file>]`, always wrapping in a POSIX shell, so the current
   `git grep` probes need `sh` (fine on Linux/macOS and Git-for-Windows,
