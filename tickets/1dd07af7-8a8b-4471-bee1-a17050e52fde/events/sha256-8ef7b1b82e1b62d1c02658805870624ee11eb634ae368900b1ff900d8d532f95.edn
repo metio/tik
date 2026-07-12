@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-12T00:11:56.968Z" :event/body {:fact/path [:summary] :fact/value "dead stages and contradictory guards are now statically detectable from a definition alone"} :event/parents #{"sha256-0fc8043c770c9a8b9c33e602bdbb98d7b37b361ba801d12e0a54f25b5fa18f87"} :event/ticket #uuid "1dd07af7-8a8b-4471-bee1-a17050e52fde" :event/type :fact/assert}
