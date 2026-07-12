@@ -19,6 +19,14 @@ events (idempotence).
 
 Self-contained: only `funext` and `propext` from Lean 4 core, no mathlib.
 Check with:  lean proofs/GSet.lean   (exit 0, no errors = verified)
+
+Attached to the code: this proof holds for any `derive` that is a
+function of the set. `test/tik/proof_conformance_test.clj` discharges
+that hypothesis for the REAL kernel (its derive is invariant to event
+order and multiplicity) and restates `derive_converges` and
+`derive_dup_invariant` as equations the real `ticket-state` must
+satisfy — so the implementation inherits these theorems rather than
+merely resembling them.
 -/
 
 /-- A grow-only set over `α`, as a membership predicate. -/
