@@ -39,6 +39,7 @@ expect_violation() {
 
 expect_pass Merge
 expect_pass SweepFixpoint
+expect_pass MonotonePositive
 expect_violation ChaoticFixpoint
 
 if [ "$fail" -eq 0 ]; then echo "tla: PASS"; else echo "tla: FAIL"; fi
