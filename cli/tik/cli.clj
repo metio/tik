@@ -29,7 +29,9 @@
             [tik.guard :as guard]
             [tik.next :as next-lens]
             [tik.plan :as plan]
+            [tik.template :as template]
             [tik.work :as work]
+            [malli.core :as m]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.sign :as sign]
@@ -855,6 +857,124 @@
                   " now uses it — try:"))
     (println "  tik new track --title \"the first thing\"")
     (println "  tik author --template bug")))
+
+(defn- field-hint
+  "A short type hint for prompting one template parameter."
+  [child]
+  (case (m/type child)
+    :boolean "(y/N)"
+    (:vector :sequential :set) "(one or more, space-separated)"
+    (:int :double) "(a number)"
+    :enum (str "(one of: " (str/join ", " (m/children child)) ")")
+    ""))
+
+(defn- coerce-param
+  "Coerce a raw string answer to a template parameter's declared type."
+  [child raw]
+  (let [raw (str/trim raw)]
+    (case (m/type child)
+      :boolean (contains? #{"y" "yes" "true" "1"} (str/lower-case raw))
+      :int (parse-long raw)
+      :double (parse-double raw)
+      :string raw
+      :keyword (keyword raw)
+      (:vector :sequential) (mapv #(coerce-param (first (m/children child)) %)
+                                  (remove str/blank? (str/split raw #"[\s,]+")))
+      :set (set (mapv #(coerce-param (first (m/children child)) %)
+                      (remove str/blank? (str/split raw #"[\s,]+"))))
+      :enum (let [vs (m/children child)]
+              (or (some #(when (= raw (str %)) %) vs) (keyword raw)))
+      (edn/read-string raw))))
+
+(defn- template-fields
+  "Prompt specs for a template's :tik/params — one per :map entry."
+  [tmpl]
+  (when-let [schema (:tik/params tmpl)]
+    (for [[k props child] (m/children (m/schema schema))]
+      {:key k :optional? (boolean (:optional props))
+       :desc (:description props) :child child :hint (field-hint child)})))
+
+(defn- prompt-params
+  "Interactively ask for each parameter, typed and validated by the
+  template's own :tik/params spec — no hand-writing EDN. Eager (a
+  reduce, not a lazy for) so the prompt/read side effects stay ordered."
+  [proc-name fields]
+  (println (str "\n" proc-name " needs a few choices:\n"))
+  (reduce (fn [acc {:keys [key optional? desc child hint]}]
+            (print (str "  " (format "%-14s" (name key))
+                        (when desc (str desc "  ")) hint "\n              > "))
+            (flush)
+            (let [raw (or (read-line) "")]
+              (if (and optional? (str/blank? raw))
+                acc
+                (assoc acc key (coerce-param child raw)))))
+          {}
+          fields))
+
+(defn- collect-params
+  "Parameters for a template: from --params <file.edn>, else interactive
+  prompts driven by the template's spec."
+  [tmpl proc-name opts]
+  (if-let [pf (:params opts)]
+    (read-edn-file (io/file pf))
+    (prompt-params proc-name (template-fields tmpl))))
+
+(defn- source-root
+  "Where a bundle's :hint paths resolve: the store-root above a
+  processes/ or templates/ file, else the file's own directory."
+  ^File [^File f]
+  (let [parent (.getParentFile (.getCanonicalFile f))]
+    (if (#{"processes" "templates"} (.getName parent))
+      (.getParentFile parent)
+      parent)))
+
+(defn- adopt-runbooks!
+  "Copy the runbooks a definition's stages :hint into this store, from
+  the bundle's source root. Returns how many were copied."
+  [definition ^File src-root dest-root]
+  (let [n (atom 0)]
+    (doseq [h (keep :hint (:process/stages definition))
+            :let [sf (io/file src-root h) df (io/file dest-root h)]
+            :when (and (.exists sf) (not (.exists df)))]
+      (io/make-parents df)
+      (io/copy sf df)
+      (swap! n inc))
+    @n))
+
+(defn- cmd-adopt
+  "adopt <process-or-template.edn> [--params <p.edn>]: bring a process
+  from a library into this store. A plain definition is copied; a
+  template (carries :tik/params) is filled — interactively by default,
+  its own spec driving typed, validated prompts — expanded to a
+  definition, linted, and written to processes/, with its runbooks
+  copied alongside. The expanded EDN is authoritative; nothing runs the
+  template as code (§19)."
+  [{:keys [pos opts]}]
+  (let [src (or (first pos)
+                (die "usage: tik adopt <process-or-template.edn> [--params p.edn]"))
+        srcf (io/file src)
+        _ (when-not (.exists srcf) (die (str "no such file: " src)))
+        raw (read-edn-file srcf)
+        tmpl? (template/template? raw)
+        proc-name (name (or (:process/id (if tmpl? (:tik/template raw) raw))
+                            (die "not a process or template (no :process/id)")))
+        definition (if tmpl? (template/expand raw (collect-params raw proc-name opts)) raw)
+        problems (process/lint definition)
+        _ (doseq [{:keys [level msg]} problems]
+            (println (str "[" (name level) "] " msg)))
+        _ (when (some #(= :error (:level %)) problems)
+            (die "refusing to adopt a definition with lint errors"))
+        pname (name (:process/id definition))
+        dest (io/file (root) "processes" (str pname ".edn"))]
+    (io/make-parents dest)
+    (spit dest (with-out-str (pp/pprint definition)))
+    (let [copied (adopt-runbooks! definition (source-root srcf) (root))]
+      (println (str "✓ " (if tmpl? "expanded" "adopted") " · lint clean → processes/"
+                    pname ".edn"
+                    (when (pos? copied) (str "  (+ " copied " runbook(s))"))))
+      (when (some #(empty? (:members (val %) [])) (:process/roles definition))
+        (println "  fill in the empty roles (tik actor add …), then:"))
+      (println (str "  tik new " pname)))))
 
 (defn- cmd-new [{:keys [pos opts]}]
   (let [[proc-name] pos
@@ -3432,6 +3552,12 @@ Each entry in :needs is one of:
                                                 Commands find the store git-style:
                                                 TIK_ROOT, else the nearest ancestor
                                                 with .tik/ or tickets/, else here
+  tik adopt <process|template.edn>              bring a library process into this store:
+            [--params <p.edn>]                  a plain definition is copied; a template
+                                                (:tik/params) is filled — interactively by
+                                                default, its spec driving typed prompts —
+                                                expanded, linted, and written with its
+                                                runbooks. The expanded EDN is authoritative
   tik new <process> [--title T] [--actor A]     mint a ticket (pins process hash);
                                                 created beneath a store it inherits
                                                 context as signed facts: repo=<name>
@@ -3584,6 +3710,7 @@ Each entry in :needs is one of:
       "gc"      (cmd-gc parsed)
       "plan"    (cmd-plan parsed)
       "new"     (cmd-new parsed)
+      "adopt"   (cmd-adopt parsed)
       "set"     (cmd-set parsed)
       "retract" (cmd-retract parsed)
       "dispute" (cmd-dispute parsed)

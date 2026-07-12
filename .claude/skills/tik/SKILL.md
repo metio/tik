@@ -77,6 +77,13 @@ in the tool (not transcribed here) is what stops it from rotting:
   smells) without writing. Iterate against it until clean.
 - `tik lint <process.edn>` — the full linter on a saved definition (closed
   guard basis, graph sanity, stratified negation, facts-over-flags).
+- `tik adopt <file>` — install a process from the shared library into this
+  store. A plain `.edn` definition is copied verbatim; a `.tmpl.edn`
+  **template** is expanded first — tik reads the template's own malli
+  `:tik/params` spec and asks for each input at the prompt (typed and
+  validated), so you never hand-write EDN. Templates are inert DATA (two
+  markers, `[:tik/param k]` / `[:tik/when flag elem]`), never code — the
+  expanded, linted, hash-pinned definition is what's authoritative.
 
 ### The design law, in one screen
 

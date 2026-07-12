@@ -123,8 +123,11 @@
   (collect #(when (vector? %)
               (case (first %)
                 (:fact :fact=) [(second %)]
-                :signed-by [(nth % 2)]
-                :different-person [(second %) (nth % 2)]
+                ;; :signed-by's over-path is optional — [:signed-by :role]
+                ;; (sign anything) is as valid as [:signed-by :role [:fact]]
+                ;; (sign over a specific fact); no path means no fact ref
+                :signed-by (if-let [p (nth % 2 nil)] [p] [])
+                :different-person [(second %) (nth % 2 nil)]
                 nil))
            guard))
 

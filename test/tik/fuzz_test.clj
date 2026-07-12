@@ -31,6 +31,7 @@
             [tik.oidc :as oidc]
             [tik.plan]
             [tik.process]
+            [tik.template]
             [tik.reduce :as red]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -289,7 +290,15 @@
    {:sym 'tik.plan/cyclic-nodes :f tik.plan/cyclic-nodes
     :gen (one gen-dep-graph)}
    {:sym 'tik.plan/ready :f tik.plan/ready
-    :gen (gen/tuple gen-dep-graph gen-settled)}])
+    :gen (gen/tuple gen-dep-graph gen-settled)}
+   {:sym 'tik.template/expand :f tik.template/expand
+    :gen (gen/tuple
+          ;; sometimes a template (bounded body), sometimes garbage
+          (gen/one-of
+           [gen/any-equatable
+            (gen/fmap (fn [body] {:tik/template body})
+                      (gen/map gen/keyword gen/small-integer {:max-elements 4}))])
+          (gen/map gen/keyword gen/any-equatable {:max-elements 4}))}])
 
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
@@ -331,7 +340,7 @@
   totality-registry) or be listed in totality-exemptions with the
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-     tik.explain tik.causal tik.next tik.process tik.plan})
+     tik.explain tik.causal tik.next tik.process tik.plan tik.template})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
@@ -392,7 +401,8 @@
     tik.plan/in-cycle?              "per-node cycle check; exercised via cyclic-nodes (registered)"
     tik.plan/blocked?               "per-node predicate over prereqs+settled; exercised via summary (registered)"
     tik.plan/status                 "per-node status; exercised via summary (registered)"
-    tik.plan/unlocks                "per-node downstream impact; exercised via summary (registered)"})
+    tik.plan/unlocks                "per-node downstream impact; exercised via summary (registered)"
+    tik.template/template?          "predicate: does a value carry :tik/template; total by construction"})
 
 (deftest every_kernel_namespace_is_swept_or_excluded
   ;; the namespace-level forcing function, DERIVED from the source tree:
