@@ -82,6 +82,25 @@ abstractions generalize.
   skill should draw from what `tik author prompt` and the lint rules
   already encode, so it stays honest as the vocabulary evolves — the
   same anti-staleness discipline tik applies to its own docs.
+- **`tik gc` for orphaned process definitions** — after migrations pile
+  up (metio's renovate rollout left v1 and an earlier definition
+  archived, with all tickets on v2), the `processes/by-hash/` archive
+  accumulates definitions no ticket pins. Empirically an orphaned
+  archive is NOT load-bearing: removing it leaves `tik verify` PASS and
+  every current derivation intact — it only degrades time-travel
+  (`status --at <before that migration>`) to a warning-plus-fallback
+  under the current named rules. So a `tik gc` is defensible: **live** =
+  any hash that is the current pin of a ticket; **collectable** =
+  archived definitions in no live set; dry-run BY DEFAULT (like
+  `migrate`), listing candidates and the historical-`--at` caveat, and
+  deleting only on user approval. Two tiers: the safe one is unused
+  process SOURCE files (`processes/*.edn` no ticket ever pinned — pure
+  file hygiene, zero cost); the archive tier carries the `--at` tradeoff
+  and is a §19 decision (mild tension with ADR 0002 reproducibility-over-
+  freshness — but verify is untouched and `.tik/` is a git repo, so a
+  deleted definition is recoverable). Value is tidiness, not disk:
+  definitions are a few KB, so this is low priority — a lint-style
+  "these N definitions are orphaned" report may be all that is wanted.
 - **`:hint` resolves to an OKF bundle** — the design already half-planted
   (explain.cljc calls `:hint` "authored knowledge link (OKF bundle)";
   PLAN §15 calls `kb/` an OKF bundle). Today a `:hint` is a bare path to
