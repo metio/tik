@@ -78,12 +78,14 @@
 
 (defn- now [] (Instant/now))
 
+(declare parse-instant)
+
 (defn- eval-instant
   "--at <inst>: evaluate at any moment — status on March 1 is just
   f(events, March 1); time travel was free the whole time (ADR 0012)."
   [opts]
   (if-let [at (:at opts)]
-    (Instant/parse at)
+    (parse-instant at)
     (now)))
 
 (defn- process-exit!
@@ -1711,6 +1713,37 @@
   [{:keys [pos opts]}]
   (cmd-ls {:opts (assoc opts :search (str/join " " pos) :all true)}))
 
+(defn- bad-time!
+  "Raise a clean, example-carrying rejection for an unparsable time
+  argument — never leak a raw DateTimeParseException as 'a bug in tik'."
+  [kind w]
+  (throw (ex-info (str "not an ISO-8601 "
+                       (if (= :duration kind)
+                         "duration (e.g. +PT48H = 48 hours, +PT30M = 30 min)"
+                         "instant (e.g. 2026-01-01T00:00:00Z)")
+                       ": " w)
+                  {:reason :time/unparsable :arg w})))
+
+(defn- parse-instant
+  "An absolute ISO-8601 instant from a CLI option (--at/--from/--to),
+  failing well on a typo instead of a raw DateTimeParseException."
+  [w]
+  (try (Instant/parse w)
+       (catch java.time.DateTimeException _ (bad-time! :instant w))))
+
+(defn- parse-when
+  "A :now step's argument: `+<ISO-8601 duration>` advances from `now`
+  (e.g. +PT48H), a bare string is an absolute ISO-8601 instant. A typo —
+  a wall-clock `+2d`, a plain date, an out-of-range duration — must be a
+  clean message, never a raw DateTimeParseException surfaced as 'a bug in
+  tik'. Overflow of `.plus` throws Arithmetic/DateTimeException too."
+  [^Instant now w]
+  (if (str/starts-with? w "+")
+    (try (.plus now (Duration/parse (subs w 1)))
+         (catch java.time.DateTimeException _ (bad-time! :duration w))
+         (catch ArithmeticException _ (bad-time! :duration w)))
+    (parse-instant w)))
+
 (defn- apply-step
   "One scripted step against sim/test state {:events :now :actor}. Steps:
   [:actor \"x\"] [:now \"+PT48H\"|\"<inst>\"] [:set path value]
@@ -1723,10 +1756,7 @@
         append (fn [e] (-> st (update :events conj e) (assoc :now tick)))]
     (case op
       :actor (assoc st :actor (first args))
-      :now (let [w (first args)]
-             (assoc st :now (if (str/starts-with? w "+")
-                              (.plus ^Instant now (Duration/parse (subs w 1)))
-                              (Instant/parse w))))
+      :now (assoc st :now (parse-when now (first args)))
       :set (append (event/assert-fact (assoc arg :path (first args)
                                              :value (second args))))
       :retract (append (event/retract-fact (assoc arg :path (first args))))
@@ -2894,8 +2924,8 @@
 
       "week"
       (let [who (or (:actor opts) (die "work week requires --actor"))
-            from (some-> (:from opts) Instant/parse)
-            to (some-> (:to opts) Instant/parse)
+            from (some-> (:from opts) parse-instant)
+            to (some-> (:to opts) parse-instant)
             per-ticket (for [id (store/ticket-ids s)
                              :let [{:keys [events state]} (ticket-ctx s id)]]
                          {:ticket id :title (:title state) :events events})

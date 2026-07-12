@@ -1208,6 +1208,41 @@
           (is (not (re-find #"ClassCast|bug in tik"
                             (str (:out r) (:err r))))))))))
 
+(deftest garbage_time_args_fail_well
+  ;; whatif's +duration, --at, and work week --from/--to parse ISO-8601
+  ;; via Duration/Instant, which throw DateTimeParseException — an
+  ;; ordinary exception, not ex-info. A natural typo (a wall-clock +2d, a
+  ;; bare date) must be a clean, example-carrying message + exit 1, never
+  ;; surfaced as 'a bug in tik'.
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-timefuzz" (make-array FileAttribute 0)))
+        s (fstore/file-store (str root))
+        id (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (store/append! s (event/create-ticket
+                      {:ticket id :actor "seb" :at t
+                       :title "t" :process :track}))
+    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+      (fn []
+        (doseq [argv [["whatif" (str id) "+2d"]
+                      ["whatif" (str id) "+GARBAGE"]
+                      ["whatif" (str id) "+"]
+                      ["whatif" (str id) "+PT99999999999999999H"]
+                      ["status" (str id) "--at" "NOTADATE"]
+                      ["work" "week" "--actor" "seb" "--from" "NOPE"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (= 1 (:exit r)) (pr-str argv))
+            (is (re-find #"ISO-8601" (:err r))
+                (str (pr-str argv) "\n" (:err r)))
+            (is (not (re-find #"DateTimeParse|bug in tik|\tat "
+                              (str (:out r) (:err r))))
+                (str (pr-str argv) "\n" (:err r)))))
+        (testing "the valid forms still work"
+          (is (zero? (:exit (tik.cli/run-argv ["whatif" (str id) "+PT48H"]))))
+          (is (zero? (:exit (tik.cli/run-argv
+                             ["status" (str id) "--at"
+                              "2026-06-01T00:00:00Z"])))))))))
+
 ;; ------------------- the OIDC bridge over a hostile identity provider
 
 (defn- b64url [s]
