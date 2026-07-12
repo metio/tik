@@ -15,7 +15,6 @@
             [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.pprint :as pp]
-            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.walk :as walk]
             [tik.author :as author]
@@ -30,6 +29,7 @@
             [tik.next :as next-lens]
             [tik.draw :as draw]
             [tik.plan :as plan]
+            [tik.select :as select]
             [tik.template :as template]
             [tik.text :refer [safe-name]]
             [tik.work :as work]
@@ -145,6 +145,47 @@
   (doseq [{:keys [level msg]} problems]
     (println (str "[" (safe-name level) "] " msg)))
   (boolean (some #(= :error (:level %)) problems)))
+
+;; ---------------------------------------------------------------- output
+;; Every lens produces DATA; the format is one axis over it, not a branch
+;; each command re-implements. --format human|edn|json (with --edn as the
+;; short alias for edn). human is the default and is unchanged.
+
+(defn- json-safe
+  "Coerce a lens's EDN value into a shape cheshire can encode: Instants
+  to ISO strings (the one time type has no JSON form), sets to arrays,
+  and any non-name map key to its printed string (JSON keys are strings)."
+  [x]
+  (cond
+    (instance? java.time.Instant x) (str x)
+    (map? x) (into {} (map (fn [[k v]]
+                             [(if (or (keyword? k) (string? k)) k (pr-str k))
+                              (json-safe v)]))
+                   x)
+    (set? x) (mapv json-safe x)
+    (sequential? x) (mapv json-safe x)
+    :else x))
+
+(defn- json-encode [x]
+  ((requiring-resolve 'cheshire.core/generate-string) (json-safe x)))
+
+(defn- output-format [opts]
+  (cond
+    (:edn opts) :edn
+    (nil? (:format opts)) :human
+    (contains? #{"edn" "json" "human"} (:format opts)) (keyword (:format opts))
+    :else (die (str "unknown --format " (:format opts) " (edn | json | human)"))))
+
+(defn- emit-data
+  "Emit a lens's `data` in the requested machine format (edn | json) and
+  return true; return false for :human so the caller renders for people.
+  One dispatch replaces every command's `(if (:edn opts) (prn …) …)`:
+  `(when-not (emit-data opts data) <human>)`."
+  [opts data]
+  (case (output-format opts)
+    :edn (do (prn data) true)
+    :json (do (println (json-encode data)) true)
+    false))
 
 (defn- paint-stage [stage-str settled? parked?]
   (cond
@@ -1363,8 +1404,7 @@
         blocks (if-let [who (:actor opts)]
                  (explain/for-actor blocks roles who)
                  blocks)]
-    (if (:edn opts)
-      (prn blocks)
+    (when-not (emit-data opts blocks)
       (print (paint-explain (explain/render blocks))))))
 
 (defn- cmd-causal
@@ -1375,8 +1415,7 @@
         {:keys [events process roles]} (load-ticket s (first pos))
         by-id (into {} (map (juxt :event/id identity)) events)
         blocks (causal/causal process events (eval-instant opts) roles)]
-    (if (:edn opts)
-      (prn blocks)
+    (when-not (emit-data opts blocks)
       (doseq [{:keys [stage support]} blocks]
         (println (str (tint "32" (str stage)) " is supported by:"))
         (if (empty? support)
@@ -1446,42 +1485,40 @@
                          {:include-settled? (:all opts)
                           :role (some-> (:role opts) parse-value)})
         settled (or settled-skipped settled)]
-    (if (:edn opts)
-      (prn inbox)
-      (do
-        (if (empty? items)
-          (println "Nothing actionable"
-                   (if (:actor opts) (str "for " (:actor opts)) "right now")
-                   "right now.")
-          (doseq [{:keys [action who unlocks stale-ms]} items
-                  :let [days (quot (or stale-ms 0) 86400000)]]
-            (println (format "%-42s unlocks %d%s"
-                             (str (tint "1" (str (name (first action)) " "
-                                                 (pr-str (second action))))
-                                  (when (not= :anyone who)
-                                    (tint "2" (str "  ("
-                                                   (str/join ", " (sort who))
-                                                   ")"))))
-                             (count unlocks)
-                             (if (>= days 2)
-                               (tint "33" (str "  (quiet " days "d)"))
-                               "")))
-            (doseq [{:keys [ticket stage hint]} unlocks]
-              (println (str "    " (sid ticket) " -> " stage
-                            (when hint (str "  (see: " hint ")")))))))
-        ;; waiting and blocked are reported whether or not anything is
-        ;; actionable — a fully dependency-blocked store must still say so
-        (when (seq waiting)
-          (println (str "waiting: " (count waiting)
-                        " stage(s) gated on time or upstream stages")))
-        (when (seq deps-blocked)
-          (println (str "blocked: " (count deps-blocked)
-                        " ticket(s) waiting on an upstream ticket"
-                        " (:depends-on not yet settled)")))
-        (when (and (pos? (or settled 0)) (not (:all opts)))
-          (println (str "settled: " settled
-                        " finished ticket(s) hidden (--all shows their"
-                        " escape hatches)")))))
+    (when-not (emit-data opts inbox)
+            (if (empty? items)
+        (println "Nothing actionable"
+                 (if (:actor opts) (str "for " (:actor opts)) "right now")
+                 "right now.")
+        (doseq [{:keys [action who unlocks stale-ms]} items
+                :let [days (quot (or stale-ms 0) 86400000)]]
+          (println (format "%-42s unlocks %d%s"
+                           (str (tint "1" (str (name (first action)) " "
+                                               (pr-str (second action))))
+                                (when (not= :anyone who)
+                                  (tint "2" (str "  ("
+                                                 (str/join ", " (sort who))
+                                                 ")"))))
+                           (count unlocks)
+                           (if (>= days 2)
+                             (tint "33" (str "  (quiet " days "d)"))
+                             "")))
+          (doseq [{:keys [ticket stage hint]} unlocks]
+            (println (str "    " (sid ticket) " -> " stage
+                          (when hint (str "  (see: " hint ")")))))))
+      ;; waiting and blocked are reported whether or not anything is
+      ;; actionable — a fully dependency-blocked store must still say so
+      (when (seq waiting)
+        (println (str "waiting: " (count waiting)
+                      " stage(s) gated on time or upstream stages")))
+      (when (seq deps-blocked)
+        (println (str "blocked: " (count deps-blocked)
+                      " ticket(s) waiting on an upstream ticket"
+                      " (:depends-on not yet settled)")))
+      (when (and (pos? (or settled 0)) (not (:all opts)))
+        (println (str "settled: " settled
+                      " finished ticket(s) hidden (--all shows their"
+                      " escape hatches)"))))
     (cache-flush!)))
 
 (defn- plan-graph
@@ -1644,20 +1681,51 @@
         (when (and (empty? ready) (empty? blocked) (empty? cyclic))
           (println "\nno dependency links yet — `tik set <id> link.depends-on=<other>`"))))))
 
-(defn- stage-filter
-  "--filter ':a :b' matches tickets whose current stage is any of them;
-  a leading :not negates: --filter ':not :running'."
+(defn- selector-row
+  "A ticket's row for both selection and listing: the display fields plus
+  every field a tik.select predicate reads (see that ns's row shape).
+  One fold per ticket — the slow path a `--where` selector takes."
+  [t {:keys [id events state process roles]}]
+  (let [reached (stage/effective-reached process events t roles)
+        facts (guard/fact-map state)
+        fstatus #(:status (red/fact-status state %))
+        fkeys (keys (:facts state))]
+    {:id id
+     :title (display-title state)
+     :current (stage/current-stages process reached)
+     :reached reached
+     :describe (some facts [[:description] [:summary] [:statement]])
+     :links (vec (link-facts state))
+     :state state
+     :settled? (next-lens/settled-reached? process reached)
+     ;; --- fields tik.select predicates read ---
+     :facts facts
+     :actors (into #{} (map :event/actor) events)
+     :derived-from (into #{} (keep #(get-in % [:event/body
+                                               :artifact/derived-from]))
+                         events)
+     :haystack (str/lower-case (str (display-title state) " " (pr-str facts)))
+     :disputed? (boolean (some #(= :disputed (fstatus %)) fkeys))
+     :conflicted? (boolean (some #(= :conflicted (fstatus %)) fkeys))
+     :unsigned? (let [dir (events-dir id)]
+                  (boolean (some #(empty? (sign/sidecars dir (:event/id %)))
+                                 events)))}))
+
+(defn- compiled-selector
+  "Compile a `--where` value into a row predicate, dying with the usage
+  message on a bad term. A missing selector (nil) matches everything."
   [expr]
-  (let [ks (mapv canonical/parse (str/split (str/trim (str expr)) #"[\s,]+"))]
-    (if (= :not (first ks))
-      (let [ex (set (rest ks))] #(empty? (set/intersection ex %)))
-      (let [in (set ks)] #(boolean (seq (set/intersection in %)))))))
+  (when (true? expr)
+    (die "usage: tik ls --where <selector>  (e.g. stage=:blocked and disputed)"))
+  (try (select/compile (or expr ""))
+       (catch clojure.lang.ExceptionInfo e (die (ex-message e)))))
 
 (defn- cmd-ls
   "Open tickets by default; settled ones (sticky terminal reached —
-  :landed, :closed, :validated, :killed) hide behind --all. An explicit
-  query (--filter / --search) searches EVERYTHING — asking for :landed
-  and getting silence would be a lie."
+  :landed, :closed, :validated, :killed) hide behind --all. `--where`
+  takes a selector (tik.select) — stage, facts, actors, disputes, text,
+  composed — and reads every ticket's log; without it the cached fast
+  path lists open tickets with zero event reads."
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
@@ -1671,80 +1739,50 @@
                         :current (set (:current row))
                         :stale-ms (max 0 (- (inst-ms t)
                                             (:last-event-ms row 0)))))
-               (for [{:keys [id events state process roles]} (all-ticket-ctx s)
-                   :let [reached (stage/effective-reached process events t roles)
-                         current (stage/current-stages process reached)]]
-               {:id id :title (display-title state) :current current
-                ;; the description is a FACT (searchable), not a comment:
-                ;; summary on work tickets, statement on hypotheses, plus
-                ;; the parked/verdict context where present
-                :describe (let [fm (guard/fact-map state)]
-                            (or (some fm [[:description] [:summary] [:statement]])
-                                nil))
-                :links (vec (link-facts state))
-                :state state
-                :haystack (str/lower-case
-                           (str (display-title state) " "
-                                (pr-str (guard/fact-map state))))
-                :settled? (next-lens/settled-reached? process reached)}))
-        rows (cond->> rows
-               (:filter opts) (filter (comp (stage-filter (:filter opts))
-                                            :current))
-               (:search opts) (filter #(str/includes?
-                                        (:haystack %)
-                                        (str/lower-case (str (:search opts)))))
-               (string? (:where opts))
-               (filter (let [[k v] (str/split (:where opts) #"=" 2)
-                             _ (when-not v
-                                 (die "usage: tik ls --where key=value"))
-                             path (parse-key k)
-                             want (parse-value v)]
-                         #(let [fv (red/fact-value (:state %) path)]
-                            (or (= want fv)
-                                ;; keyword/string spellings of the same
-                                ;; name match — repo=:jaas finds both
-                                (and fv (= (str/replace (str want) #"^:" "")
-                                           (str/replace (str fv) #"^:" ""))))))))
+               (filter (compiled-selector (:where opts))
+                       (map #(selector-row t %) (all-ticket-ctx s))))
         visible (if (:all opts) rows (remove :settled? rows))]
-    (if (:edn opts)
-      (prn (mapv #(select-keys % [:id :title :current :describe :settled?])
-                 visible))
-      (do
-        (doseq [{:keys [id current title describe settled? links error]} visible]
-      (println (tint "2" (sid id))
-               (if error
-                 (tint "31" (format "%-24s" "error"))
-                 (paint-stage (format "%-24s" (str/join "," (map name current)))
-                              settled? (contains? current :parked)))
-               title)
-      (when (and (:long opts) describe)
-        (println (tint "2" (str "         " describe))))
-      (when (and (:long opts) (seq links))
-        (doseq [line (link-lines s t links)]
-          (println (tint "2" (str "         ↳ " line))))))
-        (when (empty? visible)
-          (if (empty? rows)
-            (println
-             (str (if (store-established?)
-                    "no tickets yet — start with:\n"
-                    (str "no tik store here yet — establish one, then start:\n"
-                         "  tik init                    make this directory a store\n"
-                         "  tik init --hidden           or keep it in .tik/ (e.g. above many repos)\n"))
-                  "  tik author                  describe your process; tik writes the definition\n"
-                  "  tik author --template bug   or start from a known-good shape\n"
-                  "  tik new track --title ...   or skip process design: just track a thing\n"
-                  "  tik set <id> key=value      record what is true; the stage derives itself"))
-            (println "no matching tickets")))
-        (let [hidden (- (count rows) (count visible))]
-          (when (pos? hidden)
-            (println (str "settled: " hidden
-                          " finished ticket(s) hidden (--all shows)"))))))
+    (when-not (emit-data opts
+                         (mapv #(select-keys % [:id :title :current :describe :settled?])
+                               visible))
+            (doseq [{:keys [id current title describe settled? links error]} visible]
+    (println (tint "2" (sid id))
+             (if error
+               (tint "31" (format "%-24s" "error"))
+               (paint-stage (format "%-24s" (str/join "," (map name current)))
+                            settled? (contains? current :parked)))
+             title)
+    (when (and (:long opts) describe)
+      (println (tint "2" (str "         " describe))))
+    (when (and (:long opts) (seq links))
+      (doseq [line (link-lines s t links)]
+        (println (tint "2" (str "         ↳ " line))))))
+      (when (empty? visible)
+        (if (empty? rows)
+          (println
+           (str (if (store-established?)
+                  "no tickets yet — start with:\n"
+                  (str "no tik store here yet — establish one, then start:\n"
+                       "  tik init                    make this directory a store\n"
+                       "  tik init --hidden           or keep it in .tik/ (e.g. above many repos)\n"))
+                "  tik author                  describe your process; tik writes the definition\n"
+                "  tik author --template bug   or start from a known-good shape\n"
+                "  tik new track --title ...   or skip process design: just track a thing\n"
+                "  tik set <id> key=value      record what is true; the stage derives itself"))
+          (println "no matching tickets")))
+      (let [hidden (- (count rows) (count visible))]
+        (when (pos? hidden)
+          (println (str "settled: " hidden
+                        " finished ticket(s) hidden (--all shows)")))))
     (cache-flush!)))
 
 (defn- cmd-search
-  "tik search <text…> = ls --search over everything, settled included."
+  "tik search <text…> = ls over everything whose haystack holds every
+  word — sugar for `ls --where '~w1 ~w2 …' --all`."
   [{:keys [pos opts]}]
-  (cmd-ls {:opts (assoc opts :search (str/join " " pos) :all true)}))
+  (cmd-ls {:opts (assoc opts
+                        :where (str/join " " (map #(str "~" %) pos))
+                        :all true)}))
 
 (defn- bad-time!
   "Raise a clean, example-carrying rejection for an unparsable time
@@ -2184,22 +2222,20 @@
             [state (now) roles])
           [red/empty-state (now) (:process/roles proc {})])
         {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
-    (if (:edn opts)
-      (prn {:reached reached :sweeps sweeps})
-      (do
-        (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
-          (println (tint "1" (str "sweep " sweep))
-                   (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))
-          (doseq [{:keys [stage prereqs-met? guards]} evaluated]
-            (if-not prereqs-met?
-              (println (tint "2" (str "  " stage " prerequisites not reached — not evaluated")))
-              (do (println (str "  " stage))
-                  (doseq [{:keys [guard verdict]} guards]
-                    (println (if (:satisfied? verdict)
-                               (tint "32" (str "    ✓ " (pr-str guard)))
-                               (tint "31" (str "    ✗ " (pr-str guard)))))))))
-          (println (str "  => added " (pr-str (vec (sort-by str added))))))
-        (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached))))))))))
+    (when-not (emit-data opts {:reached reached :sweeps sweeps})
+            (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
+        (println (tint "1" (str "sweep " sweep))
+                 (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))
+        (doseq [{:keys [stage prereqs-met? guards]} evaluated]
+          (if-not prereqs-met?
+            (println (tint "2" (str "  " stage " prerequisites not reached — not evaluated")))
+            (do (println (str "  " stage))
+                (doseq [{:keys [guard verdict]} guards]
+                  (println (if (:satisfied? verdict)
+                             (tint "32" (str "    ✓ " (pr-str guard)))
+                             (tint "31" (str "    ✗ " (pr-str guard)))))))))
+        (println (str "  => added " (pr-str (vec (sort-by str added))))))
+      (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached)))))))))
 
 (defn- cmd-graph
   "The :after DAG by strata; with a ticket, overlay derived status:
@@ -2269,59 +2305,33 @@
       (println "  no derived change"))))
 
 (defn- cmd-query
-  "The query lens: questions across EVERY ticket's log.
-  disputed | conflicted | unsigned | fact <k> [<v>] | actor <name> | stage <:kw>"
+  "Select across EVERY ticket's log (settled included) with one selector
+  expression (tik.select), reporting id/title/reached:
+
+    tik query stage=:blocked and fact:severity=:high
+    tik query disputed
+    tik query actor=seb and not conflicted
+
+  `tik query duplicates [--threshold 0.4]` is the one non-selector query —
+  a pairwise near-title similarity report, not a per-ticket predicate."
   [{:keys [pos opts]}]
   (let [s (the-store)
-        t (now)
-        [q & args] pos
-        _ (when (= "duplicates" q)
-            (let [threshold (or (some-> (:threshold opts) parse-value double) 0.4)
-                  pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
-              (doseq [{:keys [a b score]} pairs]
-                (println (str (sid a) " ~ " (sid b)
-                              "  " (int (* 100 score)) "% similar")))
-              (println (count pairs) "lookalike pair(s) at >="
-                       (str (int (* 100 threshold)) "%"))
-              (exit! 0)))
-        rows (for [{:keys [id events state process roles]} (all-ticket-ctx s)]
-               {:id id :title (display-title state) :state state :events events
-                :reached (stage/effective-reached process events t roles)})
-        hit? (case q
-               "disputed" (fn [{:keys [state]}]
-                            (some #(= :disputed (:status (red/fact-status state %)))
-                                  (keys (:facts state))))
-               "conflicted" (fn [{:keys [state]}]
-                              (some #(= :conflicted (:status (red/fact-status state %)))
-                                    (keys (:facts state))))
-               "unsigned" (fn [{:keys [id events]}]
-                            (let [dir (events-dir id)]
-                              (some #(empty? (sign/sidecars dir (:event/id %)))
-                                    events)))
-               "fact" (let [path (parse-key (or (first args)
-                                                (die "usage: tik query fact <k> [v]")))
-                            v (some-> (second args) parse-value)]
-                        (fn [{:keys [state]}]
-                          (let [fs (red/fact-status state path)]
-                            (and (= :present (:status fs))
-                                 (or (nil? v) (= v (:value fs)))))))
-               "actor" (fn [{:keys [events]}]
-                         (some #(= (first args) (:event/actor %)) events))
-               "stage" (fn [{:keys [reached]}]
-                         (contains? reached (canonical/parse (first args))))
-               "derived-from" (fn [{:keys [events]}]
-                                (some #(= (first args)
-                                          (get-in % [:event/body
-                                                     :artifact/derived-from]))
-                                      events))
-               (die "usage: tik query disputed|conflicted|unsigned|fact <k> [v]|actor <name>|stage <:kw>|derived-from <hash>|duplicates [--threshold 0.4]"))
-        hits (filter hit? rows)]
-    (if (:edn opts)
-      (prn (mapv #(select-keys % [:id :title :reached]) hits))
-      (do (doseq [{:keys [id title reached]} hits]
+        t (now)]
+    (if (= "duplicates" (first pos))
+      (let [threshold (or (some-> (:threshold opts) parse-value double) 0.4)
+            pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
+        (doseq [{:keys [a b score]} pairs]
+          (println (str (sid a) " ~ " (sid b)
+                        "  " (int (* 100 score)) "% similar")))
+        (println (count pairs) "lookalike pair(s) at >="
+                 (str (int (* 100 threshold)) "%")))
+      (let [pred (compiled-selector (str/join " " pos))
+            hits (filter pred (map #(selector-row t %) (all-ticket-ctx s)))]
+        (when-not (emit-data opts (mapv #(select-keys % [:id :title :reached]) hits))
+          (doseq [{:keys [id title reached]} hits]
             (println (tint "2" (sid id)) title
                      (tint "2" (pr-str (vec (sort-by str reached))))))
-          (println (count hits) "ticket(s)")))))
+          (println (count hits) "ticket(s)"))))))
 
 (defn- html-escape [x]
   (-> (str x)
@@ -2959,36 +2969,34 @@
             per-ticket (for [{:keys [id events state]} (all-ticket-ctx s)]
                          {:ticket id :title (:title state) :events events})
             d (work/draft per-ticket who from to)]
-        (if (:edn opts)
-          (prn d)
-          (do
-            (println (tint "1" (str "activity draft — " who))
-                     (tint "2" (str "(" (get-in d [:method :statement]) ")")))
-            (doseq [{:keys [ticket title sessions duration evidence]}
-                    (:tickets d)]
-              (println (format "  %s  ~%-10s %d session(s), %d event(s)  %s"
-                               (sid ticket)
-                               (subs (str duration) 2)
-                               sessions (count evidence) title)))
-            (println (tint "1" (str "  total ~" (subs (:total d) 2)
-                                    "  — an inference, not a measurement")))
-            (if-not (:sign opts)
-              (println (tint "2" "  review, then --sign to record it as your claim"))
-              (do
-                (doseq [{:keys [ticket duration evidence]} (:tickets d)]
-                  (append!* s (event/add-attestation
-                               {:ticket ticket :actor who :at (now)
-                                :parents (dag/heads (store/events s ticket))
-                                :claim {:claim :work
-                                        :work/kind :human
-                                        :work/duration duration
-                                        :work/method (get-in d [:method :method])
-                                        :work/evidence evidence}})
-                            opts))
-                (println (tint "32"
-                               (str "  signed " (count (:tickets d))
-                                    " per-ticket claim(s) — corrected by"
-                                    " you, carried with evidence"))))))))
+        (when-not (emit-data opts d)
+                    (println (tint "1" (str "activity draft — " who))
+                   (tint "2" (str "(" (get-in d [:method :statement]) ")")))
+          (doseq [{:keys [ticket title sessions duration evidence]}
+                  (:tickets d)]
+            (println (format "  %s  ~%-10s %d session(s), %d event(s)  %s"
+                             (sid ticket)
+                             (subs (str duration) 2)
+                             sessions (count evidence) title)))
+          (println (tint "1" (str "  total ~" (subs (:total d) 2)
+                                  "  — an inference, not a measurement")))
+          (if-not (:sign opts)
+            (println (tint "2" "  review, then --sign to record it as your claim"))
+            (do
+              (doseq [{:keys [ticket duration evidence]} (:tickets d)]
+                (append!* s (event/add-attestation
+                             {:ticket ticket :actor who :at (now)
+                              :parents (dag/heads (store/events s ticket))
+                              :claim {:claim :work
+                                      :work/kind :human
+                                      :work/duration duration
+                                      :work/method (get-in d [:method :method])
+                                      :work/evidence evidence}})
+                          opts))
+              (println (tint "32"
+                             (str "  signed " (count (:tickets d))
+                                  " per-ticket claim(s) — corrected by"
+                                  " you, carried with evidence")))))))
 
       "cost"
       (let [pricing (some-> (:pricing opts) io/file read-edn-file)
@@ -2999,23 +3007,21 @@
                             (store/ticket-ids s))
             agent-runs (filter :usage records)
             totals (work/usage-totals agent-runs pricing)]
-        (if (:edn opts)
-          (prn totals)
-          (do
-            (doseq [[model u] (:observations totals)]
-              (println (tint "1" (str model)))
-              (doseq [[k v] (sort u)]
-                (println (format "    %-20s %,d" (name k) (long v))))
-              (when-let [cost (get-in totals [:priced model])]
-                (println (tint "33" (format "    ≈ %.2f (per --pricing table, today)"
-                                            (double cost))))))
-            (when (empty? agent-runs)
-              (println "no agent-run work records yet — tik work record"))
-            (when-not pricing
-              (println (tint "2" (str "  raw observations only — pass"
-                                      " --pricing <file.edn> to price them"
-                                      " (money is a lens, prices change,"
-                                      " observations don't rot)")))))))
+        (when-not (emit-data opts totals)
+                    (doseq [[model u] (:observations totals)]
+            (println (tint "1" (str model)))
+            (doseq [[k v] (sort u)]
+              (println (format "    %-20s %,d" (name k) (long v))))
+            (when-let [cost (get-in totals [:priced model])]
+              (println (tint "33" (format "    ≈ %.2f (per --pricing table, today)"
+                                          (double cost))))))
+          (when (empty? agent-runs)
+            (println "no agent-run work records yet — tik work record"))
+          (when-not pricing
+            (println (tint "2" (str "  raw observations only — pass"
+                                    " --pricing <file.edn> to price them"
+                                    " (money is a lens, prices change,"
+                                    " observations don't rot)"))))))
 
       (die "usage: tik work record|week|cost ..."))))
 
@@ -3164,21 +3170,19 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                 {:role role :process (:process/id p)
                  :members members :stages stages}))
         by-role (group-by :role rows)]
-    (if (:edn opts)
-      (prn (vec rows))
-      (do
-        (doseq [[role entries] (sort-by (comp str key) by-role)]
-          (println (str (tint "1" (str role)) " — "
-                        (let [ms (distinct (mapcat :members entries))]
-                          (if (seq ms) (str/join ", " ms)
-                              (tint "31" "NO MEMBERS — nothing can satisfy this role")))))
-          (doseq [{:keys [process stages]} (sort-by (comp str :process) entries)]
-            (println (str "  " process ": "
-                          (if (seq stages)
-                            (str "gates " (str/join ", " (map str (sort-by str stages))))
-                            "declared, gates no stage by signature")))))
-        (when (empty? by-role)
-          (println "no roles on the open board"))))))
+    (when-not (emit-data opts (vec rows))
+            (doseq [[role entries] (sort-by (comp str key) by-role)]
+        (println (str (tint "1" (str role)) " — "
+                      (let [ms (distinct (mapcat :members entries))]
+                        (if (seq ms) (str/join ", " ms)
+                            (tint "31" "NO MEMBERS — nothing can satisfy this role")))))
+        (doseq [{:keys [process stages]} (sort-by (comp str :process) entries)]
+          (println (str "  " process ": "
+                        (if (seq stages)
+                          (str "gates " (str/join ", " (map str (sort-by str stages))))
+                          "declared, gates no stage by signature")))))
+      (when (empty? by-role)
+        (println "no roles on the open board")))))
 
 (def ^:private author-llm-prompt-head
   "You are helping design a tik process definition. Interview me about my
@@ -3686,16 +3690,21 @@ Each entry in :needs is one of:
   tik causal <id> [--edn]                       which signed events made each reached
                                                 stage true (negations and time say so
                                                 honestly) — the auditor's \"prove it\"
-  tik ls [--all] [--long]                       open tickets with derived stages;
-         [--filter ':a :b'|':not :a']           --long adds each ticket's description
-         [--search TEXT] [--where k=v]          fact; filter by current stage
-                                                (negatable), search titles+facts, or
-                                                match any fact (--where repo=:jaas)
-  tik search <text...>                          search ALL tickets, titles and facts
-  tik query <question> [args]                   across every log: disputed|conflicted|
-                                                unsigned|fact <k> [v]|actor <n>|stage <:s>|
-                                                duplicates [--threshold 0.4] (lookalike
-                                                open tickets, best match first)
+  tik ls [--all] [--long] [--where SELECTOR]    open tickets with derived stages;
+                                                --long adds description + links;
+                                                --where filters by a selector
+  tik search <text...>                          ALL tickets whose title/facts hold
+                                                every word (sugar for --where '~w …')
+  tik query <selector>                          select across EVERY log (settled too),
+                                                reporting id/title/reached; or
+                                                `query duplicates [--threshold 0.4]`
+
+  A SELECTOR is space-separated terms, all ANDed, each optionally `not`:
+    stage=:blocked   fact:severity   fact:severity=:high   actor=seb
+    disputed   conflicted   unsigned   derived-from=<hash>   ~text   (bare word)
+    e.g.  stage=:blocked and fact:severity=:high and not disputed
+
+  Machine output — any lens: --edn (short for --format edn) | --format json | human
   tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing
                                                 written — e.g. tik whatif 3184 sev=:low
                                                 +P2D (two days pass) retract:category

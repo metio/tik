@@ -28,8 +28,13 @@ name, registered in the store's `actors` file). Confirm with `tik ls`.
 Run these; do not hand-edit `tickets/` — events are content-addressed and
 `tik verify` will catch tampering.
 
-- `tik ls [--long] [--filter ':stage'] [--where k=v]` — the board of open
-  tickets with their **derived** stages. Start here.
+- `tik ls [--long] [--where SELECTOR]` — the board of open tickets with their
+  **derived** stages. Start here. A SELECTOR is space-separated terms, all
+  ANDed, each optionally `not`: `stage=:blocked`, `fact:severity=:high`,
+  `actor=seb`, `disputed`, `~text`, e.g.
+  `tik ls --where 'stage=:blocked and not disputed'`. The same grammar drives
+  `tik query <selector>` (whole store, settled included) and `tik search
+  <words>`. Any lens takes `--edn` / `--format json` for machine output.
 - `tik next [--actor A]` — your inbox: what you can act on now.
 - `tik new <process> --title "…"` — mint a ticket against a process
   (pins the process definition's hash).

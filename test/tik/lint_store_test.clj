@@ -96,9 +96,9 @@
       (tik* root "set" id "mood=curious")
       (is (re-find #"\[:mood\] = :curious" (:out (tik* root "status" id)))))
     (testing "ls --where matches facts either spelling"
-      (is (re-find #"typed" (:out (tik* root "ls" "--where" "gate=:green"))))
+      (is (re-find #"typed" (:out (tik* root "ls" "--where" "fact:gate=:green"))))
       (is (not (re-find #"typed"
-                        (:out (tik* root "ls" "--where" "gate=:red"))))))
+                        (:out (tik* root "ls" "--where" "fact:gate=:red"))))))
     (testing "new prints a stage hint on stderr"
       (let [r (tik* root "new" "tik-dev" "--title" "hinted")]
         (is (re-find #"stage: captured — next: tik explain" (:err r)))))))
