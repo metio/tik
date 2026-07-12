@@ -21,29 +21,35 @@
   {'inst (fn [s] (Instant/parse s))
    'uuid (fn [s] (java.util.UUID/fromString s))})
 
-(defn read-event
-  "The file holds exactly the hashed region (ADR 0007); the id IS the
-  filename and is attached on read. `verify` recomputes it from the
-  bytes. A file that is not one well-formed EDN map fails WELL here —
-  a correct hash of garbage bytes is still garbage, and the rejection
-  must name the file, not explode in the reader."
-  [^File f]
-  (let [stem (str/replace (.getName f) #"\.edn$" "")
-        parsed (try (let [text (slurp f)]
-                      ;; depth precheck: a 100k-deep vector overflows the
-                      ;; recursive reader with an Error no guard catches
-                      (canonical/check-nesting text)
-                      (edn/read-string {:readers edn-readers} text))
+(defn parse-event
+  "The one byte->event parse every backend shares: stored text -> event
+  map with `id` attached (the bytes are the hashed region, ADR 0007, so
+  the id is never IN them). Fails WELL — a correct hash of garbage bytes
+  is still garbage: depth precheck first (a 100k-deep vector overflows
+  the recursive reader with an Error no guard catches), then EDN with
+  the canonical readers, then the event-map shape guard. Any rejection
+  is an ex-info with :reason :event/unreadable carrying `err-data`,
+  which names where the caller read from (file, pack, or db row)."
+  [text id err-data]
+  (let [parsed (try (do (canonical/check-nesting text)
+                        (edn/read-string {:readers edn-readers} text))
                     (catch Exception e
-                      (throw (ex-info "unreadable event file"
-                                      {:reason :event/unreadable
-                                       :file (str f)}
+                      (throw (ex-info "unreadable event"
+                                      (assoc err-data :reason :event/unreadable)
                                       e))))]
     (when-not (map? parsed)
-      (throw (ex-info "event file does not hold an event map"
-                      {:reason :event/unreadable :file (str f)
-                       :read (pr-str parsed)})))
-    (assoc parsed :event/id stem)))
+      (throw (ex-info "stored bytes do not hold an event map"
+                      (assoc err-data :reason :event/unreadable
+                             :read (pr-str parsed)))))
+    (assoc parsed :event/id id)))
+
+(defn read-event
+  "One loose event file: the id IS the filename and is attached on read;
+  `verify` recomputes it from the bytes."
+  [^File f]
+  (parse-event (slurp f)
+               (str/replace (.getName f) #"\.edn$" "")
+               {:file (str f)}))
 
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))
@@ -83,17 +89,9 @@
 (defn- read-packed-events [^File dir]
   (if-let [{:keys [entries]} (read-pack-index dir)]
     (mapv (fn [{:keys [id] :as entry}]
-            (let [bytes (pack-slice dir entry)
-                  parsed (try (let [text (String. bytes "UTF-8")]
-                                (canonical/check-nesting text)
-                                (edn/read-string {:readers edn-readers} text))
-                              (catch Exception e
-                                (throw (ex-info "unreadable packed event"
-                                                {:reason :event/unreadable
-                                                 :file (str (pack-file dir))
-                                                 :id id}
-                                                e))))]
-              (assoc parsed :event/id id)))
+            (parse-event (String. ^bytes (pack-slice dir entry) "UTF-8")
+                         id
+                         {:file (str (pack-file dir)) :id id}))
           entries)
     []))
 

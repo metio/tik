@@ -98,29 +98,41 @@
                             (not (in-cycle? edges d)))]
              d))))
 
+(defn longest-paths
+  "node -> the longest upstream path ending at that node, over ANY graph
+  given as a (node -> parent-nodes) fn — the one memoized longest-path
+  recursion shared by `critical-path` (prerequisite chains) and the draw
+  lens (stage depth). Cycle-safe two ways, because callers differ: a
+  `skip?` predicate excludes nodes entirely (critical-path drops settled
+  and cyclic nodes, making its walk a DAG), and a seen-set truncates any
+  back-edge that still remains (draw must place cyclic stages somewhere
+  rather than not draw them). Skipped nodes get no entry."
+  [parents-of nodes skip?]
+  (let [memo (volatile! {})]
+    (letfn [(lp [n seen]
+              (or (get @memo n)
+                  (if (contains? seen n)
+                    [n]                          ; back-edge: truncate here
+                    (let [seen' (conj seen n)
+                          best (->> (parents-of n)
+                                    (remove skip?)
+                                    (map #(lp % seen'))
+                                    (sort-by count >)
+                                    first)
+                          path (conj (vec best) n)]
+                      (vswap! memo assoc n path)
+                      path))))]
+      (into {} (map (fn [n] [n (lp n #{})])) (remove skip? nodes)))))
+
 (defn critical-path
   "The longest chain of UNSETTLED, acyclic nodes along dependency edges —
   the sequence that gates total completion (its length is the minimum
   number of sequential steps remaining). Returned deepest-prerequisite
-  first. Nodes in cycles are excluded; the recursion is therefore over a
-  DAG and terminates. Memoized so wide graphs stay cheap."
+  first. Nodes in cycles are excluded; the walk is therefore over a DAG."
   [edges settled]
   (let [cyc (cyclic-nodes edges)
-        skip? (fn [n] (or (contains? settled n) (contains? cyc n)))
-        memo (volatile! {})
-        longest (fn longest [n]
-                  (or (get @memo n)
-                      (let [best (->> (prereqs edges n)
-                                      (remove skip?)
-                                      (map longest)
-                                      (sort-by count >)
-                                      first)
-                            path (conj (vec best) n)]
-                        (vswap! memo assoc n path)
-                        path)))]
-    (->> (nodes edges)
-         (remove skip?)
-         (map longest)
+        skip? (fn [n] (or (contains? settled n) (contains? cyc n)))]
+    (->> (vals (longest-paths #(prereqs edges %) (nodes edges) skip?))
          (sort-by count >)
          first
          vec)))

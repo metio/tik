@@ -16,20 +16,15 @@
   honestly without ASCII edges crossing. Totality is a contract: a
   hostile or malformed definition draws *something* and never throws (the
   guard gloss and every name go through str-safe fallbacks)."
-  (:require [clojure.string :as str]))
-
-(defn- nm
-  "A name that never cast-crashes: keyword/symbol/string -> name, else
-  str. Stage ids, roles, and fact-path elements are not kernel-
-  constrained to be names, so a drawing must tolerate any value."
-  [x]
-  (if (or (keyword? x) (symbol? x) (string? x)) (name x) (str x)))
+  (:require [clojure.string :as str]
+            [tik.plan :as plan]
+            [tik.text :refer [safe-name]]))
 
 (defn- path-str [p]
-  (if (sequential? p) (str/join "." (map nm p)) (nm p)))
+  (if (sequential? p) (str/join "." (map safe-name p)) (safe-name p)))
 
 (defn- gloss-val [v]
-  (cond (keyword? v) (nm v)
+  (cond (keyword? v) (safe-name v)
         (string? v) (pr-str v)
         :else (str v)))
 
@@ -55,10 +50,10 @@
        (case (first g)
          :fact             (path-str (second g))
          :fact=            (str (path-str (second g)) " = " (gloss-val (nth g 2 nil)))
-         :signed-by        (str "✎" (nm (second g)))
+         :signed-by        (str "✎" (safe-name (second g)))
          :artifact         (str "⧉" (path-str (second g)))
-         :stage-reached    (str "⤳" (nm (second g)))
-         :elapsed-since    (str "⏱" (nm (nth g 2 nil)))
+         :stage-reached    (str "⤳" (safe-name (second g)))
+         :elapsed-since    (str "⏱" (safe-name (nth g 2 nil)))
          :attested-within  (str "⊙" (path-str (second g)))
          :different-person (str "⚖ " (str/join " ≠ " (map path-str (rest g))))
          :and              (str/join " · " (map #(gloss-guard % deeper) (rest g)))
@@ -70,7 +65,7 @@
 (defn- stage-gloss [stage join-parents]
   (let [guards (str/join " · " (map gloss-guard (:guards stage)))
         merge  (when (seq join-parents)
-                 (str "⋈ after " (str/join ", " (map nm join-parents))))]
+                 (str "⋈ after " (str/join ", " (map safe-name join-parents))))]
     (str/join "   " (remove str/blank? [merge guards]))))
 
 (defn- stage-parents
@@ -78,25 +73,6 @@
   a dangling reference is dropped so a malformed graph still draws."
   [stage ids]
   (filterv ids (:after stage)))
-
-(defn- depths
-  "id -> longest-path length from a root, computed cycle-safely so a
-  malformed cyclic definition (which lint rejects, but draw must survive)
-  terminates. A node on a cycle resolves to the depth of its already-seen
-  ancestors, never recurses forever."
-  [ids parents-of]
-  (let [memo (atom {})]
-    (letfn [(d [id seen]
-              (or (@memo id)
-                  (if (contains? seen id)
-                    0
-                    (let [ps (parents-of id)
-                          v (if (empty? ps)
-                              0
-                              (inc (apply max (map #(d % (conj seen id)) ps))))]
-                      (swap! memo assoc id v)
-                      v))))]
-      (into {} (map (fn [id] [id (d id #{})])) ids))))
 
 (def ^:private max-stages
   "Bound on stages laid out in one drawing. depths/walk recurse per chain
@@ -122,7 +98,11 @@
         ids (set (map :stage/id stages))
         order (into {} (map-indexed (fn [i s] [(:stage/id s) i])) stages)
         parents-of (fn [id] (stage-parents (by-id id) ids))
-        depth (depths ids parents-of)
+        ;; stage depth = longest :after chain, via the kernel's shared
+        ;; longest-path walk (tik.plan) — cycle-safe by its seen-set, and
+        ;; nothing skipped: a cyclic stage must still be placed somewhere
+        depth (update-vals (plan/longest-paths parents-of ids (constantly false))
+                           (comp dec count))
         ;; a join child is drawn under its PRIMARY parent — the deepest,
         ;; ties broken by definition order — so every other input is
         ;; already above it and the `⋈ after …` annotation reads true
@@ -152,7 +132,7 @@
     (letfn [(walk [id own-prefix connector desc-prefix]
               (let [stage (by-id id)
                     ps (parents-of id)
-                    label (str (nm id) (when (:stage/sticky? stage) " ★"))
+                    label (str (safe-name id) (when (:stage/sticky? stage) " ★"))
                     gloss (stage-gloss stage (when (> (count ps) 1) ps))
                     ;; real children draw their full subtree; refs are leaf
                     ;; stubs pointing at a join drawn under its primary parent
@@ -167,7 +147,7 @@
                     (if (= n 1)
                       (let [e (first entries)]
                         (if (:ref? e)
-                          [{:left (str desc-prefix "┈▶ " (nm (:id e))) :gloss ""}]
+                          [{:left (str desc-prefix "┈▶ " (safe-name (:id e))) :gloss ""}]
                           (walk (:id e) desc-prefix "▼ " desc-prefix)))
                       (mapcat (fn [i {:keys [id ref?]}]
                                 (let [last? (= i (dec n))
@@ -177,7 +157,7 @@
                                               last? "└─▶ "
                                               :else "├─▶ ")]
                                   (if ref?
-                                    [{:left (str desc-prefix arrow (nm id)) :gloss ""}]
+                                    [{:left (str desc-prefix arrow (safe-name id)) :gloss ""}]
                                     (walk id desc-prefix arrow
                                           (str desc-prefix (if last? "    " "│   "))))))
                               (range) entries)))))))]

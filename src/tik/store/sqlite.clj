@@ -21,8 +21,7 @@
   The file store remains the auditor-grade interchange format
   (sha256sum(file) = filename needs files); `tik export` materializes
   any store as one."
-  (:require [clojure.edn :as edn]
-            [clojure.java.shell :as sh]
+  (:require [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.store.file :as fstore]
@@ -76,18 +75,7 @@
   "Rows are written only through append!, but a hostile or corrupted db
   can hold anything; garbage bytes fail WELL, naming the row's id."
   [[id hex]]
-  (let [parsed (try (let [text (String. (hex->bytes hex) "UTF-8")]
-                      (canonical/check-nesting text)
-                      (edn/read-string {:readers fstore/edn-readers} text))
-                    (catch Exception e
-                      (throw (ex-info "unreadable event row"
-                                      {:reason :event/unreadable :id id}
-                                      e))))]
-    (when-not (map? parsed)
-      (throw (ex-info "event row does not hold an event map"
-                      {:reason :event/unreadable :id id
-                       :read (pr-str parsed)})))
-    (assoc parsed :event/id id)))
+  (fstore/parse-event (String. ^bytes (hex->bytes hex) "UTF-8") id {:id id}))
 
 (defrecord SqliteStore [db]
   p/EventStore

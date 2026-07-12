@@ -48,30 +48,34 @@
 
 (defn explain
   "[{:stage :satisfied :missing :blocks :hint?} ...] for the frontier.
-  :missing is sorted by `actionability`."
-  [process events now roles]
-  (let [state (red/ticket-state events)
-        reached (stage/effective-reached process events now roles)
-        ctx {:state state :process process :now now
-             :roles roles :reached reached :fact-memo (volatile! {})}]
-    (vec
-     (for [s (frontier process reached ctx)
-           :let [evaluated (map (fn [g] [g (guard/eval-guard g ctx)])
-                                (:guards s []))
-                 satisfied (into [] (comp (filter (comp :satisfied? second))
-                                          (map first))
-                                 evaluated)
-                 missing (vec (sort-by actionability
-                                       (sequence
-                                        (comp (mapcat (comp :reasons second))
-                                              (distinct))
-                                        evaluated)))]
-           :when (seq missing)]
-       (cond-> {:stage (:stage/id s)
-                :satisfied satisfied
-                :missing missing
-                :blocks (stage/downstream process (:stage/id s))}
-         (:hint s) (assoc :hint (:hint s)))))))
+  :missing is sorted by `actionability`. The 5-arity accepts an
+  already-derived `reached` set so a caller holding one (the inbox
+  derives it for settledness too) pays for the stage fixpoint once."
+  ([process events now roles]
+   (explain process events now roles
+            (stage/effective-reached process events now roles)))
+  ([process events now roles reached]
+   (let [state (red/ticket-state events)
+         ctx {:state state :process process :now now
+              :roles roles :reached reached :fact-memo (volatile! {})}]
+     (vec
+      (for [s (frontier process reached ctx)
+            :let [evaluated (map (fn [g] [g (guard/eval-guard g ctx)])
+                                 (:guards s []))
+                  satisfied (into [] (comp (filter (comp :satisfied? second))
+                                           (map first))
+                                  evaluated)
+                  missing (vec (sort-by actionability
+                                        (sequence
+                                         (comp (mapcat (comp :reasons second))
+                                               (distinct))
+                                         evaluated)))]
+            :when (seq missing)]
+        (cond-> {:stage (:stage/id s)
+                 :satisfied satisfied
+                 :missing missing
+                 :blocks (stage/downstream process (:stage/id s))}
+          (:hint s) (assoc :hint (:hint s))))))))
 
 (defn actionable-by?
   "Can this actor act on this reason right now? Role-bound reasons

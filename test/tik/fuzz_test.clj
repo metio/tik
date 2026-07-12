@@ -362,6 +362,14 @@
     :gen (gen/tuple gen-dep-graph gen-settled)}
    {:sym 'tik.plan/critical-path :f tik.plan/critical-path
     :gen (gen/tuple gen-dep-graph gen-settled)}
+   {:sym 'tik.plan/longest-paths :f tik.plan/longest-paths
+    ;; the generic walk takes a parents-of FN — synthesize it from a
+    ;; hostile edge map so cycles and dangling parents are exercised
+    :gen (gen/fmap (fn [[g s]]
+                     [(fn [n] (get g n #{}))
+                      (tik.plan/nodes g)
+                      (fn [n] (contains? s n))])
+                   (gen/tuple gen-dep-graph gen-settled))}
    {:sym 'tik.plan/cyclic-nodes :f tik.plan/cyclic-nodes
     :gen (one gen-dep-graph)}
    {:sym 'tik.plan/ready :f tik.plan/ready
@@ -464,6 +472,7 @@
     tik.explain/reason->text        "renders one derived reason to English; exercised via render (registered)"
     tik.causal/support              "internal to causal (registered): the events one guard consumes"
     tik.next/settled?               "predicate over a derived reached-set, not raw input"
+    tik.next/settled-reached?       "predicate over a derived reached-set, not raw input; the fixpoint-sharing core of settled? (registered via contributions)"
     tik.next/inbox                  "combiner over already-derived contributions output (registered), not raw input"
     tik.process/valid?              "malli validator over the Process schema: a boolean over any input"
     tik.process/explain-process     "malli explainer over the Process schema: an explanation or nil over any input"

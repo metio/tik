@@ -69,24 +69,30 @@
     (mapcat actionable (apply concat (:options r)))
     (if (reason->action r) [r] [])))
 
+(defn settled-reached?
+  "settled? over an already-derived reached set — the stage fixpoint is
+  the expensive part, so a caller that holds one never re-derives it."
+  [process reached]
+  (boolean (some #(and (:stage/sticky? %)
+                       (contains? reached (:stage/id %))
+                       (empty? (stage/downstream process (:stage/id %))))
+                 (:process/stages process))))
+
 (defn settled?
   "Has this ticket reached a sticky terminal stage (a milestone with no
   downstream — :closed, :landed)? A settled ticket's remaining frontier
   is escape hatches, not work: derivation still reports it (explain
   stays complete), the inbox declines to nag about it."
   [process events now roles]
-  (let [reached (stage/effective-reached process events now roles)]
-    (boolean (some #(and (:stage/sticky? %)
-                         (contains? reached (:stage/id %))
-                         (empty? (stage/downstream process (:stage/id %))))
-                   (:process/stages process)))))
+  (settled-reached? process (stage/effective-reached process events now roles)))
 
 (defn contributions
   "One ticket's actionable work: [{:ticket :stage :action :who :hint}].
   Also returns waiting reasons under :waiting and the ticket's
   :settled? flag (dropped from the default inbox)."
   [ticket-id process events now roles]
-  (let [blocks (explain/explain process events now roles)
+  (let [reached (stage/effective-reached process events now roles)
+        blocks (explain/explain process events now roles reached)
         actions (for [{:keys [stage missing hint]} blocks
                       :let [restrictions (signed-by-restrictions process stage)]
                       r (distinct (mapcat actionable missing))]
@@ -106,7 +112,7 @@
                                        (max acc (inst-ms (:event/at e))))
                                      0 events)]
                  (max 0 (- (inst-ms now) last-at)))
-     :settled? (settled? process events now roles)
+     :settled? (settled-reached? process reached)
      :waiting (vec (for [{:keys [stage missing]} blocks
                          r missing
                          :when (empty? (actionable r))]
