@@ -1173,6 +1173,41 @@
                               (str (:out r) (:err r))))
                 (str (pr-str argv) "\n" (:err r)))))))))
 
+(deftest hostile_process_field_derives_cleanly_never_casts
+  ;; the event body is an unconstrained map (:map-of :any :any), so a
+  ;; signed create event can carry a non-name :ticket/process. A
+  ;; single-ticket lens must surface that as a clean derivation error
+  ;; (ex-info -> message, exit 1), never a raw ClassCast reported as a
+  ;; bug; ls keeps isolating it per ticket and still shows the healthy.
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-procfuzz" (make-array FileAttribute 0)))
+        s (fstore/file-store (str root))
+        healthy (random-uuid) hostile (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (store/append! s (event/create-ticket
+                      {:ticket healthy :actor "seb" :at t
+                       :title "ok" :process :track}))
+    (store/append! s (event/create-ticket
+                      {:ticket hostile :actor "seb" :at t
+                       :title "bad" :process 42}))
+    (with-redefs-fn {#'tik.cli/root (constantly (str root))}
+      (fn []
+        (doseq [argv [["status" (str hostile)]
+                      ["explain" (str hostile)]
+                      ["whatif" (str hostile) "x=1"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (= 1 (:exit r)) (pr-str argv))
+            (is (not (re-find #"ClassCast|bug in tik|\tat "
+                              (str (:out r) (:err r))))
+                (str (pr-str argv) "\n" (:err r)))
+            (is (re-find #"process is not a name" (:err r))
+                (str (pr-str argv) "\n" (:err r)))))
+        (let [r (tik.cli/run-argv ["ls"])]
+          (is (zero? (:exit r)))
+          (is (re-find #"ok" (:out r)) "the healthy ticket still lists")
+          (is (not (re-find #"ClassCast|bug in tik"
+                            (str (:out r) (:err r))))))))))
+
 ;; ------------------- the OIDC bridge over a hostile identity provider
 
 (defn- b64url [s]

@@ -267,6 +267,21 @@
                   "none exist yet — `tik author` writes your first one"))))
     (read-edn-file f)))
 
+(defn- process-name
+  "The process name a ticket's state references, as a string. The event
+  body is an unconstrained map (:map-of :any :any), so a hash-valid
+  create event can carry a non-name :ticket/process — reject it as a
+  clean derivation error (ex-info, rendered as a message) rather than
+  let `name` cast-crash a single-ticket lens. `ls`/`next` already
+  isolate a raising derivation per ticket; this keeps status/explain/
+  whatif from surfacing it as an 'unexpected error'."
+  [state]
+  (let [p (:process state)]
+    (if (or (keyword? p) (string? p) (symbol? p))
+      (name p)
+      (throw (ex-info (str "ticket's process is not a name: " (pr-str p))
+                      {:reason :ticket/bad-process :process p})))))
+
 (defn- load-pinned-process
   "The definition a ticket derives under: its pinned hash from the
   archive when present, else the named file (with a warning when that
@@ -277,7 +292,7 @@
         archived (some-> hash by-hash-file)]
     (if (and archived (.exists ^File archived))
       (read-edn-file archived)
-      (let [proc (load-process (name (:process state)))]
+      (let [proc (load-process (process-name state))]
         (when (and hash (not= hash (process/process-hash proc)))
           (binding [*out* *err*]
             (println "warning: pinned definition" hash
@@ -712,7 +727,7 @@
             :let [repo-name (if (keyword? repo) (name repo) (str repo))
                   dir (io/file holder repo-name)
                   probe (or (:command opts)
-                            (let [f (process-file (name (:process state)))]
+                            (let [f (process-file (process-name state))]
                               (when (.exists f)
                                 (:probe (read-edn-file f)))))]]
       (cond
@@ -1178,14 +1193,14 @@
     ;; a hand-edit) still resolves — targets are ids, never keywords
     {:rel (second path) :target (str/replace (str value) #"^:" "")}))
 
-(defn- rel-label
-  "A link rel rendered for display. The rel is a fact-path element, and
-  the kernel accepts a fact path with a non-keyword element (mint does
-  not constrain path element types), so a `[:link 42]` fact is a valid
-  signed event — `name` would cast-crash on it. Render any rel, keyword
-  or not, rather than let one odd link poison a whole board view."
-  [rel]
-  (if (or (keyword? rel) (symbol? rel) (string? rel)) (name rel) (str rel)))
+(defn- safe-name
+  "`name`, but total: a string for a keyword/symbol/string, else `str`.
+  Porcelain renders values the kernel does not constrain to names —
+  a fact-path element (mint permits any), a config-supplied sink type or
+  process — so a raw `name` would cast-crash. One odd value must not
+  poison a whole board view or turn a config typo into 'a bug in tik'."
+  [x]
+  (if (or (keyword? x) (symbol? x) (string? x)) (name x) (str x)))
 
 (defn- link-row
   "One link as data for sorted display: the derived stage leads, the
@@ -1205,14 +1220,14 @@
        :rest (str (subs (str target-id) 0 8) " " title
                   ;; nested-repo rels dot their slashes; either spelling
                   ;; in the title makes the suffix redundant
-                  (when-not (or (str/includes? title (rel-label rel))
-                                (str/includes? title (str/replace (rel-label rel)
+                  (when-not (or (str/includes? title (safe-name rel))
+                                (str/includes? title (str/replace (safe-name rel)
                                                                   "." "/")))
-                    (str "  [" (rel-label rel) "]")))})
+                    (str "  [" (safe-name rel) "]")))})
     {:sort [1 0 "" (str target)]
      :stage "(unresolved)"
      :stage-kws #{}
-     :rest (str target "  [" (rel-label rel) "]")}))
+     :rest (str target "  [" (safe-name rel) "]")}))
 
 (defn- link-lines
   "Every link of `state`, rendered and ordered for humans: least
@@ -2447,7 +2462,7 @@
           (println (str "comment -> " (subs (str id) 0 8) " as " actor-name
                         (when (seq facts)
                           (str " (+ " (count facts) " fact(s))"))))))
-      (let [proc-name (name (or (:process cfg) (die (str "no :process in " cfg-file))))
+      (let [proc-name (safe-name (or (:process cfg) (die (str "no :process in " cfg-file))))
             proc (load-process proc-name)
             id (random-uuid)
             e (event/create-ticket {:ticket id :actor actor-name :at (now)
@@ -2642,7 +2657,7 @@
                                 (:chat-id sink)]))]
             :when (not (contains? sent key))]
       (if (:dry-run opts)
-        (println "would send" (name (:type sink)) "<-"
+        (println "would send" (safe-name (:type sink)) "<-"
                  (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
         ;; one dead endpoint must not abandon the other sinks: failures
         ;; report and count, the ledger stays unmarked (retry next run),
@@ -2676,13 +2691,13 @@
                      (:headers sink)))
               (spit ledger-file (str key "\n") :append true)
               (swap! fired inc)
-              (println "sent" (name (:type sink)) "<-"
+              (println "sent" (safe-name (:type sink)) "<-"
                        (str (subs (str (:ticket tr)) 0 8) " "
                             (:stage tr)))
           (catch Exception e
             (swap! failed inc)
             (binding [*out* *err*]
-              (println (str "failed " (name (:type sink)) " <- "
+              (println (str "failed " (safe-name (:type sink)) " <- "
                             (subs (str (:ticket tr)) 0 8) " " (:stage tr)
                             ": " (ex-message e)
                             " — will retry next run")))))))
