@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-12T01:48:19.311Z" :event/body {:fact/path [:summary] :fact/value "the cross-runtime test now measures agreement robustly, not babashka stdout noise"} :event/parents #{"sha256-4d39c01e843323e9b4d2cfd9c4921cc640b0beaf02198280960825091ec34f0e"} :event/ticket #uuid "35110483-e923-4822-ab27-22825196cf23" :event/type :fact/assert}
