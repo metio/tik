@@ -18,6 +18,8 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [tik.author :as author]
+            [tik.jwks :as jwks]
+            [tik.oid4vci :as oid4vci]
             [tik.oidc :as oidc]
             [tik.canonical :as canonical]
             [tik.causal :as causal]
@@ -2504,6 +2506,50 @@
                   "… on " registry-id))
     (exit! 0)))
 
+(defn- cmd-bridge-oid4vci
+  "bridge oid4vci: ingest a Verifiable Credential (an OID4VCI issuance
+  output — JWT-VC or SD-JWT-VC) as a bridge-signed ATTESTATION on the
+  registry ticket. A VC is a signed attestation with an external issuer
+  (docs/IDEAS.md): the issuer signature is verified at INGEST against the
+  issuer's JWKS (fetched over TLS from `<issuer>/.well-known/jwks.json`,
+  or `--jwks-url`, or a local `--jwks <file>`), then the bridge signs its
+  OWN attestation carrying the credential (raw included for re-audit).
+  Verification thereafter never calls the issuer — offline-forever, the
+  same trust model as the OIDC/email bridges (ADR 0019). No kernel
+  change: the credential becomes one more signed attestation."
+  [opts]
+  (let [cfg-file (or (:config opts) (str (io/file (root) "oid4vci.edn")))
+        cfg (if (.exists (io/file cfg-file)) (read-edn-file (io/file cfg-file)) {})
+        registry-ref (or (:registry opts) (:registry cfg)
+                         (die (str "no registry ticket — mint one with\n"
+                                   "  tik new identity-registry --title 'identity registry'\n"
+                                   "then pass --registry <its id>")))
+        cred-str (str/trim (if-let [f (:credential opts)] (slurp f) (slurp *in*)))
+        who (actor opts)
+        cred (oid4vci/parse-credential cred-str)
+        issuer (or (:issuer opts) (:issuer cred)
+                   (die "credential carries no issuer (iss); pass --issuer"))
+        jwks-json (cond
+                    (:jwks opts) (slurp (:jwks opts))
+                    (:jwks-url opts) (oidc/http-get (:jwks-url opts))
+                    :else (oidc/http-get (str (str/replace issuer #"/$" "")
+                                              "/.well-known/jwks.json")))
+        verifier (jwks/verifier (jwks/parse-jwks jwks-json))
+        verified (try (oid4vci/verify cred-str verifier)
+                      (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        s (the-store)
+        registry-id (resolve-id s registry-ref)
+        claim (oid4vci/credential-claim verified who)
+        heads (dag/heads (store/events s registry-id))
+        e (event/add-attestation {:ticket registry-id :actor who :at (now)
+                                  :parents heads :claim claim})]
+    (append!* s e opts)
+    (println (str "ingested credential from " (:credential/issuer claim)
+                  " for subject " (:credential/subject claim)
+                  " (" (:credential/type claim) ") as actor '" who
+                  "' — attestation " (shash (:event/id e)) "… on " registry-id))
+    (exit! 0)))
+
 (defn- cmd-bridge
   "bridge email [--config bridge.edn] < message
   One RFC822 message on stdin — MTA-agnostic: procmail, fetchmail,
@@ -2515,8 +2561,12 @@
   Set TIK_KEY so the bridge's claims are signed like anyone else's."
   [{:keys [pos opts]}]
   (when (= "oidc" (first pos)) (cmd-bridge-oidc opts))
+  (when (= "oid4vci" (first pos)) (cmd-bridge-oid4vci opts))
   (when-not (= "email" (first pos))
-    (die "usage: tik bridge email [--config bridge.edn] < message\n       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]"))
+    (die (str "usage: tik bridge email [--config bridge.edn] < message\n"
+              "       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]\n"
+              "       tik bridge oid4vci --credential vc.jwt --registry ID"
+              " [--jwks-url URL | --jwks FILE]")))
   (let [cfg-file (or (:config opts) (str (io/file (root) "bridge.edn")))
         cfg (if (.exists (io/file cfg-file))
               (read-edn-file (io/file cfg-file))
@@ -3750,6 +3800,11 @@ Each entry in :needs is one of:
                   [--user U --password P]       a signed key-binding attestation on the
                                                 registry ticket; verification never
                                                 calls the IdP
+  tik bridge oid4vci --credential vc.jwt        ingest a verifiable credential: verify
+                  --registry ID                 the issuer signature against its JWKS,
+                  [--jwks-url U | --jwks FILE]   mint it as a bridge-signed attestation
+                                                (a VC is an attestation with an external
+                                                issuer); offline-verifiable thereafter
   tik effects run [--config F] [--dry-run]      alerts out: derived transitions to
                                                 slack|discord|matrix|teams|mattermost|
                                                 rocketchat|googlechat|ntfy|gotify|

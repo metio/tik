@@ -702,3 +702,21 @@ Which nixpkgs upstream version should repos reference — always `unstable` so
 versions never need hand-updating here, with Renovate maintaining `flake.lock`?
 And why does this repo's lock file not exist yet? (Loose note migrated from a
 root scratch file; unjudged.)
+
+## Mutation testing
+
+Run a mutation-testing pass over the kernel: systematically perturb the
+source (flip a comparator, drop a branch, swap `and`/`or`, off-by-one a
+bound, negate a guard) and require the test suite to KILL each mutant (a
+test must fail). A surviving mutant is a gap — code a test asserts nothing
+real about. tik is an unusually good fit: the kernel is pure, total, and
+deterministic, so mutants produce clean pass/fail with no flakiness, and
+the five-oracle stack (golden bytes, corpus, property-vs-reference, TLA
+bridge, fuzz) should already kill most — the survivors are exactly the
+untested corners worth finding. Clojure options: a source-rewriting
+harness driving `clojure -M:test` per mutant (the corpus + reference
+kernel make differential kills cheap), or an existing tool if one fits the
+deps-edn/kaocha setup. Scope to `src/tik/*.cljc` first (the un-migratable
+layer earns the scrutiny); porcelain later. Complements fuzzing: fuzzing
+finds inputs that break the code, mutation testing finds code the tests
+don't constrain.

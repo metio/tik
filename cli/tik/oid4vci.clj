@@ -132,8 +132,9 @@
 (defn credential-claim
   "The attestation body a parsed credential mints as — the analogue of
   `oidc/binding-claim`. `:credential/raw` carries the VC for re-audit;
-  what verifies is the bridge actor's signature over THIS attestation
-  plus the issuer registered in `actors`, never the issuer online."
+  what `tik verify` checks is the BRIDGE actor's signature over this
+  attestation (trust flows through the bridge, ADR 0019), never the
+  issuer online — the issuer signature was checked once, at ingest."
   [{:keys [issuer subject type holder-key claims raw]} actor]
   {:claim :credential
    :credential/issuer issuer
@@ -144,13 +145,17 @@
    :credential/actor actor
    :credential/raw raw})
 
+;; The JWS signature check against the issuer JWKS lives in `tik.jwks`
+;; (native-only — full-JDK RSA/EC key specs babashka cannot load), kept
+;; out of this ns's load graph so parsing stays bb-portable. The bridge
+;; command lazy-requires tik.jwks and passes its `verifier` here.
+
 (defn verify
   "Parse `s`, then check the issuer signature over the issuer JWT with an
   injected `verifier` — (signing-input-string, signature-bytes,
   header-map) -> boolean. Returns the parsed credential on success,
   throws {:reason :oid4vci/bad-signature} otherwise. A seam so parsing
-  stays offline; the bridge supplies a JWKS-backed verifier (RS256 /
-  ES256 / EdDSA against the issuer's published keys)."
+  stays offline; the bridge supplies tik.jwks/verifier."
   [s verifier]
   (let [cred (parse-credential s)
         jwt (:jwt (split-sd-jwt s))

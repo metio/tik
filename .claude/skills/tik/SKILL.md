@@ -60,6 +60,28 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   (versions everything migrated away from). Dry-run by default; `verify`
   stays PASS, only historical `--at` degrades. Tidiness, not disk.
 
+### Bringing the outside world in — the bridges
+
+Everything external enters as a **signed event**, so ingestion lives in
+bridges (porcelain that speaks a wire protocol and mints attestations; the
+kernel never reaches out). Each records a bridge-signed attestation whose
+trust flows through the bridge (ADR 0019), verifiable offline forever:
+
+- `tik bridge email [--config bridge.edn] < message` — one RFC822 message
+  on stdin (MTA-agnostic): the sender maps to an actor, `[tik <id>]` in the
+  subject comments that ticket, anything else opens a new one.
+- `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
+  device-flow (or `--user`/`--password`) login binds an IdP subject to a
+  signing key as an attestation on the registry ticket; verification never
+  calls the IdP.
+- `tik bridge oid4vci --credential vc.jwt --registry ID [--jwks-url U |
+  --jwks FILE]` — ingest a **verifiable credential** (a VC is an attestation
+  with an external issuer): verify the issuer signature against its JWKS
+  (JWT-VC and SD-JWT-VC; EdDSA today, RS256/ES256 planned), then mint it as
+  a bridge-signed attestation carrying the credential. A process gates on it
+  with the guards that already exist — `[:signed-by :bridge [:credential]]`,
+  `[:fact= [:credential :type] :kyc]`, `[:attested-within [:credential] "P90D"]`.
+
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a
 keyword (`sev=high` → `:high`), a number stays a number, and anything the
 parser cannot read as one clean form is kept as the literal string — so
