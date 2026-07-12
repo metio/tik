@@ -587,6 +587,35 @@
                           (str (:out r) (:err r))))
             (str (pr-str argv) "\n" (:err r)))))))
 
+(deftest adopt_over_hostile_template_files_never_traces
+  ;; adopt reads a .tmpl.edn from an untrusted library and expands it.
+  ;; A body with no id, an id that is a marker (not a name until
+  ;; expanded), a malformed marker, or a scalar body must each answer
+  ;; with a message and exit 1 — never a ClassCast or other raw trace
+  (let [root (.toFile (Files/createTempDirectory
+                       "tik-adopt" (make-array FileAttribute 0)))
+        repo (System/getProperty "user.dir")
+        run (fn [file body]
+              (spit (io/file root file) body)
+              (sh/sh "bb" "tik" "adopt" (str (io/file root file))
+                     :in ":x\n"                 ; feed any interactive prompt
+                     :dir repo
+                     :env (assoc (into {} (System/getenv))
+                                 "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz")))]
+    (.mkdirs (io/file root "processes"))
+    (doseq [[file body]
+            [["a.tmpl.edn" "{:tik/template {:a 1}}"]                 ; no :process/id
+             ["b.tmpl.edn" "{:tik/params [:map [:p :keyword]] :tik/template {:process/id [:tik/param :p] :process/version 1 :process/guard-vocab 1 :process/stages []}}"]
+             ["c.tmpl.edn" "{:tik/template {:a [:tik/when :f]}}"]    ; malformed marker
+             ["d.tmpl.edn" "{:tik/template 5}"]                      ; scalar body
+             ["e.tmpl.edn" "{:tik/params :not-a-schema :tik/template {:process/id :e}}"]
+             ["f.edn" "{:not :a-process}"]]]                         ; plain, no id
+      (let [r (run file body)]
+        (is (contains? #{0 1} (:exit r)) (pr-str [file (:exit r)]))
+        (is (not (re-find #"Exception in thread|ClassCast|clojure\.lang\.|\tat |this is a bug in tik"
+                          (str (:out r) (:err r))))
+            (str file "\n" (:out r) (:err r)))))))
+
 ;; -------------------------------------------- garbage config files
 
 (deftest garbage_configs_answer_with_words_never_traces

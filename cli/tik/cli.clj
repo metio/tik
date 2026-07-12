@@ -956,9 +956,21 @@
         _ (when-not (.exists srcf) (die (str "no such file: " src)))
         raw (read-edn-file srcf)
         tmpl? (template/template? raw)
-        proc-name (name (or (:process/id (if tmpl? (:tik/template raw) raw))
-                            (die "not a process or template (no :process/id)")))
-        definition (if tmpl? (template/expand raw (collect-params raw proc-name opts)) raw)
+        body (if tmpl? (:tik/template raw) raw)
+        nameable? #(or (keyword? %) (string? %) (symbol? %))
+        ;; a label for the prompts only — the body's id may be a param
+        ;; marker (a vector), resolved only by expansion, so fall back to
+        ;; the file stem rather than calling `name` on a non-name
+        label (let [pid (:process/id body)]
+                (if (nameable? pid)
+                  (name pid)
+                  (str/replace (.getName srcf) #"\.(tmpl\.)?edn$" "")))
+        definition (if tmpl? (template/expand raw (collect-params raw label opts)) raw)
+        ;; the authoritative id comes from the EXPANDED definition, and
+        ;; must be a real name — a template that expands to no usable id
+        ;; is rejected here, not cast-crashed downstream
+        _ (when-not (and (map? definition) (nameable? (:process/id definition)))
+            (die "not a process or template (its :process/id is missing or not a name)"))
         problems (process/lint definition)
         _ (doseq [{:keys [level msg]} problems]
             (println (str "[" (name level) "] " msg)))
