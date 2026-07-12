@@ -211,6 +211,56 @@ abstractions generalize.
     event still gets a proper content-signature kept domain-separated
     from DPoP proofs (tik's sign.clj already namespaces tik-event /
     tik-process / tik-witness for exactly this non-replay reason).
+  - **OID4VCI / OID4VP — a verifiable credential IS an attestation with
+    an external issuer.** DPoP hardens the live write transport; OID4VCI
+    (OpenID for Verifiable Credential Issuance) is a different shape and
+    a cleaner fit, because it maps onto machinery tik already has. The
+    mapping: an issuer signing a credential over subject claims ≡ an
+    actor signing an `attestation/add` over a claim (ADR 0009); the
+    credential's offline, content-bound verifiability ≡ tik's
+    content-addressed events; holder key-binding ≡ `signed-by` /
+    `different-person` over a key; a verifier checking the issuer
+    signature against published keys ≡ `tik verify` checking sidecars
+    against the `actors` registry. So a VC is, in tik's ontology, a
+    signed attestation whose claim is an EXTERNAL fact and whose signer
+    is a third-party issuer — and `:attested-within` already gates a
+    stage on "an outside party signed this, recently enough."
+    - **Disciplined version = a porcelain bridge, zero kernel change.**
+      `tik bridge oid4vci`, sibling to `tik bridge oidc` (§9): ingest a
+      VC (JWT-VC / SD-JWT / mdoc), verify the issuer signature against
+      its published JWKS, register the issuer as an actor (its JWKS key
+      folded in the way the OIDC bridge folds a login key), and mint the
+      credential's claims as an `attestation/add` whose body carries
+      `{:claim :credential, :credential/issuer, :credential/subject,
+      :credential/claims, :credential/holder-key, :credential/raw}` —
+      the exact analogue of `oidc/binding-claim`'s `:identity` body.
+      Verification thereafter never calls the issuer (offline forever),
+      same trust model as the OIDC/email bridges (ADR 0019 inbound).
+    - **The §19 question that gates it (read before building).** Is a VC
+      *only* an attestation with an external-issuer twist? If yes, the
+      kernel needs NOTHING — this is a bridge, like OIDC, and the sole
+      real work is issuer-key registration + SD-JWT/mdoc parsing in
+      porcelain. If OID4VP *presentation* semantics require the kernel
+      to reason about holder-vs-issuer key binding beyond what
+      `signed-by` / `different-person` already express (e.g. selective
+      disclosure proofs, predicate proofs, revocation status lists),
+      THAT is a new guard/event type — a §19 verdict + a guard-vocab
+      bump, a much higher bar than a bridge. Presumption: the issuance
+      side (OID4VCI) is pure porcelain; the presentation side (OID4VP)
+      is where a kernel question might hide, and selective-disclosure
+      predicates specifically smell like the "pluggable evaluator" §19
+      rejects — a verifier that runs arbitrary predicate logic is the
+      workflow engine wearing a credential's clothes. Keep the kernel
+      answering "what follows from these signed facts?" — a VC becomes
+      one more signed fact, nothing more.
+    - **Revocation is the sharp edge.** A VC that can be revoked by the
+      issuer (status list, short expiry) reintroduces exactly the "guard
+      that queries" tik forbids: a stage that depends on live revocation
+      state is not offline-verifiable. The tik-native answer is the
+      existing one — model revocation as a LATER signed event (the
+      issuer, or the holder, attests "revoked as of T"), and let
+      `:attested-within` / fact-status derive the rest. Never a live
+      status-list fetch at guard time.
   Read is the existing status+explain rendering; write maps to the
   existing gated `agent set` path; signing is the existing bridge
   pattern (Tier 1) or a new sidecar-kind rung (Tier 2). No new event
