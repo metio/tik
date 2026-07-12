@@ -201,8 +201,13 @@
   \"a051932\". Everything else parses exactly as before."
   [proc path raw]
   (let [parsed (parse-value raw)]
-    (if (and (declared-string? proc path)
-             (not (string? parsed)))
+    (if (and (not (string? parsed))
+             (or (declared-string? proc path)
+                 ;; [:link <rel>] values are id REFERENCES — always
+                 ;; strings. A uuid target starting with a letter would
+                 ;; otherwise parse as a symbol and keywordize, breaking
+                 ;; resolution (the leading ':' never matches a ticket id)
+                 (= :link (first path))))
       ;; the declaration wants a string: bare hex, all-digit hashes,
       ;; words — the raw text IS the value (a quoted "..." already
       ;; parsed to a string and kept its EDN reading)
@@ -1036,7 +1041,9 @@
         :when (and (= 2 (count path)) (= :link (first path)))
         :let [{:keys [status value]} (red/fact-status state path)]
         :when (= :present status)]
-    {:rel (second path) :target (str value)}))
+    ;; strip a leading ':' so a link stored as a keyword (an older set,
+    ;; a hand-edit) still resolves — targets are ids, never keywords
+    {:rel (second path) :target (str/replace (str value) #"^:" "")}))
 
 (defn- link-row
   "One link as data for sorted display: the derived stage leads, the
@@ -1081,6 +1088,22 @@
                          settled? parked?)
             "  " rest)))))
 
+(defn- unmet-deps
+  "The tickets this one `[:link :depends-on]`s that are NOT yet settled —
+  the cross-ticket blockers `next` respects. Pure derivation over the
+  store; the per-ticket kernel is untouched (dependency-readiness needs
+  many logs, so it lives in porcelain). An unresolvable target counts as
+  unmet — never call a ticket ready on an unknown dependency."
+  [s t id]
+  (for [{:keys [rel target]} (link-facts (:state (ticket-ctx s id)))
+        :when (= :depends-on rel)
+        :let [tid (resolve-id-soft s target)
+              done? (when tid
+                      (let [{:keys [process events roles]} (ticket-ctx s tid)]
+                        (next-lens/settled? process events t roles)))]
+        :when (not done?)]
+    {:target target :tid tid}))
+
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
@@ -1101,6 +1124,14 @@
                   "…)"))
     (println "stage:  " (str/join ", " (map name current))
              (str "(reached: " (str/join ", " (map name (sort-by str reached))) ")"))
+    (when-let [deps (seq (unmet-deps s t id))]
+      (println "blocked:"
+               (str/join ", "
+                         (map (fn [{:keys [target tid]}]
+                                (str (if tid (subs (str tid) 0 8) target)
+                                     (if tid " (not settled)" " (unresolved)")))
+                              deps))
+               "— :depends-on an upstream ticket that is not done"))
     (println "facts:")
     (doseq [[path _] (sort-by (comp pr-str first) (:facts state))
             ;; links and the title override render in their own homes;
@@ -1191,22 +1222,28 @@
 
 (defn- cmd-next
   "The inbox: frontier actions across every ticket, sorted by unlock
-  count, filtered by --actor when given. A rendering of tik.next."
+  count, filtered by --actor when given. A rendering of tik.next — plus
+  a cross-ticket step: a ticket whose `[:link :depends-on]` upstream is
+  not yet settled is held back as blocked, not offered as work."
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
         include-settled? (:all opts)
         ;; the cache answers settled? from a directory listing; only
         ;; live tickets pay for the full contributions fold
-        per-ticket (for [id (store/ticket-ids s)
-                         :let [row (ticket-row s t id)]
-                         :when (or include-settled? (not (:settled? row)))
-                         :when (or (nil? (:error row))
-                                   (do (binding [*out* *err*]
-                                         (println (str "skipping "
-                                                       (subs (str id) 0 8)
-                                                       ": " (:error row))))
-                                       false))
+        live-ids (for [id (store/ticket-ids s)
+                       :let [row (ticket-row s t id)]
+                       :when (or include-settled? (not (:settled? row)))
+                       :when (or (nil? (:error row))
+                                 (do (binding [*out* *err*]
+                                       (println (str "skipping "
+                                                     (subs (str id) 0 8)
+                                                     ": " (:error row))))
+                                     false))]
+                   id)
+        deps-blocked (set (filter #(seq (unmet-deps s t %)) live-ids))
+        per-ticket (for [id live-ids
+                         :when (not (contains? deps-blocked id))
                          :let [{:keys [events process roles]} (ticket-ctx s id)]]
                      (next-lens/contributions id process events t roles))
         settled-skipped (when-not include-settled?
@@ -1223,28 +1260,32 @@
         (if (empty? items)
           (println "Nothing actionable"
                    (if (:actor opts) (str "for " (:actor opts)) "right now")
-                   "—" (count waiting)
-                   "stage(s) waiting on time or upstream stages.")
-          (do
-            (doseq [{:keys [action who unlocks stale-ms]} items
-                    :let [days (quot (or stale-ms 0) 86400000)]]
-              (println (format "%-42s unlocks %d%s"
-                               (str (tint "1" (str (name (first action)) " "
-                                                   (pr-str (second action))))
-                                    (when (not= :anyone who)
-                                      (tint "2" (str "  ("
-                                                     (str/join ", " (sort who))
-                                                     ")"))))
-                               (count unlocks)
-                               (if (>= days 2)
-                                 (tint "33" (str "  (quiet " days "d)"))
-                                 "")))
-              (doseq [{:keys [ticket stage hint]} unlocks]
-                (println (str "    " (subs (str ticket) 0 8) " -> " stage
-                              (when hint (str "  (see: " hint ")"))))))
-            (when (seq waiting)
-              (println (str "waiting: " (count waiting)
-                            " stage(s) gated on time or upstream stages")))))
+                   "right now.")
+          (doseq [{:keys [action who unlocks stale-ms]} items
+                  :let [days (quot (or stale-ms 0) 86400000)]]
+            (println (format "%-42s unlocks %d%s"
+                             (str (tint "1" (str (name (first action)) " "
+                                                 (pr-str (second action))))
+                                  (when (not= :anyone who)
+                                    (tint "2" (str "  ("
+                                                   (str/join ", " (sort who))
+                                                   ")"))))
+                             (count unlocks)
+                             (if (>= days 2)
+                               (tint "33" (str "  (quiet " days "d)"))
+                               "")))
+            (doseq [{:keys [ticket stage hint]} unlocks]
+              (println (str "    " (subs (str ticket) 0 8) " -> " stage
+                            (when hint (str "  (see: " hint ")")))))))
+        ;; waiting and blocked are reported whether or not anything is
+        ;; actionable — a fully dependency-blocked store must still say so
+        (when (seq waiting)
+          (println (str "waiting: " (count waiting)
+                        " stage(s) gated on time or upstream stages")))
+        (when (seq deps-blocked)
+          (println (str "blocked: " (count deps-blocked)
+                        " ticket(s) waiting on an upstream ticket"
+                        " (:depends-on not yet settled)")))
         (when (and (pos? (or settled 0)) (not (:all opts)))
           (println (str "settled: " settled
                         " finished ticket(s) hidden (--all shows their"

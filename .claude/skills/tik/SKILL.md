@@ -36,7 +36,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik set <id> k=v [k=v …]` — **record facts**; the stage re-derives
   itself. Dotted keys nest (`parked.reason="…"`). This is the verb you
   use most. You do not advance a stage — you make a fact true and the
-  stage follows.
+  stage follows. Links are facts too: `tik set <id> link.depends-on=<other-id>`
+  makes this ticket depend on another — `next` then holds it back as
+  blocked until that upstream ticket is settled (`status` names the blocker).
 - `tik explain <id> [--actor A]` — what evidence is missing to advance,
   and who can act. This is the product surface; read it before asking a
   human anything.
