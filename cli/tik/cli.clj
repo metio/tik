@@ -31,6 +31,7 @@
             [tik.draw :as draw]
             [tik.plan :as plan]
             [tik.template :as template]
+            [tik.text :refer [safe-name]]
             [tik.work :as work]
             [malli.core :as m]
             [tik.process :as process]
@@ -117,6 +118,24 @@
 
 (defn- tint [code s]
   (if @use-color? (str "\u001b[" code "m" s "\u001b[0m") s))
+
+(defn- sid
+  "A ticket id's display form: the first 8 hex chars."
+  [x]
+  (subs (str x) 0 8))
+
+(defn- shash
+  "A content hash's display form: `sha256-` plus the first 12 hex chars."
+  [x]
+  (subs (str x) 0 19))
+
+(defn- print-problems
+  "Print lint problems as `[level] msg` lines; true when any is an
+  error — the callers' gate condition."
+  [problems]
+  (doseq [{:keys [level msg]} problems]
+    (println (str "[" (safe-name level) "] " msg)))
+  (boolean (some #(= :error (:level %)) problems)))
 
 (defn- paint-stage [stage-str settled? parked?]
   (cond
@@ -355,6 +374,13 @@
      :roles (:process/roles proc {})
      :heads (dag/heads evs)}))
 
+(defn- load-ticket
+  "Resolve a user-supplied ticket reference and derive its context in
+  one step — the opener nearly every single-ticket command shares.
+  Returns ticket-ctx plus :id."
+  [s ref]
+  (let [id (resolve-id s ref)]
+    (assoc (ticket-ctx s id) :id id)))
 
 (declare display-title link-facts ticket-ctx)
 
@@ -652,7 +678,7 @@
                       :version (:process/version track)
                       :process-hash (archive-process! track)})]
               (append!* s e opts)
-              (println (str "parent " (subs (str (:event/ticket e)) 0 8)
+              (println (str "parent " (sid (:event/ticket e))
                             " \"" parent-title "\""))
               (:event/ticket e)))
         created (atom 0)]
@@ -700,7 +726,7 @@
     (let [{:keys [state]} (ticket-ctx s parent-id)]
       (doseq [line (link-lines s t state)]
         (println "  " line)))
-    (println (str "watch it: tik status " (subs (str parent-id) 0 8)))))
+    (println (str "watch it: tik status " (sid parent-id)))))
 
 (defn- cmd-probe
   "probe [<id>] [--command C]
@@ -736,7 +762,7 @@
       (cond
         (nil? probe) nil
         (not (.isDirectory dir))
-        (println (str (subs (str id) 0 8) " " repo-name
+        (println (str (sid id) " " repo-name
                       ": no such directory under " holder " — skipped"))
         :else
         (let [^File f (resolve-file probe)
@@ -748,7 +774,7 @@
                                                   "TIK_REPO" repo-name)]))
               before (stage/effective-reached process events t roles)]
           (if-not (zero? (:exit r))
-            (println (str (subs (str id) 0 8) " " repo-name ": probe failed — "
+            (println (str (sid id) " " repo-name ": probe failed — "
                           (str/trim (:err r))))
             (do
               (doseq [line (str/split-lines (:out r))
@@ -765,13 +791,13 @@
                               :path path :value value})
                           opts)
                 (swap! changed inc)
-                (println (str (subs (str id) 0 8) " " repo-name ": " k " = "
+                (println (str (sid id) " " repo-name ": " k " = "
                               (pr-str value))))
               (let [evs (store/events s id)
                     after (stage/effective-reached process evs (now) roles)
                     gained (sort-by str (remove before after))]
                 (when (seq gained)
-                  (println (str (subs (str id) 0 8) " " repo-name " -> "
+                  (println (str (sid id) " " repo-name " -> "
                                 (tint "32" (str/join ", " (map name gained))))))))))))
     (println (str @changed " fact(s) derived from the world — signed like"
                   " any other claim"))))
@@ -801,8 +827,8 @@
             :let [r (fstore/pack! (root) id)]
             :when r]
       (swap! packed inc)
-      (println (str (subs (str id) 0 8) " packed " (:packed r)
-                    " event(s) -> " (subs (:pack r) 0 19) "…")))
+      (println (str (sid id) " packed " (:packed r)
+                    " event(s) -> " (shash (:pack r)) "…")))
     (println (str @packed " ticket(s) packed"))
     (cache-flush!)))
 
@@ -989,10 +1015,7 @@
         ;; is rejected here, not cast-crashed downstream
         _ (when-not (and (map? definition) (nameable? (:process/id definition)))
             (die "not a process or template (its :process/id is missing or not a name)"))
-        problems (process/lint definition)
-        _ (doseq [{:keys [level msg]} problems]
-            (println (str "[" (name level) "] " msg)))
-        _ (when (some #(= :error (:level %)) problems)
+        _ (when (print-problems (process/lint definition))
             (die "refusing to adopt a definition with lint errors"))
         pname (name (:process/id definition))
         dest (io/file (root) "processes" (str pname ".edn"))]
@@ -1035,13 +1058,13 @@
                    process (stage/effective-reached process events (now) roles))]
       (binding [*out* *err*]
         (println (str "stage: " (str/join ", " (map name current))
-                      " — next: tik explain " (subs (str id) 0 8)))))
+                      " — next: tik explain " (sid id)))))
     (doseq [{existing :id :keys [title score]} similar]
       (binding [*out* *err*]
-        (println (str "note: looks like " (subs (str existing) 0 8) " \"" title
+        (println (str "note: looks like " (sid existing) " \"" title
                       "\" (" (int (* 100 score)) "% similar) — if this IS "
-                      "that, record it: tik set " (subs (str id) 0 8)
-                      " duplicate-of=\"" (subs (str existing) 0 8) "\""))))
+                      "that, record it: tik set " (sid id)
+                      " duplicate-of=\"" (sid existing) "\""))))
     (cache-flush!)))
 
 (defn- cmd-set [{:keys [pos opts]}]
@@ -1196,15 +1219,6 @@
     ;; a hand-edit) still resolves — targets are ids, never keywords
     {:rel (second path) :target (str/replace (str value) #"^:" "")}))
 
-(defn- safe-name
-  "`name`, but total: a string for a keyword/symbol/string, else `str`.
-  Porcelain renders values the kernel does not constrain to names —
-  a fact-path element (mint permits any), a config-supplied sink type or
-  process — so a raw `name` would cast-crash. One odd value must not
-  poison a whole board view or turn a config typo into 'a bug in tik'."
-  [x]
-  (if (or (keyword? x) (symbol? x) (string? x)) (name x) (str x)))
-
 (defn- link-row
   "One link as data for sorted display: the derived stage leads, the
   rel shows only when the title does not already say it, and :sort
@@ -1220,7 +1234,7 @@
        :stage-kws (set current)
        :settled? settled?
        :parked? (contains? (set current) :parked)
-       :rest (str (subs (str target-id) 0 8) " " title
+       :rest (str (sid target-id) " " title
                   ;; nested-repo rels dot their slashes; either spelling
                   ;; in the title makes the suffix redundant
                   (when-not (or (str/includes? title (safe-name rel))
@@ -1266,8 +1280,7 @@
 
 (defn- cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
-        {:keys [events state process roles]} (ticket-ctx s id)
+        {:keys [id events state process roles]} (load-ticket s (first pos))
         t (eval-instant opts)
         reached (stage/effective-reached process events t roles)
         current (stage/current-stages process reached)]
@@ -1280,7 +1293,7 @@
     (println "rules:  " (or (:process/id process) (:process state))
              (str "v" (or (:process/version process)
                           (:process-version state)))
-             (str "(pinned @ " (some-> (:process-hash state) (subs 0 19))
+             (str "(pinned @ " (some-> (:process-hash state) shash)
                   "…)"))
     (println "stage:  " (str/join ", " (map name current))
              (str "(reached: " (str/join ", " (map name (sort-by str reached))) ")"))
@@ -1288,7 +1301,7 @@
       (println "blocked:"
                (str/join ", "
                          (map (fn [{:keys [target tid]}]
-                                (str (if tid (subs (str tid) 0 8) target)
+                                (str (if tid (sid tid) target)
                                      (if tid " (not settled)" " (unresolved)")))
                               deps))
                "— :depends-on an upstream ticket that is not done"))
@@ -1323,8 +1336,7 @@
 
 (defn- cmd-explain [{:keys [pos opts]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
-        {:keys [events process roles]} (ticket-ctx s id)
+        {:keys [events process roles]} (load-ticket s (first pos))
         blocks (explain/explain process events (eval-instant opts) roles)
         blocks (if-let [who (:actor opts)]
                  (explain/for-actor blocks roles who)
@@ -1338,8 +1350,7 @@
   auditor's 'prove it' rendered from the same fold as everything else."
   [{:keys [pos opts]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
-        {:keys [events process roles]} (ticket-ctx s id)
+        {:keys [events process roles]} (load-ticket s (first pos))
         by-id (into {} (map (juxt :event/id identity)) events)
         blocks (causal/causal process events (eval-instant opts) roles)]
     (if (:edn opts)
@@ -1365,8 +1376,7 @@
   stored — the one law applied to the UI's own furniture."
   [{:keys [pos]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
-        {:keys [events process roles]} (ticket-ctx s id)
+        {:keys [events process roles]} (load-ticket s (first pos))
         timeline (:timeline (stage/evolve process events roles))]
     (doseq [[prev entry] (map vector (cons nil timeline) timeline)
             :let [e (first (filter #(= (:event-id entry) (:event/id %))
@@ -1397,7 +1407,7 @@
                        :when (or (nil? (:error row))
                                  (do (binding [*out* *err*]
                                        (println (str "skipping "
-                                                     (subs (str id) 0 8)
+                                                     (sid id)
                                                      ": " (:error row))))
                                      false))]
                    id)
@@ -1435,7 +1445,7 @@
                                (tint "33" (str "  (quiet " days "d)"))
                                "")))
             (doseq [{:keys [ticket stage hint]} unlocks]
-              (println (str "    " (subs (str ticket) 0 8) " -> " stage
+              (println (str "    " (sid ticket) " -> " stage
                             (when hint (str "  (see: " hint ")")))))))
         ;; waiting and blocked are reported whether or not anything is
         ;; actionable — a fully dependency-blocked store must still say so
@@ -1483,7 +1493,7 @@
   [title n]
   (let [t (title n)
         s (str n)]
-    (str (if (re-matches #"[0-9a-f-]{8,}" s) (subs s 0 8) s)
+    (str (if (re-matches #"[0-9a-f-]{8,}" s) (sid s) s)
          (when (and t (not= t s)) (str " " (subs t 0 (min 32 (count t))))))))
 
 (defn- plan-html
@@ -1679,7 +1689,7 @@
                  visible))
       (do
         (doseq [{:keys [id current title describe settled? links error]} visible]
-      (println (tint "2" (subs (str id) 0 8))
+      (println (tint "2" (sid id))
                (if error
                  (tint "31" (format "%-24s" "error"))
                  (paint-stage (format "%-24s" (str/join "," (map name current)))
@@ -1792,11 +1802,8 @@
   (empty line re-renders; the process file reloads automatically on change)")
 
 (defn- sim-load [^File f]
-  (let [p (read-edn-file f)
-        problems (process/lint p)]
-    (doseq [{:keys [level msg]} problems]
-      (println (str "[" (name level) "] " msg)))
-    (when (not-any? #(= :error (:level %)) problems) p)))
+  (let [p (read-edn-file f)]
+    (when-not (print-problems (process/lint p)) p)))
 
 (defn- resolve-file
   "A file argument as given, else relative to the store root — so
@@ -1921,11 +1928,8 @@
         new-file (or (second pos) (die "usage: tik migrate <id> <new.edn> [--apply]"))
         _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
         new-proc (read-edn-file (io/file new-file))
-        problems (process/lint new-proc)
-        _ (do (doseq [{:keys [level msg]} problems]
-                (println (str "[" (name level) "] " msg)))
-              (when (some #(= :error (:level %)) problems)
-                (die "refusing to migrate to a definition with lint errors")))
+        _ (when (print-problems (process/lint new-proc))
+            (die "refusing to migrate to a definition with lint errors"))
         {:keys [events process]} (ticket-ctx s id)
         t (now)
         old-roles (:process/roles process {})
@@ -1936,8 +1940,8 @@
         new-hash (process/process-hash new-proc)]
     (when (= old-hash new-hash)
       (die "that is the definition the ticket is already pinned to"))
-    (println (str "pinned:   v" (:process/version process) " @ " (subs old-hash 0 19) "…"))
-    (println (str "proposed: v" (:process/version new-proc) " @ " (subs new-hash 0 19) "…"))
+    (println (str "pinned:   v" (:process/version process) " @ " (shash old-hash) "…"))
+    (println (str "proposed: v" (:process/version new-proc) " @ " (shash new-hash) "…"))
     (doseq [stage-id (sort-by str (remove after before))]
       (println "  - stage" stage-id "would REGRESS (no longer derivable)"))
     (doseq [stage-id (sort-by str (remove before after))]
@@ -1960,7 +1964,7 @@
                         :process-hash new-hash
                         :reason (:reason opts)})
                     opts)
-          (println "migrated — ticket now pins" (subs new-hash 0 19) "…")))))
+          (println "migrated — ticket now pins" (shash new-hash) "…")))))
 
 (defn- cmd-export
   "Materialize the current store (whatever backend) as a file/git store
@@ -2094,7 +2098,7 @@
         (let [produced (sign/sign! key f (str head ".witness-tmp")
                                    sign/namespace-witness)]
           (.renameTo ^File produced target)))
-      (println "witnessed" (subs head 0 19) "…"))
+      (println "witnessed" (shash head) "…"))
     (println (count heads) "head(s) countersigned — each timestamps its"
              "entire ancestry")))
 
@@ -2150,7 +2154,7 @@
         s (the-store)
         [state t roles]
         (if-let [tid (second pos)]
-          (let [{:keys [state roles]} (ticket-ctx s (resolve-id s tid))]
+          (let [{:keys [state roles]} (load-ticket s tid)]
             [state (now) roles])
           [red/empty-state (now) (:process/roles proc {})])
         {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
@@ -2182,7 +2186,7 @@
         s (the-store)
         reached (when-let [tid (second pos)]
                   (let [{:keys [events process roles]}
-                        (ticket-ctx s (resolve-id s tid))]
+                        (load-ticket s tid)]
                     (stage/effective-reached process events (now) roles)))
         stages (:process/stages proc)
         depth (fn depth [id seen]
@@ -2214,8 +2218,7 @@
   hypothetical event set is the same pure function (PLAN §19)."
   [{:keys [pos opts]}]
   (let [s (the-store)
-        id (resolve-id s (first pos))
-        {:keys [events process roles]} (ticket-ctx s id)
+        {:keys [events process roles]} (load-ticket s (first pos))
         t (now)
         steps (for [kv (rest pos)]
                 (cond
@@ -2249,7 +2252,7 @@
             (let [threshold (or (some-> (:threshold opts) parse-value double) 0.4)
                   pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
               (doseq [{:keys [a b score]} pairs]
-                (println (str (subs (str a) 0 8) " ~ " (subs (str b) 0 8)
+                (println (str (sid a) " ~ " (sid b)
                               "  " (int (* 100 score)) "% similar")))
               (println (count pairs) "lookalike pair(s) at >="
                        (str (int (* 100 threshold)) "%"))
@@ -2289,7 +2292,7 @@
     (if (:edn opts)
       (prn (mapv #(select-keys % [:id :title :reached]) hits))
       (do (doseq [{:keys [id title reached]} hits]
-            (println (tint "2" (subs (str id) 0 8)) title
+            (println (tint "2" (sid id)) title
                      (tint "2" (pr-str (vec (sort-by str reached))))))
           (println (count hits) "ticket(s)")))))
 
@@ -2341,7 +2344,7 @@
                        "<span class=\"" (chip row) "\">"
                        (html-escape (str/join ", " (map name current))) "</span>"
                        "<b>" (html-escape title) "</b> "
-                       "<span class=\"id\">" (html-escape (subs (str id) 0 8)) "</span>"
+                       "<span class=\"id\">" (html-escape (sid id)) "</span>"
                        (when (seq facts)
                          (str "<ul>"
                               (str/join (for [[p v] facts]
@@ -2490,7 +2493,7 @@
                           :parents (dag/heads (store/events s id))
                           :path path :value value})
                       opts))
-          (println (str "comment -> " (subs (str id) 0 8) " as " actor-name
+          (println (str "comment -> " (sid id) " as " actor-name
                         (when (seq facts)
                           (str " (+ " (count facts) " fact(s))"))))))
       (let [proc-name (safe-name (or (:process cfg) (die (str "no :process in " cfg-file))))
@@ -2527,7 +2530,7 @@
   [template {:keys [ticket title stage]}]
   (-> template
       (str/replace "{{ticket}}" (str ticket))
-      (str/replace "{{short}}" (subs (str ticket) 0 8))
+      (str/replace "{{short}}" (sid ticket))
       (str/replace "{{title}}" (str title))
       (str/replace "{{stage}}" (str stage))))
 
@@ -2689,7 +2692,7 @@
             :when (not (contains? sent key))]
       (if (:dry-run opts)
         (println "would send" (safe-name (:type sink)) "<-"
-                 (str (subs (str (:ticket tr)) 0 8) " " (:stage tr)))
+                 (str (sid (:ticket tr)) " " (:stage tr)))
         ;; one dead endpoint must not abandon the other sinks: failures
         ;; report and count, the ledger stays unmarked (retry next run),
         ;; the loop continues — at-least-once, per sink
@@ -2723,13 +2726,13 @@
               (spit ledger-file (str key "\n") :append true)
               (swap! fired inc)
               (println "sent" (safe-name (:type sink)) "<-"
-                       (str (subs (str (:ticket tr)) 0 8) " "
+                       (str (sid (:ticket tr)) " "
                             (:stage tr)))
           (catch Exception e
             (swap! failed inc)
             (binding [*out* *err*]
               (println (str "failed " (safe-name (:type sink)) " <- "
-                            (subs (str (:ticket tr)) 0 8) " " (:stage tr)
+                            (sid (:ticket tr)) " " (:stage tr)
                             ": " (ex-message e)
                             " — will retry next run")))))))
     (when-not (:dry-run opts)
@@ -2778,7 +2781,7 @@
           (.renameTo ^File produced target)
           ;; the doc regenerates; only the endorsement is worth keeping
           (io/delete-file f)
-          (println "witnessed" (subs root 0 19) "… ->" (.getName target)))))
+          (println "witnessed" (shash root) "… ->" (.getName target)))))
     (when (:anchor opts)
       ;; DELIBERATELY light integration: anchoring shells out to the
       ;; external `ots` tool if — and only if — the operator installed
@@ -2799,7 +2802,7 @@
           (if (and (zero? (:exit r))
                    (.exists (io/file (str f ".ots"))))
             (do (.renameTo (io/file (str f ".ots")) ots-target)
-                (println "anchored" (subs root 0 19)
+                (println "anchored" (shash root)
                          "… ->" (.getName ots-target)
                          "(upgrade after ~1 block: ots upgrade)"))
             (println "anchor failed (calendars unreachable?):"
@@ -2835,10 +2838,10 @@
                                      sign/namespace-witness)))]
                 (check (boolean (and who (sign/verify signers tmp sc who
                                                       sign/namespace-witness)))
-                       (str (subs attested-root 0 19)
+                       (str (shash attested-root)
                             "… CURRENT root witnessed by " (or who "<unregistered>"))))
               (io/delete-file tmp))
-            (println (str "  note  " (subs attested-root 0 19)
+            (println (str "  note  " (shash attested-root)
                           "… witnessed root is historical (store has"
                           " grown since)"))))))))
 
@@ -2921,7 +2924,7 @@
                       :claim (merge {:claim :work} body)})
                   opts)
         (println "recorded" (pr-str (:work/kind body :work))
-                 "on" (subs (str id) 0 8)))
+                 "on" (sid id)))
 
       "week"
       (let [who (or (:actor opts) (die "work week requires --actor"))
@@ -2939,7 +2942,7 @@
             (doseq [{:keys [ticket title sessions duration evidence]}
                     (:tickets d)]
               (println (format "  %s  ~%-10s %d session(s), %d event(s)  %s"
-                               (subs (str ticket) 0 8)
+                               (sid ticket)
                                (subs (str duration) 2)
                                sessions (count evidence) title)))
             (println (tint "1" (str "  total ~" (subs (:total d) 2)
@@ -3084,10 +3087,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   [{:keys [pos opts]}]
   (let [ticket (or (first pos) (die "usage: tik bundle <id> [--out file.tgz]"))
         s (the-store)
-        id (resolve-id s ticket)
-        {:keys [state]} (ticket-ctx s id)
+        {:keys [id state]} (load-ticket s ticket)
         phash (:process-hash state)
-        out (io/file (or (:out opts) (str "tik-bundle-" (subs (str id) 0 8) ".tgz")))
+        out (io/file (or (:out opts) (str "tik-bundle-" (sid id) ".tgz")))
         work (.toFile (java.nio.file.Files/createTempDirectory
                        "tik-bundle" (make-array java.nio.file.attribute.FileAttribute 0)))
         bdir (io/file work "bundle")
@@ -3249,13 +3251,11 @@ Each entry in :needs is one of:
                               (die "usage: tik author check <answers.edn>")))
           _ (when-not (.exists f) (die (str "no such file: " (second pos))))
           findings (author/check (read-edn-file f)
-                                 (authoring-rules))]
-      (doseq [{:keys [level msg]} findings]
-        (println (str "[" (name level) "] " msg)))
+                                 (authoring-rules))
+          errors? (print-problems findings)]
       (if (empty? findings)
         (println "clean — build it: tik author --from" (str f))
-        (when (some #(= :error (:level %)) findings)
-          (exit! 1)))
+        (when errors? (exit! 1)))
       (exit! 0)))
   (let [answers (cond
                   (:template opts)
@@ -3269,11 +3269,8 @@ Each entry in :needs is one of:
                   answers)
         _ (when (str/blank? (:name answers))
             (die "the process needs a name — run tik author again"))
-        answer-findings (author/check answers (authoring-rules))
-        _ (doseq [{:keys [level msg]} answer-findings]
-            (binding [*out* *err*]
-              (println (str "[" (name level) "] " msg))))
-        _ (when (some #(= :error (:level %)) answer-findings)
+        _ (when (binding [*out* *err*]
+                  (print-problems (author/check answers (authoring-rules))))
             (die "fix the answers file first (tik author check <file> re-checks without writing)"))
         pname (:name answers)
         definition (author/with-runbook-hints
@@ -3301,8 +3298,7 @@ Each entry in :needs is one of:
     (println (str "wrote " (.getPath tests-file)))
     (if (empty? problems)
       (println "lint: clean")
-      (doseq [{:keys [level msg]} problems]
-        (println (str "[" (name level) "] " msg))))
+      (print-problems problems))
     (println)
     (println "next steps:")
     (println (str "  bb tik sim " (.getPath def-file) "     try it live on a scratch ticket"))
@@ -3323,7 +3319,7 @@ Each entry in :needs is one of:
         (vec
          (for [id (store/ticket-ids s)
                :let [{:keys [events state process roles]} (ticket-ctx s id)
-                     short (subs (str id) 0 8)
+                     short (sid id)
                      fm (guard/fact-map state)]
                :when (not (next-lens/settled? process events t roles))
                :let [desc (red/fact-status state [:description])
@@ -3394,9 +3390,7 @@ Each entry in :needs is one of:
                               :msg (str "stage " (:stage/id s) " :hint "
                                         h " does not exist on disk")})
           problems (concat (process/lint proc) missing-runbooks)]
-      (doseq [{:keys [level msg]} problems]
-        (println (str "[" (name level) "] " msg)))
-      (when (some #(= :error (:level %)) problems) (exit! 1))
+      (when (print-problems problems) (exit! 1))
       (when (empty? problems) (println "clean")))))
 
 (declare verify-ticket)
@@ -3415,10 +3409,10 @@ Each entry in :needs is one of:
               :when (str/ends-with? (.getName f) ".edn")
               :let [stem (str/replace (.getName f) #"\.edn$" "")]]
         (check (= stem (str "sha256-" (canonical/sha256-hex (slurp f))))
-               (str (subs stem 0 19) "… definition bytes hash to filename"))
+               (str (shash stem) "… definition bytes hash to filename"))
         (let [sigs (sign/sidecars dir stem)]
           (if (empty? sigs)
-            (println (str "  note  " (subs stem 0 19)
+            (println (str "  note  " (shash stem)
                           "… unsigned definition (tik process sign)"))
             (doseq [sig sigs
                     :let [who (and (.exists signers)
@@ -3428,7 +3422,7 @@ Each entry in :needs is one of:
               (check (boolean
                       (and who (sign/verify signers f sig who
                                             sign/namespace-process)))
-                     (str (subs stem 0 19) "… published by "
+                     (str (shash stem) "… published by "
                           (or who "<unregistered key>"))))))))))
 
 (defn- cmd-verify
@@ -3464,12 +3458,12 @@ Each entry in :needs is one of:
               (swap! verified assoc id heads))
           (let [r (try (with-out-str (verify-ticket parsed id))
                        (catch Exception e
-                         (str "  FAIL  " (subs (str id) 0 8)
+                         (str "  FAIL  " (sid id)
                               " unverifiable: " (ex-message e) "\n")))]
             (if (str/includes? r "FAIL")
               (do (print r) (swap! failures inc))
               (do (swap! verified assoc id heads)
-                  (println (tint "2" (subs (str id) 0 8))
+                  (println (tint "2" (sid id))
                            (tint "32" "ok")
                            (str (count (store/events s id)) " event(s)")))))))
       (verify-definitions check)
@@ -3512,7 +3506,7 @@ Each entry in :needs is one of:
       (doseq [[eid hex] (sqlite/raw-rows db id)
               :let [raw (try (String. ^bytes (sqlite/hex->bytes hex) "UTF-8")
                              (catch Exception ex
-                               (check false (str (subs eid 0 19)
+                               (check false (str (shash eid)
                                                  "… row bytes unreadable: "
                                                  (ex-message ex)))
                                nil))
@@ -3522,29 +3516,29 @@ Each entry in :needs is one of:
                                      {:readers fstore/edn-readers} raw)
                                     :event/id eid)
                              (catch Exception ex
-                               (check false (str (subs eid 0 19)
+                               (check false (str (shash eid)
                                                  "… row unreadable: "
                                                  (ex-message ex)))
                                nil)))]
               :when e]
         (check (= eid (str "sha256-" (canonical/sha256-hex raw)))
-               (str (subs eid 0 19) "… hash(stored bytes) = id"))
+               (str (shash eid) "… hash(stored bytes) = id"))
         (check (= raw (canonical/emit (dissoc e :event/id)))
-               (str (subs eid 0 19) "… bytes are exactly the hashed region"))
-        (check (event/valid? e) (str (subs eid 0 19) "… schema-valid")))
+               (str (shash eid) "… bytes are exactly the hashed region"))
+        (check (event/valid? e) (str (shash eid) "… schema-valid")))
       (do
         (when-let [{:keys [entries pack]} (fstore/read-pack-index dir)]
           (let [pack-bytes (java.nio.file.Files/readAllBytes
                             (.toPath (io/file dir "events.pack")))]
             (check (= pack (str "sha256-"
                                 (canonical/sha256-hex-bytes pack-bytes)))
-                   (str "pack " (subs (str pack) 0 19)
+                   (str "pack " (shash pack)
                         "… bytes hash to the index's pack address"))
             (doseq [{:keys [id] :as entry} entries
                     :let [slice (fstore/pack-slice dir entry)]]
               (check (= id (str "sha256-"
                                 (canonical/sha256-hex-bytes slice)))
-                     (str (subs id 0 19) "… packed slice hashes to id")))))
+                     (str (shash id) "… packed slice hashes to id")))))
         (doseq [^File f files
                 :let [stem (str/replace (.getName f) #"\.edn$" "")
                       e (try (fstore/read-event f)
@@ -3581,7 +3575,7 @@ Each entry in :needs is one of:
                   (check (sign/verify signers
                                       (io/file dir (str (:event/id e) ".edn"))
                                       sig (:event/actor e))
-                         (str (subs (:event/id e) 0 19) "… signed by "
+                         (str (shash (:event/id e)) "… signed by "
                               (:event/actor e))))))
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
@@ -3602,7 +3596,7 @@ Each entry in :needs is one of:
                                          sign/namespace-witness)))]]
             (check (boolean (and who (sign/verify signers f sc who
                                                   sign/namespace-witness)))
-                   (str (subs head 0 19) "… witnessed by "
+                   (str (shash head) "… witnessed by "
                         (or who "<unregistered key>")
                         " (whole ancestry)")))))
       (println "L2 reproducibility")

@@ -31,8 +31,8 @@
   is an ex-info with :reason :event/unreadable carrying `err-data`,
   which names where the caller read from (file, pack, or db row)."
   [text id err-data]
-  (let [parsed (try (do (canonical/check-nesting text)
-                        (edn/read-string {:readers edn-readers} text))
+  (let [parsed (try (canonical/check-nesting text)
+                    (edn/read-string {:readers edn-readers} text)
                     (catch Exception e
                       (throw (ex-info "unreadable event"
                                       (assoc err-data :reason :event/unreadable)
