@@ -356,6 +356,18 @@ where they stop:
   (HTTP), FlowStorm (walking derivation), tools.namespace reload,
   next.jdbc with `events(id TEXT PRIMARY KEY, bytes BLOB)` for the
   SQLite backend. Adopt opportunistically; none are load-bearing.
+- **Interpreter-agnostic probes** — `tik probe` runs a probe as
+  `["sh" <file>]`, always wrapping in a POSIX shell, so the current
+  `git grep` probes need `sh` (fine on Linux/macOS and Git-for-Windows,
+  but a native PowerShell/`.ps1` probe cannot run). The probe is
+  porcelain and its OUTPUT (key=value → signed facts) is what matters —
+  a probe is entirely optional (assert the facts by hand, or point
+  `:probe` at any executable) — but the RUNNER should respect a
+  shebang, or execute a marked-executable file directly, or honor a
+  `:probe-interp` field, so `.ps1`/`.py`/native-exe probes work
+  cross-platform. Backend-agnostic already: the probe reads the repo
+  (filesystem git) and writes through the EventStore protocol, so file
+  store vs SQLite is invisible to it.
 - **Deeper formal verification of the kernel itself** — beyond the
   current TLA+ (merge, fixpoint) + reference-oracle + corpus + golden
   bytes + totality registry, several additions with real leverage on a
