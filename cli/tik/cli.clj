@@ -239,7 +239,13 @@
       (str/trim raw)
       parsed)))
 
-(defn- process-file ^File [name] (io/file (root) "processes" (str name ".edn")))
+(defn- process-file
+  "The named definition's file. Built by string concatenation, not
+  io/file parenting — a path-shaped name (absolute, slashed) must yield
+  a file that merely does not exist, so the caller's 'no process named'
+  die fires instead of an IllegalArgumentException."
+  ^File [name]
+  (io/file (str (root) File/separator "processes" File/separator name ".edn")))
 
 (defn- by-hash-file ^File [hash] (io/file (root) "processes" "by-hash" (str hash ".edn")))
 
@@ -1038,7 +1044,10 @@
                   (take 3 (dupe/radar title (open-ticket-rows s t) 0.4)))
         id (random-uuid)
         e (event/create-ticket {:ticket id :actor (actor opts) :at t
-                                :title (or (:title opts) "")
+                                ;; --title with no following value parses to Boolean true —
+                                ;; the log stores strings, never a parser artifact
+                                :title (let [t (:title opts)]
+                                         (if (string? t) t ""))
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]
@@ -1491,10 +1500,11 @@
 (defn- short-title
   "A node label for one line: 8-char id + trimmed title."
   [title n]
-  (let [t (title n)
+  (let [t (some-> (title n) str)
         s (str n)]
     (str (if (re-matches #"[0-9a-f-]{8,}" s) (sid s) s)
-         (when (and t (not= t s)) (str " " (subs t 0 (min 32 (count t))))))))
+         (when (and (seq t) (not= t s))
+           (str " " (subs t 0 (min 32 (count t))))))))
 
 (defn- plan-html
   "One self-contained HTML page: the plan as a roadmap — a critical-path
@@ -1811,7 +1821,9 @@
   wherever TIK_ROOT points from."
   ^File [path]
   (let [as-given (io/file path)]
-    (if (.exists as-given) as-given (io/file (root) path))))
+    (if (or (.exists as-given) (.isAbsolute as-given))
+      as-given
+      (io/file (root) path))))
 
 (defn- cmd-sim
   "Live process design: a scratch ticket in memory, a definition that
@@ -2272,7 +2284,8 @@
                             (let [dir (events-dir id)]
                               (some #(empty? (sign/sidecars dir (:event/id %)))
                                     events)))
-               "fact" (let [path (parse-key (first args))
+               "fact" (let [path (parse-key (or (first args)
+                                                (die "usage: tik query fact <k> [v]")))
                             v (some-> (second args) parse-value)]
                         (fn [{:keys [state]}]
                           (let [fs (red/fact-status state path)]
