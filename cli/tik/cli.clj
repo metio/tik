@@ -404,7 +404,7 @@
   (for [id (store/ticket-ids s)]
     (assoc (ticket-ctx s id) :id id)))
 
-(declare display-title link-facts ticket-ctx)
+(declare display-title link-facts)
 
 ;; ------------------------------------------------ derived-state cache
 ;; ADR 0013 made disposable caches legal; ticket 11ae2438 settled this
@@ -637,7 +637,7 @@
             [])
           explicit)))
 
-(declare link-facts link-row link-lines resolve-file)
+(declare link-row link-lines resolve-file)
 
 (defn- cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T]

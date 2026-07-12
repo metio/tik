@@ -116,7 +116,7 @@
                 :ticket/create (:created-at state)
                 (throw (ex-info "unknown :elapsed-since reference" {:ref ref})))
         due (some-> start ->instant (.plus (Duration/parse dur-str)))]
-    (if (and due (not (.isBefore ^Instant (->instant now) due)))
+    (if (and due (not (.isBefore ^Instant now due)))
       ok
       (fail {:reason :time/not-elapsed :since ref :duration dur-str :due due}))))
 

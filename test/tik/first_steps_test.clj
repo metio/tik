@@ -7,11 +7,8 @@
   friendly output for the things a first session actually does,
   including the mistakes."
   (:require [tik.harness :as h]
-            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
-
-(def ^:private repo (System/getProperty "user.dir"))
 
 (defn- fresh-root []
   (h/temp-dir! "tik-first"))
@@ -84,6 +81,5 @@
         (is (zero? (:exit r)) (:out r))))
     (testing "the examples directory is living documentation"
       (doseq [ex ["incident-response" "employee-onboarding"]]
-        (let [r (sh/sh "bb" "tik" "test"
-                       (str "examples/" ex ".tests.edn") :dir repo)]
+        (let [r (h/run-tik! {} "test" (str "examples/" ex ".tests.edn"))]
           (is (zero? (:exit r)) (str ex ": " (:out r))))))))
