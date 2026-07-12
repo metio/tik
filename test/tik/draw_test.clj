@@ -65,6 +65,26 @@
   (is (= [] (draw/process {})))
   (is (= [] (draw/process {:process/stages []}))))
 
+(deftest drawing_survives_pathological_size
+  ;; `tik show` draws an UNLINTED definition, and depths/walk recurse per
+  ;; chain length while the guard gloss recurses per :and/:or/:not nesting
+  ;; — both stack bombs without a bound. A flat 50k-stage vector even
+  ;; clears check-nesting (it is not deeply nested), so the cap must live
+  ;; in the renderer.
+  (testing "a deeply nested guard tree glosses to an ellipsis, never overflows"
+    (let [deep (reduce (fn [g _] [:not g]) [:fact [:x]] (range 100000))
+          lines (draw/process {:process/stages [{:stage/id :a :guards [deep]}]})]
+      (is (every? string? lines))
+      (is (some #(str/includes? % "…") lines))))
+  (testing "a very long stage chain draws to the cap with a note, never overflows"
+    (let [chain (mapv (fn [i]
+                        (cond-> {:stage/id (keyword (str "s" i))}
+                          (pos? i) (assoc :after [(keyword (str "s" (dec i)))])))
+                      (range 50000))
+          lines (draw/process {:process/stages chain})]
+      (is (every? string? lines))
+      (is (re-find #"50000 stages" (first lines))))))
+
 ;; ------------------------------------------- totality over hostile input
 
 (def ^:private gen-hostile-def

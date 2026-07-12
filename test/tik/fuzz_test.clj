@@ -578,6 +578,7 @@
                   ["author" "--from" "/nonexistent.edn"]
                   ["adopt"] ["adopt" "/nonexistent.tmpl.edn"]
                   ["gc" "--apply"] ["plan"]
+                  ["show"] ["show" "/nonexistent.edn"] ["show" "track"]
                   ["author" "check"] ["rollout"] ["probe" "zzzz"]
                   ["lint" " "] ["--" "--" "--"]
                   [zalgo]]]

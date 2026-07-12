@@ -33,27 +33,39 @@
         (string? v) (pr-str v)
         :else (str v)))
 
+(def ^:private max-guard-depth
+  "Recursion bound for the guard gloss. `:and`/`:or`/`:not` nest, so an
+  unbounded (hostile, unlinted) guard tree is a stack bomb — `tik show`
+  draws before any lint. No honest guard nests past single digits; deeper
+  renders as an ellipsis rather than overflow the stack."
+  24)
+
 (defn- gloss-guard
   "One guard as a terse symbol string. The closed operator basis is
-  enumerated; an unknown or malformed guard falls back to pr-str rather
-  than throwing — the drawing stays total over any definition."
-  [g]
-  (if-not (and (vector? g) (seq g))
-    (pr-str g)
-    (case (first g)
-      :fact             (path-str (second g))
-      :fact=            (str (path-str (second g)) " = " (gloss-val (nth g 2 nil)))
-      :signed-by        (str "✎" (nm (second g)))
-      :artifact         (str "⧉" (path-str (second g)))
-      :stage-reached    (str "⤳" (nm (second g)))
-      :elapsed-since    (str "⏱" (nm (nth g 2 nil)))
-      :attested-within  (str "⊙" (path-str (second g)))
-      :different-person (str "⚖ " (str/join " ≠ " (map path-str (rest g))))
-      :and              (str/join " · " (map gloss-guard (rest g)))
-      :or               (str "(" (str/join " | " (map gloss-guard (rest g))) ")")
-      :not              (str "¬" (gloss-guard (second g)))
-      :malli            "⊨schema"
-      (pr-str g))))
+  enumerated; an unknown or malformed guard falls back to pr-str, and a
+  tree deeper than max-guard-depth to `…`, so the drawing stays total
+  over any definition — never throws, never overflows."
+  ([g] (gloss-guard g 0))
+  ([g depth]
+   (cond
+     (> depth max-guard-depth) "…"
+     (not (and (vector? g) (seq g))) (pr-str g)
+     :else
+     (let [deeper (inc depth)]
+       (case (first g)
+         :fact             (path-str (second g))
+         :fact=            (str (path-str (second g)) " = " (gloss-val (nth g 2 nil)))
+         :signed-by        (str "✎" (nm (second g)))
+         :artifact         (str "⧉" (path-str (second g)))
+         :stage-reached    (str "⤳" (nm (second g)))
+         :elapsed-since    (str "⏱" (nm (nth g 2 nil)))
+         :attested-within  (str "⊙" (path-str (second g)))
+         :different-person (str "⚖ " (str/join " ≠ " (map path-str (rest g))))
+         :and              (str/join " · " (map #(gloss-guard % deeper) (rest g)))
+         :or               (str "(" (str/join " | " (map #(gloss-guard % deeper) (rest g))) ")")
+         :not              (str "¬" (gloss-guard (second g) deeper))
+         :malli            "⊨schema"
+         (pr-str g))))))
 
 (defn- stage-gloss [stage join-parents]
   (let [guards (str/join " · " (map gloss-guard (:guards stage)))
@@ -86,12 +98,26 @@
                       v))))]
       (into {} (map (fn [id] [id (d id #{})])) ids))))
 
+(def ^:private max-stages
+  "Bound on stages laid out in one drawing. depths/walk recurse per chain
+  length, so this caps the recursion far below any stack limit while
+  sitting orders of magnitude above any real process (the library's
+  largest has six stages)."
+  256)
+
 (defn process
   "The stage graph of process definition `proc` as a seq of strings.
   Empty when there are no stages. Pure and total."
   [proc]
   (let [raw-stages (:process/stages proc)
-        stages (if (sequential? raw-stages) (vec raw-stages) [])
+        all-stages (if (sequential? raw-stages) (vec raw-stages) [])
+        ;; depths and walk recurse per chain length, so an unbounded stage
+        ;; list is a stack bomb — a flat 50k-stage vector clears
+        ;; check-nesting (it is not deeply NESTED) yet overflows the
+        ;; layout. No real process approaches this; a pathological one is
+        ;; drawn to the cap with a note rather than crashing `tik show`.
+        truncated? (> (count all-stages) max-stages)
+        stages (cond-> all-stages truncated? (subvec 0 max-stages))
         by-id (into {} (map (juxt :stage/id identity)) stages)
         ids (set (map :stage/id stages))
         order (into {} (map-indexed (fn [i s] [(:stage/id s) i])) stages)
@@ -158,11 +184,14 @@
       (let [rows (mapcat (fn [r] (cons {:sep ""} (walk r "" "● " "")))
                          roots)
             rows (rest rows)                       ; drop the leading blank
-            width (transduce (keep #(some-> (:left %) count)) max 0 rows)]
-        (map (fn [{:keys [left gloss sep]}]
-               (cond
-                 (some? sep) sep
-                 (str/blank? gloss) left
-                 :else (str (format (str "%-" (max 1 width) "s") left)
-                            "   ⊢ " gloss)))
-             rows)))))
+            width (transduce (keep #(some-> (:left %) count)) max 0 rows)
+            lines (map (fn [{:keys [left gloss sep]}]
+                         (cond
+                           (some? sep) sep
+                           (str/blank? gloss) left
+                           :else (str (format (str "%-" (max 1 width) "s") left)
+                                      "   ⊢ " gloss)))
+                       rows)]
+        (cond->> lines
+          truncated? (cons (str "… " (count all-stages) " stages — drawing the first "
+                                max-stages)))))))
