@@ -39,8 +39,12 @@
             [tik.reduce :as red])
   #?(:clj (:import (java.time Duration Instant))))
 
-(defn- ->instant ^Instant [t]
-  (if (instance? java.util.Date t) (.toInstant ^java.util.Date t) t))
+(defn- ->instant
+  "Type-hint pass-through: the single canonical time type is Instant
+  (the readers produce it, the printer rejects everything else); a
+  non-Instant here is hostile data and fails in the guarded op."
+  ^Instant [t]
+  t)
 
 (defn fact-map
   "Facts as a simple {path value} map of effective values."

@@ -15,7 +15,6 @@
   and must re-emit to the very same bytes. Events cross as a real file
   store both runtimes read identically."
   (:require [tik.harness :as h]
-            [clojure.edn :as edn]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
@@ -49,8 +48,8 @@
              0 8)))
 
 (def ^:private gen-canonical-scalar
-  "Only the types canonical/emit supports; java.util.Date for the time
-  type (canonical emits Date and Instant identically)."
+  "Only the types canonical/emit supports; java.time.Instant is the one
+  time type."
   (gen/one-of
    [(gen/return nil)
     gen/boolean
@@ -59,12 +58,10 @@
     gen/keyword
     gen/symbol
     (gen/fmap (fn [_] (random-uuid)) gen/nat)
-    ;; dates within the range the DEFAULT #inst reader accepts (epoch to
-    ;; year 9999) — the same range mint's round-trip guard enforces, so
-    ;; this is exactly the domain of dates a real event can carry. An
-    ;; expanded-year Instant (far past/future) emits a #inst literal
-    ;; clojure.instant cannot read, which is why mint refuses it.
-    (gen/fmap #(java.util.Date. (long %))
+    ;; instants within the unexpanded-year range (epoch to year 9999) —
+    ;; the cross-runtime harness's line protocol chokes on expanded-year
+    ;; literals, a harness limit, not a kernel one
+    (gen/fmap #(java.time.Instant/ofEpochMilli (long %))
               (gen/choose 0 253402300799999))]))
 
 (def ^:private gen-canonical
@@ -106,10 +103,9 @@
   (let [values (gen/sample gen-canonical 200)
         jvm (mapv canonical/emit values)
         bb (bb-results
-            (str "(require '[clojure.edn :as edn] '[tik.canonical :as c]"
-                 " '[clojure.string :as s])"
+            (str "(require '[tik.canonical :as c] '[clojure.string :as s])"
                  "(doseq [l (s/split-lines (slurp *in*))]"
-                 "  (println (str \"" mark "\" (c/emit (edn/read-string l)))))")
+                 "  (println (str \"" mark "\" (c/emit (c/parse l)))))")
             (str/join "\n" jvm))
         mismatch (first (filter (fn [[a b]] (not= a b)) (map vector jvm bb)))]
     (is (= (count jvm) (count bb)))
@@ -124,11 +120,11 @@
   (let [text (str "[#inst \"2026-07-12T10:20:30.123Z\" "
                   "#uuid \"018f2f6e-7c1a-7000-8000-00000000beef\" "
                   ":k \"s\" 42 true nil {:a [1 2 #{:x :y}]}]")
-        jvm (canonical/content-address (edn/read-string text))
+        jvm (canonical/content-address (canonical/parse text))
         bb (bb-results
-            (str "(require '[clojure.edn :as edn] '[tik.canonical :as c])"
+            (str "(require '[tik.canonical :as c])"
                  "(println (str \"" mark "\""
-                 " (c/content-address (edn/read-string (slurp *in*)))))")
+                 " (c/content-address (c/parse (slurp *in*)))))")
             text)]
     (is (= [jvm] bb))))
 

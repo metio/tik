@@ -8,8 +8,7 @@
   — never an unexpected exception class, and above all never a silent
   pass. TIK_FUZZ_N scales the iteration counts (default keeps the
   gate fast; crank it for a soak run)."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.walk]
@@ -684,7 +683,9 @@
                       (catch clojure.lang.ExceptionInfo _ ::refused))]
       (or (= ::refused minted)
           (let [bytes (canonical/emit (dissoc minted :event/id))]
-            (= bytes (canonical/emit (edn/read-string bytes))))))))
+            ;; read back with the format's own readers — #inst is an
+            ;; Instant, the one time type the printer accepts
+            (= bytes (canonical/emit (canonical/parse bytes))))))))
 
 (deftest hostile_directory_names_never_corrupt_a_store
   (let [top (h/temp-dir! "tik-dirs")

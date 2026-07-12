@@ -4,7 +4,8 @@
   "The golden tests. If any of these break, you have changed the canonical
   format: every existing event id and signature in every store is now
   unverifiable. Bump tik.canonical/format-version and think very hard."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.edn]
+            [clojure.test :refer [deftest is testing]]
             [tik.canonical :as c])
   (:import (java.time Instant)))
 
@@ -42,9 +43,13 @@
   (is (= (c/emit (Instant/parse "2026-07-08T12:00:00.123456789Z"))
          (c/emit (Instant/parse "2026-07-08T12:00:00.123Z")))))
 
-(deftest date-and-instant-agree
-  (is (= (c/emit (Instant/parse "2026-07-08T12:00:00Z"))
-         (c/emit (java.util.Date/from (Instant/parse "2026-07-08T12:00:00Z"))))))
+(deftest default-reader-insts-are-rejected-like-any-unsupported-type
+  ;; one time type: the canonical readers produce Instant, the printer
+  ;; accepts only Instant — the java.util.Date the DEFAULT #inst reader
+  ;; yields must fail at emit, not silently alias
+  (is (thrown? clojure.lang.ExceptionInfo
+               (c/emit (clojure.edn/read-string
+                        "#inst \"2026-07-08T12:00:00Z\"")))))
 
 (deftest unsupported-types-rejected
   (testing "floats are not byte-stable across runtimes"

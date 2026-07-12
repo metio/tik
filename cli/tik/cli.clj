@@ -119,6 +119,15 @@
 (defn- tint [code s]
   (if @use-color? (str "\u001b[" code "m" s "\u001b[0m") s))
 
+;; java.time.Instant has no print-method, so pr-str renders it as
+;; #object[…<identity-hash>…] — gibberish for humans and UNREADABLE as
+;; EDN, which corrupts every --edn output carrying a time-typed fact.
+;; Instants are the one canonical time type; print them as the #inst
+;; literal the canonical readers parse right back. Porcelain-side on
+;; purpose: the kernel never prints (it emits via canonical/emit).
+(defmethod print-method java.time.Instant [^java.time.Instant i ^java.io.Writer w]
+  (.write w (str "#inst \"" i "\"")))
+
 (defn- sid
   "A ticket id's display form: the first 8 hex chars."
   [x]

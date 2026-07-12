@@ -19,8 +19,12 @@
   aggregate can drift from its log; a derived one cannot)."
   #?(:clj (:import (java.time Duration Instant))))
 
-(defn- ->instant ^Instant [t]
-  (if (instance? java.util.Date t) (.toInstant ^java.util.Date t) t))
+(defn- ->instant
+  "Type-hint pass-through: the single canonical time type is Instant
+  (the readers produce it, the printer rejects everything else); a
+  non-Instant here is hostile data and fails in the guarded op."
+  ^Instant [t]
+  t)
 
 (def method
   "The declared inference method, carried inside every draft so the

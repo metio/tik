@@ -71,8 +71,8 @@
           reread (try (edn/read-string {:readers canonical/edn-readers} bytes)
                       (catch #?(:clj Exception :cljs :default) _ ::unreadable))]
       ;; byte-level round trip: what parses back must re-emit to the
-      ;; very same bytes (Instant and Date print identically, so time
-      ;; types pass; a keyword with a space cannot)
+      ;; very same bytes (the canonical readers return Instant, the one
+      ;; time type; a keyword with a space cannot survive)
       (when (or (= ::unreadable reread)
                 (not= bytes (canonical/emit reread)))
         (throw (ex-info "event does not survive serialization — a value cannot be written that could never be read"

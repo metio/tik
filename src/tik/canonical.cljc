@@ -15,7 +15,8 @@
   - instants normalized to millisecond precision, printed as #inst \"...\"
     (java.time.Instant ISO-8601, trailing zero fractions omitted by Instant)
   - supported scalars: nil, booleans, longs, strings, keywords, symbols,
-    uuids, instants (java.time.Instant or java.util.Date)
+    uuids, instants (java.time.Instant — THE one time type; java.util.Date
+    is rejected like any other unsupported type)
   - floats, ratios, bigdecimals and everything else are REJECTED: their
     printed forms are not reliably byte-stable across runtimes."
   (:require [clojure.edn :as edn]
@@ -33,8 +34,8 @@
   "The read half of the format: #inst as java.time.Instant and #uuid as
   UUID, so values round-trip through the canonical printer unchanged.
   Every reader of canonical bytes — and every porcelain EDN read that
-  may hold such values — uses these, or a written #inst comes back as a
-  java.util.Date and only re-emits by the printer's grace."
+  may hold such values — uses these; the default #inst reader would
+  yield a java.util.Date, which the printer rejects (one time type)."
   {'inst (fn [s] (Instant/parse s))
    'uuid (fn [s] (java.util.UUID/fromString s))})
 
@@ -110,7 +111,6 @@
     (symbol? x)  (str x)
     (uuid? x)    (str "#uuid \"" x "\"")
     (instance? Instant x)        (emit-inst x)
-    (instance? java.util.Date x) (emit-inst (.toInstant ^java.util.Date x))
     ;; entries sort by the CANONICAL form of the key, never pr-str:
     ;; types without a print-method (java.time.Instant) pr-str to
     ;; #object[... <identity-hash> ...], which is unstable across runs.
