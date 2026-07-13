@@ -1194,9 +1194,16 @@
   [{:keys [pos]}]
   (let [s (the-store)
         {:keys [events process roles]} (load-ticket s (first pos))
-        k (if (second pos) (Long/parseLong (second pos)) 1)
+        ;; k = how many trailing events to roll back; a non-number,
+        ;; negative, or huge k must be a clean usage error, not a raw
+        ;; NumberFormat/IndexOutOfBounds surfaced as "a bug in tik"
+        k (if-let [ks (second pos)]
+            (or (parse-long ks)
+                (die (str "diff <id> [k]: k must be a whole number, got " ks)))
+            1)
+        _ (when (neg? k) (die "diff k must be zero or positive"))
         ordered (vec (red/ordered events))
-        before-events (subvec ordered 0 (max 1 (- (count ordered) k)))
+        before-events (subvec ordered 0 (max 1 (- (count ordered) (min k (count ordered)))))
         t (now)
         before-reached (stage/effective-reached process before-events t roles)
         after-reached (stage/effective-reached process ordered t roles)

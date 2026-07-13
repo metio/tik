@@ -1141,6 +1141,27 @@
             (is (h/clean-output? (str (:out r) (:err r)))
                 (str (pr-str argv) "\n" (:err r)))))))))
 
+(deftest diff_k_argument_fails_well
+  ;; `diff <id> <k>` rolls back k trailing events; k came from argv via a
+  ;; raw Long/parseLong fed to subvec, so a non-number, negative, or
+  ;; huge k was a NumberFormat/IndexOutOfBounds surfaced as "a bug in
+  ;; tik". Now each is a clean message (or, for a valid k past the log,
+  ;; clamped).
+  (let [{:keys [root store]} (h/temp-store!)
+        id (random-uuid)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (h/seed-ticket! store {:ticket id :at t :title "difffodder"})
+    (h/with-cli-root root
+      (fn []
+        (doseq [[k clean-exit?] [["-1" false] ["abc" false] ["" false]
+                                 ["999999999999999999999" false]
+                                 ["0" true] ["1" true] ["500" true]]]
+          (let [r (tik.cli/run-argv ["diff" (str id) k])]
+            (is ((if clean-exit? zero? #(= 1 %)) (:exit r))
+                (str "k=" (pr-str k) " " (:err r)))
+            (is (h/clean-output? (str (:out r) (:err r)))
+                (str "k=" (pr-str k) "\n" (:err r)))))))))
+
 (deftest hostile_process_field_derives_cleanly_never_casts
   ;; the event body is an unconstrained map (:map-of :any :any), so a
   ;; signed create event can carry a non-name :ticket/process. A
