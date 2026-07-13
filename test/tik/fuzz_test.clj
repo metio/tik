@@ -646,6 +646,29 @@
             (is (re-find rx (str (:out r) (:err r)))
                 (str body "\n" (:out r) (:err r)))))))))
 
+(deftest export_to_an_uncreatable_path_fails_well
+  ;; `tik export <dir>` writes a file store at <dir>; a path that cannot
+  ;; be created must be a clean message, never a raw FileNotFoundException
+  ;; reported as an internal bug. A path UNDER an existing regular file is
+  ;; portably uncreatable (mkdirs refuses to descend into a file).
+  (let [{:keys [root store]} (h/temp-store!)
+        t (Instant/parse "2026-01-01T00:00:00Z")]
+    (h/seed-ticket! store {:ticket (random-uuid) :at t :title "e"})
+    (spit (io/file root "a-file") "not a directory")
+    (h/with-cli-root root
+      (fn []
+        (let [target (str (io/file root "a-file" "sub"))
+              r (tik.cli/run-argv ["export" target])]
+          (is (= 1 (:exit r)) target)
+          (is (h/clean-output? (str (:out r) (:err r))) target)
+          (is (re-find #"cannot create export directory"
+                       (str (:out r) (:err r))) target))
+        (testing "a creatable new nested path works (mkdir -p semantics)"
+          (let [ok (str (io/file root "fresh" "nested" "out"))
+                r (tik.cli/run-argv ["export" ok])]
+            (is (zero? (:exit r)) (:err r))
+            (is (.isDirectory (io/file ok "tickets")))))))))
+
 (deftest show_over_hostile_definition_never_traces
   ;; `show` draws from an UNLINTED definition read straight off disk, so
   ;; every field is attacker-shaped. A :process/roles that is not a map,

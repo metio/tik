@@ -2189,12 +2189,17 @@
   artifacts under TIK_ROOT and copy with cp."
   [{:keys [pos]}]
   (let [target (or (first pos) (die "usage: tik export <dir>"))
+        dir (io/file target)
+        _ (when (and (not (.isDirectory dir)) (not (.mkdirs dir)))
+            (die (str "cannot create export directory: " target)))
         src (the-store)
         dest (fstore/file-store target)
-        n (reduce (fn [n id]
-                    (reduce (fn [n e] (store/append! dest e) (inc n))
-                            n (store/events src id)))
-                  0 (store/ticket-ids src))]
+        n (try (reduce (fn [n id]
+                         (reduce (fn [n e] (store/append! dest e) (inc n))
+                                 n (store/events src id)))
+                       0 (store/ticket-ids src))
+               (catch java.io.IOException e
+                 (die (str "export to " target " failed: " (ex-message e)))))]
     (println "exported" n "event(s) to" target)))
 
 (defn- cmd-process
