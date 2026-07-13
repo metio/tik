@@ -11,7 +11,12 @@
     {:command \"pass show x\"}           manager (a vector runs with NO shell;
                                          a string runs via `sh -c`) — pass,
                                          passage, gopass, `op read`, anything
-    {:file \"/run/secrets/x\"}      first line of a file, trimmed
+    {:file \"/run/secrets/x\"}      first line of a file, trimmed (Docker/
+                                    Podman/Compose and mounted k8s secrets
+                                    land at a fixed path like this)
+    {:credential \"NAME\"}          a systemd credential — the file NAME in
+                                    $CREDENTIALS_DIRECTORY (LoadCredential=/
+                                    LoadCredentialEncrypted=/SetCredential=)
 
   So an effects.edn or a bridge invocation can be committed and scripted
   with NO secret in it — the environment, a password manager, or a mounted
@@ -30,7 +35,13 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]))
 
-(def ^:private spec-keys #{:env :command :file})
+(def ^:private spec-keys #{:env :command :file :credential})
+
+(defn- getenv
+  "Read a process environment variable — a seam so tests can drive the
+  :env and :credential branches deterministically."
+  [n]
+  (System/getenv n))
 
 (defn spec?
   "Is `x` a secret spec — a single-key map whose key names a source?"
@@ -59,7 +70,7 @@
 
     (contains? spec :env)
     (let [n (:env spec)]
-      (or (System/getenv n)
+      (or (getenv n)
           (throw (ex-info (str what " wants environment variable " n
                                ", which is not set")
                           {:secret what :env n}))))
@@ -70,6 +81,37 @@
         (first-line (slurp f))
         (throw (ex-info (str what " file " (:file spec) " does not exist")
                         {:secret what :file (:file spec)}))))
+
+    (contains? spec :credential)
+    ;; systemd credentials (LoadCredential=/LoadCredentialEncrypted=/
+    ;; SetCredential=): each credential is a 0400 file, named `n`, in the
+    ;; ramfs directory systemd points $CREDENTIALS_DIRECTORY at (encrypted
+    ;; ones are already decrypted there by load time). This is the most
+    ;; secure source — the secret never sits in a committed file, an env
+    ;; var, or argv.
+    (let [n (:credential spec)
+          dir (getenv "CREDENTIALS_DIRECTORY")]
+      (cond
+        (str/blank? dir)
+        (throw (ex-info (str what " wants systemd credential " (pr-str n)
+                             " but $CREDENTIALS_DIRECTORY is not set — this"
+                             " process is not running under systemd"
+                             " credentials (LoadCredential=/SetCredential=)")
+                        {:secret what :credential n}))
+
+        (or (not (string? n)) (str/blank? n) (re-find #"[/\\]|\.\." n))
+        (throw (ex-info (str what " credential name " (pr-str n)
+                             " must be a bare name (no slashes, no ..)")
+                        {:secret what :credential n}))
+
+        :else
+        (let [f (io/file dir n)]
+          (if (.isFile f)
+            (first-line (slurp f))
+            (throw (ex-info (str what " systemd credential " (pr-str n)
+                                 " is not present in $CREDENTIALS_DIRECTORY"
+                                 " — declare it with LoadCredential=" n "…")
+                            {:secret what :credential n :dir dir}))))))
 
     :else                                       ; :command
     (let [c (:command spec)

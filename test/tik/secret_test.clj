@@ -19,7 +19,8 @@
     (is (secret/spec? {:env "X"}))
     (is (secret/spec? {:command ["pass" "show" "x"]}))
     (is (secret/spec? {:command "pass show x"}))
-    (is (secret/spec? {:file "/run/secrets/x"})))
+    (is (secret/spec? {:file "/run/secrets/x"}))
+    (is (secret/spec? {:credential "opsgenie_token"})))
   (testing "anything else is NOT a spec — so ordinary config passes through"
     (is (not (secret/spec? "a literal string")))
     (is (not (secret/spec? nil)))
@@ -91,6 +92,40 @@
     (testing "a missing file throws, naming it"
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not exist"
                             (secret/resolve1 "pw" {:file (str (io/file dir "nope"))}))))))
+
+;; --------------------------------------------------------- :credential (systemd)
+
+(deftest systemd-credential-resolves-from-CREDENTIALS_DIRECTORY
+  (let [dir (h/temp-dir! "tik-creds")]
+    ;; systemd writes each credential as a file named after it, no trailing
+    ;; newline; first-line-trimmed yields the exact value
+    (spit (io/file dir "opsgenie_token") "cred-SECRET-value")
+    (testing "resolves the file named NAME in $CREDENTIALS_DIRECTORY"
+      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                                 (str dir)))}
+        (fn []
+          (is (= "cred-SECRET-value"
+                 (secret/resolve1 "tok" {:credential "opsgenie_token"}))))))
+    (testing "a missing credential file throws, pointing at LoadCredential="
+      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                                 (str dir)))}
+        (fn []
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not present"
+                                (secret/resolve1 "tok" {:credential "absent"}))))))
+    (testing "a name with a slash or .. is rejected (no directory escape)"
+      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                                 (str dir)))}
+        (fn []
+          (doseq [bad ["../etc/passwd" "a/b" "..\\x"]]
+            (is (thrown-with-msg? clojure.lang.ExceptionInfo #"bare name"
+                                  (secret/resolve1 "tok" {:credential bad}))
+                bad)))))
+    (testing "outside systemd (no $CREDENTIALS_DIRECTORY) it says so clearly"
+      (with-redefs-fn {#'secret/getenv (constantly nil)}
+        (fn []
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                                #"CREDENTIALS_DIRECTORY is not set"
+                                (secret/resolve1 "tok" {:credential "x"}))))))))
 
 ;; --------------------------------------------------------- resolve-secrets walk
 

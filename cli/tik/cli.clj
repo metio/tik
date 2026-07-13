@@ -4274,8 +4274,9 @@ Each entry in :needs is one of:
                                                 field (a :url, :token, a :headers value)
                                                 may be a secret: a literal, {:env \"NAME\"},
                                                 {:command [\"pass\" \"show\" \"x\"]} (or a
-                                                \"shell string\"), or {:file \"/path\"} —
-                                                resolved at send time, so no secret sits in
+                                                \"shell string\"), {:file \"/path\"}, or
+                                                {:credential \"NAME\"} (systemd) — resolved
+                                                at send time, so no secret sits in
                                                 effects.edn; :command pipes the JSON to ANY
                                                 program; email renders explain and its
                                                 tik> replies close the loop
