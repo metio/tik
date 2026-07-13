@@ -87,9 +87,10 @@
   (case reason
     :role/unsatisfied
     (contains? (set (get-in roles [role :members])) actor)
-    :role/same-person
-    (and (contains? (set (get-in roles [role :members])) actor)
-         (not= by actor))
+    ;; four-eyes: the two facts were asserted by the SAME person `by`, so
+    ;; ANYONE else re-asserting one path breaks the tie. Not role-bound —
+    ;; the reason carries no :role (get-in roles [nil …] would be empty).
+    :role/same-person (not= by actor)
     (:time/not-elapsed :stage/not-reached) false
     true))
 

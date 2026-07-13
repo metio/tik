@@ -2591,6 +2591,17 @@
       (do (spit out html) (println "wrote" out))
       (print html))))
 
+(defn- addr-spec
+  "The RFC 5322 addr-spec of a From/To header value: the address inside
+  the angle brackets when present, else the bare address — NEVER an
+  address harvested from the display-name phrase, which the sender fully
+  controls (`\"admin@corp.com\" <bob@corp.com>` is bob, not admin)."
+  [header-value]
+  (when header-value
+    (let [bracketed (second (re-find #"<([^>]*)>" header-value))]
+      (some-> (re-find #"[\w.+-]+@[\w.-]+" (or bracketed header-value))
+              str/lower-case))))
+
 (defn- parse-rfc822
   "Minimal RFC822: headers to the first blank line, body after.
   Header folding (continuation lines) honored. From/Subject drive the
@@ -2611,9 +2622,7 @@
                                (str/trim v))
                             headers))
         header (fn [k] (first (header-vals k)))]
-    {:from (some->> (header "From")
-                    (re-find #"[\w.+-]+@[\w.-]+")
-                    str/lower-case)
+    {:from (addr-spec (header "From"))
      :subject (or (header "Subject") "")
      :in-reply-to (header "In-Reply-To")
      :references (header "References")
@@ -2650,10 +2659,13 @@
   (set
    (for [ar auth-results
          :let [fields (str/split (str ar) #";")
-               ;; an all-`;` or empty header splits to no fields — a
-               ;; hostile A-R must not NPE `(str/trim nil)` on the gate path
-               authserv (some-> (first fields) str/trim str/lower-case)]
-         :when (contains? trusted authserv)
+               ;; RFC 8601: `authserv-id [version]` before the first ';',
+               ;; so the id is the FIRST whitespace token — not the whole
+               ;; field (a version token would else reject legit mail). An
+               ;; all-`;`/empty header splits to no fields; guard the nil.
+               authserv (some-> (first fields) str/trim (str/split #"\s+")
+                                first str/lower-case)]
+         :when (and (not (str/blank? authserv)) (contains? trusted authserv))
          method (rest fields)
          :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
          :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
@@ -2679,17 +2691,21 @@
   sender→actor binding becomes cryptographic, not header-trusting."
   [{:keys [dkim]} {:keys [from] :as msg}]
   (when (:require dkim)
-    (let [trusted (set (map (comp str/lower-case str)
-                            (let [a (:authserv-id dkim)] (if (coll? a) a [a]))))
-          from-domain (some-> from (str/split #"@") second str/lower-case)
-          passing (dkim-passing-domains msg trusted)]
+    (let [;; a nil/blank :authserv-id must NOT survive as #{""} — that
+          ;; would fail OPEN (matching a blank authserv in a forged A-R).
+          ;; Drop blanks so a missing id yields #{} and the guard fires.
+          trusted (into #{} (comp (map (comp str/lower-case str))
+                                  (remove str/blank?))
+                        (let [a (:authserv-id dkim)] (if (coll? a) a [a])))
+          from-domain (some-> from (str/split #"@") second str/lower-case)]
       (when (empty? trusted)
         (die ":dkim {:require true} needs :authserv-id (your MTA's verifier id)"))
-      (when-not (and from-domain (dkim-aligned? from-domain passing))
-        (die (str "refusing " (or from "an unsigned sender") ": no dkim=pass"
-                  " for " (or from-domain "its domain") " from a trusted"
-                  " verifier " trusted
-                  (when (seq passing) (str " (passing: " passing ")"))))))))
+      (let [passing (dkim-passing-domains msg trusted)]
+        (when-not (and from-domain (dkim-aligned? from-domain passing))
+          (die (str "refusing " (or from "an unsigned sender") ": no dkim=pass"
+                    " for " (or from-domain "its domain") " from a trusted"
+                    " verifier " trusted
+                    (when (seq passing) (str " (passing: " passing ")")))))))))
 
 (defn- cmd-bridge-oidc
   "bridge oidc: identity rung 2 (PLAN §9). Login against the config's
@@ -3714,8 +3730,12 @@ Each entry in :needs is one of:
   overlay `show <proc> <id>` draws. Frontier = prereqs met, guards still
   missing (actionable now); blocked = an :after prerequisite not reached."
   [s proc tid]
-  (let [{:keys [events roles]} (load-ticket s tid)
-        reached (stage/effective-reached proc events (now) roles)]
+  ;; evaluate the SHOWN definition against its OWN roles — not the roles of
+  ;; the ticket's pinned process (load-ticket's :roles), which may differ
+  ;; from the definition being drawn (`tik show ./other.edn <id>`).
+  (let [{:keys [events]} (load-ticket s tid)
+        reached (stage/effective-reached proc events (now)
+                                         (:process/roles proc {}))]
     (into {} (for [st (:process/stages proc)
                    :let [id (:stage/id st)]]
                [id (cond (reached id) :reached

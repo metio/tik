@@ -382,6 +382,19 @@
                                  (gen/map gen/keyword gen/any-equatable
                                           {:max-elements 4}))])}])
 
+(deftest dag-walks-total-over-non-collection-parents
+  ;; a hostile/corrupt store file can hold {:event/parents 5} — parse-event
+  ;; only checks map?, and the totality generator only ever builds parents
+  ;; via (set …), so the scalar case is untested. The dag boundary fns must
+  ;; answer a value, not a raw ISeq/`empty?` throw (the totality contract).
+  (doseq [bad [5 :kw "x" 42.0 nil]]
+    (let [events [{:event/id "sha256-a" :event/type :ticket/create :event/parents bad}
+                  {:event/id "sha256-b" :event/type :fact/assert
+                   :event/parents #{"sha256-a"}}]]
+      (is (set? (tik.dag/heads events)) (pr-str bad))
+      (is (set? (tik.dag/missing-parents events)) (pr-str bad))
+      (is (vector? (tik.dag/roots events)) (pr-str bad)))))
+
 (defspec every_registered_boundary_is_total (* 3 n)
   ;; pick a boundary, generate an argument vector in ITS domain, apply,
   ;; and force any lazy result — the answer must be a value or an

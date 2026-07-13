@@ -23,6 +23,9 @@
     (:fact/missing :fact/mismatch :fact/invalid :fact/retracted
                    :fact/disputed :fact/conflicted :role/unsatisfied)
     [:set (:path r)]
+    ;; four-eyes: anyone but `:by` re-asserts one of the two paths, so the
+    ;; two facts end up with different assertors and the guard is satisfied.
+    :role/same-person [:set (first (:paths r))]
     :artifact/missing [:attach (:prefix r)]
     (:attestation/missing :attestation/stale) [:attest (:claim r)]
     nil))
@@ -107,6 +110,10 @@
                            :who (reason->who r roles restrictions)}
                     (reason->role r restrictions)
                     (assoc :role (reason->role r restrictions))
+                    ;; four-eyes is anyone's EXCEPT the person who asserted
+                    ;; both facts — carry that exclusion for the inbox filter
+                    (= :role/same-person (:reason r))
+                    (assoc :not-actor (:by r))
                     hint (assoc :hint hint)))]
     {:ticket ticket-id
      :actions (vec (distinct actions))
@@ -144,7 +151,13 @@
                 per-ticket
                 (remove :settled? per-ticket))
          stale-of (into {} (map (juxt :ticket :stale-ms)) live)
-         actions (cond->> (filter #(allowed? (:who %) actor)
+         actions (cond->> (filter #(and (allowed? (:who %) actor)
+                                        ;; four-eyes excludes its :by from
+                                        ;; the actor view (they can't break
+                                        ;; the tie); the unfiltered inbox
+                                        ;; (actor nil) still lists it
+                                        (not (and (:not-actor %)
+                                                  (= actor (:not-actor %)))))
                                   (mapcat :actions live))
                    role (filter #(= role (:role %))))
          items (for [[action contribs] (group-by :action actions)]

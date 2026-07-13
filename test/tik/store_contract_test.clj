@@ -79,6 +79,30 @@
                           "UTF-8"))
               (str name ": put overwrites by name")))))))
 
+(deftest file-store-event-bytes-survives-packing
+  ;; pack! deletes the loose <id>.edn after folding it into events.pack;
+  ;; event-bytes must return the pack slice, or verify/sign/witness see nil
+  ;; for a still-present event (signatures endorse those exact bytes).
+  (let [root (tmp "tik-pack")
+        store (fstore/file-store root)
+        events (ge/ops->events [[:assert "seb" [:category] :technical 60]
+                                [:assert "seb" [:severity] :high 120]])
+        tid (:event/ticket (first events))]
+    (doseq [e events] (store/append! store e))
+    (let [before (into {} (for [e events]
+                            [(:event/id e)
+                             (String. ^bytes (store/event-bytes store tid
+                                                                (:event/id e))
+                                      "UTF-8")]))]
+      (fstore/pack! root tid)
+      (doseq [e events]
+        (is (= (before (:event/id e))
+               (String. ^bytes (store/event-bytes store tid (:event/id e)) "UTF-8"))
+            (str "event-bytes after pack for " (:event/id e)))
+        (is (= (:event/id e)
+               (str "sha256-" (canonical/sha256-hex (before (:event/id e)))))
+            "the bytes still hash to the id")))))
+
 (deftest file-store-skips-stray-non-ticket-entries
   ;; tickets/ may hold entries that are not tickets — a stray directory,
   ;; a .gitkeep. A ticket directory's name IS its uuid identity, so only a

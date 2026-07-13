@@ -201,7 +201,17 @@
                              (:entries (read-pack-index evdir))))))
                (filter #(.isDirectory ^File %) (.listFiles dir)))))))
   (event-bytes [_ ticket-id event-id]
-    (file-bytes (io/file (ticket-dir root ticket-id) (str event-id ".edn"))))
+    ;; pack-aware, like `events`/`has-event?`: `pack!` deletes the loose
+    ;; <id>.edn after folding it into events.pack, so a packed event's
+    ;; bytes must come from its pack slice — else verify/sign/witness see
+    ;; nil for a still-present event.
+    (let [dir (ticket-dir root ticket-id)
+          loose (io/file dir (str event-id ".edn"))]
+      (if (.isFile loose)
+        (file-bytes loose)
+        (some->> (:entries (read-pack-index dir))
+                 (some #(when (= event-id (:id %)) %))
+                 (pack-slice dir)))))
   (put-sidecar! [_ ticket-id name bytes]
     ;; a sidecar lives beside the event it endorses, exactly as before —
     ;; sha256sum(<id>.edn) still auditable, the .sig./.witness. sidecar

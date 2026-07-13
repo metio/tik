@@ -45,7 +45,28 @@
              (dkim-passing-domains
               (ar "evil; dkim=pass header.d=spoof.example"
                   "mx.trusted; dkim=pass header.d=good.example")
+              #{"mx.trusted"}))))
+    (testing "an optional RFC 8601 version token after the authserv-id is
+              ignored — the id is the first whitespace token, not the field"
+      (is (= #{"customer.example"}
+             (dkim-passing-domains
+              (ar "mx.trusted 1; dkim=pass header.d=customer.example")
+              #{"mx.trusted"}))))
+    (testing "a blank authserv-id (`;dkim=pass …`) never matches a real id"
+      (is (= #{}
+             (dkim-passing-domains
+              (ar ";dkim=pass header.d=customer.example")
               #{"mx.trusted"}))))))
+
+(deftest from_uses_the_addr_spec_not_the_display_name
+  ;; the display-name phrase is attacker-controlled; the From identity must
+  ;; be the addr-spec (inside the angle brackets), else an attacker owning
+  ;; bob@corp.com spoofs admin@corp.com within a shared DKIM domain.
+  (let [from (fn [h] (:from (parse-rfc822 (str "From: " h "\n\nx"))))]
+    (is (= "bob@corp.com" (from "\"admin@corp.com\" <bob@corp.com>")))
+    (is (= "bob@corp.com" (from "Bob <bob@corp.com>")))
+    (is (= "alice@x.example" (from "alice@x.example")) "bare address still works")
+    (is (= "bob@corp.com" (from "admin@corp.com <bob@corp.com>")))))
 
 (deftest alignment_is_exact_or_subdomain
   (is (dkim-aligned? "customer.example" #{"customer.example"}))
@@ -109,7 +130,18 @@
                              "From: alice@customer.example\nSubject: x\n\nbody"))]
       (is (= 1 (:exit r)))
       (is (h/clean-output? (str (:out r) (:err r))))
-      (is (zero? (ticket-count store))))))
+      (is (zero? (ticket-count store)))))
+  (testing ":require true with a MISSING :authserv-id fails CLOSED — a
+            forged blank-authserv A-R must not fake a pass"
+    (let [{:keys [root store]} (h/temp-store!)
+          r (run-bridge root "{:process :track :default-actor \"inbound\"
+                               :dkim {:require true}}"
+                        (str "Authentication-Results: ;dkim=pass"
+                             " header.d=customer.example\n"
+                             "From: alice@customer.example\nSubject: x\n\nbody"))]
+      (is (= 1 (:exit r)))
+      (is (re-find #"authserv-id" (:err r)))
+      (is (zero? (ticket-count store)) "no ticket without a real DKIM verdict"))))
 
 (defspec email_helpers_are_total_over_hostile_input 300
   ;; an inbound email is fully attacker-controlled; parsing, ticket

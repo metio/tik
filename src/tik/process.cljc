@@ -283,13 +283,17 @@
                       (inc (apply max 0 (map depth-of (rest g))))
                       0))
                   (contradiction? [g]
-                    ;; [:and ... [:fact= p v1] ... [:fact= p v2] ...]
+                    ;; [:and ... [:fact= p v1] ... [:fact= p v2] ...] — the
+                    ;; SAME path demanded to equal two different values can
+                    ;; never hold. Group each [path value] pair by PATH (not
+                    ;; value) and flag a path with >1 distinct demanded value.
                     (and (vector? g) (= :and (first g))
                          (let [eqs (filter #(and (vector? %)
                                                  (= :fact= (first %)))
                                            (rest g))]
-                           (some (fn [[_p vs]] (< 1 (count (distinct vs))))
-                                 (group-by second
+                           (some (fn [[_path vs]]
+                                   (< 1 (count (distinct (map second vs)))))
+                                 (group-by first
                                            (map (juxt second #(nth % 2))
                                                 eqs))))))]
             (concat

@@ -37,6 +37,23 @@
                                :guards [[:not [:stage-reached :a]]]}]}]
       (is (not-any? #(re-find #"stratified negation" (:msg %)) (errors p))))))
 
+(deftest contradiction-detection-groups-by-path-not-value
+  ;; [:fact= p v1] and [:fact= p v2] on the SAME path can never both hold —
+  ;; a real contradiction. Two DIFFERENT paths at the same value is
+  ;; satisfiable. The check must group by path, not value.
+  (let [never? (fn [guard]
+                 (->> (process/lint
+                       {:process/id :c :process/version 1
+                        :process/stages [{:stage/id :a :guards []}
+                                         {:stage/id :b :after [:a] :guards [guard]}]})
+                      (some #(and (= :error (:level %))
+                                  (re-find #"NEVER be satisfied" (:msg %))))
+                      boolean))]
+    (is (never? [:and [:fact= [:sev] :low] [:fact= [:sev] :high]])
+        "same path, two values — a real contradiction (was silently missed)")
+    (is (not (never? [:and [:fact= [:x] 1] [:fact= [:y] 1]]))
+        "different paths at the same value — satisfiable (was a false error)")))
+
 (deftest closed-guard-basis-enforced
   (testing "operators outside the basis are lint errors, not runtime throws"
     (doseq [g [[:not-stage :a] [:if [:fact [:x]] [:fact [:y]]]]]

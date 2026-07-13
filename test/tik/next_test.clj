@@ -38,6 +38,37 @@
   (next-lens/contributions (:event/ticket (first events))
                            ge/process events now ge/roles))
 
+(deftest four-eyes-is-visible-to-a-different-person
+  ;; a stage gated by [:different-person a b] whose two facts were BOTH
+  ;; asserted by alice is unlockable by anyone else (re-assert one path so
+  ;; the assertors differ). The inbox and explain must surface that to a
+  ;; different person, and NOT to alice (who cannot break the tie) — the
+  ;; :role/same-person reason was previously invisible to everyone.
+  (let [proc {:process/id :m :process/version 1
+              :process/stages [{:stage/id :open :guards []}
+                               {:stage/id :done :after [:open]
+                                :guards [[:different-person [:review] [:approve]]]}]}
+        tid (java.util.UUID/fromString "018f2f6e-7c1a-7000-8000-000000000004")
+        assert-by (fn [actor path parents]
+                    (event/assert-fact {:ticket tid :actor actor :parents parents
+                                        :at (at "2026-07-08T10:01:00Z")
+                                        :path path :value :ok}))
+        c (event/create-ticket {:ticket tid :actor "alice"
+                                :at (at "2026-07-08T10:00:00Z")
+                                :title "m" :process :support-request})
+        e1 (assert-by "alice" [:review] #{(:event/id c)})
+        e2 (assert-by "alice" [:approve] #{(:event/id e1)})
+        evs [c e1 e2]
+        roles {:approver {:members ["alice" "bob"]}}
+        contrib (next-lens/contributions tid proc evs now roles)]
+    (testing "the inbox offers it as a :set action, not parked in :waiting"
+      (is (some #(= [:set [:review]] (:action %)) (:actions contrib)))
+      (is (not-any? #(= :role/same-person (:reason %)) (:waiting contrib))))
+    (testing "bob can act on it; alice (who asserted both) cannot"
+      (is (seq (:items (next-lens/inbox [contrib] "bob"))))
+      (is (empty? (:items (next-lens/inbox [contrib] "alice"))))
+      (is (seq (:items (next-lens/inbox [contrib] nil))) "unfiltered still lists it"))))
+
 (deftest fact-mismatch-is-actionable-in-the-inbox
   ;; a present-but-WRONG [:fact= …] guard reports :fact/mismatch, which
   ;; explain ranks most-actionable ("set it to the expected value"). The
