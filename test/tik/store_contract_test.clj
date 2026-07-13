@@ -59,7 +59,25 @@
         (testing "RAW stored bytes are the exact hashed region"
           (doseq [[id raw-bytes] (raw store tid)]
             (is (= id (str "sha256-" (canonical/sha256-hex raw-bytes)))
-                (str name ": hash(stored bytes) = id"))))))))
+                (str name ": hash(stored bytes) = id"))))
+        (testing "event-bytes returns those exact stored bytes"
+          (doseq [[id raw-bytes] (raw store tid)]
+            (is (= raw-bytes (String. ^bytes (store/event-bytes store tid id)
+                                      "UTF-8"))
+                (str name ": event-bytes = stored bytes"))))
+        (testing "sidecars round-trip, and put is idempotent by name"
+          (store/put-sidecar! store tid "x.sig.aa" (.getBytes "sig-a" "UTF-8"))
+          (store/put-sidecar! store tid "x.witness.bb" (.getBytes "wit-b" "UTF-8"))
+          (is (= #{"x.sig.aa" "x.witness.bb"}
+                 (set (store/sidecar-names store tid))))
+          (is (= "sig-a" (String. ^bytes (store/read-sidecar store tid "x.sig.aa")
+                                  "UTF-8")))
+          (is (nil? (store/read-sidecar store tid "missing")))
+          (store/put-sidecar! store tid "x.sig.aa" (.getBytes "sig-a2" "UTF-8"))
+          (is (= "sig-a2"
+                 (String. ^bytes (store/read-sidecar store tid "x.sig.aa")
+                          "UTF-8"))
+              (str name ": put overwrites by name")))))))
 
 (deftest file-store-skips-stray-non-ticket-entries
   ;; tickets/ may hold entries that are not tickets — a stray directory,

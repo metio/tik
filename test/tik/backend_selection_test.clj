@@ -7,6 +7,8 @@
   working in one store never reroutes another. (These tests shell out to
   sqlite3, present in the devShell, like the store-contract tests.)"
   (:require [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.cli]
             [tik.harness :as h]))
@@ -61,19 +63,36 @@
                 (is (= before (:out (tik.cli/run-argv ["ls" "--edn"]))))
                 (is (zero? (:exit (tik.cli/run-argv ["verify"]))))))))))))
 
-(deftest migrate-to-sqlite-refuses-a-store-with-sidecars
-  ;; the SQLite backend holds only event bytes; a file store's detached
-  ;; signature/witness sidecars would be dropped, so the migration is
-  ;; refused and the store is left untouched.
-  (let [{:keys [root]} (h/temp-store!)]
+(deftest signatures-verify-on-either-backend-and-survive-migration
+  ;; a signature endorses the stored bytes, not a file — so it must verify
+  ;; on the SQLite backend as well as the file store, and migration must
+  ;; carry the sidecars losslessly (both directions), verify still green.
+  (let [{:keys [root]} (h/temp-store!)
+        keyf (io/file root "id_ed25519")
+        _ (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-f" (str keyf))
+        pub (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str keyf))))]
+    (spit (io/file root "actors") (str "seb namespaces=\"tik-*\" " pub "\n"))
     (h/with-cli-root root
       (fn []
-        (tik.cli/run-argv ["new" "track" "--title" "s"])
+        (tik.cli/run-argv ["new" "track" "--title" "signed"
+                           "--actor" "seb" "--key" (str keyf)])
         (let [id (uuid-in (:out (tik.cli/run-argv ["ls" "--edn"])))
-              evdir (io/file root "tickets" id "events")]
-          (spit (io/file evdir "sha256-deadbeef.sig.cafebabecafebabe") "detached-sig")
-          (let [r (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"])]
-            (is (= 1 (:exit r)))
-            (is (re-find #"sidecar" (:err r)))
-            (is (.isDirectory (io/file root "tickets")) "the file store is untouched")
-            (is (not (.isFile (io/file root "tik.db"))))))))))
+              k (str keyf)]
+          (tik.cli/run-argv ["set" id "note=hi" "--actor" "seb" "--key" k])
+          (testing "file store: the signed events verify as seb"
+            (let [r (tik.cli/run-argv ["verify" id])]
+              (is (zero? (:exit r)) (:err r))
+              (is (re-find #"signed by seb" (:out r)))))
+          (testing "migrate to SQLite carries the signatures; verify still green"
+            (let [m (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"])]
+              (is (zero? (:exit m)) (:err m))
+              (is (re-find #"sidecar" (:out m)))
+              (is (.isFile (io/file root "tik.db"))))
+            (let [r (tik.cli/run-argv ["verify" id])]
+              (is (zero? (:exit r)) (:err r))
+              (is (re-find #"signed by seb" (:out r)))))
+          (testing "and back to the file store, still verifying"
+            (is (zero? (:exit (tik.cli/run-argv ["store" "migrate" "--to" "file"]))))
+            (let [r (tik.cli/run-argv ["verify" id])]
+              (is (zero? (:exit r)) (:err r))
+              (is (re-find #"signed by seb" (:out r))))))))))

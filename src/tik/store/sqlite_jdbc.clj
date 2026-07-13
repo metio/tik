@@ -53,6 +53,17 @@
                                            (range 1 (inc n)))))
                    rows))))))))
 
+(defn query-blob
+  "The first BLOB column of the first row as a byte-array, or nil — for
+  raw event/sidecar bytes, which .getString would mangle."
+  [db sql & params]
+  (run db
+       (fn [^Connection c]
+         (with-open [ps (.prepareStatement c ^String sql)]
+           (bind! ps params)
+           (with-open [rs (.executeQuery ps)]
+             (when (.next rs) (.getBytes rs (int 1))))))))
+
 (defn exec!
   "Run one DDL/DML statement with bound params."
   [db sql & params]

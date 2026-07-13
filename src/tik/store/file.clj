@@ -191,6 +191,29 @@
                    (or (.exists (io/file evdir (str event-id ".edn")))
                        (some #(= event-id (:id %))
                              (:entries (read-pack-index evdir))))))
-               (filter #(.isDirectory ^File %) (.listFiles dir))))))))
+               (filter #(.isDirectory ^File %) (.listFiles dir)))))))
+  (event-bytes [_ ticket-id event-id]
+    (let [f (io/file (ticket-dir root ticket-id) (str event-id ".edn"))]
+      (when (.isFile f) (.getBytes (slurp f) "UTF-8"))))
+  (put-sidecar! [_ ticket-id name bytes]
+    ;; a sidecar lives beside the event it endorses, exactly as before —
+    ;; sha256sum(<id>.edn) still auditable, the .sig./.witness. sidecar
+    ;; alongside; the store seam simply names the operation.
+    (let [dir (ticket-dir root ticket-id)]
+      (.mkdirs dir)
+      (with-open [o (io/output-stream (io/file dir name))]
+        (.write o ^bytes bytes))))
+  (sidecar-names [_ ticket-id]
+    (let [dir (ticket-dir root ticket-id)]
+      (if (.isDirectory dir)
+        (into [] (comp (filter #(.isFile ^File %))
+                       (map #(.getName ^File %))
+                       (filter #(or (str/includes? % ".sig.")
+                                    (str/includes? % ".witness."))))
+              (.listFiles dir))
+        [])))
+  (read-sidecar [_ ticket-id name]
+    (let [f (io/file (ticket-dir root ticket-id) name)]
+      (when (.isFile f) (.getBytes (slurp f) "UTF-8")))))
 
 (defn file-store [root] (->FileStore root))

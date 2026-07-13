@@ -58,13 +58,23 @@
 (defn- query [db sql & params]
   (apply (jdbc 'tik.store.sqlite-jdbc/query) db sql params))
 
+(defn- query-blob [db sql & params]
+  (apply (jdbc 'tik.store.sqlite-jdbc/query-blob) db sql params))
+
 (defn- exec! [db sql & params]
   (apply (jdbc 'tik.store.sqlite-jdbc/exec!) db sql params))
 
 (defn- init! [db]
   (exec! db (str "CREATE TABLE IF NOT EXISTS events ("
                  "id TEXT PRIMARY KEY, ticket TEXT NOT NULL, bytes BLOB NOT NULL)"))
-  (exec! db "CREATE INDEX IF NOT EXISTS events_ticket ON events(ticket)"))
+  (exec! db "CREATE INDEX IF NOT EXISTS events_ticket ON events(ticket)")
+  ;; detached endorsements inline (the file store keeps them as sidecar
+  ;; files): name is the sidecar filename (<id>.sig.<fpr> / <head>.witness
+  ;; .<fpr>), globally unique, so it is the key; INSERT OR REPLACE keeps
+  ;; put idempotent by name.
+  (exec! db (str "CREATE TABLE IF NOT EXISTS sidecars ("
+                 "name TEXT PRIMARY KEY, ticket TEXT NOT NULL, bytes BLOB NOT NULL)"))
+  (exec! db "CREATE INDEX IF NOT EXISTS sidecars_ticket ON sidecars(ticket)"))
 
 (defn raw-rows
   "[[id hex-bytes] …] for verification: the stored bytes exactly as they
@@ -101,7 +111,18 @@
           (query db "SELECT DISTINCT ticket FROM events")))
   (has-event? [_ event-id]
     (boolean (seq (query db "SELECT 1 FROM events WHERE id=?"
-                         (safe-id event-id))))))
+                         (safe-id event-id)))))
+  (event-bytes [_ _ticket-id event-id]
+    (query-blob db "SELECT bytes FROM events WHERE id=?" (safe-id event-id)))
+  (put-sidecar! [_ ticket-id name bytes]
+    (exec! db "INSERT OR REPLACE INTO sidecars(name,ticket,bytes) VALUES(?,?,?)"
+           name (safe-id ticket-id) bytes))
+  (sidecar-names [_ ticket-id]
+    (mapv first (query db "SELECT name FROM sidecars WHERE ticket=?"
+                       (safe-id ticket-id))))
+  (read-sidecar [_ ticket-id name]
+    (query-blob db "SELECT bytes FROM sidecars WHERE ticket=? AND name=?"
+                (safe-id ticket-id) name)))
 
 (defn sqlite-store [db-path]
   (init! db-path)

@@ -27,9 +27,11 @@ A store's **backend** is derived from its own shape, never a global
 setting: a `tickets/` tree is the file/git store (sha256sum-auditable, the
 signed interchange format); a `tik.db` is the SQLite store (single-file
 ops). Choose at creation — `tik init` (file) or `tik init --sqlite` — and
-switch in place with `tik store migrate --to sqlite|file` (migrating a
-*signed* file store to SQLite is refused, since SQLite holds no detached
-signatures). Working in one store never reroutes another.
+switch in place with `tik store migrate --to sqlite|file`, which is
+lossless: events and their detached signatures/witnesses both travel
+(each backend holds sidecars). The SQLite driver is embedded in the
+binary, so no external `sqlite3` is needed. Working in one store never
+reroutes another.
 
 ## The daily workflow (driving an existing store)
 

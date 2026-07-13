@@ -419,15 +419,34 @@
     (sqlite/sqlite-store db)
     (fstore/file-store (root))))
 
-(defn- events-dir ^File [ticket-id]
-  (io/file (root) "tickets" (str ticket-id) "events"))
-
-(defn- event-file ^File [event]
-  (io/file (events-dir (:event/ticket event)) (str (:event/id event) ".edn")))
-
 (defn- signing-key [opts]
   (let [k (or (:key opts) (System/getenv "TIK_KEY"))]
     (when-not (str/blank? k) k)))
+
+(defn- put-signature!
+  "Sign `bytes` and store the detached sidecar through the backend seam —
+  a file beside the event, or a table row, the store's choice (ADR 0007).
+  `kind` is \"sig\" (authorship) or \"witness\" (observation); the sidecar
+  name is <target-id>.<kind>.<fpr>. Returns the name."
+  [s key ticket-id target-id kind sig-namespace ^bytes bytes]
+  (let [fpr (sign/fingerprint (sign/pubkey key))
+        name (str target-id "." kind "." fpr)]
+    (store/put-sidecar! s ticket-id name
+                        (sign/sign-bytes key bytes sig-namespace))
+    name))
+
+(defn- sidecar-names-for
+  "Sidecar names of one `kind` (\"sig\"/\"witness\") for `target-id`."
+  [s ticket-id target-id kind]
+  (filterv #(str/starts-with? % (str target-id "." kind "."))
+           (store/sidecar-names s ticket-id)))
+
+(defn- signed-event-ids
+  "The set of event ids in a ticket that carry ≥1 authorship signature —
+  computed once from the sidecar names, so an unsigned check is O(events)."
+  [s ticket-id]
+  (into #{} (keep #(when-let [i (str/index-of % ".sig.")] (subs % 0 i)))
+        (store/sidecar-names s ticket-id)))
 
 (defn- append!*
   "Append, then sign the stored bytes when a key is configured (--key or
@@ -435,7 +454,10 @@
   [s event opts]
   (store/append! s event)
   (when-let [key (signing-key opts)]
-    (sign/sign! key (event-file event) (:event/id event)))
+    (put-signature! s key (:event/ticket event) (:event/id event)
+                    "sig" sign/namespace-event
+                    (.getBytes (canonical/emit (dissoc event :event/id))
+                               "UTF-8")))
   event)
 
 (defn- resolve-id [s ticket-str]
@@ -475,7 +497,7 @@
   loops (cmd-next) that avoid the full fold on purpose do NOT use this."
   [s]
   (keep (fn [id]
-          (try (assoc (ticket-ctx s id) :id id)
+          (try (assoc (ticket-ctx s id) :id id :store s)
                (catch clojure.lang.ExceptionInfo e
                  (binding [*out* *err*]
                    (println (str "skipping " (sid id) ": " (ex-message e))))
@@ -1015,29 +1037,15 @@
   [^File f]
   (doseq [^File c (reverse (file-seq f))] (.delete c)))
 
-(defn- file-store-sidecars
-  "Detached signature/witness sidecars in a file store — everything under
-  tickets/ that is not an .edn event. The SQLite backend cannot hold
-  these, so their presence blocks a migration TO SQLite."
-  [root-dir]
-  (let [tdir (io/file root-dir "tickets")]
-    (when (.isDirectory tdir)
-      (seq (filter #(and (.isFile ^File %)
-                         (not (str/ends-with? (.getName ^File %) ".edn")))
-                   (file-seq tdir))))))
-
 (defn- cmd-store
   "store migrate --to sqlite|file: convert THIS store's event backend in
-  place (ADR 0020). Reads every event from the current backend, writes
-  it to the other (append is idempotent by id), verifies the full event
-  id set carried over, then removes the source. Blobs, the actors
-  registry, and processes are untouched — they live filesystem-side
-  regardless of backend.
-
-  The SQLite store holds only event bytes; the file store additionally
-  keeps detached signature/witness sidecars. Migrating a SIGNED file
-  store to SQLite would drop those, so it is refused — the file store is
-  the auditor-grade signed format."
+  place (ADR 0020). Reads every event AND every detached sidecar
+  (signatures/witnesses) from the current backend, writes them to the
+  other (append is idempotent by id), verifies the full event-id and
+  sidecar-name sets carried over, then removes the source. Lossless —
+  authorship and countersignatures travel with the events (both backends
+  hold sidecars, ADR 0007). Blobs, the actors registry, and processes are
+  untouched — they live filesystem-side regardless of backend."
   [{:keys [pos opts]}]
   (when-not (= "migrate" (first pos))
     (die "usage: tik store migrate --to sqlite|file"))
@@ -1050,32 +1058,34 @@
         from (if (.isFile db) :sqlite :file)]
     (when (= from to)
       (die (str "this store is already " (name to) "-backed")))
-    (when (and (= to :sqlite) (file-store-sidecars r))
-      (die (str "this file store has detached signature/witness sidecars the"
-                " SQLite backend cannot hold — migrating would drop them. The"
-                " file store is the signed, auditor-grade format; keep it, or"
-                " migrate an unsigned store.")))
     (let [src (the-store)
           ids (vec (store/ticket-ids src))
           events (vec (mapcat #(store/events src %) ids))
           src-ids (set (map :event/id events))
+          sidecars (vec (for [id ids, name (store/sidecar-names src id)]
+                          [id name]))
           dst (case to
                 :sqlite (sqlite/sqlite-store (str db))
                 :file (fstore/file-store r))]
       ;; move bytes only — no re-signing (migration preserves authorship,
-      ;; it does not re-author); the id set must carry over intact
+      ;; it does not re-author); events then their endorsements
       (doseq [e events] (store/append! dst e))
+      (doseq [[id name] sidecars]
+        (store/put-sidecar! dst id name (store/read-sidecar src id name)))
       (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
-                                 (store/ticket-ids dst)))]
-        (when-not (= src-ids dst-ids)
-          (die (str "migration incomplete: " (count src-ids) " event(s) read, "
-                    (count dst-ids) " written — source left intact for retry"))))
+                                 (store/ticket-ids dst)))
+            dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))]
+        (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars))
+          (die (str "migration incomplete: " (count src-ids) " event(s)/"
+                    (count sidecars) " sidecar(s) read, " (count dst-ids) "/"
+                    dst-sidecars " written — source left intact for retry"))))
       (case from
         :sqlite (doseq [suffix ["" "-journal" "-wal" "-shm"]]
                   (.delete (io/file (str db suffix))))
         :file (delete-tree! tickets))
       (println (str "migrated " (count ids) " ticket(s), " (count src-ids)
-                    " event(s) to the " (name to) " backend"))
+                    " event(s), " (count sidecars) " sidecar(s) to the "
+                    (name to) " backend"))
       (println "run `tik verify` to confirm the derivation is unchanged"))))
 
 (defn- field-hint
@@ -1807,7 +1817,7 @@
   "A ticket's row for both selection and listing: the display fields plus
   every field a tik.select predicate reads (see that ns's row shape).
   One fold per ticket — the slow path a `--where` selector takes."
-  [t {:keys [id events state process roles]}]
+  [t {:keys [id events state process roles store]}]
   (let [reached (stage/effective-reached process events t roles)
         facts (guard/fact-map state)
         fstatus #(:status (red/fact-status state %))
@@ -1829,8 +1839,8 @@
      :haystack (str/lower-case (str (display-title state) " " (pr-str facts)))
      :disputed? (boolean (some #(= :disputed (fstatus %)) fkeys))
      :conflicted? (boolean (some #(= :conflicted (fstatus %)) fkeys))
-     :unsigned? (let [dir (events-dir id)]
-                  (boolean (some #(empty? (sign/sidecars dir (:event/id %)))
+     :unsigned? (let [signed (signed-event-ids store id)]
+                  (boolean (some #(not (contains? signed (:event/id %)))
                                  events)))}))
 
 (defn- compiled-selector
@@ -2327,27 +2337,16 @@
   (let [s (the-store)
         id (resolve-id s (first pos))
         key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
-        dir (events-dir id)
+        fpr (sign/fingerprint (sign/pubkey key))
         heads (dag/heads (store/events s id))]
     (doseq [head heads
-            :let [f (io/file dir (str head ".edn"))
-                  fpr (sign/fingerprint (sign/pubkey key))
-                  target (io/file dir (str head ".witness." fpr))]]
-      (when-not (.exists target)
-        (let [produced (sign/sign! key f (str head ".witness-tmp")
-                                   sign/namespace-witness)]
-          (.renameTo ^File produced target)))
+            :let [name (str head ".witness." fpr)]]
+      (when-not (some #{name} (store/sidecar-names s id))
+        (put-signature! s key id head "witness" sign/namespace-witness
+                        (store/event-bytes s id head)))
       (println "witnessed" (shash head) "…"))
     (println (count heads) "head(s) countersigned — each timestamps its"
              "entire ancestry")))
-
-(defn- witness-sidecars [dir head]
-  (let [prefix (str head ".witness.")]
-    (->> (.listFiles (io/file dir))
-         (filter (fn [^File f]
-                   (and (.isFile f)
-                        (str/starts-with? (.getName f) prefix))))
-         (sort-by (fn [^File f] (.getName f))))))
 
 (defn- cmd-actor
   "actor add <name> <pubkey-file>: bind an actor to a key in the store's
@@ -2373,12 +2372,13 @@
         key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
         me (actor opts)
         fpr (sign/fingerprint (sign/pubkey key))
-        dir (events-dir id)
+        names (set (store/sidecar-names s id))
         mine (filter #(= me (:event/actor %)) (store/events s id))
-        unsigned (remove #(.exists (sign/sig-file dir (:event/id %) fpr))
+        unsigned (remove #(contains? names (str (:event/id %) ".sig." fpr))
                          mine)]
     (doseq [e unsigned]
-      (sign/sign! key (io/file dir (str (:event/id e) ".edn")) (:event/id e)))
+      (put-signature! s key id (:event/id e) "sig" sign/namespace-event
+                      (store/event-bytes s id (:event/id e))))
     (println "signed" (count unsigned) "event(s) as" me
              (str "(" (count mine) " authored, key " fpr ")"))))
 
@@ -3687,8 +3687,9 @@ Each entry in :needs is one of:
                            (re-find #"(?i)\b(?:shipped|landed|fixed) in\b|(?<![\w-])[0-9a-f]{8}(?![\w-])"
                                     (:value desc)))
                   (str short " description reports another ticket's status — that rots; record tik set " short " link.<rel>=<ticket-id> and let the board derive it live"))
-                (when-let [n (seq (filter #(empty? (sign/sidecars (events-dir id) (:event/id %))) events))]
-                  (str short " has " (count n) " unsigned event(s) — tik sign " short " (or export TIK_KEY to sign as you write)"))]
+                (let [signed (signed-event-ids s id)]
+                  (when-let [n (seq (remove #(contains? signed (:event/id %)) events))]
+                    (str short " has " (count n) " unsigned event(s) — tik sign " short " (or export TIK_KEY to sign as you write)")))]
                :when problem]
            problem))]
     (doseq [f findings] (println (str "[warning] " f)))
@@ -3911,15 +3912,18 @@ Each entry in :needs is one of:
           (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
           (let [unsigned (atom 0)]
             (doseq [e (red/ordered evs)
-                    :let [sigs (sign/sidecars dir (:event/id e))]]
-              (if (empty? sigs)
+                    :let [names (sidecar-names-for s id (:event/id e) "sig")]]
+              (if (empty? names)
                 (swap! unsigned inc)
-                (doseq [sig sigs]
-                  (check (sign/verify signers
-                                      (io/file dir (str (:event/id e) ".edn"))
-                                      sig (:event/actor e))
-                         (str (shash (:event/id e)) "… signed by "
-                              (:event/actor e))))))
+                (let [ev-bytes (store/event-bytes s id (:event/id e))]
+                  (doseq [name names
+                          :let [sig (store/read-sidecar s id name)]]
+                    (check (boolean
+                            (and ev-bytes sig
+                                 (sign/verify-bytes signers ev-bytes sig
+                                                    (:event/actor e))))
+                           (str (shash (:event/id e)) "… signed by "
+                                (:event/actor e)))))))
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
                             " (authenticity unclaimed, not failed)"))))))
@@ -3927,18 +3931,19 @@ Each entry in :needs is one of:
       (let [signers (io/file (root) "actors")
             heads (dag/heads evs)
             witnessed (for [head heads
-                            sc (witness-sidecars dir head)]
-                        [head sc])]
+                            name (sidecar-names-for s id head "witness")]
+                        [head name])]
         (if (empty? witnessed)
           (println "  note  no countersigned heads (tik witness <id>)")
-          (doseq [[head ^File sc] witnessed
-                  :let [f (io/file dir (str head ".edn"))
-                        who (and (.exists signers)
-                                 (first (sign/find-principals
-                                         signers f sc
+          (doseq [[head name] witnessed
+                  :let [ev-bytes (store/event-bytes s id head)
+                        sig (store/read-sidecar s id name)
+                        who (and (.exists signers) ev-bytes sig
+                                 (first (sign/find-principals-bytes
+                                         signers ev-bytes sig
                                          sign/namespace-witness)))]]
-            (check (boolean (and who (sign/verify signers f sc who
-                                                  sign/namespace-witness)))
+            (check (boolean (and who (sign/verify-bytes signers ev-bytes sig who
+                                                        sign/namespace-witness)))
                    (str (shash head) "… witnessed by "
                         (or who "<unregistered key>")
                         " (whole ancestry)")))))
