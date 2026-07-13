@@ -120,7 +120,7 @@
                      (:out (tik-at top nil "status" id))))))
     (testing "the portfolio view slices by the derived dimension"
       (is (re-find #"renovate for jaas"
-                   (:out (tik-at top nil "query" (str "fact:repo=" ":jaas"))))))))
+                   (:out (tik-at top nil "ls" "--all" "--where" (str "fact:repo=" ":jaas"))))))))
 
 (deftest rollout_builds_the_living_checklist
   (let [top (tmpdir)]
@@ -150,9 +150,9 @@
             "GitLab-style nested repos are found; identity is the path")
         (is (not (re-find #"not-a-repo" (:out r))))))
     (testing "children carry the repo dimension"
-      (is (re-find #"beta" (:out (tik-at top nil "query" (str "fact:repo=" ":beta"))))))
+      (is (re-find #"beta" (:out (tik-at top nil "ls" "--all" "--where" (str "fact:repo=" ":beta"))))))
     (testing "re-runs are idempotent and the checklist derives progress"
-      (let [beta-id (-> (tik-at top nil "query" (str "fact:repo=" ":beta"))
+      (let [beta-id (-> (tik-at top nil "ls" "--all" "--where" (str "fact:repo=" ":beta"))
                         :out str/split-lines first (str/split #"\s+") first)]
         (tik-at top nil "set" beta-id "proof=\"pr-42\"")
         (let [r (tik-at top nil "rollout" "mig")]
@@ -249,7 +249,7 @@
                                      :stage/sticky? true
                                      :guards [[:fact [:ack]]]}]}))
     (tik-at top nil "rollout" "mig")
-    (let [find-child (fn [r] (-> (tik-at top nil "query"
+    (let [find-child (fn [r] (-> (tik-at top nil "ls" "--all" "--where"
                                          (str "fact:repo=:" r))
                                  :out str/split-lines first
                                  (str/split #"\s+") first))
@@ -287,7 +287,7 @@
                                      :stage/sticky? true
                                      :guards [[:fact [:proof]]]}]}))
     (tik-at top nil "rollout" "mig")
-    (let [child (-> (tik-at top nil "query" (str "fact:repo=" ":beta"))
+    (let [child (-> (tik-at top nil "ls" "--all" "--where" (str "fact:repo=" ":beta"))
                     :out str/split-lines first (str/split #"\s+") first)
           parent (-> (tik-at top nil "ls") :out str/split-lines
                      (->> (filter #(re-find #"rollout" %)))

@@ -37,7 +37,7 @@
   "Data commands and an argv that exercises each as a query — :id is filled
   with a seeded ticket at runtime. Every one must emit valid JSON under
   --format json."
-  {"ls" [] "query" ["stage=:open"] "search" ["fodder"] "next" []
+  {"ls" [] "dupes" [] "search" ["fodder"] "next" []
    "explain" [:id] "status" [:id] "log" [:id] "plan" [] "diff" [:id]
    "whatif" [:id "sev=high"] "roles" [] "causal" [:id]
    "work" ["week" "--actor" "seb"] "agent" ["actions" :id "--actor" "seb"]})

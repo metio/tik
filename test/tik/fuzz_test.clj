@@ -573,7 +573,7 @@
                   ["ls" "--where" "="] ["ls" "--where" ":::"]
                   ["ls" "--where" "not"] ["ls" "--where" "fact:"]
                   ["ls" "--format" "yaml"] ["ls" "--format"]
-                  ["query"] ["query" "bogus=1"] ["search"]
+                  ["dupes"] ["ls" "--where" "bogus=1"] ["search"]
                   ["whatif" "zzzz" "+NOT-A-DURATION"]
                   ["reprocess" "zzzz"] ["bundle"] ["witness" "zzzz"]
                   ["attest" "zzzz"] ["work" "??"]
@@ -1287,7 +1287,7 @@
         ;; board (fast path) OR from a selector query (slow path)
         (doseq [argv [["ls"]
                       ["ls" "--where" "stage=:open"]
-                      ["query" "stage=:open"]
+                      ["ls" "--all" "--where" "stage=:open"]
                       ["search" "ok"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (zero? (:exit r)) (pr-str argv))
@@ -1314,7 +1314,7 @@
                       ["board" board-html]
                       ["work" "week" "--actor" "seb"]
                       ["ls" "--where" "stage=:open"]
-                      ["query" "stage=:open"]
+                      ["ls" "--all" "--where" "stage=:open"]
                       ["next" "--actor" "seb"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (zero? (:exit r)) (str (pr-str argv) "\n" (:err r)))
@@ -1437,7 +1437,7 @@
         (doseq [argv [["ls" "--format" "json"]
                       ["explain" (str id) "--format" "json"]
                       ["next" "--format" "json"]
-                      ["query" "stage=:open" "--format" "json"]
+                      ["ls" "--all" "--where" "stage=:open" "--format" "json"]
                       ["work" "week" "--actor" "seb" "--format" "json"]
                       ["work" "cost" "--format" "json"]
                       ["status" (str id) "--format" "json"]

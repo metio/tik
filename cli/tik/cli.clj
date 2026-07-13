@@ -2531,34 +2531,22 @@
       (when (= before after)
         (println "  no derived change")))))
 
-(defn- cmd-query
-  "Select across EVERY ticket's log (settled included) with one selector
-  expression (tik.select), reporting id/title/reached:
-
-    tik query stage=:blocked and fact:severity=:high
-    tik query disputed
-    tik query actor=seb and not conflicted
-
-  `tik query duplicates [--threshold 0.4]` is the one non-selector query —
-  a pairwise near-title similarity report, not a per-ticket predicate."
-  [{:keys [pos opts]}]
+(defn- cmd-dupes
+  "dupes [--threshold 0.4]: pairwise near-title similarity across open
+  tickets — the lookalike report. (Selecting tickets by a predicate is
+  `tik ls --where '…'`, or `tik ls --all --where '…'` to include settled
+  ones — one selector grammar, one board lens.)"
+  [{:keys [opts]}]
   (let [s (the-store)
-        t (now)]
-    (if (= "duplicates" (first pos))
-      (let [threshold (or (some-> (:threshold opts) parse-value double) 0.4)
-            pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
-        (doseq [{:keys [a b score]} pairs]
-          (println (str (sid a) " ~ " (sid b)
-                        "  " (int (* 100 score)) "% similar")))
-        (println (count pairs) "lookalike pair(s) at >="
-                 (str (int (* 100 threshold)) "%")))
-      (let [pred (compiled-selector (str/join " " pos))
-            hits (filter pred (selector-rows s t))]
-        (when-not (emit-data opts (mapv #(select-keys % [:id :title :reached]) hits))
-          (doseq [{:keys [id title reached]} hits]
-            (println (tint "2" (sid id)) title
-                     (tint "2" (pr-str (vec (sort-by str reached))))))
-          (println (count hits) "ticket(s)"))))))
+        t (now)
+        threshold (or (some-> (:threshold opts) parse-value double) 0.4)
+        pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
+    (when-not (emit-data opts (mapv #(select-keys % [:a :b :score]) pairs))
+      (doseq [{:keys [a b score]} pairs]
+        (println (str (sid a) " ~ " (sid b)
+                      "  " (int (* 100 score)) "% similar")))
+      (println (count pairs) "lookalike pair(s) at >="
+               (str (int (* 100 threshold)) "%")))))
 
 (defn- html-escape [x]
   (-> (str x)
@@ -4066,14 +4054,14 @@ Each entry in :needs is one of:
   tik causal <id> [--edn]                       which signed events made each reached
                                                 stage true (negations and time say so
                                                 honestly) — the auditor's \"prove it\"
-  tik ls [--all] [--long] [--where SELECTOR]    open tickets with derived stages;
+  tik ls [--all] [--long] [--where SELECTOR]    tickets with derived stages (open by
+                                                default; --all includes settled);
                                                 --long adds description + links;
                                                 --where filters by a selector
   tik search <text...>                          ALL tickets whose title/facts hold
-                                                every word (sugar for --where '~w …')
-  tik query <selector>                          select across EVERY log (settled too),
-                                                reporting id/title/reached; or
-                                                `query duplicates [--threshold 0.4]`
+                                                every word (sugar for --all --where '~w …')
+  tik dupes [--threshold 0.4]                   near-title lookalike report over open
+                                                tickets (selection is `ls --where`)
 
   A SELECTOR is space-separated terms, all ANDed, each optionally `not`:
     stage=:blocked   fact:severity   fact:severity=:high   actor=seb
@@ -4224,7 +4212,7 @@ Each entry in :needs is one of:
       "ls"      (cmd-ls parsed)
       "next"    (cmd-next parsed)
       "search"  (cmd-search parsed)
-      "query"   (cmd-query parsed)
+      "dupes"   (cmd-dupes parsed)
       "whatif"  (cmd-whatif parsed)
       "debug"   (cmd-debug parsed)
       "graph"   (cmd-graph parsed)
