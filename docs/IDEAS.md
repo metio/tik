@@ -720,3 +720,26 @@ deps-edn/kaocha setup. Scope to `src/tik/*.cljc` first (the un-migratable
 layer earns the scrutiny); porcelain later. Complements fuzzing: fuzzing
 finds inputs that break the code, mutation testing finds code the tests
 don't constrain.
+
+## Self-verifying DKIM in the email bridge (parked)
+
+The email bridge gates the From→actor mapping on DKIM by consuming the
+MTA's standard `Authentication-Results` verdict (RFC 8601), pinned to a
+trusted `authserv-id` — shipped, the right default. PARKED: having tik
+verify the DKIM signature ITSELF, so the bridge trusts no MTA. Feasible
+and even bb-compatible (DKIM public keys publish as SPKI DER, which
+`X509EncodedKeySpec` reconstructs on every runtime; the signature is
+RSA-SHA256 / Ed25519, both bb-safe via `Signature`; the DNS TXT lookup
+of `<selector>._domainkey.<domain>` can shell to `dig`, consistent with
+the ssh-keygen/ots pattern). The reason it stays parked, not adopted:
+DKIM's header/body canonicalization (relaxed vs simple, the `l=`
+body-length trap, multiple signatures, header-ordering) is a known
+footgun — a subtle canon bug fails valid mail or, worse, accepts forged
+mail, and every MTA already implements it correctly. Re-implementing it
+means OWNING that risk for marginal gain over consuming the verdict.
+Trigger to revisit: a deployment that genuinely cannot trust its own
+MTA's verdict (no control over the receiving mail stack) and needs
+end-to-end sender authentication in tik itself — then the crypto is
+localizable (a `tik.dkim` verifier taking raw message bytes), and the
+canonicalization gets its own byte-exact golden-vector test suite before
+anyone relies on it.
