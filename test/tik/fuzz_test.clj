@@ -1365,13 +1365,55 @@
                       ["next" "--format" "json"]
                       ["query" "stage=:open" "--format" "json"]
                       ["work" "week" "--actor" "seb" "--format" "json"]
-                      ["work" "cost" "--format" "json"]]]
+                      ["work" "cost" "--format" "json"]
+                      ;; the agent verbs are the surface the MCP tools ride
+                      ["agent" "actions" (str id) "--actor" "seb" "--format" "json"]]]
           (let [r (tik.cli/run-argv argv)]
             (is (zero? (:exit r)) (pr-str argv))
             (doseq [line (remove str/blank? (str/split-lines (:out r)))]
               (is (try (parse-json line) true
                        (catch Exception _ false))
                   (str (pr-str argv) " printed invalid JSON:\n" line)))))))))
+
+(deftest agent_verbs_speak_json_on_request
+  ;; MCP tool payloads route through --format json; the gated agent verbs
+  ;; must answer in JSON on both paths — an admitted assert as an ok
+  ;; object on stdout, a refused one as a verdict object on stderr with
+  ;; exit 3 (a refusal is an error in every format).
+  (let [{:keys [root]} (h/temp-store!)
+        parse-json (requiring-resolve 'cheshire.core/parse-string)]
+    (h/with-cli-root root
+      (fn []
+        (tik.cli/run-argv ["new" "track" "--title" "agent json"])
+        (let [id (->> (:out (tik.cli/run-argv ["ls" "--edn"]))
+                      (re-seq #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+                      first)
+              actions (parse-json (:out (tik.cli/run-argv
+                                         ["agent" "actions" id "--actor" "seb"
+                                          "--format" "json"])))
+              ;; whatever set-action the frontier admits for seb, if any
+              set-path (->> (get actions "admissible")
+                            (keep (fn [a] (let [[op path] (get a "action")]
+                                            (when (= "set" op) path))))
+                            first)]
+          (testing "actions answers with a JSON object"
+            (is (vector? (get actions "admissible"))))
+          (when set-path
+            (testing "an admitted assert answers with an ok object on stdout"
+              (let [k (str/join "." set-path)
+                    ok (tik.cli/run-argv ["agent" "set" id (str k "=x")
+                                          "--actor" "seb" "--format" "json"])]
+                (is (zero? (:exit ok)) (:err ok))
+                (is (true? (get (parse-json (:out ok)) "ok"))))))
+          (testing "a refused assert answers with a JSON verdict on stderr, exit 3"
+            (let [refused (tik.cli/run-argv
+                           ["agent" "set" id "definitely-not-a-frontier-fact=x"
+                            "--actor" "nobody" "--format" "json"])]
+              (is (= 3 (:exit refused)))
+              (is (str/blank? (:out refused)) "no data on stdout for a refusal")
+              (let [v (parse-json (:err refused))]
+                (is (contains? v "refused"))
+                (is (vector? (get v "admissible")))))))))))
 
 ;; ------------------- the OIDC bridge over a hostile identity provider
 

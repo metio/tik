@@ -36,10 +36,10 @@
 
 (def ^:private tools
   [{:name "tik_board"
-    :description "All open tickets with derived stages (EDN)."
+    :description "All open tickets with derived stages (JSON)."
     :inputSchema {:type "object" :properties {}}}
    {:name "tik_explain"
-    :description "What evidence a ticket is missing, per frontier stage (EDN, ADR 0016 contract)."
+    :description "What evidence a ticket is missing, per frontier stage (JSON, ADR 0016 contract)."
     :inputSchema {:type "object"
                   :properties {:ticket {:type "string"}}
                   :required ["ticket"]}}
@@ -76,17 +76,22 @@
       {:err (str "missing required argument(s): "
                  (str/join ", " missing))})))
 
+;; every tool speaks JSON: an MCP client is a JSON transport, so the tool
+;; payload is JSON too (--format json), not tik's native EDN.
 (defn- call-tool [name {:strs [ticket key value claim] :as args}]
   (case name
-    "tik_board" (tik "ls" "--edn")
-    "tik_explain" (or (need args ["ticket"]) (tik "explain" ticket "--edn"))
+    "tik_board" (tik "ls" "--format" "json")
+    "tik_explain" (or (need args ["ticket"])
+                      (tik "explain" ticket "--format" "json"))
     "tik_actions" (or (need args ["ticket"])
-                      (tik "agent" "actions" ticket "--actor" (actor)))
+                      (tik "agent" "actions" ticket "--actor" (actor)
+                           "--format" "json"))
     "tik_assert" (or (need args ["ticket" "key" "value"])
                      (tik "agent" "set" ticket (str key "=" value)
-                          "--actor" (actor)))
+                          "--actor" (actor) "--format" "json"))
     "tik_attest" (or (need args ["ticket" "claim"])
-                     (tik "agent" "attest" ticket claim "--actor" (actor)))
+                     (tik "agent" "attest" ticket claim
+                          "--actor" (actor) "--format" "json"))
     {:err (str "unknown tool " name)}))
 
 (defn- respond [id result]

@@ -2139,12 +2139,18 @@
                   (contains? (:who %) actor-name))
              actions)))
 
-(defn- agent-refuse! [actor-name attempted admissible]
+(defn- agent-refuse! [opts actor-name attempted admissible]
+  ;; a refusal is an error: it goes to stderr and exits 3 in every format,
+  ;; so a machine reads the verdict from the exit code and a JSON body from
+  ;; the same stream an MCP client already captures.
   (binding [*out* *err*]
-    (println "REFUSED:" (pr-str attempted) "is not admitted by the"
-             "frontier for actor" actor-name)
-    (println "admissible now:"
-             (pr-str (mapv :action admissible))))
+    (when-not (emit-data opts {:refused attempted
+                               :actor actor-name
+                               :admissible (mapv :action admissible)})
+      (println "REFUSED:" (pr-str attempted) "is not admitted by the"
+               "frontier for actor" actor-name)
+      (println "admissible now:"
+               (pr-str (mapv :action admissible)))))
   (exit! 3))
 
 (defn- cmd-agent
@@ -2166,34 +2172,38 @@
         id (resolve-id s ticket)
         admissible (agent-admissible id who)]
     (case sub
-      "actions" (prn {:actor who :ticket id
-                      :admissible (mapv #(select-keys % [:action :stage])
-                                        admissible)})
+      "actions" (let [data {:actor who :ticket id
+                            :admissible (mapv #(select-keys % [:action :stage])
+                                              admissible)}]
+                  (when-not (emit-data opts data)
+                    (prn data)))
       "set" (let [kv (or (first args)
                          (die "usage: tik agent set <id> key=value --actor A"))
                   [k v] (str/split kv #"=" 2)
                   path (parse-key k)
                   attempted [:set path]]
               (when-not (some #(= attempted (:action %)) admissible)
-                (agent-refuse! who attempted admissible))
+                (agent-refuse! opts who attempted admissible))
               (append!* s (event/assert-fact
                            {:ticket id :actor who :at (now)
                             :parents (dag/heads (store/events s id))
                             :path path :value (parse-value v)})
                         opts)
-              (println "ok" (pr-str attempted)))
+              (when-not (emit-data opts {:ok true :action attempted})
+                (println "ok" (pr-str attempted))))
       "attest" (let [claim (canonical/parse
                             (or (first args)
                                 (die "usage: tik agent attest <id> <claim-edn> --actor A")))
                      attempted [:attest claim]]
                  (when-not (some #(= attempted (:action %)) admissible)
-                   (agent-refuse! who attempted admissible))
+                   (agent-refuse! opts who attempted admissible))
                  (append!* s (event/add-attestation
                               {:ticket id :actor who :at (now)
                                :parents (dag/heads (store/events s id))
                                :claim {:claim claim}})
                            opts)
-                 (println "ok" (pr-str attempted)))
+                 (when-not (emit-data opts {:ok true :action attempted})
+                   (println "ok" (pr-str attempted))))
       (die "usage: tik agent actions|set|attest <id> ... --actor A"))))
 
 (defn- cmd-witness
