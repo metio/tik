@@ -2437,8 +2437,9 @@
 
 (defn- parse-rfc822
   "Minimal RFC822: headers to the first blank line, body after.
-  Header folding (continuation lines) honored; only From and Subject
-  are consumed."
+  Header folding (continuation lines) honored. From/Subject drive the
+  human path; In-Reply-To/References/X-Tik-Ticket drive robust
+  ticket association (see ticket-ref-of)."
   [text]
   (let [lines (str/split-lines text)
         [head body] (split-with #(not (str/blank? %)) lines)
@@ -2457,7 +2458,25 @@
                     (re-find #"[\w.+-]+@[\w.-]+")
                     str/lower-case)
      :subject (or (header "Subject") "")
+     :in-reply-to (header "In-Reply-To")
+     :references (header "References")
+     :x-tik-ticket (header "X-Tik-Ticket")
      :body (str/trim (str/join "\n" (rest body)))}))
+
+(defn- ticket-ref-of
+  "Which ticket an inbound message is about, most reliable source first:
+  the explicit `X-Tik-Ticket` header, then a tik-shaped Message-ID the
+  reply threads on (`In-Reply-To`/`References` — set automatically by the
+  sender's mail client from what the outbound sink stamped), then the
+  `[tik <id>]` subject tag as the human-visible fallback. The id is
+  ENCODED in the Message-ID, never stored in a lookup table — the
+  association is derived, like everything else."
+  [{:keys [x-tik-ticket in-reply-to references subject]}]
+  (or (some-> x-tik-ticket str/trim not-empty)
+      (some->> (str in-reply-to " " references)
+               (re-find #"tik\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+               second)
+      (second (re-find #"\[tik ([0-9a-f-]+)\]" (str subject)))))
 
 (defn- cmd-bridge-oidc
   "bridge oidc: identity rung 2 (PLAN §9). Login against the config's
@@ -2571,14 +2590,14 @@
         cfg (if (.exists (io/file cfg-file))
               (read-edn-file (io/file cfg-file))
               {})
-        {:keys [from subject body]} (parse-rfc822 (slurp *in*))
+        {:keys [from subject body] :as msg} (parse-rfc822 (slurp *in*))
         actor-name (or (get-in cfg [:from->actor from])
                        (:default-actor cfg)
                        (die (str "unknown sender " from
                                  " and no :default-actor in " cfg-file)))
         opts (assoc opts :actor actor-name)
         s (the-store)
-        ticket-ref (second (re-find #"\[tik ([0-9a-f-]+)\]" subject))]
+        ticket-ref (ticket-ref-of msg)]
     (if ticket-ref
       (let [id (resolve-id s ticket-ref)
             at (now)
@@ -2690,13 +2709,22 @@
        "stage" (str stage) "text" text})))
 
 (defn- email-message
-  "RFC822 text asking a human for what the stage needs. The subject
-  carries [tik <id>] so a plain reply routes back through `tik bridge
-  email`; the body renders explain and teaches the reply convention —
-  the email IS a capability-scoped view of the same derivation."
+  "RFC822 text asking a human for what the stage needs. Association is
+  carried three ways, robust first: a tik-shaped Message-ID (the
+  sender's client threads on it via In-Reply-To/References, so a plain
+  reply routes back with no cooperation), an explicit X-Tik-Ticket
+  header (for filters/clients), and the [tik <id>] subject tag (the
+  human-visible fallback). The body renders explain and teaches the
+  reply convention — the email IS a capability-scoped view of the same
+  derivation."
   [{:keys [to from]} {:keys [ticket title stage]} explain-text]
   (str "To: " to "\r\n"
        "From: " (or from "tik") "\r\n"
+       ;; the ticket id is ENCODED in the Message-ID (per stage, so each
+       ;; notification is a distinct message), never a stored map — a
+       ;; reply's In-Reply-To carries it straight back to ticket-ref-of
+       "Message-ID: <tik." ticket "." (name stage) "@tik.local>\r\n"
+       "X-Tik-Ticket: " ticket "\r\n"
        "Subject: [tik " ticket "] " title " — " stage "\r\n"
        "\r\n"
        "\"" title "\" reached " stage " and needs something only you"

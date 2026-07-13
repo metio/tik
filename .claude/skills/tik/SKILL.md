@@ -68,8 +68,13 @@ kernel never reaches out). Each records a bridge-signed attestation whose
 trust flows through the bridge (ADR 0019), verifiable offline forever:
 
 - `tik bridge email [--config bridge.edn] < message` — one RFC822 message
-  on stdin (MTA-agnostic): the sender maps to an actor, `[tik <id>]` in the
-  subject comments that ticket, anything else opens a new one.
+  on stdin (MTA-agnostic): the sender maps to an actor; the message
+  associates to a ticket by (most reliable first) an `X-Tik-Ticket` header,
+  the tik-shaped `Message-ID` a reply threads on (`In-Reply-To`/`References`,
+  set automatically by the sender's client from what the outbound email
+  sink stamped), or a `[tik <id>]` subject tag — else it opens a new ticket.
+  A reply's `tik> key=value` lines become signed facts; everything else is a
+  comment.
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
   device-flow (or `--user`/`--password`) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never
