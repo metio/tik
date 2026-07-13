@@ -1469,4 +1469,19 @@
                          (reset! responses (or t ["{}"])) h))
         {:keys [poll]} (oidc/device-flow post {:device "d" :token "t"}
                                          "client" (fn [_] nil))]
-    (is (fails-well? poll))))
+    (is (fails-well? poll)))
+  (testing "a non-numeric or negative :interval is the IdP's word too —
+            it must not crash the multiply or hand sleep a bad timeout"
+    (doseq [start ["{\"device_code\":\"d\",\"interval\":\"fast\"}"
+                   "{\"device_code\":\"d\",\"interval\":-5}"
+                   "{\"device_code\":\"d\",\"interval\":{\"nested\":1}}"
+                   "{\"device_code\":\"d\"}"]]
+      (let [sleeps (atom [])
+            post (fn [_ _] start)
+            df (oidc/device-flow post {:device "d" :token "t"} "client"
+                                 (fn [ms] (swap! sleeps conj ms)))]
+        (is (map? df) start)
+        ;; the poll's injected sleep only ever sees a non-negative number
+        ((:poll df))
+        (is (every? #(and (number? %) (not (neg? %))) @sleeps)
+            (str start " -> " (pr-str @sleeps)))))))

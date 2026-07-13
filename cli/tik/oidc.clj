@@ -105,7 +105,12 @@
   [post {:keys [device token]} client-id sleep]
   (let [start (json-parse (post device {"client_id" client-id
                                         "scope" "openid"}))
-        interval (* 1000 (or (:interval start) 5))]
+        ;; the poll interval is the IdP's word (RFC 8628: seconds, default
+        ;; 5); a broken or hostile provider can send a non-number or a
+        ;; negative, so fall back to the default rather than throwing on
+        ;; the multiply or handing Thread/sleep a negative timeout.
+        secs (:interval start)
+        interval (* 1000 (if (and (number? secs) (not (neg? secs))) secs 5))]
     {:prompt (str "visit " (or (:verification_uri_complete start)
                                (:verification_uri start))
                   " and enter code " (:user_code start))
