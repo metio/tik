@@ -9,6 +9,7 @@
             [clojure.test :refer [deftest is testing]]
             [tik.cli :as cli]
             [tik.cli-core]
+            [tik.bridge]
             [tik.args :as args]
             [tik.event :as event]
             [tik.store.protocol :as store]))
@@ -107,7 +108,7 @@
   ;; resolves — through the unified tik.secret resolver — from a password
   ;; manager command, a file, the environment, or (last, with a warning)
   ;; a literal flag. nil when none is given (the caller uses device flow).
-  (let [resolve-pw #'cli/resolve-oidc-password]
+  (let [resolve-pw #'tik.bridge/resolve-oidc-password]
     (testing "--password-command runs a secret manager (first line)"
       (is (= "pwFromPass"
              (resolve-pw {:password-command "printf 'pwFromPass\\nmeta'"}))))
