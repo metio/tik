@@ -19,21 +19,24 @@
 (defn- fact-event [state path]
   (:event (red/fact-entry state path)))
 
+(defn- event-ids-where
+  "Ids of events matching `pred`."
+  [events pred]
+  (for [e events :when (pred e)] (:event/id e)))
+
 (defn- attach-events
   "Ids of :artifact/attach events whose path sits under prefix."
   [events prefix]
-  (for [e events
-        :let [p (get-in e [:event/body :artifact/path])]
-        :when (and (= :artifact/attach (:event/type e))
-                   (string? p)
-                   (str/starts-with? p prefix))]
-    (:event/id e)))
+  (event-ids-where events
+                   (fn [e] (let [p (get-in e [:event/body :artifact/path])]
+                             (and (= :artifact/attach (:event/type e))
+                                  (string? p)
+                                  (str/starts-with? p prefix))))))
 
 (defn- attestation-events [events claim]
-  (for [e events
-        :when (and (= :attestation/add (:event/type e))
-                   (= claim (get-in e [:event/body :claim])))]
-    (:event/id e)))
+  (event-ids-where events
+                   (fn [e] (and (= :attestation/add (:event/type e))
+                                (= claim (get-in e [:event/body :claim]))))))
 
 (defn support
   "[{:via <guard-ish> :events [ids] :note?}] for one guard — the

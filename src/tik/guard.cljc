@@ -153,17 +153,15 @@
   this guard honestly."
   [[_ claim dur-str] {:keys [state now]}]
   (let [cutoff (.minus (->instant now) (Duration/parse dur-str))
-        fresh (filter (fn [e]
-                        (and (= :attestation/add (:event/type e))
-                             (= claim (get-in e [:event/body :claim]))
-                             (not (.isBefore (->instant (:event/at e))
-                                             cutoff))))
+        attests? (fn [e] (and (= :attestation/add (:event/type e))
+                              (= claim (get-in e [:event/body :claim]))))
+        fresh (filter (fn [e] (and (attests? e)
+                                   (not (.isBefore (->instant (:event/at e))
+                                                   cutoff))))
                       (:log state))]
     (if (seq fresh)
       ok
-      (let [any (filter #(and (= :attestation/add (:event/type %))
-                              (= claim (get-in % [:event/body :claim])))
-                        (:log state))]
+      (let [any (filter attests? (:log state))]
         (if (seq any)
           (fail {:reason :attestation/stale :claim claim
                  :within dur-str

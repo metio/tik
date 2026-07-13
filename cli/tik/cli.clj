@@ -460,9 +460,13 @@
                                "UTF-8")))
   event)
 
+(defn- matching-ticket-ids
+  "Stringified ticket ids whose text starts with `prefix`."
+  [s prefix]
+  (filter #(str/starts-with? % (str prefix)) (map str (store/ticket-ids s))))
+
 (defn- resolve-id [s ticket-str]
-  (let [hits (filter #(str/starts-with? % ticket-str)
-                     (map str (store/ticket-ids s)))]
+  (let [hits (matching-ticket-ids s ticket-str)]
     (case (count hits)
       1 (java.util.UUID/fromString (first hits))
       0 (die (str "no ticket starting with '" ticket-str
@@ -1394,8 +1398,7 @@
   "resolve-id without the die: the uuid on a unique match, nil
   otherwise. Lenses rendering links must degrade, not crash."
   [s prefix]
-  (let [hits (filter #(str/starts-with? % (str prefix))
-                     (map str (store/ticket-ids s)))]
+  (let [hits (matching-ticket-ids s prefix)]
     (when (= 1 (count hits))
       (java.util.UUID/fromString (first hits)))))
 
@@ -2386,15 +2389,21 @@
     (println "signed" (count unsigned) "event(s) as" me
              (str "(" (count mine) " authored, key " fpr ")"))))
 
+(defn- load-process-arg
+  "A process from a `.edn` path argument, else by name from this store's
+  processes/ — the shape the debug and graph lenses accept."
+  [proc-name]
+  (if (str/ends-with? (str proc-name) ".edn")
+    (or (read-edn-file (io/file proc-name))
+        (die (str "no such file: " proc-name)))
+    (load-process proc-name)))
+
 (defn- cmd-debug
   "The fixpoint with its working shown: every sweep, every stage, every
   guard verdict against the sweep-start snapshot. tik's EXPLAIN plan."
   [{:keys [pos opts]}]
   (let [proc-name (first pos)
-        proc (if (str/ends-with? (str proc-name) ".edn")
-               (or (read-edn-file (io/file proc-name))
-                   (die (str "no such file: " proc-name)))
-               (load-process proc-name))
+        proc (load-process-arg proc-name)
         s (the-store)
         [state t roles]
         (if-let [tid (second pos)]
@@ -2422,10 +2431,7 @@
   ● reached, ◐ frontier (prereqs met, guards missing), ○ blocked."
   [{:keys [pos]}]
   (let [proc-name (first pos)
-        proc (if (str/ends-with? (str proc-name) ".edn")
-               (or (read-edn-file (io/file proc-name))
-                   (die (str "no such file: " proc-name)))
-               (load-process proc-name))
+        proc (load-process-arg proc-name)
         s (the-store)
         reached (when-let [tid (second pos)]
                   (let [{:keys [events process roles]}

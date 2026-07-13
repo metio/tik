@@ -142,10 +142,11 @@
   HTML) draws from. Pure over (edges, settled)."
   [edges settled]
   (let [ns (nodes edges)
-        by-status (group-by #(status edges settled %) ns)
+        status-of (into {} (map (juxt identity #(status edges settled %))) ns)
+        by-status (group-by status-of ns)
         cp (critical-path edges settled)]
     {:nodes ns
-     :status (into {} (map (juxt identity #(status edges settled %))) ns)
+     :status status-of
      :done (set (:done by-status))
      :ready (set (:ready by-status))
      :blocked (set (:blocked by-status))

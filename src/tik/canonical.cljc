@@ -136,17 +136,18 @@
   ^String [x]
   (emit* x 0))
 
+(defn- bytes->hex ^String [^bytes b]
+  (str/join (map #(format "%02x" %) b)))
+
 (defn sha256-hex ^String [^String s]
-  (let [d (.digest (MessageDigest/getInstance "SHA-256")
-                   (.getBytes s "UTF-8"))]
-    (str/join (map #(format "%02x" %) d))))
+  (bytes->hex (.digest (MessageDigest/getInstance "SHA-256")
+                       (.getBytes s "UTF-8"))))
 
 (defn sha256-hex-bytes
   "For blobs (artifacts). Hash policy — one algorithm per store per
   format-version, self-describing ids, additive migration — is ADR 0006."
   ^String [^bytes b]
-  (let [d (.digest (MessageDigest/getInstance "SHA-256") b)]
-    (str/join (map #(format "%02x" %) d))))
+  (bytes->hex (.digest (MessageDigest/getInstance "SHA-256") b)))
 
 (defn content-address
   "\"sha256-<hex>\" of the canonical form of `value`."

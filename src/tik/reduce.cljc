@@ -26,10 +26,12 @@
   (:require [clojure.core :as core]))
 
 (defn dedupe-events
-  "Union semantics: duplicates (same content address) collapse to one."
+  "Union semantics: duplicates (same content address) collapse to one.
+  Retention order is irrelevant — the caller re-sorts by (at, id) via
+  `order`, and same-id events carry the same bytes."
   [events]
   (into [] (comp (map (juxt :event/id identity)) (distinct) (map second))
-        (sort-by :event/id events)))
+        events))
 
 (defn order [events]
   (sort-by (juxt :event/at :event/id) events))

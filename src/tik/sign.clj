@@ -68,20 +68,52 @@
   ^java.io.File [events-dir event-id fpr]
   (io/file events-dir (str event-id ".sig." fpr)))
 
+;; ---------------------------------------------------------------------------
+;; ssh-keygen speaks only files, but a signature endorses BYTES (an event
+;; file, a temp materialized from a SQLite BLOB — the same bytes either
+;; way, so a signature is backend-independent). These three cores hold the
+;; exact ssh-keygen argument vectors once; the file and byte variants below
+;; only differ in where the signed/verified bytes and the sig come from.
+
+(defn- write-temp ^java.io.File [prefix ^bytes b]
+  (let [tmp (java.io.File/createTempFile prefix ".tik")]
+    (with-open [o (io/output-stream tmp)] (.write o b))
+    tmp))
+
+(defn- ssh-sign->bytes
+  "Sign `target` in place; ssh-keygen writes <target>.sig — read and
+  remove it, returning the detached signature bytes (ASCII SSHSIG armor)."
+  ^bytes [key-file ^java.io.File target sig-namespace]
+  (sh! "ssh-keygen" "-Y" "sign" "-f" (str key-file)
+       "-n" sig-namespace (str target))
+  (let [produced (io/file (str target ".sig"))]
+    (try (with-open [is (io/input-stream produced)] (.readAllBytes is))
+         (finally (.delete produced)))))
+
+(defn- ssh-verify [allowed-signers in ^java.io.File sig actor sig-namespace]
+  (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
+                       "-f" (str allowed-signers) "-I" actor
+                       "-n" sig-namespace "-s" (str sig) :in in))))
+
+(defn- ssh-principals [allowed-signers in ^java.io.File sig sig-namespace]
+  (let [r (sh/sh "ssh-keygen" "-Y" "find-principals"
+                 "-f" (str allowed-signers)
+                 "-n" sig-namespace "-s" (str sig) :in in)]
+    (if (zero? (:exit r))
+      (vec (remove str/blank? (str/split-lines (:out r))))
+      [])))
+
+;; -------------------------------------------------- file variants (sidecars)
+
 (defn sign!
-  "Sign `file` (the exact stored bytes) with `key-file`; write the
-  sidecar next to it; return the sidecar File. Namespace defaults to
-  event signing; pass namespace-process for definitions."
+  "Sign `file` (the exact stored bytes) with `key-file`; write the sidecar
+  next to it; return the sidecar File. Namespace defaults to event signing;
+  pass namespace-process for definitions."
   ([key-file file artifact-id] (sign! key-file file artifact-id namespace-event))
   ([key-file ^java.io.File file artifact-id sig-namespace]
-   (let [fpr (fingerprint (pubkey key-file))
-         target (sig-file (.getParentFile file) artifact-id fpr)]
-     (sh! "ssh-keygen" "-Y" "sign" "-f" (str key-file)
-          "-n" sig-namespace (str file))
-    ;; ssh-keygen writes <file>.sig; the sidecar name carries the key
-     (let [produced (io/file (str file ".sig"))]
-       (io/copy produced target)
-       (io/delete-file produced))
+   (let [target (sig-file (.getParentFile file) artifact-id
+                          (fingerprint (pubkey key-file)))]
+     (io/copy (ssh-sign->bytes key-file file sig-namespace) target)
      target)))
 
 (defn verify
@@ -90,38 +122,24 @@
   ([allowed-signers file sig actor]
    (verify allowed-signers file sig actor namespace-event))
   ([allowed-signers ^java.io.File file ^java.io.File sig actor sig-namespace]
-   (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
-                        "-f" (str allowed-signers)
-                        "-I" actor
-                        "-n" sig-namespace
-                        "-s" (str sig)
-                        :in (slurp file))))))
+   (ssh-verify allowed-signers (slurp file) sig actor sig-namespace)))
 
-;; ---------------------------------------------------------------------------
-;; Byte-oriented variants: the storage seam holds signatures as bytes (a
-;; file beside the event, or a table row), but ssh-keygen only speaks
-;; files, so these materialize short-lived temp files. The bytes signed
-;; and verified are identical to the file variants, so a signature is
-;; backend-independent and verify semantics are unchanged.
+(defn find-principals
+  "Which registered principals could have produced `sig` over `file`?
+  Empty when the key is not in the registry."
+  [allowed-signers ^java.io.File file ^java.io.File sig sig-namespace]
+  (ssh-principals allowed-signers (slurp file) sig sig-namespace))
 
-(defn- write-temp ^java.io.File [prefix ^bytes b]
-  (let [tmp (java.io.File/createTempFile prefix ".tik")]
-    (with-open [o (io/output-stream tmp)] (.write o b))
-    tmp))
+;; -------------------------------------------- byte variants (the store seam)
 
 (defn sign-bytes
   "Sign the exact `bytes` with `key-file`; return the detached signature
-  bytes (the ASCII SSHSIG armor). Namespace defaults to event signing."
+  bytes. Namespace defaults to event signing."
   (^bytes [key-file bytes] (sign-bytes key-file bytes namespace-event))
   (^bytes [key-file ^bytes bytes sig-namespace]
    (let [tmp (write-temp "tik-sign" bytes)]
-     (try
-       (sh! "ssh-keygen" "-Y" "sign" "-f" (str key-file)
-            "-n" sig-namespace (str tmp))
-       (let [produced (io/file (str tmp ".sig"))]
-         (try (with-open [is (io/input-stream produced)] (.readAllBytes is))
-              (finally (.delete produced))))
-       (finally (.delete tmp))))))
+     (try (ssh-sign->bytes key-file tmp sig-namespace)
+          (finally (.delete tmp))))))
 
 (defn verify-bytes
   "Does `sig-bytes` verify `event-bytes` as authored by `actor`?"
@@ -129,43 +147,16 @@
    (verify-bytes allowed-signers event-bytes sig-bytes actor namespace-event))
   ([allowed-signers ^bytes event-bytes ^bytes sig-bytes actor sig-namespace]
    (let [sig (write-temp "tik-verify" sig-bytes)]
-     (try
-       (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify"
-                            "-f" (str allowed-signers)
-                            "-I" actor
-                            "-n" sig-namespace
-                            "-s" (str sig)
-                            :in event-bytes)))
-       (finally (.delete sig))))))
+     (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
+          (finally (.delete sig))))))
 
 (defn find-principals-bytes
   "Which registered principals could have produced `sig-bytes` over
   `event-bytes`? Empty when the key is not in the registry."
   [allowed-signers ^bytes event-bytes ^bytes sig-bytes sig-namespace]
   (let [sig (write-temp "tik-fp" sig-bytes)]
-    (try
-      (let [r (sh/sh "ssh-keygen" "-Y" "find-principals"
-                     "-f" (str allowed-signers)
-                     "-n" sig-namespace
-                     "-s" (str sig)
-                     :in event-bytes)]
-        (if (zero? (:exit r))
-          (vec (remove str/blank? (str/split-lines (:out r))))
-          []))
-      (finally (.delete sig)))))
-
-(defn find-principals
-  "Which registered principals could have produced `sig` over `file`?
-  Empty when the key is not in the registry."
-  [allowed-signers ^java.io.File file ^java.io.File sig sig-namespace]
-  (let [r (sh/sh "ssh-keygen" "-Y" "find-principals"
-                 "-f" (str allowed-signers)
-                 "-n" sig-namespace
-                 "-s" (str sig)
-                 :in (slurp file))]
-    (if (zero? (:exit r))
-      (vec (remove str/blank? (str/split-lines (:out r))))
-      [])))
+    (try (ssh-principals allowed-signers event-bytes sig sig-namespace)
+         (finally (.delete sig)))))
 
 (defn sidecars
   "All signature sidecar Files for an event id in `events-dir`."

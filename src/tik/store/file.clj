@@ -170,9 +170,7 @@
         (let [loose (mapv read-event
                           (filter (fn [^File f]
                                     (and (.isFile f)
-                                         (str/ends-with? (.getName f) ".edn")
-                                         (not (str/ends-with? (.getName f)
-                                                              ".pack.edn"))))
+                                         (str/ends-with? (.getName f) ".edn")))
                                   (.listFiles dir)))
               loose-ids (into #{} (map :event/id) loose)]
           (into loose
