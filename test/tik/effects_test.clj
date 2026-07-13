@@ -9,10 +9,10 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [tik.cli :as cli]
+            [tik.effects]
             [tik.secret :as secret]))
 
-(def ^:private payload #'cli/effect-payload)
+(def ^:private payload #'tik.effects/effect-payload)
 
 (def tr {:ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
          :title "printer on fire" :stage :escalated})
@@ -22,7 +22,7 @@
   ;; VALID JSON (RFC 8259 escapes U+0000–U+001F) — else a strict endpoint
   ;; 400s and, since post! ran :throw false, the effect was ledgered
   ;; as sent and never retried.
-  (let [json-str #'cli/json-str
+  (let [json-str #'tik.effects/json-str
         title (str "line1" \return "line2" \tab "x" (char 1))
         out (json-str {"title" title})]
     (is (map? (json/parse-string out)) "the emitted JSON parses")
@@ -33,7 +33,7 @@
   ;; a webhook path/query often IS the secret (Slack/Discord tokens live
   ;; in the URL path); the delivery-failure message is printed to stderr,
   ;; so it must carry only scheme+host, never the full URL.
-  (let [redact #'cli/redact-url]
+  (let [redact #'tik.effects/redact-url]
     (is (= "https://hooks.slack.com"
            (redact "https://hooks.slack.com/services/T000/B000/XXXXsecretXXXX")))
     (is (= "https://host:9000" (redact "https://host:9000/hook?token=sekret")))
@@ -42,7 +42,7 @@
 (deftest email-message-strips-header-injection
   ;; a display title carrying CR/LF must not forge a new header (Bcc:)
   ;; that `sendmail -t` would honor (RFC 5322 header injection).
-  (let [em #'cli/email-message
+  (let [em #'tik.effects/email-message
         msg (em {:to "ops@x" :from "tik@x"}
                 {:ticket "id1"
                  :title (str "Pwned" \return \newline "Bcc: evil@x") :stage :s}

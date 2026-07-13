@@ -6,12 +6,12 @@
   (In-Reply-To/References), not only the [tik <id>] subject tag — and the
   outbound sink stamps exactly what an inbound reply reads back."
   (:require [clojure.test :refer [deftest is testing]]
-            [tik.cli]
+            [tik.effects]
             [tik.mail :as mail]))
 
 (def ^:private parse-rfc822 mail/parse-rfc822)
 (def ^:private ticket-ref-of mail/ticket-ref-of)
-(def ^:private email-message @#'tik.cli/email-message)
+(def ^:private email-message @#'tik.effects/email-message)
 
 (def ^:private id "12af5062-fe68-44e2-9727-da6e33cbee52")
 

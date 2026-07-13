@@ -265,6 +265,13 @@
      :roles (:process/roles proc {})
      :heads (dag/heads evs)}))
 
+(defn display-title
+  "The title a lens shows: a [:title] fact supersedes the created
+  title — creation is immutable, names are corrections like any other
+  fact. The create event keeps the original forever."
+  [state]
+  (or (red/fact-value state [:title]) (:title state)))
+
 (defn load-ticket
   "Resolve a user-supplied ticket reference and derive its context in
   one step — the opener nearly every single-ticket command shares.
