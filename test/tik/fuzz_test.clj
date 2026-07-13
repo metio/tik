@@ -619,6 +619,28 @@
         (is (h/clean-output? (str (:out r) (:err r)))
             (str file "\n" (:out r) (:err r)))))))
 
+(deftest show_over_hostile_definition_never_traces
+  ;; `show` draws from an UNLINTED definition read straight off disk, so
+  ;; every field is attacker-shaped. A :process/roles that is not a map,
+  ;; a stage graph with dangling/self edges, non-map stages, or scalar ids
+  ;; must render as best it can (or a clean message) — never a raw
+  ;; ClassCast from (keys …) or the layout.
+  (let [{:keys [root]} (h/temp-store!)
+        defs {"roles-string.edn" "{:process/id :r :process/version 1 :process/guard-vocab 1 :process/roles \"nope\" :process/stages [{:stage/id :a}]}"
+              "roles-vector.edn" "{:process/id :r :process/version 1 :process/guard-vocab 1 :process/roles [:a :b] :process/stages [{:stage/id :a}]}"
+              "dangling.edn" "{:process/id :n :process/version 1 :process/guard-vocab 1 :process/stages [{:stage/id :a :stage/next [:ghost]}]}"
+              "scalar-stages.edn" "{:process/id :m :process/version 1 :process/guard-vocab 1 :process/stages [:x 5 \"s\"]}"
+              "self-loop.edn" "{:process/id :s :process/version 1 :process/guard-vocab 1 :process/stages [{:stage/id :a :stage/next [:a]}]}"
+              "nil-id.edn" "{:process/id :w :process/version 1 :process/guard-vocab 1 :process/stages [{:stage/id nil}]}"}]
+    (h/with-cli-root root
+      (fn []
+        (doseq [[file body] defs
+                :let [_ (spit (io/file root file) body)
+                      r (tik.cli/run-argv ["show" (str (io/file root file))])]]
+          (is (contains? #{0 1} (:exit r)) (pr-str [file (:exit r)]))
+          (is (h/clean-output? (str (:out r) (:err r)))
+              (str file "\n" (:out r) (:err r))))))))
+
 ;; -------------------------------------------- garbage config files
 
 (deftest garbage_configs_answer_with_words_never_traces

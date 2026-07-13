@@ -3584,7 +3584,9 @@ Each entry in :needs is one of:
   (let [arg (or (first pos) (die "usage: tik show <process|file.edn>"))
         f (resolve-file arg)
         proc (if (.exists f) (read-edn-file f) (load-process arg))
-        roles (keys (:process/roles proc))
+        ;; show draws from an unlinted definition — :process/roles may be
+        ;; any shape; only a map has role names to list.
+        roles (when (map? (:process/roles proc)) (keys (:process/roles proc)))
         lines (draw/process proc)]
     (println (tint "1" (str (safe-name (:process/id proc))
                             (when-let [v (:process/version proc)] (str "  (v" v ")")))))
