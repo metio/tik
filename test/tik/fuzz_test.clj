@@ -30,6 +30,7 @@
             [tik.gen-events :as ge]
             [tik.harness :as h]
             [tik.guard :as guard]
+            [tik.lint]
             [tik.oidc :as oidc]
             [tik.plan]
             [tik.process]
@@ -355,7 +356,7 @@
                    (gen/vector (gen/map gen/keyword gen/any-equatable
                                         {:max-elements 4})
                                0 4))}
-   {:sym 'tik.process/lint :f tik.process/lint
+   {:sym 'tik.lint/lint :f tik.lint/lint
     :gen (one gen-garbage-definition)}
    {:sym 'tik.process/signing-roles :f tik.process/signing-roles
     :gen (one gen-garbage-guard)}
@@ -436,7 +437,7 @@
   totality-registry) or be listed in totality-exemptions with the
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-     tik.explain tik.causal tik.next tik.process tik.plan tik.template})
+     tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with

@@ -38,6 +38,7 @@
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.guard :as guard]
+            [tik.lint :as lint]
             [tik.next :as next-lens]
             [tik.draw :as draw]
             [tik.plan :as plan]
@@ -653,7 +654,7 @@
         ;; is rejected here, not cast-crashed downstream
         _ (when-not (and (map? definition) (nameable? (:process/id definition)))
             (die "not a process or template (its :process/id is missing or not a name)"))
-        _ (when (print-problems (process/lint definition))
+        _ (when (print-problems (lint/lint definition))
             (die "refusing to adopt a definition with lint errors"))
         pname (name (:process/id definition))
         dest (io/file (root) "processes" (str pname ".edn"))]
@@ -1499,7 +1500,7 @@
 
 (defn- sim-load [^File f]
   (let [p (read-edn-file f)]
-    (when-not (print-problems (process/lint p)) p)))
+    (when-not (print-problems (lint/lint p)) p)))
 
 (defn- resolve-file
   "A file argument as given, else relative to the store root — so
@@ -1589,7 +1590,7 @@
                       process)))
         roles (:process/roles proc {})
         failures (atom 0)]
-    (when (print-problems (process/lint proc))
+    (when (print-problems (lint/lint proc))
       (die "process definition has lint errors"))
     (doseq [{:case/keys [name steps expect]} cases]
       (let [create (event/create-ticket {:ticket (random-uuid) :actor "test"
@@ -1641,7 +1642,7 @@
                      (die "usage: tik reprocess <id> <new.edn> [--apply]"))
         _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
         new-proc (read-edn-file (io/file new-file))
-        _ (when (print-problems (process/lint new-proc))
+        _ (when (print-problems (lint/lint new-proc))
             (die "refusing to migrate to a definition with lint errors"))
         {:keys [events process]} (ticket-ctx s id)
         t (now)
@@ -2293,7 +2294,7 @@ Each entry in :needs is one of:
                     (author/build-process answers) pname)
         def-file (io/file (root) "processes" (str pname ".edn"))
         tests-file (io/file (root) "processes" (str pname ".tests.edn"))
-        problems (process/lint definition)]
+        problems (lint/lint definition)]
     (author-write! def-file (author-render definition) (:force opts))
     (author-write! tests-file
                    (str ";; SPDX-FileCopyrightText: The tik Authors\n"
@@ -2428,7 +2429,7 @@ Each entry in :needs is one of:
                              {:level :warning
                               :msg (str "stage " (:stage/id s) " :hint "
                                         h " does not exist on disk")})
-          problems (concat (process/lint proc) missing-runbooks)]
+          problems (concat (lint/lint proc) missing-runbooks)]
       (when (print-problems problems) (exit! 1))
       (when (empty? problems) (println "clean")))))
 

@@ -4,7 +4,7 @@
   (:require [clojure.edn]
             [clojure.test :refer [deftest is testing]]
             [tik.author :as author]
-            [tik.process :as process]))
+            [tik.lint :as lint]))
 
 (def answers
   {:name "expense-approval"
@@ -29,8 +29,8 @@
 
 (deftest built_definition_lints_clean
   (let [d (author/build-process answers)]
-    (is (empty? (filter #(= :error (:level %)) (process/lint d)))
-        (pr-str (process/lint d)))))
+    (is (empty? (filter #(= :error (:level %)) (lint/lint d)))
+        (pr-str (lint/lint d)))))
 
 (deftest interview_answers_compile_to_the_closed_basis
   (let [d (author/build-process answers)
@@ -78,8 +78,8 @@
 (deftest every_template_builds_a_lintable_process
   (doseq [[tname answers] author/templates]
     (let [d (author/build-process answers)]
-      (is (empty? (filter #(= :error (:level %)) (process/lint d)))
-          (str tname ": " (pr-str (process/lint d))))
+      (is (empty? (filter #(= :error (:level %)) (lint/lint d)))
+          (str tname ": " (pr-str (lint/lint d))))
       (is (seq (author/terminal-stages d)) tname)
       (is (:purpose answers) tname))))
 
@@ -88,7 +88,7 @@
          (clojure.edn/read-string (slurp "processes/track.edn")))
       "one definition, two homes — they must never drift")
   (is (empty? (filter #(= :error (:level %))
-                      (process/lint author/track-process)))))
+                      (lint/lint author/track-process)))))
 
 (deftest scripted_interview_produces_the_same_answers
   (let [lines (atom ["tiny" "just one stage"          ; name, purpose

@@ -8,6 +8,7 @@
   than an evaluator."
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.walk :as walk]
+            [tik.lint]
             [tik.process]
             [tik.template :as tmpl]))
 
@@ -100,7 +101,7 @@
                [{:stage/id :a :guards []}
                 {:stage/id :b :after [:a] :guards [[:signed-by :approver]]}]}}
              {:approvers ["alice"]})
-        errs (filter #(= :error (:level %)) (tik.process/lint out))]
+        errs (filter #(= :error (:level %)) (tik.lint/lint out))]
     (is (seq errs) "a pathless :signed-by lints (does not crash)")
     (is (some #(re-find #":signed-by over no fact" (:msg %)) errs)
         "and the diagnostic names the unsatisfiable signature")))

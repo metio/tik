@@ -3,12 +3,13 @@
 (ns tik.process-test
   (:require [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing]]
+            [tik.lint :as lint]
             [tik.process :as process]))
 
 (def sample (edn/read-string (slurp "processes/support-request.edn")))
 
-(defn- errors [p] (filter #(= :error (:level %)) (process/lint p)))
-(defn- warnings [p] (filter #(= :warning (:level %)) (process/lint p)))
+(defn- errors [p] (filter #(= :error (:level %)) (lint/lint p)))
+(defn- warnings [p] (filter #(= :warning (:level %)) (lint/lint p)))
 
 (deftest sample-process-is-error-free
   (is (empty? (errors sample)))
@@ -42,7 +43,7 @@
   ;; a real contradiction. Two DIFFERENT paths at the same value is
   ;; satisfiable. The check must group by path, not value.
   (let [never? (fn [guard]
-                 (->> (process/lint
+                 (->> (lint/lint
                        {:process/id :c :process/version 1
                         :process/stages [{:stage/id :a :guards []}
                                          {:stage/id :b :after [:a] :guards [guard]}]})
