@@ -1440,6 +1440,8 @@
                       ["query" "stage=:open" "--format" "json"]
                       ["work" "week" "--actor" "seb" "--format" "json"]
                       ["work" "cost" "--format" "json"]
+                      ["status" (str id) "--format" "json"]
+                      ["log" (str id) "--format" "json"]
                       ;; the agent verbs are the surface the MCP tools ride
                       ["agent" "actions" (str id) "--actor" "seb" "--format" "json"]]]
           (let [r (tik.cli/run-argv argv)]

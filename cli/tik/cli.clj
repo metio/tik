@@ -1303,7 +1303,7 @@
   "Evidence gained between two points in the log: derive at event n-k and
   at the head, report stages that became derivable and facts that
   changed — never 'transitions performed', because none were."
-  [{:keys [pos]}]
+  [{:keys [pos opts]}]
   (let [s (the-store)
         {:keys [events process roles]} (load-ticket s (first pos))
         ;; k = how many trailing events to roll back; a non-number,
@@ -1320,22 +1320,28 @@
         before-reached (stage/effective-reached process before-events t roles)
         after-reached (stage/effective-reached process ordered t roles)
         before-facts (guard/fact-map (red/ticket-state before-events))
-        after-facts (guard/fact-map (red/ticket-state ordered))]
-    (println (str "last " (min k (dec (count ordered))) " event(s):"))
-    (doseq [stage-id (sort-by str (remove before-reached after-reached))]
-      (println "  + stage" stage-id "became derivable"))
-    (doseq [stage-id (sort-by str (remove after-reached before-reached))]
-      (println "  - stage" stage-id "no longer derivable"))
-    (doseq [path (sort-by str (set (concat (keys before-facts) (keys after-facts))))
-            :let [b (get before-facts path) a (get after-facts path)]
-            :when (not= b a)]
-      (cond
-        (nil? b) (println "  + fact" path "=" (pr-str a))
-        (nil? a) (println "  - fact" path "(was" (pr-str b) ")")
-        :else    (println "  ~ fact" path "=" (pr-str a)
-                          "(was" (pr-str b) ")")))
-    (when (and (= before-reached after-reached) (= before-facts after-facts))
-      (println "  no derivable change"))))
+        after-facts (guard/fact-map (red/ticket-state ordered))
+        gained (sort-by str (remove before-reached after-reached))
+        lost (sort-by str (remove after-reached before-reached))
+        fact-changes (for [path (sort-by str (set (concat (keys before-facts)
+                                                          (keys after-facts))))
+                           :let [b (get before-facts path) a (get after-facts path)]
+                           :when (not= b a)]
+                       {:path path :before b :after a})
+        data {:window (min k (dec (count ordered)))
+              :gained (vec gained) :lost (vec lost) :facts (vec fact-changes)}]
+    (when-not (emit-data opts data)
+      (println (str "last " (:window data) " event(s):"))
+      (doseq [stage-id gained] (println "  + stage" stage-id "became derivable"))
+      (doseq [stage-id lost] (println "  - stage" stage-id "no longer derivable"))
+      (doseq [{:keys [path before after]} fact-changes]
+        (cond
+          (nil? before) (println "  + fact" path "=" (pr-str after))
+          (nil? after) (println "  - fact" path "(was" (pr-str before) ")")
+          :else (println "  ~ fact" path "=" (pr-str after)
+                         "(was" (pr-str before) ")")))
+      (when (and (= before-reached after-reached) (= before-facts after-facts))
+        (println "  no derivable change")))))
 
 (defn- cmd-dispute [{:keys [pos opts]}]
   (let [[ticket k] pos
@@ -1480,8 +1486,29 @@
         {:keys [id events state process roles]} (load-ticket s (first pos))
         t (eval-instant opts)
         reached (stage/effective-reached process events t roles)
-        current (stage/current-stages process reached)]
-    (println "ticket: " id)
+        current (stage/current-stages process reached)
+        fact-entry (fn [path]
+                     (select-keys (red/fact-status state path)
+                                  [:status :value :by :note]))
+        data {:ticket id
+              :title (display-title state)
+              :rules {:process (or (:process/id process) (:process state))
+                      :version (or (:process/version process)
+                                   (:process-version state))
+                      :hash (:process-hash state)}
+              :current (vec current)
+              :reached (vec (sort-by str reached))
+              :blocked (vec (unmet-deps s t id))
+              :facts (into {} (for [[path _] (:facts state)
+                                    :when (not (or (= :link (first path))
+                                                   (= [:title] path)))]
+                                [path (fact-entry path)]))
+              :links (vec (sort-by :sort (map #(link-row s t %)
+                                              (link-facts state))))
+              :blocks (explain/explain process events t roles reached)
+              :at (when (:at opts) t)}]
+    (when-not (emit-data opts data)
+     (println "ticket: " id)
     (println "title:  " (display-title state))
     ;; the hash is the RULE SET's identity, never the ticket's — label
     ;; it so nobody misreads the pin as a mutable ticket id
@@ -1529,7 +1556,7 @@
       (println (tint "33" (str "as of:   " t "  (time travel — nothing is stored)"))))
     (println)
     (print (paint-explain
-            (explain/render (explain/explain process events t roles reached))))
+            (explain/render (explain/explain process events t roles reached)))))
     (cache-flush!)))
 
 (defn- cmd-explain [{:keys [pos opts]}]
@@ -1570,21 +1597,24 @@
   "The evidence timeline: stored events interleaved with DERIVED stage
   transitions, computed at render time from the evolve fold and never
   stored — the one law applied to the UI's own furniture."
-  [{:keys [pos]}]
+  [{:keys [pos opts]}]
   (let [s (the-store)
         {:keys [events process roles]} (load-ticket s (first pos))
-        timeline (:timeline (stage/evolve process events roles))]
-    (doseq [[prev entry] (map vector (cons nil timeline) timeline)
-            :let [e (first (filter #(= (:event-id entry) (:event/id %))
-                                   events))
-                  gained (sort-by str
-                                  (remove (:reached prev #{})
-                                          (:reached entry)))]]
-      (println (str (:event/at e)) (name (:event/type e))
-               (:event/actor e) (pr-str (:event/body e)))
-      (doseq [stage-id gained]
-        (println (str (:event/at e)) "derived —"
-                 (str "stage " stage-id " became reachable"))))))
+        timeline (:timeline (stage/evolve process events roles))
+        entries (for [[prev entry] (map vector (cons nil timeline) timeline)
+                      :let [e (first (filter #(= (:event-id entry) (:event/id %))
+                                             events))
+                            gained (sort-by str (remove (:reached prev #{})
+                                                        (:reached entry)))]]
+                  {:at (:event/at e) :type (:event/type e)
+                   :actor (:event/actor e) :body (:event/body e)
+                   :derived (vec gained)})]
+    (when-not (emit-data opts (vec entries))
+      (doseq [{:keys [at type actor body derived]} entries]
+        (println (str at) (name type) actor (pr-str body))
+        (doseq [stage-id derived]
+          (println (str at) "derived —"
+                   (str "stage " stage-id " became reachable")))))))
 
 (defn- cmd-next
   "The inbox: frontier actions across every ticket, sorted by unlock
@@ -1776,15 +1806,18 @@
   each item's downstream unlock impact. Not a scheduler (§19): it
   re-derives from current facts every read, so it never goes stale. With
   a .html argument, writes the fancy self-contained roadmap page."
-  [{:keys [pos]}]
+  [{:keys [pos opts]}]
   (let [s (the-store)
         t (now)
         {:keys [edges settled title] :as g} (plan-graph s t)
         {:keys [ready blocked cyclic critical-path unlocks] :as summary}
         (plan/summary edges settled)]
-    (if-let [out (first pos)]
-      (do (spit out (plan-html g summary))
-          (println (str "wrote " out " — the plan as a roadmap page")))
+    (cond
+      (first pos)
+      (do (spit (first pos) (plan-html g summary))
+          (println (str "wrote " (first pos) " — the plan as a roadmap page")))
+      (emit-data opts summary) nil
+      :else
       (do
         (println (str (tint "1" "PLAN") "  "
                       (tint "32" (str (count ready) " ready")) " · "
@@ -2480,15 +2513,19 @@
                    {:events (vec (red/ordered events)) :now t
                     :actor (actor opts)}
                    steps)
-        after (stage/effective-reached process (:events st) (:now st) roles)]
-    (println (tint "2" (str "whatif " (str/join " " (rest pos))
-                            "  (nothing recorded)")))
-    (doseq [g (sort-by str (remove before after))]
-      (println (tint "32" (str "  + " g " would become derivable"))))
-    (doseq [l (sort-by str (remove after before))]
-      (println (tint "31" (str "  - " l " would no longer derive"))))
-    (when (= before after)
-      (println "  no derived change"))))
+        after (stage/effective-reached process (:events st) (:now st) roles)
+        gained (sort-by str (remove before after))
+        lost (sort-by str (remove after before))
+        data {:steps (vec (rest pos)) :gained (vec gained) :lost (vec lost)}]
+    (when-not (emit-data opts data)
+      (println (tint "2" (str "whatif " (str/join " " (rest pos))
+                              "  (nothing recorded)")))
+      (doseq [g gained]
+        (println (tint "32" (str "  + " g " would become derivable"))))
+      (doseq [l lost]
+        (println (tint "31" (str "  - " l " would no longer derive"))))
+      (when (= before after)
+        (println "  no derived change")))))
 
 (defn- cmd-query
   "Select across EVERY ticket's log (settled included) with one selector
