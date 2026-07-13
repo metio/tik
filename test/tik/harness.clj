@@ -92,5 +92,5 @@
   "Run f with tik.cli's store root pinned to `root` — the in-process
   (run-argv) analogue of TIK_ROOT."
   [root f]
-  (with-redefs-fn {(requiring-resolve 'tik.cli/root) (constantly (str root))}
+  (with-redefs-fn {(requiring-resolve 'tik.cli-core/root) (constantly (str root))}
     f))

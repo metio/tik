@@ -8,6 +8,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.cli :as cli]
+            [tik.cli-core]
             [tik.args :as args]
             [tik.event :as event]
             [tik.store.protocol :as store]))
@@ -53,7 +54,7 @@
   redirected at its var so every command resolves the temp dir, no
   TIK_ROOT env needed."
   [root & argv]
-  (with-redefs-fn {#'cli/root (constantly (str root))}
+  (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
     (fn [] (cli/run-argv (mapv str argv)))))
 
 (deftest run_argv_is_the_in_process_entry_point
@@ -91,7 +92,7 @@
   ;; whitespace/quote/newline would split it into a second attacker-shaped
   ;; line or widen the namespace restriction. Reject before writing.
   (let [root (h/temp-dir! "tik-actorname")]
-    (with-redefs-fn {#'cli/root (constantly (str root))}
+    (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
       (fn []
         (doseq [bad ["evil namespaces=\"*\"" "two words" "line\nbreak" "quote\"x"]]
           (let [r (cli/run-argv ["actor" "add" bad "k.pub"])]
@@ -152,7 +153,7 @@
                               :parents #{(:event/id a) (:event/id b)}
                               :at (at "2026-07-08T10:03:00Z") :path [:r] :value 1})]
     (doseq [e [c a b m]] (store/append! store e))
-    (with-redefs-fn {#'cli/root (constantly (str root))}
+    (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
       (fn []
         (is (zero? (:exit (cli/run-argv ["verify"])))
             "the honest diamond verifies and writes the drift cache")

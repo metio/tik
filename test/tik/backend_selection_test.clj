@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.cli]
+            [tik.cli-core]
             [tik.harness :as h]))
 
 (defn- uuid-in [s]
@@ -19,7 +20,7 @@
 
 (deftest backend-derived-from-shape-not-env
   (let [{:keys [root]} (h/temp-store!)
-        db-path @#'tik.cli/db-path]
+        db-path @#'tik.cli-core/db-path]
     (h/with-cli-root root
       (fn []
         (testing "no tik.db -> the file store (db-path nil)"
@@ -104,7 +105,7 @@
         (let [id (java.util.UUID/fromString
                   (uuid-in (:out (tik.cli/run-argv ["ls" "--edn"]))))
               compute-row @#'tik.cli/compute-row
-              the-store @#'tik.cli/the-store]
+              the-store @#'tik.cli-core/the-store]
           (is (number? (:valid-until (compute-row (the-store)
                                                   (java.time.Instant/now) id)))
               "a time-gated row expires at its due, not cached forever (nil)"))))))
