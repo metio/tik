@@ -12,18 +12,20 @@
   - append is idempotent by id (INSERT OR IGNORE — union semantics).
   - reads are unordered (the reducer orders).
 
-  Implementation shells out to the sqlite3 binary (in the devShell), so
-  the same code runs under babashka and the JVM with zero new
-  dependencies. Values cross the boundary as hex (X'…' in, hex() out):
-  quoting-proof regardless of what strings an event body contains. Ids
-  and ticket ids are fixed-charset and asserted before interpolation.
+  The Xerial sqlite-jdbc driver is embedded (its bundled native library
+  ships inside the native binary), so the shipped tik carries its own
+  version-pinned SQLite with no external `sqlite3` on PATH. The java.sql
+  layer lives in tik.store.sqlite-jdbc — babashka has no java.sql, so this
+  namespace touches none of it and stays loadable everywhere, resolving
+  the jdbc functions lazily (present on the JVM and in the native image,
+  absent under bb → a clean runtime message). Event bytes cross as a bound
+  BLOB parameter (the EXACT canonical hashed region), verify reads them
+  back as hex; ids are fixed-charset asserted.
 
   The file store remains the auditor-grade interchange format
   (sha256sum(file) = filename needs files); `tik export` materializes
   any store as one."
-  (:require [clojure.java.shell :as sh]
-            [clojure.string :as str]
-            [tik.canonical :as canonical]
+  (:require [tik.canonical :as canonical]
             [tik.store.file :as fstore]
             [tik.store.protocol :as p]))
 
@@ -35,51 +37,43 @@
                    (Integer/parseInt (subs h (* 2 i) (+ 2 (* 2 i))) 16))))
     out))
 
-(defn- bytes->hex ^String [^bytes b]
-  (str/join (map #(format "%02x" %) b)))
-
 (defn- safe-id [s]
   (when-not (re-matches #"[A-Za-z0-9-]+" (str s))
     (throw (ex-info "unsafe identifier" {:value s})))
   (str s))
 
-(defn- q!
-  "Run one SQL string against the db; return rows as vectors of columns
-  (pipe-separated is safe: every selected column is hex or fixed
-  charset)."
-  [db sql]
-  (let [r (try (sh/sh "sqlite3" "-batch" "-noheader" (str db) sql)
-               ;; the backend shells out to sqlite3; if it is not on PATH
-               ;; (the shipped binary runs outside the devShell) that is a
-               ;; missing-dependency message, not an internal bug.
-               (catch java.io.IOException e
-                 (throw (ex-info (str "this store is SQLite-backed but the"
-                                      " `sqlite3` binary is not on PATH —"
-                                      " install it, or use a file-backed store"
-                                      " (`tik store migrate --to file`)")
-                                 {:reason :store/sqlite-unavailable}
-                                 e))))]
-    (when-not (zero? (:exit r))
-      (throw (ex-info "sqlite3 failed" {:sql sql :err (:err r)})))
-    (->> (str/split-lines (:out r))
-         (remove str/blank?)
-         (mapv #(str/split % #"\|")))))
+(defn- jdbc
+  "Resolve a tik.store.sqlite-jdbc function at call time. It is present on
+  the JVM and force-required into the native image; under babashka (no
+  java.sql, no driver) the namespace cannot load, which IS the
+  missing-capability answer — a clean message, not a raw throw."
+  [sym]
+  (or (try (requiring-resolve sym) (catch Throwable _ nil))
+      (throw (ex-info (str "this store is SQLite-backed but no SQLite driver"
+                           " is available on this runtime — use the native"
+                           " tik binary, or a file-backed store"
+                           " (`tik store migrate --to file`)")
+                      {:reason :store/sqlite-unavailable}))))
+
+(defn- query [db sql & params]
+  (apply (jdbc 'tik.store.sqlite-jdbc/query) db sql params))
+
+(defn- exec! [db sql & params]
+  (apply (jdbc 'tik.store.sqlite-jdbc/exec!) db sql params))
 
 (defn- init! [db]
-  (q! db (str "CREATE TABLE IF NOT EXISTS events ("
-              "id TEXT PRIMARY KEY, ticket TEXT NOT NULL,"
-              "bytes BLOB NOT NULL);"
-              "CREATE INDEX IF NOT EXISTS events_ticket"
-              " ON events(ticket);")))
+  (exec! db (str "CREATE TABLE IF NOT EXISTS events ("
+                 "id TEXT PRIMARY KEY, ticket TEXT NOT NULL, bytes BLOB NOT NULL)"))
+  (exec! db "CREATE INDEX IF NOT EXISTS events_ticket ON events(ticket)"))
 
 (defn raw-rows
   "[[id hex-bytes] …] for verification: the stored bytes exactly as they
   are, so verify can recompute hash(bytes) = id without trusting this
   namespace's parsing."
-  ([db] (q! db "SELECT id, hex(bytes) FROM events;"))
+  ([db] (query db "SELECT id, hex(bytes) FROM events"))
   ([db ticket-id]
-   (q! db (str "SELECT id, hex(bytes) FROM events WHERE ticket='"
-               (safe-id ticket-id) "';"))))
+   (query db "SELECT id, hex(bytes) FROM events WHERE ticket=?"
+          (safe-id ticket-id))))
 
 (defn- row->event
   "Rows are written only through append!, but a hostile or corrupted db
@@ -92,10 +86,8 @@
   (append! [_ event]
     (let [bytes (.getBytes (canonical/emit (dissoc event :event/id))
                            "UTF-8")]
-      (q! db (str "INSERT OR IGNORE INTO events(id,ticket,bytes) VALUES('"
-                  (safe-id (:event/id event)) "','"
-                  (safe-id (:event/ticket event)) "',X'"
-                  (bytes->hex bytes) "');"))
+      (exec! db "INSERT OR IGNORE INTO events(id,ticket,bytes) VALUES(?,?,?)"
+             (safe-id (:event/id event)) (safe-id (:event/ticket event)) bytes)
       event))
   (events [_ ticket-id]
     (mapv row->event (raw-rows db ticket-id)))
@@ -106,10 +98,10 @@
                    (throw (ex-info "ticket column does not hold a uuid"
                                    {:reason :store/corrupt :value t}
                                    e)))))
-          (q! db "SELECT DISTINCT ticket FROM events;")))
+          (query db "SELECT DISTINCT ticket FROM events")))
   (has-event? [_ event-id]
-    (boolean (seq (q! db (str "SELECT 1 FROM events WHERE id='"
-                              (safe-id event-id) "';"))))))
+    (boolean (seq (query db "SELECT 1 FROM events WHERE id=?"
+                         (safe-id event-id))))))
 
 (defn sqlite-store [db-path]
   (init! db-path)

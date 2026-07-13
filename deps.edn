@@ -6,7 +6,12 @@
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.
-        cheshire/cheshire {:mvn/version "6.0.0"}}
+        cheshire/cheshire {:mvn/version "6.0.0"}
+        ;; the SQLite backend embeds the driver (bundled native lib,
+        ;; version-pinned) so the shipped binary carries its own SQLite —
+        ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
+        ;; harness (file store), the native binary is where SQLite runs.
+        org.xerial/sqlite-jdbc {:mvn/version "3.47.1.0"}}
  :aliases
  {;; the native binary's closed world: bb ships http-client and httpkit
   ;; as builtins, the JVM/native build declares them; graal-build-time

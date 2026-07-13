@@ -23,6 +23,7 @@ native-image \
   --no-fallback \
   --install-exit-handlers \
   --enable-http --enable-https \
+  --enable-native-access=ALL-UNNAMED \
   -march=compatibility \
   --features=clj_easy.graal_build_time.InitClojureClasses \
   --initialize-at-build-time=com.fasterxml.jackson \

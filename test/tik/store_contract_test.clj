@@ -7,7 +7,6 @@
   code's parsing), and identical derivation from either backend."
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
-            [clojure.java.shell]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
@@ -78,18 +77,16 @@
     (is (= [tid] (store/ticket-ids store))
         "only the uuid-named directory names a ticket; strays are skipped")))
 
-(deftest sqlite-missing-binary-is-a-clean-message
-  ;; the sqlite backend shells out to sqlite3; the shipped binary runs
-  ;; outside the devShell where it may be absent. A failure to LAUNCH it
-  ;; (IOException from ProcessBuilder) must be a data-carrying message
-  ;; naming the missing dependency, not a raw IOException reported as an
-  ;; internal bug.
-  (with-redefs [clojure.java.shell/sh
-                (fn [& _] (throw (java.io.IOException.
-                                  "Cannot run program \"sqlite3\"")))]
+(deftest sqlite-db-errors-fail-well-not-as-a-bug
+  ;; the embedded driver surfaces db problems as SQLException; the store
+  ;; turns every one — opening the connection or running a statement —
+  ;; into a data-carrying ex-info, never a raw throw reported as an
+  ;; internal bug. A garbage (non-database) file is one such case.
+  (let [f (str (tmp "tik-badsqlite") "/x.db")]
+    (spit (io/file f) "this is not a sqlite database")
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"sqlite3.*PATH"
-         (sqlite/sqlite-store (str (tmp "tik-nosqlite") "/x.db"))))))
+         clojure.lang.ExceptionInfo #"SQLite error"
+         (sqlite/sqlite-store f)))))
 
 (defspec backends-derive-identically 30
   (prop/for-all [events ge/gen-events]

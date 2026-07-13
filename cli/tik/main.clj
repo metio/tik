@@ -10,7 +10,8 @@
             [cheshire.core]
             [org.httpkit.server]
             [tik.cli :as cli]
-            [tik.mcp])
+            [tik.mcp]
+            [tik.store.sqlite-jdbc])
   (:gen-class))
 
 (defn -main [& args]
