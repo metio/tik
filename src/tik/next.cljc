@@ -41,7 +41,12 @@
         walk (fn walk [g]
                (when (vector? g)
                  (case (first g)
-                   :signed-by [[(second g) (nth g 2)]]
+                   ;; a well-formed restriction is [:signed-by role path];
+                   ;; a malformed guard (missing role/path) restricts
+                   ;; nothing rather than throwing — derivation is total
+                   ;; over any process, linted or not.
+                   :signed-by (when (>= (count g) 3)
+                                [[(second g) (nth g 2)]])
                    (:and :or) (mapcat walk (rest g))
                    :not (walk (second g))
                    nil)))]

@@ -38,6 +38,24 @@
   (next-lens/contributions (:event/ticket (first events))
                            ge/process events now ge/roles))
 
+(deftest contributions-total-over-malformed-signed-by
+  ;; the boundary derivation must be total over ANY process, linted or
+  ;; not: a malformed [:signed-by] guard (missing its role/path, so no
+  ;; restriction to read) must contribute nothing rather than throw an
+  ;; IndexOutOfBounds while computing who can unlock the stage.
+  (let [tid (java.util.UUID/fromString "018f2f6e-7c1a-7000-8000-000000000001")
+        evs [(event/create-ticket {:ticket tid :actor "customer"
+                                   :at (at "2026-07-08T10:00:00Z")
+                                   :title "m" :process :support-request})]]
+    (doseq [guard [[:signed-by]                    ; 0 args
+                   [:signed-by :triager]           ; 1 arg (no path)
+                   [:and [:signed-by] [:signed-by :r]]
+                   [:or [:not [:signed-by]]]]]
+      (let [proc {:process/id :fuzz :process/version 1
+                  :process/stages [{:stage/id :A :guards [guard]}]}]
+        (is (map? (next-lens/contributions tid proc evs now ge/roles))
+            (pr-str guard))))))
+
 (deftest shared-missing-facts-aggregate-across-tickets
   (let [fresh-a (ticket 1)
         fresh-b (ticket 2)
