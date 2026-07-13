@@ -8,11 +8,12 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.cli :as cli]
+            [tik.args :as args]
             [tik.event :as event]
             [tik.store.protocol :as store]))
 
-(def parse-value #'cli/parse-value)
-(def parse-args #'cli/parse-args)
+(def parse-value args/parse-value)
+(def parse-args args/parse-args)
 
 (deftest flags_accept_the_equals_form
   ;; --flag=value is the near-universal CLI convention; parse-args must

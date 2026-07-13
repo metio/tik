@@ -19,6 +19,7 @@
             [tik.author]
             [tik.causal]
             [tik.dag]
+            [tik.args]
             [tik.canonical :as canonical]
             [tik.cli]
             [tik.dupe]
@@ -135,8 +136,8 @@
 
 ;; ------------------------------------------------ the porcelain parsers
 
-(def ^:private cli-parse-value @#'tik.cli/parse-value)
-(def ^:private cli-parse-key @#'tik.cli/parse-key)
+(def ^:private cli-parse-value tik.args/parse-value)
+(def ^:private cli-parse-key tik.args/parse-key)
 
 (defspec parse-key-is-total-over-plausible-keys n
   (prop/for-all [s (gen/such-that seq gen/string-alphanumeric)]
