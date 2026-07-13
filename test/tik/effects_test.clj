@@ -28,6 +28,16 @@
     (is (not (str/includes? out (str \return))) "no raw CR in the output")
     (is (= title (get (json/parse-string out) "title")) "round-trips the value")))
 
+(deftest post-failure-message-redacts-the-webhook-secret
+  ;; a webhook path/query often IS the secret (Slack/Discord tokens live
+  ;; in the URL path); the delivery-failure message is printed to stderr,
+  ;; so it must carry only scheme+host, never the full URL.
+  (let [redact #'cli/redact-url]
+    (is (= "https://hooks.slack.com"
+           (redact "https://hooks.slack.com/services/T000/B000/XXXXsecretXXXX")))
+    (is (= "https://host:9000" (redact "https://host:9000/hook?token=sekret")))
+    (is (not (str/includes? (redact "https://x/y?token=sekret") "sekret")))))
+
 (deftest email-message-strips-header-injection
   ;; a display title carrying CR/LF must not forge a new header (Bcc:)
   ;; that `sendmail -t` would honor (RFC 5322 header injection).

@@ -25,9 +25,25 @@
 
 (def ^:private client (delay (HttpClient/newHttpClient)))
 
+(defn require-tls!
+  "Every security-critical OIDC/JWKS fetch must run over TLS: an http URL
+  lets an on-path attacker serve the discovery doc, JWKS, or id_token and
+  forge a key-binding/credential that then verifies. Loopback is excepted
+  so a local test IdP can speak plain http. Returns the URI on success."
+  [url]
+  (let [u (URI/create (str url))
+        scheme (some-> (.getScheme u) str/lower-case)
+        host (some-> (.getHost u) str/lower-case)]
+    (when-not (or (= "https" scheme)
+                  (contains? #{"localhost" "127.0.0.1" "::1"} host))
+      (throw (ex-info (str "refusing a non-HTTPS identity fetch: " url
+                           " — TLS is required (loopback excepted)")
+                      {:reason :oidc/insecure-url :url (str url)})))
+    u))
+
 (defn http-get [url]
   (.body (.send ^HttpClient @client
-                (.build (HttpRequest/newBuilder (URI/create url)))
+                (.build (HttpRequest/newBuilder (require-tls! url)))
                 (HttpResponse$BodyHandlers/ofString))))
 
 (defn http-post
@@ -37,7 +53,7 @@
   (let [form (str/join "&" (for [[k v] params]
                              (str k "=" (URLEncoder/encode (str v) "UTF-8"))))]
     (.body (.send ^HttpClient @client
-                  (-> (HttpRequest/newBuilder (URI/create url))
+                  (-> (HttpRequest/newBuilder (require-tls! url))
                       (.header "Content-Type" "application/x-www-form-urlencoded")
                       (.POST (HttpRequest$BodyPublishers/ofString form))
                       (.build))

@@ -15,6 +15,21 @@
     (str (b64 "{\"alg\":\"RS256\"}") "."
          (b64 (json/generate-string claims)) "." (b64 "sig"))))
 
+(deftest identity_fetches_require_tls
+  ;; the JWKS/discovery/id_token fetch is the trust anchor: an http URL
+  ;; lets an on-path attacker serve a forged key/token, so every real
+  ;; fetch must be TLS. Loopback is excepted for local test IdPs.
+  (testing "https passes; a non-loopback http URL is refused"
+    (is (= "https" (.getScheme ^java.net.URI
+                    (oidc/require-tls! "https://idp.example/token"))))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"non-HTTPS"
+                          (oidc/require-tls! "http://idp.example/token")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"non-HTTPS"
+                          (oidc/require-tls! "http://169.254.169.254/latest/meta-data"))))
+  (testing "loopback may speak plain http for a local test IdP"
+    (is (oidc/require-tls! "http://localhost:8080/realms/tik"))
+    (is (oidc/require-tls! "http://127.0.0.1:8080/token"))))
+
 (deftest discovery_and_jwt_decoding
   (is (= "https://idp.example/realms/tik/.well-known/openid-configuration"
          (oidc/discovery-url "https://idp.example/realms/tik/")))

@@ -85,6 +85,21 @@
         (is (integer? (:exit r)))
         (is (str/includes? (str (:out r) (:err r)) "not a command"))))))
 
+(deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
+  ;; the name is written verbatim into the OpenSSH allowed-signers file;
+  ;; whitespace/quote/newline would split it into a second attacker-shaped
+  ;; line or widen the namespace restriction. Reject before writing.
+  (let [root (h/temp-dir! "tik-actorname")]
+    (with-redefs-fn {#'cli/root (constantly (str root))}
+      (fn []
+        (doseq [bad ["evil namespaces=\"*\"" "two words" "line\nbreak" "quote\"x"]]
+          (let [r (cli/run-argv ["actor" "add" bad "k.pub"])]
+            (is (= 1 (:exit r)) (pr-str bad))
+            (is (re-find #"invalid actor name" (str (:out r) (:err r)))
+                (pr-str bad))))
+        (is (not (.exists (io/file root "actors")))
+            "no corrupt registry line was written")))))
+
 (defn- at [s] (java.time.Instant/parse s))
 
 (deftest verify_changed_catches_a_pruned_inner_ancestor

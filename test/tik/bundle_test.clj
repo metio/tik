@@ -87,4 +87,22 @@
         (let [r (verify)]
           (is (= 1 (:exit r)))
           (is (re-find #"does not verify as its event's actor" (:out r))
-              (:out r)))))))
+              (:out r)))))
+    (testing "suppressing a referenced event is caught (DAG completeness)"
+      ;; deleting an interior/root event leaves every remaining file
+      ;; hashing (L0) and verifying (L1), so only a parents/single-root
+      ;; check catches the suppressed history — the bundle advertises
+      ;; verify.sh as sufficient, so it must enforce it like `tik verify`.
+      (sh/sh "tar" "xzf" (str out) "-C" (str dest))   ; restore honest bundle
+      (let [edns (filter #(str/ends-with? (.getName ^java.io.File %) ".edn")
+                         (file-seq (io/file dest "tickets")))
+            root-ev (first (filter #(str/includes? (slurp %) ":event/parents #{}")
+                                   edns))
+            rid (str/replace (.getName ^java.io.File root-ev) #"\.edn$" "")]
+        (.delete ^java.io.File root-ev)
+        (doseq [^java.io.File s (file-seq (io/file dest "tickets"))
+                :when (str/includes? (.getName s) (str rid ".sig."))]
+          (.delete s))
+        (let [r (verify)]
+          (is (= 1 (:exit r)))
+          (is (re-find #"missing parent|one root event" (:out r)) (:out r)))))))

@@ -95,6 +95,38 @@
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not verify"
                             (vc/verify cred-str (constantly false)))))))
 
+(deftest verify_enforces_the_validity_window_at_ingest
+  ;; a signature-valid but EXPIRED (or not-yet-valid, or wrong-audience)
+  ;; credential must NOT be accepted — else a genuinely-issuer-signed
+  ;; past credential replays into a fresh, current bridge attestation.
+  ;; exp/nbf are NumericDates (epoch seconds); the bridge passes :now.
+  (let [ok (constantly true)]
+    (testing "expired: now at/after exp is rejected"
+      (let [c (jwt {:iss "iss" :sub "sub" :exp 1000})]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"expired"
+                              (vc/verify c ok {:now 2000})))
+        (is (= "iss" (:issuer (vc/verify c ok {:now 500})))
+            "before exp it verifies")
+        (is (= "iss" (:issuer (vc/verify c ok)))
+            "without :now the offline seam skips the temporal check")))
+    (testing "leeway absorbs small clock skew at the boundary"
+      (let [c (jwt {:iss "iss" :exp 1000})]
+        (is (= "iss" (:issuer (vc/verify c ok {:now 1005 :leeway 60}))))))
+    (testing "not-yet-valid: now before nbf is rejected"
+      (let [c (jwt {:iss "iss" :nbf 5000})]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not yet valid"
+                              (vc/verify c ok {:now 1000})))))
+    (testing "audience: enforced only when an expected audience is configured"
+      (let [c (jwt {:iss "iss" :aud ["rp-a" "rp-b"]})]
+        (is (= "iss" (:issuer (vc/verify c ok {:now 1 :audience "rp-a"}))))
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"audience"
+                              (vc/verify c ok {:now 1 :audience "rp-c"})))
+        (is (= "iss" (:issuer (vc/verify c ok {:now 1})))
+            "no configured audience -> no aud constraint")))
+    (testing "a non-numeric exp cannot be enforced and does not throw"
+      (let [c (jwt {:iss "iss" :exp "whenever"})]
+        (is (= "iss" (:issuer (vc/verify c ok {:now 9999}))))))))
+
 (deftest malformed_credentials_fail_well
   (doseq [bad ["" "not-a-jwt" "a.b" "~~~"
                (jwt [1 2 3])                          ; payload is an array

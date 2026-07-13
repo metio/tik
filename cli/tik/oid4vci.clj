@@ -126,6 +126,12 @@
      :subject (:sub payload)
      :type (or (:vct payload) (get-in payload [:vc :type]))
      :holder-key (let [c (:cnf payload)] (when (map? c) (:jwk c)))
+     ;; validity window and audience are metadata, NOT asserted claims —
+     ;; carried out of :claims so `verify` can enforce them (an issuer
+     ;; long outlives any one credential, so exp is the freshness control)
+     :expires (:exp payload)
+     :not-before (:nbf payload)
+     :audience (:aud payload)
      :claims (merge top w3c disclosed)
      :raw s}))
 
@@ -150,20 +156,60 @@
 ;; out of this ns's load graph so parsing stays bb-portable. The bridge
 ;; command lazy-requires tik.jwks and passes its `verifier` here.
 
+(defn- as-epoch [x] (when (number? x) (long x)))
+
+(defn- check-window!
+  "Reject a credential outside its validity window at ingest `now`
+  (epoch seconds), allowing `leeway` seconds of clock skew. exp/nbf are
+  enforced only when numeric — a genuinely issued credential carries
+  NumericDates, and this is precisely what stops REPLAY of an expired
+  one: the issuer's signing key long outlives any single credential."
+  [{:keys [expires not-before]} now leeway]
+  (when-let [exp (as-epoch expires)]
+    (when (>= now (+ exp leeway))
+      (fail! (str "credential expired (exp " exp ", now " now ")")
+             :reason :oid4vci/expired :exp exp :now now)))
+  (when-let [nbf (as-epoch not-before)]
+    (when (< (+ now leeway) nbf)
+      (fail! (str "credential not yet valid (nbf " nbf ", now " now ")")
+             :reason :oid4vci/not-yet-valid :nbf nbf :now now))))
+
+(defn- check-audience!
+  "When an `expected` audience is configured, the credential's `aud`
+  (a string or an array) must include it — so a credential minted for a
+  different relying party cannot be replayed here."
+  [{:keys [audience]} expected]
+  (when expected
+    (let [auds (cond (string? audience) #{audience}
+                     (sequential? audience) (set (map str audience))
+                     :else #{})]
+      (when-not (contains? auds expected)
+        (fail! (str "credential audience " (pr-str audience)
+                    " does not include " (pr-str expected))
+               :reason :oid4vci/wrong-audience :audience audience)))))
+
 (defn verify
-  "Parse `s`, then check the issuer signature over the issuer JWT with an
+  "Parse `s`, check the issuer signature over the issuer JWT with an
   injected `verifier` — (signing-input-string, signature-bytes,
-  header-map) -> boolean. Returns the parsed credential on success,
-  throws {:reason :oid4vci/bad-signature} otherwise. A seam so parsing
-  stays offline; the bridge supplies tik.jwks/verifier."
-  [s verifier]
-  (let [cred (parse-credential s)
-        jwt (:jwt (split-sd-jwt s))
-        [h p sig] (str/split (str jwt) #"\.")]
-    (when (str/blank? sig) (fail! "issuer JWT has no signature segment"))
-    (let [header (json-parse (String. (b64url-decode h) "UTF-8"))
-          ok? (boolean (verifier (str h "." p) (b64url-decode sig) header))]
-      (when-not ok?
-        (throw (ex-info "credential issuer signature does not verify"
-                        {:reason :oid4vci/bad-signature :issuer (:issuer cred)})))
-      cred)))
+  header-map) -> boolean — then, against the ingest clock, enforce the
+  credential's validity window and audience. Returns the parsed
+  credential on success; throws {:reason :oid4vci/…} otherwise. A seam so
+  parsing stays offline; the bridge supplies tik.jwks/verifier and the
+  clock. `opts` (optional): {:now <epoch-seconds> :leeway <secs>
+  :audience <expected>}. Without :now the temporal check is skipped (the
+  offline/test seam); the bridge always passes it — a signature-valid but
+  EXPIRED or wrong-audience credential must not mint a fresh attestation."
+  ([s verifier] (verify s verifier nil))
+  ([s verifier {:keys [now leeway audience]}]
+   (let [cred (parse-credential s)
+         jwt (:jwt (split-sd-jwt s))
+         [h p sig] (str/split (str jwt) #"\.")]
+     (when (str/blank? sig) (fail! "issuer JWT has no signature segment"))
+     (let [header (json-parse (String. (b64url-decode h) "UTF-8"))
+           ok? (boolean (verifier (str h "." p) (b64url-decode sig) header))]
+       (when-not ok?
+         (throw (ex-info "credential issuer signature does not verify"
+                         {:reason :oid4vci/bad-signature :issuer (:issuer cred)})))
+       (when now (check-window! cred now (or leeway 0)))
+       (check-audience! cred audience)
+       cred))))

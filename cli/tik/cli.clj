@@ -2443,6 +2443,15 @@
   (let [[sub actor-name pubkey-file] pos]
     (when-not (and (= "add" sub) actor-name pubkey-file)
       (die "usage: tik actor add <name> <pubkey-file>"))
+    ;; the name is written verbatim into the OpenSSH allowed-signers
+    ;; registry (`<name> namespaces="tik-*" <key>`); whitespace, a quote,
+    ;; or a newline would split it into a second, attacker-shaped line
+    ;; (binding a victim principal to a stray key) or widen the namespace
+    ;; restriction — reject it rather than corrupt the trust base
+    (when (re-find #"[\s\"\\]" actor-name)
+      (die (str "invalid actor name " (pr-str actor-name)
+                ": no whitespace, quotes, or backslashes (the name is"
+                " written verbatim into the allowed-signers registry)")))
     (let [pubkey (str/trim (slurp-existing "public key" pubkey-file))
           line (sign/allowed-signers-line actor-name pubkey)
           f (io/file (root) "actors")]
@@ -2768,9 +2777,22 @@
         s (the-store)
         registry-id (resolve-id s registry-ref)
         endpoints (oidc/discover oidc/http-get issuer)
-        response (if (and (:user opts) (:password opts))
+        ;; a resource-owner password must not ride in argv, where any
+        ;; local user reads it from ps / /proc/<pid>/cmdline — take it
+        ;; from a file or the environment; a literal --password still
+        ;; works but earns a warning (like the effects header secrets)
+        password (or (when-let [pf (:password-file opts)]
+                       (str/trim (slurp-existing "password file" pf)))
+                     (System/getenv "TIK_OIDC_PASSWORD")
+                     (when-let [p (:password opts)]
+                       (binding [*out* *err*]
+                         (println (str "warning: --password is visible to other"
+                                       " users via the process list; prefer"
+                                       " --password-file or TIK_OIDC_PASSWORD")))
+                       p))
+        response (if (and (:user opts) password)
                    (oidc/password-flow oidc/http-post endpoints client-id
-                                       (:user opts) (:password opts))
+                                       (:user opts) password)
                    (let [{:keys [prompt poll]} (oidc/device-flow
                                                 oidc/http-post endpoints
                                                 client-id #(Thread/sleep (long %)))]
@@ -2821,7 +2843,12 @@
                     :else (oidc/http-get (str (str/replace issuer #"/$" "")
                                               "/.well-known/jwks.json")))
         verifier (jwks/verifier (jwks/parse-jwks jwks-json))
-        verified (try (oid4vci/verify cred-str verifier)
+        ;; enforce the credential's validity window/audience at ingest:
+        ;; a signature-valid but EXPIRED (or wrong-audience) credential
+        ;; must not become a fresh, current bridge-signed attestation
+        verified (try (oid4vci/verify cred-str verifier
+                                      {:now (.getEpochSecond ^java.time.Instant (now))
+                                       :audience (or (:audience opts) (:audience cfg))})
                       (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
         s (the-store)
         registry-id (resolve-id s registry-ref)
@@ -3063,6 +3090,16 @@
 (defn- resolve-headers [headers]
   (into {} (for [[k v] headers] [k (resolve-header-value k v)])))
 
+(defn- redact-url
+  "scheme://host[:port] of a sink URL — a webhook path/query often IS the
+  secret (Slack/Discord tokens live in the path), so the full URL must
+  never reach a printed error or the ledger; only the endpoint identity."
+  [url]
+  (try (let [u (java.net.URI/create (str url))]
+         (str (.getScheme u) "://" (.getHost u)
+              (when (pos? (.getPort u)) (str ":" (.getPort u)))))
+       (catch Exception _ "the sink URL")))
+
 (defn- post!
   "POST JSON; babashka's built-in http client, resolved lazily so the
   namespace loads on the JVM too. Extra headers come from the sink's
@@ -3078,10 +3115,12 @@
                      :throw false})]
     ;; a non-2xx (429/400/5xx) is a DELIVERY FAILURE — throw so the caller
     ;; counts it failed and leaves the ledger unmarked (retry next run),
-    ;; not silently ledger it as sent (at-least-once, ADR 0019).
+    ;; not silently ledger it as sent (at-least-once, ADR 0019). The
+    ;; message carries only the redacted endpoint — the full URL can hold
+    ;; a webhook secret and this message is printed to stderr on failure.
     (when-not (<= 200 (long (or (:status r) 0)) 299)
-      (throw (ex-info (str "POST " url " → HTTP " (:status r))
-                      {:status (:status r) :url url})))
+      (throw (ex-info (str "POST " (redact-url url) " → HTTP " (:status r))
+                      {:status (:status r) :host (redact-url url)})))
     r))
 
 (defn- cmd-effects
@@ -3509,6 +3548,36 @@ for sig in processes/by-hash/*.sig.*; do
   [ -e \"$sig\" ] || continue
   check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-process
 done
+
+# DAG completeness: every referenced parent must be present, and there
+# must be exactly one root (empty :event/parents). A signature binds an
+# event's BYTES, not its PRESENCE — without this, deleting a referenced
+# interior event leaves every remaining file hashing and verifying, yet
+# suppresses history the Merkle DAG is meant to commit to. This mirrors
+# what `tik verify` enforces (all parents present, exactly one root).
+present=$(mktemp)
+for f in tickets/*/events/*.edn; do
+  [ -e \"$f\" ] || continue
+  basename \"$f\" .edn >> \"$present\"
+done
+roots=0
+for f in tickets/*/events/*.edn; do
+  [ -e \"$f\" ] || continue
+  pids=$(grep -o ':event/parents #{[^}]*}' \"$f\" | grep -o 'sha256-[0-9a-f]\\{64\\}')
+  if [ -z \"$pids\" ]; then
+    roots=$((roots + 1))
+  else
+    for pid in $pids; do
+      if ! grep -qxF \"$pid\" \"$present\"; then
+        echo \"FAIL  $(basename \"$f\") references missing parent $pid\"; fail=1
+      fi
+    done
+  fi
+done
+rm -f \"$present\"
+if [ \"$roots\" != 1 ]; then
+  echo \"FAIL  expected exactly one root event (empty parents), found $roots\"; fail=1
+fi
 
 if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1; fi
 ")
