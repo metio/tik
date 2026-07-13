@@ -1299,6 +1299,14 @@
               opts)
     (println "ok")))
 
+(defn- stage-delta
+  "The stages gained and lost moving from reached-set `before` to `after`,
+  each sorted for stable display — the shared arithmetic behind diff,
+  whatif, and reprocess (each words and colors its own rendering)."
+  [before after]
+  {:gained (sort-by str (remove before after))
+   :lost (sort-by str (remove after before))})
+
 (defn- cmd-diff
   "Evidence gained between two points in the log: derive at event n-k and
   at the head, report stages that became derivable and facts that
@@ -1321,8 +1329,7 @@
         after-reached (stage/effective-reached process ordered t roles)
         before-facts (guard/fact-map (red/ticket-state before-events))
         after-facts (guard/fact-map (red/ticket-state ordered))
-        gained (sort-by str (remove before-reached after-reached))
-        lost (sort-by str (remove after-reached before-reached))
+        {:keys [gained lost]} (stage-delta before-reached after-reached)
         fact-changes (for [path (sort-by str (set (concat (keys before-facts)
                                                           (keys after-facts))))
                            :let [b (get before-facts path) a (get after-facts path)]
@@ -2208,12 +2215,13 @@
       (die "that is the definition the ticket is already pinned to"))
     (println (str "pinned:   v" (:process/version process) " @ " (shash old-hash) "…"))
     (println (str "proposed: v" (:process/version new-proc) " @ " (shash new-hash) "…"))
-    (doseq [stage-id (sort-by str (remove after before))]
-      (println "  - stage" stage-id "would REGRESS (no longer derivable)"))
-    (doseq [stage-id (sort-by str (remove before after))]
-      (println "  + stage" stage-id "would become derivable"))
-    (when (= before after)
-      (println "  derived stages unchanged"))
+    (let [{:keys [gained lost]} (stage-delta before after)]
+      (doseq [stage-id lost]
+        (println "  - stage" stage-id "would REGRESS (no longer derivable)"))
+      (doseq [stage-id gained]
+        (println "  + stage" stage-id "would become derivable"))
+      (when (= before after)
+        (println "  derived stages unchanged")))
     ;; what the new rules would newly demand, for stages lost or blocked
     (doseq [{:keys [stage missing]} (explain/explain new-proc events t new-roles)
             :when (contains? before stage)]
@@ -2463,41 +2471,6 @@
         (println (str "  => added " (pr-str (vec (sort-by str added))))))
       (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached)))))))))
 
-(defn- cmd-graph
-  "The :after DAG by strata; with a ticket, overlay derived status:
-  ● reached, ◐ frontier (prereqs met, guards missing), ○ blocked."
-  [{:keys [pos]}]
-  (let [proc-name (first pos)
-        proc (load-process-arg proc-name)
-        s (the-store)
-        reached (when-let [tid (second pos)]
-                  (let [{:keys [events process roles]}
-                        (load-ticket s tid)]
-                    (stage/effective-reached process events (now) roles)))
-        stages (:process/stages proc)
-        depth (fn depth [id seen]
-                (let [st (first (filter #(= id (:stage/id %)) stages))]
-                  (if (or (seen id) (empty? (:after st [])))
-                    0
-                    (inc (apply max (map #(depth % (conj seen id))
-                                         (:after st)))))))
-        by-depth (group-by #(depth (:stage/id %) #{}) stages)]
-    (doseq [d (sort (keys by-depth))]
-      (doseq [st (sort-by :stage/id (by-depth d))
-              :let [id (:stage/id st)
-                    frontier? (and reached
-                                   (not (reached id))
-                                   (every? reached (:after st [])))
-                    glyph (cond (nil? reached) "·"
-                                (reached id) (tint "32" "●")
-                                frontier? (tint "36" "◐")
-                                :else (tint "2" "○"))]]
-        (println (str (str/join (repeat (* 2 d) " "))
-                      glyph " " (name id)
-                      (when (seq (:after st))
-                        (tint "2" (str "  <- " (str/join ", " (map name (:after st))))))
-                      (when (:stage/sticky? st) (tint "33" "  [sticky]"))))))))
-
 (defn- cmd-whatif
   "Counterfactuals: apply hypothetical steps to a ticket IN MEMORY and
   show what would change. Nothing is written — derivation over a
@@ -2518,8 +2491,7 @@
                     :actor (actor opts)}
                    steps)
         after (stage/effective-reached process (:events st) (:now st) roles)
-        gained (sort-by str (remove before after))
-        lost (sort-by str (remove after before))
+        {:keys [gained lost]} (stage-delta before after)
         data {:steps (vec (rest pos)) :gained (vec gained) :lost (vec lost)}]
     (when-not (emit-data opts data)
       (println (tint "2" (str "whatif " (str/join " " (rest pos))
@@ -3737,24 +3709,41 @@ Each entry in :needs is one of:
       (do (println (str (count findings) " finding(s)"))
           (exit! 1)))))
 
+(defn- ticket-stage-status
+  "{stage-id -> :reached|:frontier|:blocked} for `tid` under `proc` — the
+  overlay `show <proc> <id>` draws. Frontier = prereqs met, guards still
+  missing (actionable now); blocked = an :after prerequisite not reached."
+  [s proc tid]
+  (let [{:keys [events roles]} (load-ticket s tid)
+        reached (stage/effective-reached proc events (now) roles)]
+    (into {} (for [st (:process/stages proc)
+                   :let [id (:stage/id st)]]
+               [id (cond (reached id) :reached
+                         (every? reached (:after st [])) :frontier
+                         :else :blocked)]))))
+
 (defn- cmd-show
-  "show <process|file.edn>: draw the process as a vertical stage graph —
-  a pure picture of the definition (stages, guards, forks, and joins),
-  the same f(definition) the lint and plan lenses derive from. Reads a
-  .edn path directly, or a process name from this store's processes/."
+  "show <process|file.edn> [<id>]: draw the process as a vertical stage
+  graph — a pure picture of the definition (stages, guards, forks, joins).
+  With a ticket id, overlay that ticket's derived progress: ✓ reached,
+  ◆ frontier (actionable now), · blocked. Reads a .edn path directly, or a
+  process name from this store's processes/."
   [{:keys [pos]}]
-  (let [arg (or (first pos) (die "usage: tik show <process|file.edn>"))
-        f (resolve-file arg)
-        proc (if (.exists f) (read-edn-file f) (load-process arg))
+  (let [arg (or (first pos) (die "usage: tik show <process|file.edn> [<id>]"))
+        proc (load-process-arg arg)
         ;; show draws from an unlinted definition — :process/roles may be
         ;; any shape; only a map has role names to list.
         roles (when (map? (:process/roles proc)) (keys (:process/roles proc)))
-        lines (draw/process proc)]
+        status (when-let [tid (second pos)]
+                 (ticket-stage-status (the-store) proc tid))
+        lines (draw/process proc status)]
     (println (tint "1" (str (safe-name (:process/id proc))
                             (when-let [v (:process/version proc)] (str "  (v" v ")")))))
     (when-let [p (:process/purpose proc)] (println (tint "2" (str "  " p))))
     (when (seq roles)
       (println (tint "2" (str "  roles: " (str/join ", " (map safe-name roles))))))
+    (when status
+      (println (tint "2" "  ✓ reached · ◆ actionable now · · blocked")))
     (println)
     (if (seq lines)
       (doseq [l lines] (println l))
@@ -4073,7 +4062,6 @@ Each entry in :needs is one of:
                                                 written — e.g. tik whatif 3184 sev=:low
                                                 +P2D (two days pass) retract:category
   tik debug <process> [<id>]                    the fixpoint with its working shown
-  tik graph <process> [<id>]                    the stage DAG; ● reached ◐ frontier ○ blocked
   tik board [<file.html>]                       the whole board as ONE dependency-free
                                                 HTML file — mail it, archive it
   tik serve [--port N]                          the live board over HTTP (read-only;
@@ -4179,9 +4167,10 @@ Each entry in :needs is one of:
   tik lint [<process.edn>]                      lint a process definition; with no
                                                 argument, lint the STORE — open tickets
                                                 missing descriptions/titles/signatures
-  tik show <process|file.edn>                   draw the process as a vertical stage
+  tik show <process|file.edn> [<id>]            draw the process as a vertical stage
                                                 graph — stages, guards, forks, joins;
-                                                a pure picture of the definition
+                                                with a ticket, overlay its progress
+                                                (✓ reached ◆ actionable · blocked)
   tik sim <process.edn>                         live process design (scratch ticket,
                                                 auto-reloading definition)
   tik test <tests.edn>                          run scripted process tests (steps in,
@@ -4215,7 +4204,6 @@ Each entry in :needs is one of:
       "dupes"   (cmd-dupes parsed)
       "whatif"  (cmd-whatif parsed)
       "debug"   (cmd-debug parsed)
-      "graph"   (cmd-graph parsed)
       "board"   (cmd-board parsed)
       "serve"   (cmd-serve parsed)
       ;; the MCP stdio loop lives in tik.mcp (which requires this ns);

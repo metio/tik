@@ -28,7 +28,7 @@
   "Commands that do not produce queryable data — actions, servers, visual
   renderers, or pass/fail audits — so --format does not apply."
   #{"actor" "adopt" "attach" "attest" "author" "board" "bridge" "bundle"
-    "comment" "debug" "dispute" "effects" "export" "gc" "graph" "init"
+    "comment" "debug" "dispute" "effects" "export" "gc" "init"
     "lint" "mcp" "new" "pack" "probe" "process" "retract"
     "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"
     "verify" "witness"})
@@ -65,8 +65,8 @@
     (h/with-cli-root root
       (fn []
         (doseq [[cmd args] machine-invocations
-                :let [argv (-> (into [cmd] (map #(if (= :id %) (str id) %) args))
-                               (conj "--format" "json"))
+                :let [argv (conj (into [cmd] (map #(if (= :id %) (str id) %) args))
+                                 "--format" "json")
                       r (tik.cli/run-argv argv)]]
           (is (zero? (:exit r)) (str argv " -> " (:err r)))
           (doseq [line (remove str/blank? (str/split-lines (:out r)))]

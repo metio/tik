@@ -81,11 +81,21 @@
   largest has six stages)."
   256)
 
+(defn- status-glyph
+  "A stage's derived status for a ticket overlay — distinct from the tree
+  connectors: reached, frontier (prereqs met, guards missing — actionable
+  now), or blocked (prereqs not yet reached)."
+  [status]
+  (case status :reached "✓" :frontier "◆" :blocked "·" nil))
+
 (defn process
   "The stage graph of process definition `proc` as a seq of strings.
-  Empty when there are no stages. Pure and total."
-  [proc]
-  (let [raw-stages (:process/stages proc)
+  Empty when there are no stages. Pure and total. With a `status` map
+  {stage-id -> :reached|:frontier|:blocked}, overlays each stage's derived
+  status for one ticket (the picture the graph lens used to draw)."
+  ([proc] (process proc nil))
+  ([proc status]
+   (let [raw-stages (:process/stages proc)
         all-stages (if (sequential? raw-stages) (vec raw-stages) [])
         ;; depths and walk recurse per chain length, so an unbounded stage
         ;; list is a stack bomb — a flat 50k-stage vector clears
@@ -131,7 +141,9 @@
     (letfn [(walk [id own-prefix connector desc-prefix]
               (let [stage (by-id id)
                     ps (parents-of id)
-                    label (str (safe-name id) (when (:stage/sticky? stage) " ★"))
+                    label (str (when-let [g (some-> status (get id) status-glyph)]
+                                 (str g " "))
+                               (safe-name id) (when (:stage/sticky? stage) " ★"))
                     gloss (stage-gloss stage (when (> (count ps) 1) ps))
                     ;; real children draw their full subtree; refs are leaf
                     ;; stubs pointing at a join drawn under its primary parent
@@ -173,4 +185,4 @@
                        rows)]
         (cond->> lines
           truncated? (cons (str "… " (count all-stages) " stages — drawing the first "
-                                max-stages)))))))
+                                max-stages))))))))
