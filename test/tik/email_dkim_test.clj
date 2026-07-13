@@ -14,12 +14,13 @@
             [clojure.test.check.properties :as prop]
             [tik.cli]
             [tik.harness :as h]
+            [tik.mail :as mail]
             [tik.store.protocol :as store]))
 
-(def ^:private parse-rfc822 @#'tik.cli/parse-rfc822)
-(def ^:private ticket-ref-of @#'tik.cli/ticket-ref-of)
-(def ^:private dkim-passing-domains @#'tik.cli/dkim-passing-domains)
-(def ^:private dkim-aligned? @#'tik.cli/dkim-aligned?)
+(def ^:private parse-rfc822 mail/parse-rfc822)
+(def ^:private ticket-ref-of mail/ticket-ref-of)
+(def ^:private dkim-passing-domains mail/dkim-passing-domains)
+(def ^:private dkim-aligned? mail/dkim-aligned?)
 
 (deftest passing_domains_only_from_a_trusted_verifier
   (let [ar (fn [& hs] (parse-rfc822
