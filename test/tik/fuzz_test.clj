@@ -582,6 +582,8 @@
                   ["gc" "--apply"] ["plan"]
                   ["show"] ["show" "/nonexistent.edn"] ["show" "track"]
                   ["author" "check"] ["rollout"] ["probe" "zzzz"]
+                  ["serve" "--port" "abc"] ["actor" "add" "a" "/nope.pub"]
+                  ["bridge" "oid4vci" "--credential" "/nope.jwt"]
                   ["lint" " "] ["--" "--" "--"]
                   [zalgo]]]
       (let [r (apply run argv)]

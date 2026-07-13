@@ -267,6 +267,14 @@
                            {:reason :config/malformed :file (str f)}
                            e))))))
 
+(defn- slurp-existing
+  "Read a user-supplied file, dying cleanly if it is absent — never a raw
+  FileNotFoundException surfaced as 'a bug in tik'."
+  [what path]
+  (if (.exists (io/file path))
+    (slurp path)
+    (die (str "no such " what " file: " path))))
+
 (defn- declared-string?
   "Does the process declare this fact path as a string type? Then a
   bare token the parser would keywordize is really the user's string."
@@ -2218,12 +2226,12 @@
   (let [[sub actor-name pubkey-file] pos]
     (when-not (and (= "add" sub) actor-name pubkey-file)
       (die "usage: tik actor add <name> <pubkey-file>"))
-    (let [line (sign/allowed-signers-line
-                actor-name (str/trim (slurp pubkey-file)))
+    (let [pubkey (str/trim (slurp-existing "public key" pubkey-file))
+          line (sign/allowed-signers-line actor-name pubkey)
           f (io/file (root) "actors")]
       (spit f (str line "
 ") :append true)
-      (println "ok" (sign/fingerprint (str/trim (slurp pubkey-file)))))))
+      (println "ok" (sign/fingerprint pubkey)))))
 
 (defn- cmd-sign
   "Sign this actor's OWN events that this key has not signed yet. A
@@ -2563,7 +2571,7 @@
         key-file (or (:key opts)
                      (some-> (System/getenv "TIK_KEY") (str ".pub"))
                      (die "which key binds to this login? --key <pubkey.pub> or set TIK_KEY"))
-        public-key (str/trim (slurp key-file))
+        public-key (str/trim (slurp-existing "key" key-file))
         s (the-store)
         registry-id (resolve-id s registry-ref)
         endpoints (oidc/discover oidc/http-get issuer)
@@ -2607,19 +2615,15 @@
                          (die (str "no registry ticket — mint one with\n"
                                    "  tik new identity-registry --title 'identity registry'\n"
                                    "then pass --registry <its id>")))
-        slurp-file (fn [what f]
-                     (if (.exists (io/file f))
-                       (slurp f)
-                       (die (str "no such " what " file: " f))))
         cred-str (str/trim (if-let [f (:credential opts)]
-                             (slurp-file "credential" f)
+                             (slurp-existing "credential" f)
                              (slurp *in*)))
         who (actor opts)
         cred (oid4vci/parse-credential cred-str)
         issuer (or (:issuer opts) (:issuer cred)
                    (die "credential carries no issuer (iss); pass --issuer"))
         jwks-json (cond
-                    (:jwks opts) (slurp-file "jwks" (:jwks opts))
+                    (:jwks opts) (slurp-existing "jwks" (:jwks opts))
                     (:jwks-url opts) (oidc/http-get (:jwks-url opts))
                     :else (oidc/http-get (str (str/replace issuer #"/$" "")
                                               "/.well-known/jwks.json")))
@@ -3070,7 +3074,10 @@
   is enforced."
   [{:keys [opts]}]
   (let [run-server (requiring-resolve 'org.httpkit.server/run-server)
-        port (if (:port opts) (Long/parseLong (str (:port opts))) 7777)
+        port (if-let [p (:port opts)]
+               (or (parse-long (str p))
+                   (die (str "serve --port must be a number, got " p)))
+               7777)
         handler
         ;; a server request must NEVER reach a die/System-exit path —
         ;; one hostile GET would take the board down for everyone. Ids
