@@ -584,6 +584,11 @@
                   ["author" "check"] ["rollout"] ["probe" "zzzz"]
                   ["serve" "--port" "abc"] ["actor" "add" "a" "/nope.pub"]
                   ["bridge" "oid4vci" "--credential" "/nope.jwt"]
+                  ;; the agent frontier gate: a missing ticket or missing
+                  ;; key=value / claim arg must be a usage message, not an
+                  ;; NPE from resolve-id / str/split / parse over nil
+                  ["agent" "set" "--actor" "a"] ["agent" "attest" "--actor" "a"]
+                  ["agent" "actions" "--actor" "a"] ["agent" "set" "zzzz"]
                   ["lint" " "] ["--" "--" "--"]
                   [zalgo]]]
       (let [r (apply run argv)]

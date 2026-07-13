@@ -2158,6 +2158,10 @@
   [{:keys [pos opts]}]
   (let [[sub ticket & args] pos
         who (or (:actor opts) (die "agent commands require --actor"))
+        _ (when-not (contains? #{"actions" "set" "attest"} sub)
+            (die "usage: tik agent actions|set|attest <id> ... --actor A"))
+        _ (when-not ticket
+            (die (str "usage: tik agent " sub " <id> ... --actor A")))
         s (the-store)
         id (resolve-id s ticket)
         admissible (agent-admissible id who)]
@@ -2165,7 +2169,9 @@
       "actions" (prn {:actor who :ticket id
                       :admissible (mapv #(select-keys % [:action :stage])
                                         admissible)})
-      "set" (let [[k v] (str/split (first args) #"=" 2)
+      "set" (let [kv (or (first args)
+                         (die "usage: tik agent set <id> key=value --actor A"))
+                  [k v] (str/split kv #"=" 2)
                   path (parse-key k)
                   attempted [:set path]]
               (when-not (some #(= attempted (:action %)) admissible)
@@ -2176,7 +2182,9 @@
                             :path path :value (parse-value v)})
                         opts)
               (println "ok" (pr-str attempted)))
-      "attest" (let [claim (canonical/parse (first args))
+      "attest" (let [claim (canonical/parse
+                            (or (first args)
+                                (die "usage: tik agent attest <id> <claim-edn> --actor A")))
                      attempted [:attest claim]]
                  (when-not (some #(= attempted (:action %)) admissible)
                    (agent-refuse! who attempted admissible))
