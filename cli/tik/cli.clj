@@ -2493,20 +2493,28 @@
   [{:keys [auth-results]} trusted]
   (set
    (for [ar auth-results
-              :let [authserv (str/lower-case (str/trim (first (str/split ar #";"))))]
-              :when (contains? trusted authserv)
-              method (rest (str/split ar #";"))
-              :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
-              :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
-              :when d]
-          (str/lower-case d))))
+         :let [fields (str/split (str ar) #";")
+               ;; an all-`;` or empty header splits to no fields — a
+               ;; hostile A-R must not NPE `(str/trim nil)` on the gate path
+               authserv (some-> (first fields) str/trim str/lower-case)]
+         :when (contains? trusted authserv)
+         method (rest fields)
+         :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
+         :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
+         :when d]
+     (str/lower-case d))))
 
 (defn- dkim-aligned?
   "Is `from-domain` authenticated by one of the `passing` DKIM domains —
-  exact, or a subdomain (relaxed DMARC-style alignment)?"
+  exact, or a subdomain (relaxed DMARC-style alignment)? Total over a nil
+  from-domain (a From with no @domain). NOTE: relaxed alignment trusts
+  `header.d` as a registered domain — it does not consult the public
+  suffix list, which is sound here because `header.d` comes from a DKIM
+  signature the MTA actually verified (nobody can sign as a bare TLD)."
   [from-domain passing]
-  (boolean (some #(or (= from-domain %) (str/ends-with? from-domain (str "." %)))
-                 passing)))
+  (boolean (when from-domain
+             (some #(or (= from-domain %) (str/ends-with? from-domain (str "." %)))
+                   passing))))
 
 (defn- require-dkim!
   "When `bridge.edn` carries `:dkim {:require true :authserv-id …}`, gate

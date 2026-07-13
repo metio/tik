@@ -9,11 +9,15 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [clojure.test.check.clojure-test :refer [defspec]]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]
             [tik.cli]
             [tik.harness :as h]
             [tik.store.protocol :as store]))
 
 (def ^:private parse-rfc822 @#'tik.cli/parse-rfc822)
+(def ^:private ticket-ref-of @#'tik.cli/ticket-ref-of)
 (def ^:private dkim-passing-domains @#'tik.cli/dkim-passing-domains)
 (def ^:private dkim-aligned? @#'tik.cli/dkim-aligned?)
 
@@ -96,4 +100,38 @@
           r (run-bridge root "{:process :track :default-actor \"inbound\"}"
                         "From: alice@customer.example\nSubject: help\n\nbody")]
       (is (zero? (:exit r)) (:err r))
-      (is (= 1 (ticket-count store))))))
+      (is (= 1 (ticket-count store)))))
+  (testing "a malformed Authentication-Results on the gated path fails
+            CLOSED and CLEAN — not a crash, not a bypass"
+    (let [{:keys [root store]} (h/temp-store!)
+          r (run-bridge root cfg
+                        (str "Authentication-Results: ;;;;\n"
+                             "From: alice@customer.example\nSubject: x\n\nbody"))]
+      (is (= 1 (:exit r)))
+      (is (h/clean-output? (str (:out r) (:err r))))
+      (is (zero? (ticket-count store))))))
+
+(defspec email_helpers_are_total_over_hostile_input 300
+  ;; an inbound email is fully attacker-controlled; parsing, ticket
+  ;; association, and the DKIM verdict must each be TOTAL — a value or a
+  ;; clean answer, never a raw throw (a header of all semicolons NPE'd
+  ;; str/trim on the gate path before this was pinned).
+  (prop/for-all [text (gen/one-of
+                       [gen/string
+                        gen/string-alphanumeric
+                        ;; header-shaped garbage
+                        (gen/fmap #(str/join "\n" %)
+                                  (gen/vector
+                                   (gen/elements
+                                    ["From:" "From: a@b" "Subject: ;;;"
+                                     "Authentication-Results: ;;;;"
+                                     "Authentication-Results: mx; dkim=pass header.d="
+                                     "X-Tik-Ticket:" "In-Reply-To: <tik.@x>"
+                                     "References: <>" " folded" "\t" "" ";=;=;"])
+                                   0 8))])]
+    (let [m (parse-rfc822 text)]
+      (and (map? m)
+           (try (let [_ (ticket-ref-of m)
+                      _ (dkim-passing-domains m #{"mx"})]
+                  (boolean? (dkim-aligned? (:from m) #{"x" "mx"})))
+                (catch Throwable _ false))))))
