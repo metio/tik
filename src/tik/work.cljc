@@ -135,11 +135,14 @@
                            :let [p (get pricing model)]
                            :when p]
                        ;; exact; rounding is the renderer's business —
-                       ;; rounding in the fold would erase sub-cent truth
+                       ;; rounding in the fold would erase sub-cent truth.
+                       ;; a pricing file is operator-supplied but still
+                       ;; untrusted input: a non-numeric rate (or a
+                       ;; non-map entry) prices at zero, never throws.
                        [model
-                        (+ (* (:input-tokens u 0) (/ (:input p 0) 1e6))
-                           (* (:output-tokens u 0) (/ (:output p 0) 1e6))
+                        (+ (* (:input-tokens u 0) (/ (get* p :input) 1e6))
+                           (* (:output-tokens u 0) (/ (get* p :output) 1e6))
                            (* (:cache-read-tokens u 0)
-                              (/ (:cache-read p 0) 1e6))
+                              (/ (get* p :cache-read) 1e6))
                            (* (:cache-write-tokens u 0)
-                              (/ (:cache-write p 0) 1e6)))]))})))
+                              (/ (get* p :cache-write) 1e6)))]))})))

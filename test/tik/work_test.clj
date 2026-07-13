@@ -63,4 +63,14 @@
     (testing "every folded value is a number — safe to (long v) in the lens"
       (is (every? number?
                   (vals (get-in (work/usage-totals hostile nil)
-                                [:observations "m"])))))))
+                                [:observations "m"])))))
+    (testing "a pricing file is untrusted too — a non-numeric or non-map
+              rate prices at zero, never throws"
+      (doseq [bad-price [{"m" {:input "notanumber"}}
+                         {"m" {:input nil}}
+                         {"m" {:input {:x 1}}}
+                         {"m" {:input [1 2 3]}}
+                         {"m" "not-a-map"}]]
+        (is (number? (get-in (work/usage-totals hostile bad-price)
+                             [:priced "m"]))
+            (pr-str bad-price))))))
