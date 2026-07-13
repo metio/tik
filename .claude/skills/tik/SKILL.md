@@ -17,11 +17,19 @@ stages **derive themselves**. You never set a status.
 
 ## Is this a tik store?
 
-A directory is a store if it (or an ancestor) holds `tickets/` or `.tik/`.
-Commands find it git-style: `TIK_ROOT` env wins, else the nearest ancestor
-with `.tik/` or `tickets/`, else the current directory. Signing needs
-`TIK_KEY` (a path to an ed25519 private key) and `TIK_ACTOR` (your actor
-name, registered in the store's `actors` file). Confirm with `tik ls`.
+A directory is a store if it (or an ancestor) holds `tickets/`, a `tik.db`,
+or `.tik/`. Commands find it git-style: `TIK_ROOT` env wins, else the
+nearest ancestor with such a marker, else the current directory. Signing
+needs `TIK_KEY` (a path to an ed25519 private key) and `TIK_ACTOR` (your
+actor name, registered in the store's `actors` file). Confirm with `tik ls`.
+
+A store's **backend** is derived from its own shape, never a global
+setting: a `tickets/` tree is the file/git store (sha256sum-auditable, the
+signed interchange format); a `tik.db` is the SQLite store (single-file
+ops). Choose at creation — `tik init` (file) or `tik init --sqlite` — and
+switch in place with `tik store migrate --to sqlite|file` (migrating a
+*signed* file store to SQLite is refused, since SQLite holds no detached
+signatures). Working in one store never reroutes another.
 
 ## The daily workflow (driving an existing store)
 

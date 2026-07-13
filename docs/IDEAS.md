@@ -743,3 +743,38 @@ end-to-end sender authentication in tik itself — then the crypto is
 localizable (a `tik.dkim` verifier taking raw message bytes), and the
 canonicalization gets its own byte-exact golden-vector test suite before
 anyone relies on it.
+
+## SQLite backend: make it production-grade (delegate signatures + embed the driver)
+
+Two coupled upgrades to the SQLite backend, best done together — both
+touch how SQLite stores/accesses bytes.
+
+**1. Delegate signature/witness storage to the backend.** Today the
+porcelain (`append!*`, `cmd-witness`) reaches past the EventStore seam and
+writes `<event-id>.sig.<fpr>` sidecar *files* directly, so the file store
+signs but SQLite cannot, and `tik store migrate --to sqlite` must refuse a
+signed store (it would drop the sidecars). Fix: add a sidecar seam to the
+protocol — `put-sidecar!` / `sidecar-names` / `sidecar-bytes` keyed by
+`(event-id, name)`. The file store maps these to the existing sidecar
+files (byte-for-byte unchanged); SQLite gets a `sidecars(event_id, name,
+bytes)` table. The `ssh-keygen -Y sign|verify` trust path is preserved
+exactly — SQLite materializes a short-lived temp file only for the
+ssh-keygen call, since the bytes signed/verified are identical. Then
+migration is lossless and the refusal disappears. ~200 lines across the
+protocol + both stores + the verify/sign/witness porcelain — the
+security-critical path, so it wants its own focused change with thorough
+verify tests.
+
+**2. Ship SQLite inside the native binary.** The backend currently shells
+out to the `sqlite3` CLI (chosen for zero deps + identical code on bb and
+JVM), so the shipped binary needs `sqlite3` on PATH and takes whatever
+version is there. Replace the shell-out with the Xerial `sqlite-jdbc`
+driver, which bundles a version-pinned native SQLite lib and runs
+in-process; GraalVM native-image embeds it with JNI + resource config.
+Then SQLite works everywhere with the exact version we pin. Tradeoff: this
+breaks the "same code on babashka" property (bb can't load the JDBC native
+lib the same way — it has a separate sqlite pod), which is fine under
+native-first — the SQLite backend becomes a native-binary feature and `bb
+tik` (the dev harness) uses the file store. Sign delegation (above) is
+easier over JDBC (a real SQL layer) than over the sqlite3 CLI, so do the
+driver swap first or alongside.

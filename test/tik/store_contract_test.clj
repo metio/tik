@@ -7,6 +7,7 @@
   code's parsing), and identical derivation from either backend."
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
+            [clojure.java.shell]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]

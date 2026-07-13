@@ -49,10 +49,10 @@
 (defn- discover-root
   "Git-style upward search from cwd: the nearest ancestor holding a
   hidden `.tik` store wins, else the nearest holding a classic
-  `tickets/` directory. The walk never climbs past $HOME — a stray
-  store high in the tree must not silently capture unrelated work —
-  though it checks $HOME itself; outside $HOME it walks to the
-  filesystem root like git does."
+  `tickets/` directory (file store) or a `tik.db` (SQLite store). The
+  walk never climbs past $HOME — a stray store high in the tree must not
+  silently capture unrelated work — though it checks $HOME itself;
+  outside $HOME it walks to the filesystem root like git does."
   []
   (let [home (str (.getCanonicalFile (io/file (System/getProperty "user.home"))))]
     (loop [d (.getCanonicalFile (io/file "."))]
@@ -60,6 +60,7 @@
         (cond
           (.isDirectory (io/file d ".tik")) (str (io/file d ".tik"))
           (.isDirectory (io/file d "tickets")) (str d)
+          (.isFile (io/file d "tik.db")) (str d)
           (= (str d) home) nil
           :else (recur (.getParentFile d)))))))
 
@@ -393,14 +394,26 @@
                      "version")))
         proc))))
 
-(defn- db-path []
-  (let [db (System/getenv "TIK_DB")]
-    (when-not (str/blank? db) db)))
+(defn- db-path
+  "The SQLite db when THIS store is sqlite-backed — DERIVED from the
+  store's own shape (ADR 0020), never an ambient override: a `tik.db`
+  beside the store root means SQLite, its absence means the file/git
+  store. Each store thus describes its own backend, so working in one
+  store never reroutes another. nil for a file store."
+  []
+  (let [r (root)
+        db (io/file r "tik.db")]
+    (when (.isFile db)
+      (when (.isDirectory (io/file r "tickets"))
+        (die (str "ambiguous store at " r ": both tik.db and tickets/ are"
+                  " present — a backend migration left both; remove the stale"
+                  " one (the file store's tickets/ or the SQLite tik.db)")))
+      (str db))))
 
 (defn- the-store
-  "TIK_DB selects the single-file SQLite backend (ADR 0020); default is
-  the file/git store under TIK_ROOT. Blobs and the actors registry stay
-  filesystem-side under TIK_ROOT either way."
+  "The store backing THIS root: a SQLite single-file store when the root
+  holds a tik.db (ADR 0020), else the file/git store. Blobs and the
+  actors registry stay filesystem-side under the root either way."
   []
   (if-let [db (db-path)]
     (sqlite/sqlite-store db)
@@ -970,23 +983,100 @@
           (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
 
 (defn- cmd-init
-  "init [--hidden]: mark this directory as a store. --hidden puts
+  "init [--sqlite] [--hidden]: mark this directory as a store. The
+  backend is the store's own shape (ADR 0020): the default is the
+  file/git store (a `tickets/` tree, sha256sum-auditable); --sqlite is
+  the single-file operational store (a `tik.db`). --hidden puts
   everything inside .tik/ (one dot-entry beside your repos — the
   portfolio-store shape); without it the store is the classic visible
   layout. Either marker makes every tik command work from ANY
-  directory beneath this one."
+  directory beneath this one. Switch backends later with `tik store
+  migrate`."
   [{:keys [opts]}]
   (let [here (.getCanonicalFile (io/file "."))
         store (if (:hidden opts) (io/file here ".tik") here)
-        marker (io/file store "tickets")]
-    (when (.isDirectory marker)
+        tickets (io/file store "tickets")
+        db (io/file store "tik.db")]
+    (when (or (.isDirectory tickets) (.isFile db))
       (die (str "already a store: " store)))
-    (.mkdirs marker)
-    (println (str "store initialized at " store))
+    (.mkdirs store)
+    (if (:sqlite opts)
+      (do (sqlite/sqlite-store (str db))       ; init! writes the schema file
+          (println (str "SQLite store initialized at " db)))
+      (do (.mkdirs tickets)
+          (println (str "store initialized at " store))))
     (println (str "every tik command run at or below " here
                   " now uses it — try:"))
     (println "  tik new track --title \"the first thing\"")
     (println "  tik author --template bug")))
+
+(defn- delete-tree!
+  "Remove a file or directory tree, postorder (contents before the dir)."
+  [^File f]
+  (doseq [^File c (reverse (file-seq f))] (.delete c)))
+
+(defn- file-store-sidecars
+  "Detached signature/witness sidecars in a file store — everything under
+  tickets/ that is not an .edn event. The SQLite backend cannot hold
+  these, so their presence blocks a migration TO SQLite."
+  [root-dir]
+  (let [tdir (io/file root-dir "tickets")]
+    (when (.isDirectory tdir)
+      (seq (filter #(and (.isFile ^File %)
+                         (not (str/ends-with? (.getName ^File %) ".edn")))
+                   (file-seq tdir))))))
+
+(defn- cmd-store
+  "store migrate --to sqlite|file: convert THIS store's event backend in
+  place (ADR 0020). Reads every event from the current backend, writes
+  it to the other (append is idempotent by id), verifies the full event
+  id set carried over, then removes the source. Blobs, the actors
+  registry, and processes are untouched — they live filesystem-side
+  regardless of backend.
+
+  The SQLite store holds only event bytes; the file store additionally
+  keeps detached signature/witness sidecars. Migrating a SIGNED file
+  store to SQLite would drop those, so it is refused — the file store is
+  the auditor-grade signed format."
+  [{:keys [pos opts]}]
+  (when-not (= "migrate" (first pos))
+    (die "usage: tik store migrate --to sqlite|file"))
+  (let [to (some-> (:to opts) str keyword)
+        _ (when-not (#{:sqlite :file} to)
+            (die "usage: tik store migrate --to sqlite|file"))
+        r (root)
+        db (io/file r "tik.db")
+        tickets (io/file r "tickets")
+        from (if (.isFile db) :sqlite :file)]
+    (when (= from to)
+      (die (str "this store is already " (name to) "-backed")))
+    (when (and (= to :sqlite) (file-store-sidecars r))
+      (die (str "this file store has detached signature/witness sidecars the"
+                " SQLite backend cannot hold — migrating would drop them. The"
+                " file store is the signed, auditor-grade format; keep it, or"
+                " migrate an unsigned store.")))
+    (let [src (the-store)
+          ids (vec (store/ticket-ids src))
+          events (vec (mapcat #(store/events src %) ids))
+          src-ids (set (map :event/id events))
+          dst (case to
+                :sqlite (sqlite/sqlite-store (str db))
+                :file (fstore/file-store r))]
+      ;; move bytes only — no re-signing (migration preserves authorship,
+      ;; it does not re-author); the id set must carry over intact
+      (doseq [e events] (store/append! dst e))
+      (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
+                                 (store/ticket-ids dst)))]
+        (when-not (= src-ids dst-ids)
+          (die (str "migration incomplete: " (count src-ids) " event(s) read, "
+                    (count dst-ids) " written — source left intact for retry"))))
+      (case from
+        :sqlite (doseq [suffix ["" "-journal" "-wal" "-shm"]]
+                  (.delete (io/file (str db suffix))))
+        :file (delete-tree! tickets))
+      (println (str "migrated " (count ids) " ticket(s), " (count src-ids)
+                    " event(s) to the " (name to) " backend"))
+      (println "run `tik verify` to confirm the derivation is unchanged"))))
 
 (defn- field-hint
   "A short type hint for prompting one template parameter."
@@ -3876,9 +3966,11 @@ Each entry in :needs is one of:
     tik set <id> amount=120          record facts; the stage derives itself
     tik explain <id>                 what is missing, who can act
 
-  tik init [--hidden]                           mark this directory as a store
-                                                (--hidden: everything inside .tik/ —
-                                                one dot-entry, e.g. above many repos).
+  tik init [--sqlite] [--hidden]                mark this directory as a store
+                                                (--sqlite: single-file tik.db backend;
+                                                default is the file/git store. --hidden:
+                                                everything inside .tik/, e.g. above many repos).
+  tik store migrate --to sqlite|file            convert this store's backend in place
                                                 Commands find the store git-style:
                                                 TIK_ROOT, else the nearest ancestor
                                                 with .tik/ or tickets/, else here
@@ -4049,6 +4141,7 @@ Each entry in :needs is one of:
 (defn- dispatch [cmd parsed]
   (case cmd
       "init"    (cmd-init parsed)
+      "store"   (cmd-store parsed)
       "rollout" (cmd-rollout parsed)
       "probe"   (cmd-probe parsed)
       "pack"    (cmd-pack parsed)

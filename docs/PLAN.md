@@ -662,7 +662,9 @@ absence (§8 L3) is the designed answer.
 
 `EventStore` protocol with exactly two backends, **both built**:
 **file/git** (Phase 0 — union-merge replication for free,
-`sha256sum`-auditable) and **SQLite** (single-file ops: `TIK_DB=…`,
+`sha256sum`-auditable) and **SQLite** (single-file ops: `tik init
+--sqlite`, backend derived from the store's own shape — a `tik.db` — not
+an ambient env, switch in place with `tik store migrate`),
 exact canonical bytes in a BLOB, verify L0 recomputes hashes from the
 raw rows, and the ADR 0020 contract is a cross-backend test both must
 pass — including a property that they derive identically). The file
@@ -716,7 +718,8 @@ tik-process-namespaced publication signatures, ADR 0015 built)**; structural con
 (corpus case `concurrent-conflict`); union-merge replication validated
 over real git clones (`tik.sync-test`) and across environments over
 `git://` (`dev/h2-two-machines.sh`); SQLite EventStore backend
-(`TIK_DB`, `tik export`, cross-backend contract tests); `tik migrate` (dry-run by default,
+(`tik init --sqlite`, `tik store migrate`, `tik export`, cross-backend
+contract tests); `tik migrate` (dry-run by default,
 `--apply` appends the signed event) with definitions archived
 content-addressed under `processes/by-hash/` so pinning is honored on
 READ — grandfathered tickets keep deriving and verifying under their

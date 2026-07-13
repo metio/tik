@@ -8,8 +8,16 @@ juxt = "juxt"
 strat = "strat"
 # fpr is the conventional abbreviation for a key fingerprint
 fpr = "fpr"
+# selector terms are ANDed together; typos tokenizes "ANDed" as "Ded"
+Ded = "Ded"
+# `typ` is the JOSE/JWT header field name (RFC 7515), not "typo"/"type"
+typ = "typ"
+# a body that cannot be parsed is unparseable (a valid variant)
+unparseable = "unparseable"
+# `nwe` is a deliberately misspelled command in a "not a command" test
+nwe = "nwe"
 
 [files]
-# content-addressed corpus stores: filenames and bodies are hashes/EDN,
-# not prose
-extend-exclude = ["corpus/*/tickets/**", "tickets/**", "flake.lock"]
+# content-addressed stores and sidecars: filenames and bodies are
+# hashes / base64 signatures / EDN, not prose
+extend-exclude = ["corpus/*/tickets/**", "tickets/**", "roots/**", "flake.lock"]

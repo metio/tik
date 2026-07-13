@@ -53,9 +53,10 @@
                ;; (the shipped binary runs outside the devShell) that is a
                ;; missing-dependency message, not an internal bug.
                (catch java.io.IOException e
-                 (throw (ex-info (str "the SQLite backend (TIK_DB) needs the"
-                                      " `sqlite3` binary on PATH — install it"
-                                      " or unset TIK_DB to use the file store")
+                 (throw (ex-info (str "this store is SQLite-backed but the"
+                                      " `sqlite3` binary is not on PATH —"
+                                      " install it, or use a file-backed store"
+                                      " (`tik store migrate --to file`)")
                                  {:reason :store/sqlite-unavailable}
                                  e))))]
     (when-not (zero? (:exit r))
