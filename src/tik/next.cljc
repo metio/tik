@@ -20,7 +20,7 @@
   no actor can act on it directly."
   [r]
   (case (:reason r)
-    (:fact/missing :fact/invalid :fact/retracted
+    (:fact/missing :fact/mismatch :fact/invalid :fact/retracted
                    :fact/disputed :fact/conflicted :role/unsatisfied)
     [:set (:path r)]
     :artifact/missing [:attach (:prefix r)]

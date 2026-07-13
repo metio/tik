@@ -1390,6 +1390,30 @@
                        (catch Exception _ false))
                   (str (pr-str argv) " printed unreadable EDN:\n" line)))))))))
 
+(deftest agent_set_grounds_values_like_human_set
+  ;; an agent and a human must ground the same key=value identically:
+  ;; agent-set uses typed-value (declared-string aware), so a bare commit
+  ;; ref stays a string for both — not keywordized for the agent path.
+  (let [{:keys [root store]} (h/temp-store!)]
+    (.mkdirs (io/file root "processes"))
+    (spit (io/file root "processes" "sr.edn")
+          (str "{:process/id :sr :process/version 1 :process/guard-vocab 1"
+               " :process/facts {[:commit] :string}"
+               " :process/stages [{:stage/id :open :guards []}"
+               " {:stage/id :done :after [:open] :guards [[:fact [:commit]]]}]}"))
+    (h/with-cli-root root
+      (fn []
+        (tik.cli/run-argv ["new" "sr" "--title" "t"])
+        (let [id (re-find #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                          (:out (tik.cli/run-argv ["ls" "--edn"])))
+              r (tik.cli/run-argv ["agent" "set" id "commit=a051932" "--actor" "seb"])
+              ev (->> (store/events store (java.util.UUID/fromString id))
+                      (filter #(= [:commit] (get-in % [:event/body :fact/path])))
+                      first)]
+          (is (zero? (:exit r)) (:err r))
+          (is (= "a051932" (get-in ev [:event/body :fact/value]))
+              "agent-set keeps a declared-string value a string, like tik set"))))))
+
 (deftest every_json_output_is_readable_json
   ;; the --format json surface is machine-facing too: every line must
   ;; parse as JSON. json-safe must coerce what cheshire cannot encode

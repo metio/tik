@@ -38,6 +38,23 @@
   (next-lens/contributions (:event/ticket (first events))
                            ge/process events now ge/roles))
 
+(deftest fact-mismatch-is-actionable-in-the-inbox
+  ;; a present-but-WRONG [:fact= …] guard reports :fact/mismatch, which
+  ;; explain ranks most-actionable ("set it to the expected value"). The
+  ;; inbox is complete w.r.t. explain's actionable reasons, so it must
+  ;; surface a :set action — not silently drop the item into :waiting.
+  (let [proc {:process/id :m :process/version 1
+              :process/stages [{:stage/id :open :guards []}
+                               {:stage/id :done :after [:open]
+                                :guards [[:fact= [:severity] :high]]}]}
+        evs (ticket 9 (assert-step [:severity] :low))     ; wrong value
+        contrib (next-lens/contributions (:event/ticket (first evs))
+                                         proc evs now ge/roles)]
+    (is (some #(= [:set [:severity]] (:action %)) (:actions contrib))
+        "the mismatch is a set-action in the inbox")
+    (is (not-any? #(= :fact/mismatch (:reason %)) (:waiting contrib))
+        "and is NOT parked in :waiting")))
+
 (deftest contributions-total-over-malformed-signed-by
   ;; the boundary derivation must be total over ANY process, linted or
   ;; not: a malformed [:signed-by] guard (missing its role/path, so no

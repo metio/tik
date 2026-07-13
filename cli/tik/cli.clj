@@ -2306,10 +2306,14 @@
                   attempted [:set path]]
               (when-not (some #(= attempted (:action %)) admissible)
                 (agent-refuse! opts who attempted admissible))
+              ;; declared-type aware, exactly as `tik set` — an agent and a
+              ;; human must ground the same key=value identically
               (append!* s (event/assert-fact
                            {:ticket id :actor who :at (now)
                             :parents (dag/heads (store/events s id))
-                            :path path :value (parse-value v)})
+                            :path path
+                            :value (typed-value (:process (ticket-ctx s id))
+                                                path v)})
                         opts)
               (when-not (emit-data opts {:ok true :action attempted})
                 (println "ok" (pr-str attempted))))

@@ -11,7 +11,15 @@
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.store.protocol :as p])
-  (:import (java.io File)))
+  (:import (java.io File)
+           (java.nio.file Files)))
+
+(defn- file-bytes
+  "The raw bytes of a file, or nil if absent — no charset round-trip, so
+  the bytes returned are exactly the bytes stored (ADR 0007), matching
+  the SQLite backend's raw BLOB."
+  ^bytes [^File f]
+  (when (.isFile f) (Files/readAllBytes (.toPath f))))
 
 (defn parse-event
   "The one byte->event parse every backend shares: stored text -> event
@@ -38,7 +46,7 @@
   "One loose event file: the id IS the filename and is attached on read;
   `verify` recomputes it from the bytes."
   [^File f]
-  (parse-event (slurp f)
+  (parse-event (String. (file-bytes f) "UTF-8")
                (str/replace (.getName f) #"\.edn$" "")
                {:file (str f)}))
 
@@ -146,9 +154,11 @@
       (.mkdirs dir)
       (when-not (.exists f)
         ;; EXACT canonical bytes of the hashed region — the event WITHOUT
-        ;; :event/id (ADR 0007). The file's sha256 IS its filename IS the
-        ;; event id: verify L0 is `sha256sum`-checkable with coreutils.
-        (spit f (canonical/emit (dissoc event :event/id))))
+        ;; :event/id (ADR 0007). Written as UTF-8, the charset the id is
+        ;; hashed over (canonical/sha256-hex), so sha256sum(file) = filename
+        ;; = event id holds on any locale — verify L0 stays coreutils-checkable.
+        (io/copy (.getBytes (canonical/emit (dissoc event :event/id)) "UTF-8")
+                 f))
       event))
   (events [_ ticket-id]
     (let [dir (ticket-dir root ticket-id)]
@@ -193,8 +203,7 @@
                              (:entries (read-pack-index evdir))))))
                (filter #(.isDirectory ^File %) (.listFiles dir)))))))
   (event-bytes [_ ticket-id event-id]
-    (let [f (io/file (ticket-dir root ticket-id) (str event-id ".edn"))]
-      (when (.isFile f) (.getBytes (slurp f) "UTF-8"))))
+    (file-bytes (io/file (ticket-dir root ticket-id) (str event-id ".edn"))))
   (put-sidecar! [_ ticket-id name bytes]
     ;; a sidecar lives beside the event it endorses, exactly as before —
     ;; sha256sum(<id>.edn) still auditable, the .sig./.witness. sidecar
@@ -213,7 +222,6 @@
               (.listFiles dir))
         [])))
   (read-sidecar [_ ticket-id name]
-    (let [f (io/file (ticket-dir root ticket-id) name)]
-      (when (.isFile f) (.getBytes (slurp f) "UTF-8")))))
+    (file-bytes (io/file (ticket-dir root ticket-id) name))))
 
 (defn file-store [root] (->FileStore root))
