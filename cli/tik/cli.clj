@@ -3910,6 +3910,8 @@ Each entry in :needs is one of:
                                                 HTML file — mail it, archive it
   tik serve [--port N]                          the live board over HTTP (read-only;
                                                 /tickets.edn + /explain/<id>.edn for tools)
+  tik mcp                                        MCP server over stdio: the frontier as an
+                                                agent's gated tool surface (TIK_ACTOR/TIK_KEY)
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments that ticket and
                                                 tik> key=value lines become facts;
@@ -4047,6 +4049,10 @@ Each entry in :needs is one of:
       "graph"   (cmd-graph parsed)
       "board"   (cmd-board parsed)
       "serve"   (cmd-serve parsed)
+      ;; the MCP stdio loop lives in tik.mcp (which requires this ns);
+      ;; resolve it lazily to avoid the require cycle — tik.main force-
+      ;; requires tik.mcp so the native image can resolve it here too.
+      "mcp"     ((requiring-resolve 'tik.mcp/-main))
       "bridge"  (cmd-bridge parsed)
       "effects" (cmd-effects parsed)
       "verify"  (cmd-verify parsed)

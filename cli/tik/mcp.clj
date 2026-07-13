@@ -1,8 +1,8 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.mcp
-  "An MCP server over stdio (babashka): the process definition as the
-  agent's authorization boundary, spoken in the Model Context Protocol.
+  "An MCP server over stdio: the process definition as the agent's
+  authorization boundary, spoken in the Model Context Protocol.
 
   Tools: tik_board, tik_explain, tik_actions, tik_assert, tik_attest.
   tik_assert/tik_attest are GATED — an action outside what the frontier
@@ -12,12 +12,15 @@
   TIK_KEY set every accepted action lands as a signed event — the
   accountability trail is the ticket itself (PLAN §12/§13).
 
-  Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… bb mcp"
+  Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… tik mcp
+  (or `bb mcp` from the dev shell — the same loop on either runtime)."
   (:require [clojure.string :as str]
             [tik.cli :as cli]))
 
-;; cheshire ships inside babashka; resolved lazily so JVM tooling can
-;; load this namespace without the dependency
+;; cheshire is resolved lazily so JVM tooling can load this namespace
+;; without the dependency; babashka ships it as a builtin, and the
+;; native image force-requires cheshire.core in tik.main, so the resolve
+;; succeeds on both runtimes.
 (defn- json-parse [s] ((requiring-resolve 'cheshire.core/parse-string) s))
 (defn- json-emit [x] ((requiring-resolve 'cheshire.core/generate-string) x))
 

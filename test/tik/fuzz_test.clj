@@ -1079,6 +1079,24 @@
   (let [root (h/temp-dir! "tik-runargv")]
     (h/with-cli-root root f)))
 
+(deftest mcp_dispatches_in_process_the_way_the_binary_does
+  ;; `tik mcp` is a first-class command, not a bb-only task: the dispatch
+  ;; resolves tik.mcp/-main and runs the same stdio loop the native image
+  ;; exposes (tik.main force-requires tik.mcp so the resolve succeeds
+  ;; there too). Drive one handshake line plus a canary through run-argv
+  ;; over a bound *in* and read the JSON-RPC answers back.
+  (with-store
+    (fn []
+      (binding [*in* (java.io.BufferedReader.
+                      (java.io.StringReader.
+                       (str "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n"
+                            "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/list\"}\n")))]
+        (let [r (tik.cli/run-argv ["mcp"])]
+          (is (zero? (:exit r)) (:err r))
+          (is (re-find #"\"id\":1" (:out r)) "the initialize handshake answered")
+          (is (re-find #"\"id\":99.*tik_board" (:out r))
+              "tools/list answered on the same in-process loop"))))))
+
 (defspec run_argv_is_total_over_arbitrary_argv n
   ;; the in-process entry point the MCP server rides on: whatever an
   ;; embedder passes — empty, garbage tokens, unknown commands — it

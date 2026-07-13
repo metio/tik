@@ -90,6 +90,22 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   with the guards that already exist — `[:signed-by :bridge [:credential]]`,
   `[:fact= [:credential :type] :kyc]`, `[:attested-within [:credential] "P90D"]`.
 
+### Working as an agent — the gated surface
+
+An agent never gets a free hand on the store; it works through the frontier,
+which admits exactly the actions its actor may take on a ticket right now.
+
+- `tik agent actions <id> --actor A` — the admissible action set (EDN): the
+  authorization boundary, derived from the process, not the prompt.
+- `tik agent set <id> k=v --actor A` / `tik agent attest <id> <claim> --actor A`
+  — assert or attest, **refused** unless the frontier admits it (exit 3, with
+  the admissible set printed). Every accepted action lands as a signed event.
+- `tik mcp` — the same board / explain / actions / gated assert+attest surface
+  spoken over stdio as an MCP server, for an LLM client. `TIK_ACTOR` is the
+  agent's identity; with `TIK_KEY` set each accepted call is signed. It runs
+  from the shipped binary (`tik mcp`) — the enforcement is the derivation, so
+  it holds whatever the client sends.
+
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a
 keyword (`sev=high` → `:high`), a number stays a number, and anything the
 parser cannot read as one clean form is kept as the literal string — so

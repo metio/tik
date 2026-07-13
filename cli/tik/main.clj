@@ -9,7 +9,8 @@
   (:require [babashka.http-client]
             [cheshire.core]
             [org.httpkit.server]
-            [tik.cli :as cli])
+            [tik.cli :as cli]
+            [tik.mcp])
   (:gen-class))
 
 (defn -main [& args]
