@@ -38,6 +38,7 @@
             [malli.core :as m]
             [tik.process :as process]
             [tik.reduce :as red]
+            [tik.secret :as secret]
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -2752,12 +2753,37 @@
                     " verifier " trusted
                     (when (seq passing) (str " (passing: " passing ")")))))))))
 
+(defn- resolve-oidc-password
+  "The resource-owner password, from the most secure source available,
+  through the unified secret resolver (tik.secret): --password-command (a
+  shell command line run through a password manager — pass/passage/gopass/
+  `op read` — whose first stdout line is the secret), then --password-file,
+  then the TIK_OIDC_PASSWORD environment variable, and last a literal
+  --password (visible to other users in the process list, so it earns a
+  warning). Returns nil when none is given — the caller then falls back to
+  the device flow. Only the RETRIEVAL command rides in argv, never the
+  secret itself."
+  [opts]
+  (cond
+    (:password-command opts) (secret/resolve1 "password" {:command (:password-command opts)})
+    (:password-file opts)    (secret/resolve1 "password" {:file (:password-file opts)})
+    (System/getenv "TIK_OIDC_PASSWORD") (System/getenv "TIK_OIDC_PASSWORD")
+    (:password opts) (do (binding [*out* *err*]
+                           (println (str "warning: --password is visible to other"
+                                         " users via the process list; prefer"
+                                         " --password-command, --password-file,"
+                                         " or TIK_OIDC_PASSWORD")))
+                         (:password opts))
+    :else nil))
+
 (defn- cmd-bridge-oidc
   "bridge oidc: identity rung 2 (PLAN §9). Login against the config's
-  issuer — device flow by default, password grant when --user and
-  --password are given (headless onboarding) — and append the signed
-  key-binding attestation to the registry ticket. Verification of the
-  binding never calls the IdP."
+  issuer — device flow by default, or the resource-owner password grant
+  when --user and a password are given (headless onboarding; supply the
+  password via --password-command <pass show …>, --password-file, or
+  TIK_OIDC_PASSWORD rather than a literal --password) — and append the
+  signed key-binding attestation to the registry ticket. Verification of
+  the binding never calls the IdP."
   [opts]
   (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
         cfg (if (.exists (io/file cfg-file))
@@ -2777,19 +2803,7 @@
         s (the-store)
         registry-id (resolve-id s registry-ref)
         endpoints (oidc/discover oidc/http-get issuer)
-        ;; a resource-owner password must not ride in argv, where any
-        ;; local user reads it from ps / /proc/<pid>/cmdline — take it
-        ;; from a file or the environment; a literal --password still
-        ;; works but earns a warning (like the effects header secrets)
-        password (or (when-let [pf (:password-file opts)]
-                       (str/trim (slurp-existing "password file" pf)))
-                     (System/getenv "TIK_OIDC_PASSWORD")
-                     (when-let [p (:password opts)]
-                       (binding [*out* *err*]
-                         (println (str "warning: --password is visible to other"
-                                       " users via the process list; prefer"
-                                       " --password-file or TIK_OIDC_PASSWORD")))
-                       p))
+        password (resolve-oidc-password opts)
         response (if (and (:user opts) password)
                    (oidc/password-flow oidc/http-post endpoints client-id
                                        (:user opts) password)
@@ -3060,36 +3074,6 @@
                      "\"")
     :else (str x)))
 
-(defn- resolve-header-value
-  "A header value is a string, {:env \"NAME\"} (process environment),
-  or {:command [\"pass\" \"show\" \"x\"]} (first line of a local
-  secret-manager's stdout — pass, passage, gopass, op read, anything
-  that prints the secret). Resolved at send time so effects.edn can be
-  committed with no secret in it. Failures are loud and name the
-  source; a silent blank header would just be a mysterious 401 later."
-  [k v]
-  (cond
-    (and (map? v) (:env v))
-    (or (System/getenv (:env v))
-        (throw (ex-info (str "header " k " wants environment variable "
-                             (:env v) ", which is not set")
-                        {:header k :env (:env v)})))
-
-    (and (map? v) (:command v))
-    (let [r (apply sh/sh (:command v))]
-      (if (zero? (:exit r))
-        (str/trim-newline (first (str/split-lines (:out r))))
-        (throw (ex-info (str "header " k " lookup command "
-                             (pr-str (:command v)) " failed: "
-                             (str/trim (:err r)))
-                        {:header k :command (:command v)
-                         :exit (:exit r)}))))
-
-    :else v))
-
-(defn- resolve-headers [headers]
-  (into {} (for [[k v] headers] [k (resolve-header-value k v)])))
-
 (defn- redact-url
   "scheme://host[:port] of a sink URL — a webhook path/query often IS the
   secret (Slack/Discord tokens live in the path), so the full URL must
@@ -3107,10 +3091,11 @@
   GenieKey, gotify's X-Gotify-Key, bearer tokens) without tik ever
   storing credentials anywhere but the operator's own config or, via
   {:env \"NAME\"} values, the process environment."
+  ;; `headers` arrive already secret-resolved (the whole sink is resolved
+  ;; before dispatch), so this only merges the content type.
   [url body headers]
   (let [post (requiring-resolve 'babashka.http-client/post)
-        r (post url {:headers (merge {"Content-Type" "application/json"}
-                                     (resolve-headers headers))
+        r (post url {:headers (merge {"Content-Type" "application/json"} headers)
                      :body body
                      :throw false})]
     ;; a non-2xx (429/400/5xx) is a DELIVERY FAILURE — throw so the caller
@@ -3168,6 +3153,12 @@
         ;; report and count, the ledger stays unmarked (retry next run),
         ;; the loop continues — at-least-once, per sink
         (try
+          ;; resolve secrets ONLY now, at real send: any sink field (a
+          ;; webhook :url, pushover :token/:user, a header value) may be a
+          ;; {:env}/{:command}/{:file} spec (tik.secret). The dedup key
+          ;; above hashes the UNRESOLVED sink, so a rotated secret keeps
+          ;; the same effect identity and a dry-run never calls `pass`.
+          (let [sink (secret/resolve-secrets sink)]
           (case (:type sink)
               ;; sendmail-compatible: the :command reads RFC822 on stdin
               ;; (default sendmail -t); MTA-agnostic like the inbound
@@ -3198,7 +3189,7 @@
                   (throw (ex-info (str "command sink failed: " (:err r))
                                   {:sink :command}))))
               (post! (:url sink) (json-str (effect-payload sink tr))
-                     (:headers sink)))
+                     (:headers sink))))
               (spit ledger-file (str key "\n") :append true)
               (swap! fired inc)
               (println "sent" (safe-name (:type sink)) "<-"
@@ -4261,9 +4252,12 @@ Each entry in :needs is one of:
                                                 tik> key=value lines become facts;
                                                 else a new ticket
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
-                  [--user U --password P]       a signed key-binding attestation on the
-                                                registry ticket; verification never
-                                                calls the IdP
+                  [--user U]                    a signed key-binding attestation on the
+                  [--password-command C |       registry ticket; verification never
+                   --password-file F]           calls the IdP. Give the password via a
+                                                secret manager / file / TIK_OIDC_PASSWORD,
+                                                not a literal --password (argv is public);
+                                                fetches require HTTPS (loopback excepted)
   tik bridge oid4vci --credential vc.jwt        ingest a verifiable credential: verify
                   --registry ID                 the issuer signature against its JWKS,
                   [--jwks-url U | --jwks FILE]   mint it as a bridge-signed attestation
@@ -4276,12 +4270,15 @@ Each entry in :needs is one of:
                                                 pagerduty|webhook|email|command sinks
                                                 (ADR 0019). Per-sink :template puts the
                                                 message in your words ({{title}}
-                                                {{stage}} {{short}} {{ticket}}); :headers
-                                                carries auth — values are literal,
-                                                {:env \"NAME\"} or {:command [\"pass\"
-                                                \"show\" \"x\"]}; :command pipes the JSON to
-                                                ANY program; email renders explain and
-                                                its tik> replies close the loop
+                                                {{stage}} {{short}} {{ticket}}). ANY sink
+                                                field (a :url, :token, a :headers value)
+                                                may be a secret: a literal, {:env \"NAME\"},
+                                                {:command [\"pass\" \"show\" \"x\"]} (or a
+                                                \"shell string\"), or {:file \"/path\"} —
+                                                resolved at send time, so no secret sits in
+                                                effects.edn; :command pipes the JSON to ANY
+                                                program; email renders explain and its
+                                                tik> replies close the loop
   tik rollout <process> [--parent <id>]         one ticket per git repo under the store
               [--parent-title T]                (context-tagged), wired as link facts on
                                                 a parent: a checklist whose checkmarks

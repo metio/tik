@@ -91,9 +91,12 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   own `Authentication-Results`, pinned by `authserv-id` so a forged verdict
   is ignored) before it is trusted enough to attribute events to an actor.
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
-  device-flow (or `--user`/`--password`) login binds an IdP subject to a
+  device-flow (or `--user` + a password) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never
-  calls the IdP.
+  calls the IdP. Supply the password without exposing it in `ps`: prefer
+  `--password-command '<pass show …>'`, `--password-file`, or the
+  `TIK_OIDC_PASSWORD` environment variable over a literal `--password`.
+  Identity fetches require HTTPS (loopback excepted for a local test IdP).
 - `tik bridge oid4vci --credential vc.jwt --registry ID [--jwks-url U |
   --jwks FILE]` — ingest a **verifiable credential** (a VC is an attestation
   with an external issuer): verify the issuer signature against its JWKS

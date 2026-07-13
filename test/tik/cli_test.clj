@@ -100,6 +100,32 @@
         (is (not (.exists (io/file root "actors")))
             "no corrupt registry line was written")))))
 
+(deftest oidc_password_prefers_a_secret_source_over_argv
+  ;; the resource-owner password must not ride in argv (ps/proc); it
+  ;; resolves — through the unified tik.secret resolver — from a password
+  ;; manager command, a file, the environment, or (last, with a warning)
+  ;; a literal flag. nil when none is given (the caller uses device flow).
+  (let [resolve-pw #'cli/resolve-oidc-password]
+    (testing "--password-command runs a secret manager (first line)"
+      (is (= "pwFromPass"
+             (resolve-pw {:password-command "printf 'pwFromPass\\nmeta'"}))))
+    (testing "--password-file reads the file's first line"
+      (let [f (io/file (h/temp-dir! "tik-oidcpw") "pw")]
+        (spit f "pwFromFile\n")
+        (is (= "pwFromFile" (resolve-pw {:password-file (str f)})))))
+    (testing "a literal --password still works, but warns to stderr"
+      (let [err (java.io.StringWriter.)]
+        (binding [*err* err]
+          (is (= "literalpw" (resolve-pw {:password "literalpw"}))))
+        (is (re-find #"visible to other users" (str err)))))
+    (testing "the command source wins over a literal when both are given"
+      (binding [*err* (java.io.StringWriter.)]
+        (is (= "cmdWins"
+               (resolve-pw {:password-command "printf cmdWins"
+                            :password "literalpw"})))))
+    (testing "nothing given -> nil (device flow)"
+      (is (nil? (resolve-pw {}))))))
+
 (defn- at [s] (java.time.Instant/parse s))
 
 (deftest verify_changed_catches_a_pruned_inner_ancestor
