@@ -71,6 +71,39 @@
               (is (= "Ada" (get-in att [:event/body :credential/claims :name])))
               (is (string? (get-in att [:event/body :credential/raw]))))))))))
 
+(deftest bridge_oid4vci_hostile_inputs_fail_well
+  ;; the bridge reads attacker-supplied files; a missing one, garbage
+  ;; credential, or non-JSON JWKS must be a clean message + exit 1, never
+  ;; a raw FileNotFoundException reported as 'a bug in tik'.
+  (let [{:keys [root]} (h/temp-store!)
+        reg (registry-id root)]
+    (spit (io/file root "garbage.jwt") "not a jwt at all")
+    (spit (io/file root "ok.jwks") "{\"keys\":[]}")
+    (spit (io/file root "bad.jwks") "not json {{{")
+    (spit (io/file root "valid.jwt")                          ; parses, reaches JWKS
+          (str (b64url-json {:alg "EdDSA" :kid "k1"})
+               "." (b64url-json {:iss "https://i.test"}) ".sig"))
+    (h/with-cli-root root
+      (fn []
+        (doseq [[argv rx]
+                [[["bridge" "oid4vci" "--registry" reg
+                   "--jwks" (str (io/file root "ok.jwks"))
+                   "--credential" "/nonexistent.jwt"] #"no such credential file"]
+                 [["bridge" "oid4vci" "--registry" reg
+                   "--jwks" "/nonexistent.jwks"
+                   "--credential" (str (io/file root "valid.jwt"))] #"no such jwks file"]
+                 [["bridge" "oid4vci" "--registry" reg
+                   "--jwks" (str (io/file root "ok.jwks"))
+                   "--credential" (str (io/file root "garbage.jwt"))] #"(?i)credential"]
+                 [["bridge" "oid4vci" "--registry" reg
+                   "--jwks" (str (io/file root "bad.jwks"))
+                   "--credential" (str (io/file root "valid.jwt"))] #"(?i)jwks"]]]
+          (let [r (tik.cli/run-argv argv)]
+            (is (= 1 (:exit r)) (pr-str argv))
+            (is (h/clean-output? (str (:out r) (:err r)))
+                (str (pr-str argv) "\n" (:err r)))
+            (is (re-find rx (:err r)) (str (pr-str argv) "\n" (:err r)))))))))
+
 (deftest bridge_oid4vci_refuses_a_tampered_credential
   (let [{:keys [root]} (h/temp-store!)
         {:keys [vc jwks]} (ed25519-vc+jwks)

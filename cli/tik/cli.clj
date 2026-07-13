@@ -2600,13 +2600,19 @@
                          (die (str "no registry ticket — mint one with\n"
                                    "  tik new identity-registry --title 'identity registry'\n"
                                    "then pass --registry <its id>")))
-        cred-str (str/trim (if-let [f (:credential opts)] (slurp f) (slurp *in*)))
+        slurp-file (fn [what f]
+                     (if (.exists (io/file f))
+                       (slurp f)
+                       (die (str "no such " what " file: " f))))
+        cred-str (str/trim (if-let [f (:credential opts)]
+                             (slurp-file "credential" f)
+                             (slurp *in*)))
         who (actor opts)
         cred (oid4vci/parse-credential cred-str)
         issuer (or (:issuer opts) (:issuer cred)
                    (die "credential carries no issuer (iss); pass --issuer"))
         jwks-json (cond
-                    (:jwks opts) (slurp (:jwks opts))
+                    (:jwks opts) (slurp-file "jwks" (:jwks opts))
                     (:jwks-url opts) (oidc/http-get (:jwks-url opts))
                     :else (oidc/http-get (str (str/replace issuer #"/$" "")
                                               "/.well-known/jwks.json")))
