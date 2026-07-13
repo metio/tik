@@ -619,6 +619,33 @@
         (is (h/clean-output? (str (:out r) (:err r)))
             (str file "\n" (:out r) (:err r)))))))
 
+(deftest process_test_runner_fails_well_on_hostile_files
+  ;; `tik test` reads a scripted-test EDN and the process it names. A spec
+  ;; that is not a map, omits :test/process (a relative path), points at a
+  ;; missing process, or carries a malformed step must answer with a
+  ;; message + exit 1 — never the NullPointer from (io/file parent nil) on
+  ;; a nil path, nor a raw case/seq throw on a bad step (apply-step).
+  (let [{:keys [root]} (h/temp-store!)
+        _ (spit (io/file root "proc.edn")
+                (slurp (io/file "processes" "hypothesis.edn")))
+        write (fn [body] (spit (io/file root "t.tests.edn") body)
+                (str (io/file root "t.tests.edn")))]
+    (h/with-cli-root root
+      (fn []
+        (doseq [[body rx]
+                [["42" #"must be a map"]
+                 ["{:test/cases []}" #":test/process"]
+                 ["{:test/process 42}" #":test/process"]
+                 ["{:test/process \"nope.edn\" :test/cases []}" #"no process definition"]
+                 ["{:test/process \"proc.edn\" :test/cases 42}" #":test/cases must be"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [42] :case/expect {}}]}" #"each step must be a list"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [[:frobnicate]] :case/expect {}}]}" #"unknown step op"]]]
+          (let [r (tik.cli/run-argv ["test" (write body)])]
+            (is (= 1 (:exit r)) body)
+            (is (h/clean-output? (str (:out r) (:err r))) (str body "\n" (:err r)))
+            (is (re-find rx (str (:out r) (:err r)))
+                (str body "\n" (:out r) (:err r)))))))))
+
 (deftest show_over_hostile_definition_never_traces
   ;; `show` draws from an UNLINTED definition read straight off disk, so
   ;; every field is attacker-shaped. A :process/roles that is not a map,

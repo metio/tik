@@ -1866,8 +1866,12 @@
   [:actor \"x\"] [:now \"+PT48H\"|\"<inst>\"] [:set path value]
   [:retract path] [:dispute path reason] [:attach path]. Appended events
   get strictly increasing claimed times so supersedes never lose ties."
-  [{:keys [events now actor] :as st} [op & args]]
-  (let [tick (.plusMillis ^Instant now 1)
+  [{:keys [events now actor] :as st} step]
+  (when-not (sequential? step)
+    (die (str "each step must be a list like [:set [:path] value], got "
+              (pr-str step))))
+  (let [[op & args] step
+        tick (.plusMillis ^Instant now 1)
         arg {:ticket (:event/ticket (first events)) :actor actor :at tick
              :parents #{(:event/id (peek events))}}
         append (fn [e] (-> st (update :events conj e) (assoc :now tick)))]
@@ -1882,7 +1886,9 @@
       :attach (append (event/attach-artifact
                        (assoc arg :path (first args)
                               :hash (str "sha256-" (canonical/sha256-hex
-                                                    (first args)))))))))
+                                                    (first args))))))
+      (die (str "unknown step op " (pr-str op)
+                " — use :actor :now :set :retract :dispute :attach")))))
 
 (defn- sim-render [proc events sim-now]
   (let [roles (:process/roles proc {})
@@ -1984,9 +1990,20 @@
   [{:keys [pos]}]
   (let [f (resolve-file (first pos))
         _ (when-not (.exists f) (die "no such file:" (str f)))
-        {:test/keys [process cases]} (read-edn-file f)
+        spec (read-edn-file f)
+        _ (when-not (map? spec)
+            (die "test file must be a map with :test/process and :test/cases"))
+        {:test/keys [process cases]} spec
+        _ (when-not (string? process)
+            (die (str "test file needs :test/process: a path to the process"
+                      " definition, relative to this file")))
+        _ (when-not (or (nil? cases) (sequential? cases))
+            (die ":test/cases must be a list of cases"))
         proc (read-edn-file (io/file (.getParentFile (.getAbsoluteFile f))
                                      process))
+        _ (when-not (map? proc)
+            (die (str "the :test/process path holds no process definition: "
+                      process)))
         roles (:process/roles proc {})
         failures (atom 0)]
     (when (print-problems (process/lint proc))
