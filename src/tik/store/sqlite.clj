@@ -48,7 +48,16 @@
   (pipe-separated is safe: every selected column is hex or fixed
   charset)."
   [db sql]
-  (let [r (sh/sh "sqlite3" "-batch" "-noheader" (str db) sql)]
+  (let [r (try (sh/sh "sqlite3" "-batch" "-noheader" (str db) sql)
+               ;; the backend shells out to sqlite3; if it is not on PATH
+               ;; (the shipped binary runs outside the devShell) that is a
+               ;; missing-dependency message, not an internal bug.
+               (catch java.io.IOException e
+                 (throw (ex-info (str "the SQLite backend (TIK_DB) needs the"
+                                      " `sqlite3` binary on PATH — install it"
+                                      " or unset TIK_DB to use the file store")
+                                 {:reason :store/sqlite-unavailable}
+                                 e))))]
     (when-not (zero? (:exit r))
       (throw (ex-info "sqlite3 failed" {:sql sql :err (:err r)})))
     (->> (str/split-lines (:out r))

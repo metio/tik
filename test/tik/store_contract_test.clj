@@ -77,6 +77,19 @@
     (is (= [tid] (store/ticket-ids store))
         "only the uuid-named directory names a ticket; strays are skipped")))
 
+(deftest sqlite-missing-binary-is-a-clean-message
+  ;; the sqlite backend shells out to sqlite3; the shipped binary runs
+  ;; outside the devShell where it may be absent. A failure to LAUNCH it
+  ;; (IOException from ProcessBuilder) must be a data-carrying message
+  ;; naming the missing dependency, not a raw IOException reported as an
+  ;; internal bug.
+  (with-redefs [clojure.java.shell/sh
+                (fn [& _] (throw (java.io.IOException.
+                                  "Cannot run program \"sqlite3\"")))]
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"sqlite3.*PATH"
+         (sqlite/sqlite-store (str (tmp "tik-nosqlite") "/x.db"))))))
+
 (defspec backends-derive-identically 30
   (prop/for-all [events ge/gen-events]
     (let [[a b] (backends)
