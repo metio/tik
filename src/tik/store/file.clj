@@ -172,8 +172,15 @@
   (ticket-ids [_]
     (let [dir (io/file root "tickets")]
       (if (.isDirectory dir)
-        (mapv #(java.util.UUID/fromString (.getName ^File %))
-              (filter #(.isDirectory ^File %) (.listFiles dir)))
+        ;; a ticket directory's name IS its uuid identity, so only a uuid
+        ;; names a ticket; a stray non-uuid entry (.gitkeep, an editor tmp
+        ;; dir) is simply not a ticket and is skipped, never a crash.
+        (into []
+              (keep (fn [^File f]
+                      (when (.isDirectory f)
+                        (try (java.util.UUID/fromString (.getName f))
+                             (catch IllegalArgumentException _ nil)))))
+              (.listFiles dir))
         [])))
   (has-event? [_ event-id]
     (let [dir (io/file root "tickets")]

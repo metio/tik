@@ -61,6 +61,22 @@
             (is (= id (str "sha256-" (canonical/sha256-hex raw-bytes)))
                 (str name ": hash(stored bytes) = id"))))))))
 
+(deftest file-store-skips-stray-non-ticket-entries
+  ;; tickets/ may hold entries that are not tickets — a stray directory,
+  ;; a .gitkeep. A ticket directory's name IS its uuid identity, so only a
+  ;; uuid names a ticket; a non-uuid entry is skipped rather than throwing
+  ;; from UUID/fromString and taking down every whole-store lens at once.
+  (let [root (tmp "tik-stray")
+        store (fstore/file-store root)
+        e (first (ge/ops->events [[:assert "seb" [:category] :technical 60]]))
+        tid (:event/ticket e)]
+    (store/append! store e)
+    (.mkdirs (io/file root "tickets" "not-a-uuid"))
+    (.mkdirs (io/file root "tickets" ".git"))
+    (spit (io/file root "tickets" ".gitkeep") "x")
+    (is (= [tid] (store/ticket-ids store))
+        "only the uuid-named directory names a ticket; strays are skipped")))
+
 (defspec backends-derive-identically 30
   (prop/for-all [events ge/gen-events]
     (let [[a b] (backends)
