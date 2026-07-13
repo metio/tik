@@ -487,6 +487,7 @@
     tik.next/settled?               "predicate over a derived reached-set, not raw input"
     tik.next/settled-reached?       "predicate over a derived reached-set, not raw input; the fixpoint-sharing core of settled? (registered via contributions)"
     tik.next/inbox                  "combiner over already-derived contributions output (registered), not raw input"
+    tik.next/admissible?            "predicate over one already-derived contribution action + an actor, not raw input; the per-actor gate inbox and cli/agent-admissible share"
     tik.process/valid?              "malli validator over the Process schema: a boolean over any input"
     tik.process/explain-process     "malli explainer over the Process schema: an explanation or nil over any input"
     tik.process/process-hash        "content-address of a definition via canonical/emit (registered)"

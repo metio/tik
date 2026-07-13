@@ -221,6 +221,15 @@
         (cond
           (not (str/starts-with? a "--"))
           (recur more (conj pos a) opts)
+          ;; --flag=value: the value rides in the same token (the near-
+          ;; universal CLI convention). Split on the first =, so
+          ;; --actor=alice binds :actor, not the junk key :actor=alice —
+          ;; parsing it wrong silently drops authorship (--actor), the
+          ;; signing key (--key), or the derivation clock (--at).
+          (str/includes? a "=")
+          (let [i (str/index-of a "=")]
+            (recur more pos
+                   (assoc opts (keyword (subs a 2 i)) (subs a (inc i)))))
           ;; a flag with no value (end of args, or another option next)
           ;; is boolean true — e.g. --apply
           (or (empty? more) (str/starts-with? (first more) "--"))
@@ -2331,9 +2340,10 @@
         {:keys [events process roles]} (ticket-ctx s id)
         {:keys [actions]} (next-lens/contributions id process events
                                                    (now) roles)]
-    (filterv #(or (= :anyone (:who %))
-                  (contains? (:who %) actor-name))
-             actions)))
+    ;; the SAME admissibility the inbox projects — role membership plus
+    ;; the four-eyes :not-actor exclusion — so the gate never admits a
+    ;; write the inbox would deny (they share next-lens/admissible?)
+    (filterv #(next-lens/admissible? % actor-name) actions)))
 
 (defn- agent-refuse! [opts actor-name attempted admissible]
   ;; a refusal is an error: it goes to stderr and exits 3 in every format,
@@ -3464,9 +3474,32 @@ check_sig() { # $1 sidecar, $2 target file, $3 namespace
     echo \"FAIL  $1 does not verify\"; fail=1
   fi
 }
+# An event names its own author in :event/actor; the signature must
+# verify AS THAT ACTOR, not merely as some registered principal —
+# else a registered actor forges another's authorship and the audit
+# still passes. This binds -I to the claimed author, matching the
+# in-process L1 check (sign/verify-bytes uses -I actor). Canonical
+# bytes sort :event/actor first, so it always leads the file.
+check_event_sig() { # $1 sidecar, $2 event .edn
+  actor=$(sed -n 's/^{:event\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$2\")
+  if [ -z \"$actor\" ]; then
+    echo \"FAIL  $2 has no :event/actor to bind its signature to\"; fail=1; return
+  fi
+  # find-principals only sharpens the diagnostic (registered? vs bad sig);
+  # the verification DECISION binds to the claimed actor below, never to
+  # whoever happened to sign — that is the whole point.
+  if ! ssh-keygen -Y find-principals -f actors -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+    echo \"FAIL  $1 signed by a key absent from the actors registry\"; fail=1; return
+  fi
+  if ssh-keygen -Y verify -f actors -I \"$actor\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+    echo \"ok    $(basename \"$1\") verifies as $actor\"
+  else
+    echo \"FAIL  $1 does not verify as its event's actor ($actor)\"; fail=1
+  fi
+}
 for sig in tickets/*/events/*.sig.*; do
   [ -e \"$sig\" ] || continue
-  check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-event
+  check_event_sig \"$sig\" \"${sig%%.sig.*}.edn\"
 done
 for sig in tickets/*/events/*.witness.*; do
   [ -e \"$sig\" ] || continue
@@ -3892,10 +3925,15 @@ Each entry in :needs is one of:
                   (when-not ok?
                     (println (tint "31" (str "  FAIL  " msg)))
                     (swap! failures inc)))
-          ;; --changed: skip tickets whose heads match the last full
-          ;; audit. A disposable accelerator (ADR 0013): it detects
-          ;; DRIFT, not in-place tampering of already-audited bytes —
-          ;; the full run remains the audit, and always outranks.
+          ;; --changed: skip tickets whose present event-id set matches
+          ;; the last full audit. A disposable accelerator (ADR 0013): it
+          ;; detects DRIFT — any added OR removed event, including a
+          ;; pruned inner ancestor that leaves the heads unchanged — but
+          ;; NOT in-place tampering of already-audited bytes (same ids,
+          ;; different content). The full run remains the audit, and
+          ;; always outranks. (A head-only fingerprint would miss a
+          ;; deleted diamond-interior event, whose id still appears as a
+          ;; parent so the tips do not move.)
           cache-file (io/file (root) ".verify-cache")
           cache (if (and (:changed (:opts parsed)) (.exists cache-file))
                   (try (canonical/parse (slurp cache-file))
@@ -3906,18 +3944,19 @@ Each entry in :needs is one of:
       (doseq [id ids
               ;; even LISTING a ticket's events can raise on a hostile
               ;; store; the audit reports that ticket and continues
-              :let [heads (try (dag/heads (store/events s id))
-                               (catch Exception _ ::unreadable))]]
-        (if (= heads (get cache id))
+              :let [fp (try (into (sorted-set)
+                                  (map :event/id) (store/events s id))
+                            (catch Exception _ ::unreadable))]]
+        (if (= fp (get cache id))
           (do (swap! skipped inc)
-              (swap! verified assoc id heads))
+              (swap! verified assoc id fp))
           (let [r (try (with-out-str (verify-ticket parsed id))
                        (catch Exception e
                          (str "  FAIL  " (sid id)
                               " unverifiable: " (ex-message e) "\n")))]
             (if (str/includes? r "FAIL")
               (do (print r) (swap! failures inc))
-              (do (swap! verified assoc id heads)
+              (do (swap! verified assoc id fp)
                   (println (tint "2" (sid id))
                            (tint "32" "ok")
                            (str (count (store/events s id)) " event(s)")))))))

@@ -82,6 +82,29 @@
   (let [events (evs)]
     (is (= (red/ticket-state events) (red/ticket-state (shuffle events))))))
 
+(deftest fact-status-is-total-over-scalar-parents
+  ;; a corrupt/hostile store (or a botched merge) can hand the fold an
+  ;; event whose :event/parents is a scalar — well-formed! does not check
+  ;; the shape. The conflict walk (ancestor?) must stay total over it,
+  ;; treating a non-collection as no-parents, rather than raw-throwing
+  ;; contains?/mapcat — the same guarantee tik.dag/parent-ids gives the
+  ;; DAG walks. Two agreeing writes on a path exercise the fast-path
+  ;; ancestry check, so the tampered parents reach ancestor? on the
+  ;; everyday derivation path.
+  (doseq [bad-parents ["oops" 42 :kw]]
+    (let [w1 (event/assert-fact {:ticket tid :actor "seb"
+                                 :parents #{(:event/id (peek (evs)))}
+                                 :at (at "2026-07-08T10:05:00Z")
+                                 :path [:x] :value 1})
+          w2 (assoc (event/assert-fact {:ticket tid :actor "seb"
+                                        :parents #{(:event/id w1)}
+                                        :at (at "2026-07-08T10:06:00Z")
+                                        :path [:x] :value 1})
+                    :event/parents bad-parents)
+          state (red/ticket-state (conj (evs) w1 w2))]
+      (is (map? (red/fact-status state [:x]))
+          (str "scalar parents " (pr-str bad-parents) " fails well")))))
+
 (deftest reducer-is-total-over-unknown-types
   (let [weird {:event/id "sha256-x" :event/ticket tid
                :event/type :something/new :event/actor "future"

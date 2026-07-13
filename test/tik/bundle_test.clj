@@ -61,4 +61,30 @@
       (spit (io/file dest "actors") "")               ; empty registry
       (let [r (verify)]
         (is (= 1 (:exit r)))
-        (is (re-find #"absent from the actors registry" (:out r)))))))
+        (is (re-find #"absent from the actors registry" (:out r)))))
+    (testing "a registered actor cannot forge another actor's authorship"
+      ;; the threat is INSIDE the trust boundary: mallory is a fully
+      ;; registered principal, yet signs an event that names seb as its
+      ;; author. Binding find-principals alone would accept it (mallory
+      ;; is registered); the audit must instead verify the signature AS
+      ;; the event's own :event/actor, matching in-process L1.
+      (sh/sh "tar" "xzf" (str out) "-C" (str dest))   ; honest bytes + actors
+      (let [mkey (io/file dest "id_mallory")
+            _ (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-f" (str mkey))
+            mpub (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str mkey))))
+            _ (spit (io/file dest "actors")
+                    (str "mallory namespaces=\"tik-*\" " mpub "\n") :append true)
+            sig (->> (file-seq (io/file dest "tickets"))
+                     (filter #(re-find #"\.sig\." (.getName ^java.io.File %)))
+                     first)
+            event (io/file (str/replace (str sig) #"\.sig\..*$" ".edn"))]
+        ;; mallory re-signs seb's event (its bytes, hence its :event/actor
+        ;; "seb", are untouched — L0 still passes) and overwrites the sidecar
+        (sh/sh "ssh-keygen" "-Y" "sign" "-f" (str mkey) "-n" "tik-event"
+               (str event))
+        (io/copy (io/file (str event ".sig")) sig)
+        (.delete (io/file (str event ".sig")))
+        (let [r (verify)]
+          (is (= 1 (:exit r)))
+          (is (re-find #"does not verify as its event's actor" (:out r))
+              (:out r)))))))

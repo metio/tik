@@ -123,9 +123,10 @@
   (collect #(when (vector? %)
               (case (first %)
                 (:fact :fact=) [(second %)]
-                ;; :signed-by's over-path is optional — [:signed-by :role]
-                ;; (sign anything) is as valid as [:signed-by :role [:fact]]
-                ;; (sign over a specific fact); no path means no fact ref
+                ;; a :signed-by references the fact it ranges over; the
+                ;; pathless form is rejected by lint (a signature over
+                ;; nothing can never be satisfied), so here we read the
+                ;; over-path when present and contribute no ref otherwise
                 :signed-by (if-let [p (nth % 2 nil)] [p] [])
                 :different-person [(second %) (nth % 2 nil)]
                 nil))
@@ -140,6 +141,21 @@
                 [(first %) (nth % 2 nil)]
                 nil))
            guard))
+
+;; the clock anchors tik.guard/eval-elapsed knows how to resolve; any
+;; other reference throws on every derivation (see the lint clause below)
+(def ^:private elapsed-since-refs #{:ticket/create})
+
+(defn- elapsed-refs [guard]
+  (collect #(when (and (vector? %) (= :elapsed-since (first %)))
+              (nth % 1 nil))
+           guard))
+
+(defn- signed-by-forms
+  "The :signed-by guard vectors in a tree, verbatim — so lint can check
+  each carries an over-path (a pathless form can never be satisfied)."
+  [guard]
+  (collect #(when (and (vector? %) (= :signed-by (first %))) %) guard))
 
 (defn- stage-refs [guard]
   (collect #(when (and (vector? %) (= :stage-reached (first %)))
@@ -257,6 +273,28 @@
           {:level :error
            :msg (str "stage " (:stage/id s) " " op " duration "
                      (pr-str dur) " is not ISO-8601 (PT48H, P7D, PT30M)")})
+        ;; :elapsed-since's reference must be a clock anchor the runtime
+        ;; can resolve — an unknown one (a typo like :ticket/created)
+        ;; throws on every derivation, poisoning the ticket exactly as a
+        ;; bad duration does; validate the closed set at lint time too
+        (for [s stages, g (all-guards s)
+              ref (elapsed-refs g) :when (not (contains? elapsed-since-refs ref))]
+          {:level :error
+           :msg (str "stage " (:stage/id s) " :elapsed-since reference "
+                     (pr-str ref) " is unknown (supported: :ticket/create)")})
+        ;; a :signed-by over no fact ([:signed-by :role], or bare
+        ;; [:signed-by]) can never be satisfied — fact-status of a nil
+        ;; path is :absent — so a stage guarded by it is permanently
+        ;; blocked, and negating it ([:not [:signed-by :role]]) is
+        ;; vacuously true. Reject it rather than strand the ticket; a
+        ;; signature must range over a specific fact.
+        (for [s stages, g (all-guards s)
+              sb (signed-by-forms g) :when (< (count sb) 3)]
+          {:level :error
+           :msg (str "stage " (:stage/id s) " has " (pr-str sb)
+                     " — a :signed-by over no fact can never be satisfied;"
+                     " give it an over-path, e.g. [:signed-by "
+                     (pr-str (nth sb 1 :role)) " [:fact]].")})
         ;; ADR 0005: stratified negation
         (for [s stages, g (all-guards s)
               target (negated-stage-refs g)

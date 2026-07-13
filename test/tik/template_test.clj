@@ -84,9 +84,12 @@
   (is (not (tmpl/template? 42))))
 
 (deftest two_arg_signed_by_lints_rather_than_crashing
-  ;; a template that expands to a [:signed-by :role] guard (no over-path,
-  ;; a valid form) must LINT, not throw IndexOutOfBounds — the latent
-  ;; linter bug building tik adopt surfaced
+  ;; a template that expands to a pathless [:signed-by :role] guard must
+  ;; LINT (produce a normal diagnostic), never throw IndexOutOfBounds
+  ;; while inspecting its arity. The verdict is an :error: a signature
+  ;; over no fact can never be satisfied (fact-status of a nil path is
+  ;; :absent), so the stage would be permanently blocked — lint says so
+  ;; loudly rather than let the ticket strand.
   (let [out (tmpl/expand
              {:tik/params [:map [:approvers [:vector :string]]]
               :tik/template
@@ -96,6 +99,8 @@
                :process/stages
                [{:stage/id :a :guards []}
                 {:stage/id :b :after [:a] :guards [[:signed-by :approver]]}]}}
-             {:approvers ["alice"]})]
-    (is (not-any? #(= :error (:level %)) (tik.process/lint out))
-        "a 2-arg :signed-by definition lints without error")))
+             {:approvers ["alice"]})
+        errs (filter #(= :error (:level %)) (tik.process/lint out))]
+    (is (seq errs) "a pathless :signed-by lints (does not crash)")
+    (is (some #(re-find #":signed-by over no fact" (:msg %)) errs)
+        "and the diagnostic names the unsatisfiable signature")))

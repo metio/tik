@@ -133,6 +133,17 @@
 (defn- allowed? [who actor]
   (or (nil? actor) (= :anyone who) (contains? who actor)))
 
+(defn admissible?
+  "Whether `actor` may take contribution `action`: role membership AND
+  the four-eyes exclusion (the person who asserted both facts cannot
+  break their own tie). The single per-actor predicate the inbox and
+  the agent authorization gate (cli/agent-admissible) both project — one
+  definition, so the two renderings of one derivation cannot disagree.
+  A nil `actor` (the unfiltered view) admits everything."
+  [action actor]
+  (and (allowed? (:who action) actor)
+       (not (and (:not-actor action) (= actor (:not-actor action))))))
+
 (defn inbox
   "Group contributions from many tickets into the inbox: items sorted by
   how much each action unlocks, optionally filtered to what `actor` may
@@ -151,13 +162,9 @@
                 per-ticket
                 (remove :settled? per-ticket))
          stale-of (into {} (map (juxt :ticket :stale-ms)) live)
-         actions (cond->> (filter #(and (allowed? (:who %) actor)
-                                        ;; four-eyes excludes its :by from
-                                        ;; the actor view (they can't break
-                                        ;; the tie); the unfiltered inbox
-                                        ;; (actor nil) still lists it
-                                        (not (and (:not-actor %)
-                                                  (= actor (:not-actor %)))))
+         ;; four-eyes excludes its :by from the actor view (they can't
+         ;; break the tie); the unfiltered inbox (actor nil) still lists it
+         actions (cond->> (filter #(admissible? % actor)
                                   (mapcat :actions live))
                    role (filter #(= role (:role %))))
          items (for [[action contribs] (group-by :action actions)]

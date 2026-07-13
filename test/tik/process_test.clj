@@ -73,6 +73,39 @@
                              :guards [[:stage-reached :ghost]]}]}]
     (is (some #(re-find #"unknown stage :ghost" (:msg %)) (errors p)))))
 
+(deftest elapsed-since-reference-must-be-a-known-clock-anchor
+  ;; guard/eval-elapsed resolves only :ticket/create; any other ref
+  ;; throws on EVERY derivation of a ticket pinned to the definition.
+  ;; Lint validates the closed set exactly as it validates the duration.
+  (let [bad {:process/id :p :process/version 1
+             :process/stages
+             [{:stage/id :a :guards []}
+              {:stage/id :b :after [:a]
+               :guards [[:elapsed-since :ticket/created "PT48H"]]}]}   ; typo
+        good (assoc-in bad [:process/stages 1 :guards 0 1] :ticket/create)]
+    (is (some #(re-find #":elapsed-since reference :ticket/created is unknown"
+                        (:msg %))
+              (errors bad)))
+    (is (not-any? #(re-find #":elapsed-since reference" (:msg %))
+                  (errors good)))))
+
+(deftest pathless-signed-by-is-a-lint-error
+  ;; a :signed-by with no over-path ranges over the fact at path nil,
+  ;; whose status is always :absent — the guard can never pass, so the
+  ;; stage is permanently blocked (and [:not [:signed-by :r]] is
+  ;; vacuously true). Lint rejects it; the path form is fine.
+  (let [without {:process/id :p :process/version 1
+                 :process/roles {:r {:members ["a"]}}
+                 :process/stages
+                 [{:stage/id :a :guards []}
+                  {:stage/id :b :after [:a] :guards [[:signed-by :r]]}]}
+        bare (assoc-in without [:process/stages 1 :guards 0] [:signed-by])
+        with (assoc-in without [:process/stages 1 :guards 0]
+                       [:signed-by :r [:ok]])]
+    (is (some #(re-find #":signed-by over no fact" (:msg %)) (errors without)))
+    (is (some #(re-find #":signed-by over no fact" (:msg %)) (errors bare)))
+    (is (not-any? #(re-find #":signed-by over no fact" (:msg %)) (errors with)))))
+
 (deftest process-hash-is-stable-identity
   (is (= (process/process-hash sample)
          (process/process-hash (update sample :process/stages vec))))

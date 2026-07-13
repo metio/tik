@@ -104,6 +104,23 @@
         (is (map? (next-lens/contributions tid proc evs now ge/roles))
             (pr-str guard))))))
 
+(deftest admissible-projects-role-and-four-eyes
+  ;; the single predicate the inbox and the agent authorization gate
+  ;; (cli/agent-admissible) both project — so the gate never admits a
+  ;; write the inbox denies. Role membership AND the four-eyes exclusion:
+  ;; the person who asserted both facts cannot break their own tie, on
+  ;; either surface.
+  (let [tie {:who :anyone :not-actor "alice" :action [:set [:reviewa]]}
+        open {:who :anyone :action [:set [:x]]}
+        roled {:who #{"bob"} :action [:set [:y]]}]
+    (is (next-lens/admissible? tie "bob") "another actor may break the tie")
+    (is (not (next-lens/admissible? tie "alice"))
+        "the actor who asserted both facts may not")
+    (is (next-lens/admissible? tie nil) "the unfiltered view still lists it")
+    (is (next-lens/admissible? open "anyone-at-all"))
+    (is (next-lens/admissible? roled "bob"))
+    (is (not (next-lens/admissible? roled "carol")))))
+
 (deftest shared-missing-facts-aggregate-across-tickets
   (let [fresh-a (ticket 1)
         fresh-b (ticket 2)

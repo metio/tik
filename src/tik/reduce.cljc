@@ -177,7 +177,15 @@
   [state path]
   (let [writes (path-writes (:log state) path)]
     (when (< 1 (count writes))
-      (let [index (into {} (map (juxt :event/id :event/parents))
+      ;; index a parents value only when it is a collection, mirroring
+      ;; tik.dag/parent-ids: a corrupt/hostile store whose :event/parents
+      ;; is a scalar folds cleanly (well-formed! does not check the shape),
+      ;; and ancestor?'s contains?/mapcat must stay total over it rather
+      ;; than raw-throwing — this walk carries the same guarantee the DAG
+      ;; walk does. verify L0's schema check names the malformation.
+      (let [index (into {} (map (fn [e]
+                                  (let [p (:event/parents e)]
+                                    [(:event/id e) (when (coll? p) p)])))
                         (:log state))]
         ;; consecutive ancestry composes: every write is then an
         ;; ancestor of the newest, exactly one write is maximal, no

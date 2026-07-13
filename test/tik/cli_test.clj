@@ -4,11 +4,33 @@
   "The porcelain's parsing contract — the H9 surface: values people
   actually type must round-trip without EDN knowledge."
   (:require [tik.harness :as h]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [tik.cli :as cli]))
+            [tik.cli :as cli]
+            [tik.event :as event]
+            [tik.store.protocol :as store]))
 
 (def parse-value #'cli/parse-value)
+(def parse-args #'cli/parse-args)
+
+(deftest flags_accept_the_equals_form
+  ;; --flag=value is the near-universal CLI convention; parse-args must
+  ;; bind :flag to the value, not the junk key :flag=value. Parsing it
+  ;; wrong silently drops authorship (--actor), the signing key (--key),
+  ;; or the derivation clock (--at) and falls back exit-0, no diagnostic.
+  (testing "the value rides in the same token"
+    (is (= {:actor "alice"} (:opts (parse-args ["set" "id" "n=1" "--actor=alice"]))))
+    (is (= {:format "json"} (:opts (parse-args ["ls" "--format=json"]))))
+    (is (= {:key "/p/k"} (:opts (parse-args ["set" "id" "--key=/p/k"])))))
+  (testing "positionals carrying = (key=value facts) are untouched"
+    (is (= ["set" "id" "note=hi"]
+           (:pos (parse-args ["set" "id" "note=hi" "--actor=alice"])))))
+  (testing "the space form still works, and a bare flag is boolean true"
+    (is (= {:actor "bob"} (:opts (parse-args ["next" "--actor" "bob"]))))
+    (is (= {:apply true} (:opts (parse-args ["plan" "--apply"])))))
+  (testing "an empty value (--flag=) is the empty string, not a junk key"
+    (is (= {:title ""} (:opts (parse-args ["new" "--title="]))))))
 
 (deftest values_people_actually_type
   (testing "one complete EDN form stays EDN"
@@ -62,3 +84,38 @@
       (let [r (in root "no-such-command")]
         (is (integer? (:exit r)))
         (is (str/includes? (str (:out r) (:err r)) "not a command"))))))
+
+(defn- at [s] (java.time.Instant/parse s))
+
+(deftest verify_changed_catches_a_pruned_inner_ancestor
+  ;; --changed fingerprints the present event-id SET, not just the DAG
+  ;; heads: deleting a diamond-INTERIOR event leaves the tips unchanged
+  ;; (it stays referenced by the merge that named it a parent), so a
+  ;; head-only drift check would skip the ticket and report PASS on a
+  ;; store whose signed history was silently pruned. The id-set
+  ;; fingerprint forces a re-verify, which catches the missing parent.
+  (let [{:keys [root store]} (h/temp-store!)
+        _ (io/copy (io/file (System/getProperty "user.dir")
+                            "processes/support-request.edn")
+                   (io/file (doto (io/file root "processes") (.mkdirs))
+                            "support-request.edn"))
+        tid (java.util.UUID/fromString "018f2f6e-7c1a-7000-8000-0000000000d1")
+        c (event/create-ticket {:ticket tid :actor "seb" :at (at "2026-07-08T10:00:00Z")
+                                :title "diamond" :process :support-request})
+        a (event/assert-fact {:ticket tid :actor "seb" :parents #{(:event/id c)}
+                              :at (at "2026-07-08T10:01:00Z") :path [:p] :value 1})
+        b (event/assert-fact {:ticket tid :actor "seb" :parents #{(:event/id c)}
+                              :at (at "2026-07-08T10:02:00Z") :path [:q] :value 1})
+        m (event/assert-fact {:ticket tid :actor "seb"
+                              :parents #{(:event/id a) (:event/id b)}
+                              :at (at "2026-07-08T10:03:00Z") :path [:r] :value 1})]
+    (doseq [e [c a b m]] (store/append! store e))
+    (with-redefs-fn {#'cli/root (constantly (str root))}
+      (fn []
+        (is (zero? (:exit (cli/run-argv ["verify"])))
+            "the honest diamond verifies and writes the drift cache")
+        (.delete (io/file root "tickets" (str tid) "events"
+                          (str (:event/id a) ".edn")))
+        (let [r (cli/run-argv ["verify" "--changed"])]
+          (is (= 1 (:exit r))
+              "a pruned interior ancestor forces a re-verify, not a skip"))))))

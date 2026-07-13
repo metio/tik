@@ -743,3 +743,24 @@ end-to-end sender authentication in tik itself — then the crypto is
 localizable (a `tik.dkim` verifier taking raw message bytes), and the
 canonicalization gets its own byte-exact golden-vector test suite before
 anyone relies on it.
+
+## "Sign anything" semantics for a pathless :signed-by (deferred)
+
+`[:signed-by :role]` with no over-path currently has no satisfiable
+runtime meaning — `eval-signed-by` reads the fact at path `nil`, whose
+status is always `:absent`, so the guard can never pass (and lint now
+rejects it as an unsatisfiable, permanently-blocking guard). The old
+fact-refs comment glossed the pathless form as "(sign anything)", which
+hints at a real feature: a guard satisfied when ANY member of `role`
+authored at least one event on the ticket — "a manager has touched
+this," independent of which specific fact they signed. That is
+derivable and total (scan the log for an event whose `:event/actor` is
+in the role's members). DEFERRED, not adopted, because it is a KERNEL
+SEMANTICS change to the closed guard basis, not a bug fix: it needs a
+PLAN §19 verdict, the reference kernel updated in lockstep (the
+optimized/reference agreement property), and a decision on whether
+"signed anything" should also be witnessable/time-bounded like
+`:attested-within`. Until then the honest behavior is to reject the
+form at lint so no ticket strands silently. Trigger to revisit: a
+process that genuinely wants "a role member has participated" as a gate
+rather than "a role member signed THIS fact."
