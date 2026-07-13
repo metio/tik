@@ -40,6 +40,18 @@
     (is (= ["alice" "bob"] (get-in out [:process/roles :approver :members])))
     (is (not (has-marker? out)) "the expanded definition contains no markers")))
 
+(deftest marker-valued-param-cannot-survive-expansion
+  ;; a parameter whose VALUE is itself a marker vector would be substituted
+  ;; verbatim and lint as authoritative, violating marker-freedom. expand
+  ;; rejects it rather than bake it in.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo #"marker"
+       (tmpl/expand {:tik/params [:map [:default :any]]
+                     :tik/template {:process/id :evil :process/version 1
+                                    :process/facts {[:priority] [:tik/param :default]}
+                                    :process/stages [{:stage/id :s :guards []}]}}
+                    {:default [:tik/param :ghost]}))))
+
 (deftest conditional_splice_toggles_a_stage
   (testing "flag on: the legal stage is present"
     (let [out (tmpl/expand expense {:approvers ["a"] :with-legal true})]

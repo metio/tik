@@ -16,6 +16,30 @@
 (def tr {:ticket #uuid "018f2f6e-7c1a-7000-8000-00000000beef"
          :title "printer on fire" :stage :escalated})
 
+(deftest json-str-escapes-all-control-characters
+  ;; a hostile title with raw CR/TAB/other control chars must produce
+  ;; VALID JSON (RFC 8259 escapes U+0000–U+001F) — else a strict endpoint
+  ;; 400s and, since post! ran :throw false, the effect was ledgered
+  ;; as sent and never retried.
+  (let [json-str #'cli/json-str
+        title (str "line1" \return "line2" \tab "x" (char 1))
+        out (json-str {"title" title})]
+    (is (map? (json/parse-string out)) "the emitted JSON parses")
+    (is (not (str/includes? out (str \return))) "no raw CR in the output")
+    (is (= title (get (json/parse-string out) "title")) "round-trips the value")))
+
+(deftest email-message-strips-header-injection
+  ;; a display title carrying CR/LF must not forge a new header (Bcc:)
+  ;; that `sendmail -t` would honor (RFC 5322 header injection).
+  (let [em #'cli/email-message
+        msg (em {:to "ops@x" :from "tik@x"}
+                {:ticket "id1"
+                 :title (str "Pwned" \return \newline "Bcc: evil@x") :stage :s}
+                "body")
+        headers (take-while (complement str/blank?) (str/split-lines msg))]
+    (is (not-any? #(str/starts-with? % "Bcc:") headers)
+        "the CRLF in the title cannot split off a Bcc header")))
+
 (deftest every_adapter_speaks_its_service's_shape
   (testing "text-in-a-field family"
     (is (= "text" (-> (payload {:type :slack} tr) keys first)))

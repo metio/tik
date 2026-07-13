@@ -928,7 +928,12 @@
       (is (nil? (canonical/check-nesting
                  "{:a \"[[[[[[\" :b \\[ :c [1 2 3]}"))))
     (testing "parse-value answers with the literal string"
-      (is (= deep-text (cli-parse-value deep-text))))))
+      (is (= deep-text (cli-parse-value deep-text))))
+    (testing "an empty/whitespace value is the literal string, NOT the
+              internal eof sentinel (which would land in a signed fact)"
+      (is (= "" (cli-parse-value "")))
+      (is (= "  " (cli-parse-value "  ")))
+      (is (not= :tik.cli/eof (cli-parse-value ""))))))
 
 (deftest hash_valid_recursion_bomb_in_a_store_fails_well
   ;; the sharpest form: a store file whose name honestly hashes a

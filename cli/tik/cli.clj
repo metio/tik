@@ -253,6 +253,9 @@
                   (catch Exception _ [nil false]))]
     (cond
       (not ok?) s
+      ;; empty/whitespace-only input reads as the eof sentinel — that must
+      ;; never land in a signed fact; it is the literal (empty) string
+      (= ::eof v) s
       (symbol? v) (keyword (str v))
       :else v)))
 
@@ -607,7 +610,15 @@
         ops (guard-ops process)
         blocks (when (contains? ops :elapsed-since)
                  (explain/explain process events t roles reached))
-        dues (keep :due (mapcat :missing blocks))
+        ;; :due can sit at the top of a :time/not-elapsed reason OR nested
+        ;; inside an :or's :options — walk the whole reason tree so a
+        ;; time-gated row inside an [:or …] still expires at its due, not
+        ;; cached as if time-independent (a stale pre-due board row).
+        ;; `when` (not `and`) — `keep` drops nil but KEEPS false, so
+        ;; `(and (map? x) …)` would leak a Boolean into dues.
+        dues (keep #(when (map? %) (:due %))
+                   (tree-seq coll? #(if (map? %) (vals %) (seq %))
+                             (vec (mapcat :missing blocks))))
         fm (guard/fact-map state)]
     {:valid-until (cond
                     (contains? ops :attested-within) :never-cache
@@ -834,9 +845,11 @@
                           :parents (dag/heads (store/events s child))
                           :path [:title] :value child-title})
                       opts)))
-        (let [rel (keyword (str/replace
-                            (str/replace repo "/" ".")
-                            #"[^a-zA-Z0-9_.-]" "_"))]
+        ;; the link rel is the repo's OWN identity (repo-value: a keyword
+        ;; for a flat repo, the "group/repo" string for a nested one) — an
+        ;; injective key, so a flat `a.b` and a nested `a/b` never collapse
+        ;; to the same [:link] path and drop a child from the checklist.
+        (let [rel (repo-value repo)]
           (when-not (= (str child)
                        (red/fact-value state [:link rel]))
             (append!* s (event/assert-fact
@@ -2243,8 +2256,10 @@
 (defn- cmd-export
   "Materialize the current store (whatever backend) as a file/git store
   at <dir> — the auditor-grade interchange format where sha256sum(file)
-  = filename. Events only: blobs and the actors registry are filesystem
-  artifacts under TIK_ROOT and copy with cp."
+  = filename. Events AND their detached signature/witness sidecars travel
+  (so the export verifies authorship standalone, like `store migrate`);
+  blobs and the actors registry are filesystem artifacts under TIK_ROOT
+  and copy with cp."
   [{:keys [pos]}]
   (let [target (or (first pos) (die "usage: tik export <dir>"))
         dir (io/file target)
@@ -2252,13 +2267,24 @@
             (die (str "cannot create export directory: " target)))
         src (the-store)
         dest (fstore/file-store target)
-        n (try (reduce (fn [n id]
-                         (reduce (fn [n e] (store/append! dest e) (inc n))
-                                 n (store/events src id)))
-                       0 (store/ticket-ids src))
-               (catch java.io.IOException e
-                 (die (str "export to " target " failed: " (ex-message e)))))]
-    (println "exported" n "event(s) to" target)))
+        [n sc]
+        (try
+          (let [ids (store/ticket-ids src)
+                n (reduce (fn [n id]
+                            (reduce (fn [n e] (store/append! dest e) (inc n))
+                                    n (store/events src id)))
+                          0 ids)
+                sc (reduce (fn [c id]
+                             (reduce (fn [c name]
+                                       (store/put-sidecar!
+                                        dest id name (store/read-sidecar src id name))
+                                       (inc c))
+                                     c (store/sidecar-names src id)))
+                           0 ids)]
+            [n sc])
+          (catch java.io.IOException e
+            (die (str "export to " target " failed: " (ex-message e)))))]
+    (println "exported" n "event(s)," sc "sidecar(s) to" target)))
 
 (defn- cmd-process
   "process sign <name> [--key K]: publish the current definition —
@@ -2952,8 +2978,13 @@
   reply convention — the email IS a capability-scoped view of the same
   derivation."
   [{:keys [to from]} {:keys [ticket title stage]} explain-text]
-  (str "To: " to "\r\n"
-       "From: " (or from "tik") "\r\n"
+  (let [;; a header value must carry no CR/LF — else a hostile title
+        ;; injects a new header (Bcc: attacker@…) that `sendmail -t`
+        ;; honors (RFC 5322 header injection). Collapse them.
+        h #(str/replace (str %) #"[\r\n]+" " ")
+        title (h title)]
+   (str "To: " (h to) "\r\n"
+       "From: " (h (or from "tik")) "\r\n"
        ;; the ticket id is ENCODED in the Message-ID (per stage, so each
        ;; notification is a distinct message), never a stored map — a
        ;; reply's In-Reply-To carries it straight back to ticket-ref-of
@@ -2968,7 +2999,7 @@
        "  tik> key=value\r\n\r\n"
        "become facts on the ticket (everything else is kept as a"
        " comment), and the process moves on the moment the facts"
-       " arrive.\r\n"))
+       " arrive.\r\n")))
 
 (defn- json-str
   "Tiny JSON emitter for the flat payloads above — no dependency."
@@ -2980,7 +3011,15 @@
     (sequential? x) (str "[" (str/join "," (map json-str x)) "]")
     (string? x) (str "\"" (-> x (str/replace "\\" "\\\\")
                                (str/replace "\"" "\\\"")
-                               (str/replace "\n" "\\n"))
+                               ;; RFC 8259: EVERY control char U+0000–U+001F
+                               ;; must be escaped, not just \n — a raw CR/TAB
+                               ;; in a hostile title else emits invalid JSON.
+                               (str/replace #"[\u0000-\u001f]"
+                                            (fn [c]
+                                              (case c
+                                                "\n" "\\n" "\r" "\\r" "\t" "\\t"
+                                                (format "\\u%04x"
+                                                        (int (.charAt ^String c 0)))))))
                      "\"")
     :else (str x)))
 
@@ -3022,11 +3061,18 @@
   storing credentials anywhere but the operator's own config or, via
   {:env \"NAME\"} values, the process environment."
   [url body headers]
-  (let [post (requiring-resolve 'babashka.http-client/post)]
-    (post url {:headers (merge {"Content-Type" "application/json"}
-                               (resolve-headers headers))
-               :body body
-               :throw false})))
+  (let [post (requiring-resolve 'babashka.http-client/post)
+        r (post url {:headers (merge {"Content-Type" "application/json"}
+                                     (resolve-headers headers))
+                     :body body
+                     :throw false})]
+    ;; a non-2xx (429/400/5xx) is a DELIVERY FAILURE — throw so the caller
+    ;; counts it failed and leaves the ledger unmarked (retry next run),
+    ;; not silently ledger it as sent (at-least-once, ADR 0019).
+    (when-not (<= 200 (long (or (:status r) 0)) 299)
+      (throw (ex-info (str "POST " url " → HTTP " (:status r))
+                      {:status (:status r) :url url})))
+    r))
 
 (defn- cmd-effects
   "effects run [--config effects.edn] [--dry-run]
@@ -3084,8 +3130,12 @@
                            (explain/explain process events (now) roles)))
                     cmdv (or (:command sink) ["sendmail" "-t"])
                     r (apply sh/sh (concat cmdv [:in text]))]
+                ;; throw, don't die: die -> System/exit would abort the
+                ;; WHOLE run (remaining sinks/tickets) on the native binary;
+                ;; the catch below counts this one failed and continues
                 (when-not (zero? (:exit r))
-                  (die (str "email sink failed: " (:err r)))))
+                  (throw (ex-info (str "email sink failed: " (:err r))
+                                  {:sink :email}))))
               ;; the universal escape hatch: the webhook JSON on stdin
               ;; to ANY program — notify-send wrappers, SMS gateways,
               ;; syslog, a shop's existing paging script
@@ -3096,7 +3146,8 @@
                                                   (assoc sink :type :webhook)
                                                   tr))]))]
                 (when-not (zero? (:exit r))
-                  (die (str "command sink failed: " (:err r)))))
+                  (throw (ex-info (str "command sink failed: " (:err r))
+                                  {:sink :command}))))
               (post! (:url sink) (json-str (effect-payload sink tr))
                      (:headers sink)))
               (spit ledger-file (str key "\n") :append true)
@@ -3475,8 +3526,17 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                       (io/make-parents (io/file dst (.getName f)))
                       (io/copy f (io/file dst (.getName f))))
                     (do (io/make-parents dst) (io/copy src dst)))))]
-    (copy! (io/file (root) "tickets" (str id) "events")
-           (io/file bdir "tickets" (str id) "events"))
+    ;; materialize LOOSE <id>.edn events (event-bytes is pack-aware) plus
+    ;; their sidecars, rather than copying the on-disk dir — a packed store
+    ;; has no loose .edn for the bundle's coreutils verify.sh to sha256sum,
+    ;; so a bundle of a packed ticket would otherwise fail its own verify.
+    (let [evdir (io/file bdir "tickets" (str id) "events")]
+      (.mkdirs evdir)
+      (doseq [e (store/events s id)
+              :let [eid (:event/id e)]]
+        (io/copy (store/event-bytes s id eid) (io/file evdir (str eid ".edn"))))
+      (doseq [name (store/sidecar-names s id)]
+        (io/copy (store/read-sidecar s id name) (io/file evdir name))))
     (copy! (io/file (root) "tickets" (str id) "blobs")
            (io/file bdir "tickets" (str id) "blobs"))
     (copy! (io/file (root) "actors") (io/file bdir "actors"))

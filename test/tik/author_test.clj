@@ -52,7 +52,9 @@
   (is (= "PT48H" (author/parse-duration "48h")))
   (is (= "P7D" (author/parse-duration "7d")))
   (is (= "PT2H30M" (author/parse-duration "pt2h30m")))
-  (is (nil? (author/parse-duration "soonish"))))
+  (is (nil? (author/parse-duration "soonish")))
+  (is (nil? (author/parse-duration "Pfoo"))
+      "an invalid ISO-8601 P-form is rejected, not passed through to lint"))
 
 (deftest tests_skeleton_covers_every_outcome
   (let [d (author/build-process answers)

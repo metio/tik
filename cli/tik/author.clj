@@ -142,7 +142,13 @@
   (let [s (str/trim s)
         n (re-find #"\d+" s)]
     (condp re-matches s
-      #"(?i)P.*" (str/upper-case s)
+      ;; an ISO-8601 form passes through — but VALIDATED, so "Pfoo" is
+      ;; rejected (nil) rather than emitted into a definition that then
+      ;; fails its own lint. Duration/parse is exactly what :elapsed-since
+      ;; consumes, so accepting it here matches the guard.
+      #"(?i)P.*" (let [up (str/upper-case s)]
+                   (try (java.time.Duration/parse up) up
+                        (catch Exception _ nil)))
       #"(\d+)\s*m" (str "PT" n "M")
       #"(\d+)\s*h" (str "PT" n "H")
       #"(\d+)\s*d" (str "P" n "D")

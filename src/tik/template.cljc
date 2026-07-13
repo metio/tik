@@ -124,4 +124,13 @@
         (throw (ex-info "template parameters do not match :tik/params"
                         {:reason :template/bad-params
                          :errors (try (m/explain schema params) (catch #?(:clj Exception :cljs :default) _ nil))})))))
-  (expand-node params 0 (:tik/template template)))
+  (let [result (expand-node params 0 (:tik/template template))]
+    ;; the produced definition contains NO markers (docstring invariant) —
+    ;; a param VALUE that is itself a marker vector (e.g. {:k [:tik/param
+    ;; :other]}) would otherwise be substituted verbatim and survive lint
+    ;; as authoritative. Reject a smuggled marker rather than bake it in.
+    (when-let [m (some #(when (marker-head? %) %) (tree-seq coll? seq result))]
+      (throw (ex-info "a parameter value smuggled a template marker into the
+                       expanded definition"
+                      {:reason :template/marker-survived :node m})))
+    result))
