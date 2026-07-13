@@ -2449,11 +2449,12 @@
                     (and (seq hs) (re-matches #"^[ \t].*" l))
                     (recur (conj (pop hs) (str (peek hs) " " (str/trim l))) more)
                     :else (recur (conj hs l) more)))
-        header (fn [k]
-                 (some #(when-let [[_ v] (re-matches
-                                          (re-pattern (str "(?i)^" k ":\\s*(.*)$")) %)]
-                          (str/trim v))
-                       headers))]
+        header-vals (fn [k]
+                      (keep #(when-let [[_ v] (re-matches
+                                               (re-pattern (str "(?i)^" k ":\\s*(.*)$")) %)]
+                               (str/trim v))
+                            headers))
+        header (fn [k] (first (header-vals k)))]
     {:from (some->> (header "From")
                     (re-find #"[\w.+-]+@[\w.-]+")
                     str/lower-case)
@@ -2461,6 +2462,9 @@
      :in-reply-to (header "In-Reply-To")
      :references (header "References")
      :x-tik-ticket (header "X-Tik-Ticket")
+     ;; every Authentication-Results header (there can be several) — the
+     ;; DKIM verdict tik's own MTA stamped; the actor gate reads these
+     :auth-results (vec (header-vals "Authentication-Results"))
      :body (str/trim (str/join "\n" (rest body)))}))
 
 (defn- ticket-ref-of
@@ -2477,6 +2481,51 @@
                (re-find #"tik\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
                second)
       (second (re-find #"\[tik ([0-9a-f-]+)\]" (str subject)))))
+
+(defn- dkim-passing-domains
+  "The domains that pass DKIM per the message's `Authentication-Results`
+  headers, considering ONLY headers stamped by a trusted verifier
+  (authserv-id ∈ `trusted`). tik does not re-implement DKIM's fragile
+  canonicalization — it consumes the standard verdict of the MTA it runs
+  behind (RFC 8601). SECURITY: that MTA MUST strip inbound A-R headers
+  bearing its own authserv-id (RFC 8601 §5), or an attacker forges the
+  verdict; pinning `trusted` to your MTA's id is what makes this sound."
+  [{:keys [auth-results]} trusted]
+  (set
+   (for [ar auth-results
+              :let [authserv (str/lower-case (str/trim (first (str/split ar #";"))))]
+              :when (contains? trusted authserv)
+              method (rest (str/split ar #";"))
+              :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
+              :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
+              :when d]
+          (str/lower-case d))))
+
+(defn- dkim-aligned?
+  "Is `from-domain` authenticated by one of the `passing` DKIM domains —
+  exact, or a subdomain (relaxed DMARC-style alignment)?"
+  [from-domain passing]
+  (boolean (some #(or (= from-domain %) (str/ends-with? from-domain (str "." %)))
+                 passing)))
+
+(defn- require-dkim!
+  "When `bridge.edn` carries `:dkim {:require true :authserv-id …}`, gate
+  the sender BEFORE its From→actor mapping is trusted: the From domain
+  must be DKIM-authenticated by a trusted verifier, else refuse — the
+  sender→actor binding becomes cryptographic, not header-trusting."
+  [{:keys [dkim]} {:keys [from] :as msg}]
+  (when (:require dkim)
+    (let [trusted (set (map (comp str/lower-case str)
+                            (let [a (:authserv-id dkim)] (if (coll? a) a [a]))))
+          from-domain (some-> from (str/split #"@") second str/lower-case)
+          passing (dkim-passing-domains msg trusted)]
+      (when (empty? trusted)
+        (die ":dkim {:require true} needs :authserv-id (your MTA's verifier id)"))
+      (when-not (and from-domain (dkim-aligned? from-domain passing))
+        (die (str "refusing " (or from "an unsigned sender") ": no dkim=pass"
+                  " for " (or from-domain "its domain") " from a trusted"
+                  " verifier " trusted
+                  (when (seq passing) (str " (passing: " passing ")"))))))))
 
 (defn- cmd-bridge-oidc
   "bridge oidc: identity rung 2 (PLAN §9). Login against the config's
@@ -2591,6 +2640,9 @@
               (read-edn-file (io/file cfg-file))
               {})
         {:keys [from subject body] :as msg} (parse-rfc822 (slurp *in*))
+        ;; if configured, the From must be DKIM-authenticated before we
+        ;; trust it enough to attribute events to an actor
+        _ (require-dkim! cfg msg)
         actor-name (or (get-in cfg [:from->actor from])
                        (:default-actor cfg)
                        (die (str "unknown sender " from

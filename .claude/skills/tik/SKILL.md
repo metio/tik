@@ -74,7 +74,10 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   set automatically by the sender's client from what the outbound email
   sink stamped), or a `[tik <id>]` subject tag — else it opens a new ticket.
   A reply's `tik> key=value` lines become signed facts; everything else is a
-  comment.
+  comment. With `:dkim {:require true :authserv-id "your-mx"}` in the config,
+  the sender's From must be DKIM-authenticated (a `dkim=pass` from your MTA's
+  own `Authentication-Results`, pinned by `authserv-id` so a forged verdict
+  is ignored) before it is trusted enough to attribute events to an actor.
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
   device-flow (or `--user`/`--password`) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never
