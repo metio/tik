@@ -108,18 +108,23 @@
   {model {:input $/Mtok :output … :cache-read … :cache-write …}} the
   fold also prices them — money as a lens, never stored."
   [records pricing]
+  ;; a :work record body is arbitrary signed EDN (tik work record); a usage
+  ;; component that is not a number — a string, nil, or a :usage that is not
+  ;; even a map — counts as zero rather than throwing mid-fold.
   (let [add (fnil + 0)
+        num (fn [x] (if (number? x) x 0))
+        get* (fn [u k] (num (when (map? u) (get u k))))
         totals (reduce (fn [acc {:keys [usage] :as r}]
                          (let [model (:agent/model r)]
                            (-> acc
                                (update-in [model :input-tokens] add
-                                          (:input-tokens usage 0))
+                                          (get* usage :input-tokens))
                                (update-in [model :output-tokens] add
-                                          (:output-tokens usage 0))
+                                          (get* usage :output-tokens))
                                (update-in [model :cache-read-tokens] add
-                                          (:cache-read-tokens usage 0))
+                                          (get* usage :cache-read-tokens))
                                (update-in [model :cache-write-tokens] add
-                                          (:cache-write-tokens usage 0)))))
+                                          (get* usage :cache-write-tokens)))))
                        {}
                        (filter :usage records))]
     (if-not pricing

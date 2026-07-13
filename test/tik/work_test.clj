@@ -42,3 +42,25 @@
            (get-in raw [:observations :m])))
     (is (nil? (:priced raw)) "no pricing table, no money — ever")
     (is (pos? (get-in priced [:priced :m])))))
+
+(deftest usage-totals-is-total-over-hostile-bodies
+  ;; a :work record body is arbitrary signed EDN (tik work record); a usage
+  ;; component that is not a number, or a :usage that is not a map, counts
+  ;; as zero — the fold never throws mid-way and the renderer's (long v)
+  ;; over the result stays safe.
+  (let [hostile [{:agent/model "m" :usage {:input-tokens "lots"}}
+                 {:agent/model "m" :usage {:output-tokens nil}}
+                 {:agent/model "m" :usage "not-a-map"}
+                 {:agent/model "m" :usage {[:nested] 3}}
+                 {:agent/model "m" :usage {:input-tokens 1000000}}]]
+    (testing "non-numeric usage values fold to zero, real ones still count"
+      (is (= {:input-tokens 1000000 :output-tokens 0
+              :cache-read-tokens 0 :cache-write-tokens 0}
+             (get-in (work/usage-totals hostile nil) [:observations "m"]))))
+    (testing "pricing over the coerced totals is a plain number"
+      (is (= 3.0 (get-in (work/usage-totals hostile {"m" {:input 3.0}})
+                         [:priced "m"]))))
+    (testing "every folded value is a number — safe to (long v) in the lens"
+      (is (every? number?
+                  (vals (get-in (work/usage-totals hostile nil)
+                                [:observations "m"])))))))
