@@ -4,7 +4,8 @@
   (:require [clojure.edn]
             [clojure.test :refer [deftest is testing]]
             [tik.author :as author]
-            [tik.lint :as lint]))
+            [tik.lint :as lint]
+            [tik.templates :as templates]))
 
 (def answers
   {:name "expense-approval"
@@ -76,7 +77,7 @@
       (is (every? #(contains? stubs (:hint %)) (:process/stages d))))))
 
 (deftest every_template_builds_a_lintable_process
-  (doseq [[tname answers] author/templates]
+  (doseq [[tname answers] templates/templates]
     (let [d (author/build-process answers)]
       (is (empty? (filter #(= :error (:level %)) (lint/lint d)))
           (str tname ": " (pr-str (lint/lint d))))
@@ -84,11 +85,11 @@
       (is (:purpose answers) tname))))
 
 (deftest the_builtin_track_process_matches_the_shipped_file
-  (is (= author/track-process
+  (is (= templates/track-process
          (clojure.edn/read-string (slurp "processes/track.edn")))
       "one definition, two homes — they must never drift")
   (is (empty? (filter #(= :error (:level %))
-                      (lint/lint author/track-process)))))
+                      (lint/lint templates/track-process)))))
 
 (deftest scripted_interview_produces_the_same_answers
   (let [lines (atom ["tiny" "just one stage"          ; name, purpose
@@ -141,7 +142,7 @@
               (author/check {:name "x"
                              :stages [{:name "a" :after ["ghost"]}]}))))
   (testing "the clean templates stay clean apart from change-me"
-    (doseq [[tname answers] author/templates]
+    (doseq [[tname answers] templates/templates]
       (is (not-any? #(= :error (:level %)) (author/check answers)) tname))))
 
 (deftest rules_are_data_with_org_overrides

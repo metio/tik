@@ -15,9 +15,9 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [tik.args :refer [read-edn-file]]
-            [tik.author :as author]
             [tik.canonical :as canonical]
             [tik.store.sqlite :as sqlite]
+            [tik.templates :as templates]
             [tik.dag :as dag]
             [tik.process :as process]
             [tik.reduce :as red]
@@ -133,7 +133,7 @@
       ;; the built-in fallback works in an EMPTY store; materialize it
       ;; so the store stays self-contained and hand-editable
       (io/make-parents f)
-      (spit f (with-out-str (pp/pprint author/track-process))))
+      (spit f (with-out-str (pp/pprint templates/track-process))))
     (when-not (.exists f)
       (die (str "no process named '" name "' (looked for " f ")\n"
                 (if-let [ps (seq (available-processes))]

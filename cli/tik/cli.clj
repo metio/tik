@@ -31,6 +31,7 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [tik.author :as author]
+            [tik.templates :as templates]
             [tik.canonical :as canonical]
             [tik.causal :as causal]
             [tik.dag :as dag]
@@ -2276,9 +2277,9 @@ Each entry in :needs is one of:
       (exit! 0)))
   (let [answers (cond
                   (:template opts)
-                  (or (get author/templates (:template opts))
+                  (or (get templates/templates (:template opts))
                       (die (str "no template '" (:template opts) "' — available: "
-                                (str/join ", " (sort (keys author/templates))))))
+                                (str/join ", " (sort (keys templates/templates))))))
                   (:from opts) (read-edn-file (resolve-file (:from opts)))
                   :else (author/interview read-line #(do (print %) (flush))))
         answers (if (string? (:name opts))
