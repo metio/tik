@@ -2179,15 +2179,19 @@
       (println "test: PASS")
       (do (println (str "test: FAIL (" @failures ")")) (exit! 1)))))
 
-(defn- cmd-migrate
-  "Dry-run BY DEFAULT (ADR 0002): a migration is a consequence-bearing
-  decision, so show the derived-stage diff under the pinned definition
-  vs the proposed one before anyone commits. --apply appends the signed
-  :process/migrate event and archives the new definition by hash."
+(defn- cmd-reprocess
+  "reprocess <id> <new.edn> [--apply]: re-pin a ticket to a new process
+  definition. Dry-run BY DEFAULT (ADR 0002): a re-pin is a consequence-
+  bearing decision, so show the derived-stage diff under the pinned
+  definition vs the proposed one before anyone commits. --apply appends
+  the signed :process/migrate event and archives the new definition by
+  hash. (Distinct from `store migrate`, which converts the storage
+  backend — this changes a ticket's rules, not where events live.)"
   [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
-        new-file (or (second pos) (die "usage: tik migrate <id> <new.edn> [--apply]"))
+        new-file (or (second pos)
+                     (die "usage: tik reprocess <id> <new.edn> [--apply]"))
         _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
         new-proc (read-edn-file (io/file new-file))
         _ (when (print-problems (process/lint new-proc))
@@ -4164,8 +4168,8 @@ Each entry in :needs is one of:
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
-  tik migrate <id> <new.edn> [--reason R]       derived-stage diff under the proposed
-                [--apply]                       definition; dry-run unless --apply
+  tik reprocess <id> <new.edn> [--reason R]     re-pin a ticket to a new definition;
+                [--apply]                       derived-stage diff, dry-run unless --apply
   tik export <dir>                              materialize any store as the file/git
                                                 format (the audit interchange)
   tik bundle <id> [--out file.tgz]              ONE ticket as a portable evidence
@@ -4245,7 +4249,7 @@ Each entry in :needs is one of:
       "agent"   (cmd-agent parsed)
       "process" (cmd-process parsed)
       "sign"    (cmd-sign parsed)
-      "migrate" (cmd-migrate parsed)
+      "reprocess" (cmd-reprocess parsed)
       "export"  (cmd-export parsed)
       "sim"     (cmd-sim parsed)
       "test"    (cmd-test parsed)

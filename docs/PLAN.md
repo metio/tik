@@ -719,8 +719,8 @@ tik-process-namespaced publication signatures, ADR 0015 built)**; structural con
 over real git clones (`tik.sync-test`) and across environments over
 `git://` (`dev/h2-two-machines.sh`); SQLite EventStore backend
 (`tik init --sqlite`, `tik store migrate`, `tik export`, cross-backend
-contract tests); `tik migrate` (dry-run by default,
-`--apply` appends the signed event) with definitions archived
+contract tests); `tik reprocess` (re-pin a ticket to a new definition;
+dry-run by default, `--apply` appends the signed event) with definitions archived
 content-addressed under `processes/by-hash/` so pinning is honored on
 READ — grandfathered tickets keep deriving and verifying under their
 archived definition after the named file moves on — independently checked with coreutils; `comment`

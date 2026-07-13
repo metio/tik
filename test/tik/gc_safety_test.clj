@@ -44,7 +44,7 @@
     (spit (io/file procs "gct.edn") v1)
     (let [id (str/trim (:out (tik store "new" "gct" "--title" "x")))]
       (spit (io/file procs "gct.edn") v2)
-      (is (zero? (:exit (tik store "migrate" id "processes/gct.edn" "--apply")))
+      (is (zero? (:exit (tik store "reprocess" id "processes/gct.edn" "--apply")))
           "migrate v1 -> v2 succeeds")
 
       (testing "gc names the orphaned v1 definition, dry-run by default"

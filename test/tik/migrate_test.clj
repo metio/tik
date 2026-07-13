@@ -43,13 +43,13 @@
       (is (str/includes? (tik! root "status" id) "landed")))
 
     (testing "dry run names the regression and records nothing"
-      (let [out (tik! root "migrate" id (str v2-file))]
+      (let [out (tik! root "reprocess" id (str v2-file))]
         (is (str/includes? out ":landed would REGRESS"))
         (is (str/includes? out "dry run — nothing recorded")))
       (is (str/includes? (tik! root "status" id) "v1")))
 
     (testing "apply is a signed event that re-pins and re-derives"
-      (let [out (tik! root "migrate" id (str v2-file)
+      (let [out (tik! root "reprocess" id (str v2-file)
                       "--reason" "review requirement introduced" "--apply")]
         (is (str/includes? out "migrated")))
       (let [status (tik! root "status" id)]

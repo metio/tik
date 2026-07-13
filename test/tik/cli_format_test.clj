@@ -29,8 +29,8 @@
   renderers, or pass/fail audits — so --format does not apply."
   #{"actor" "adopt" "attach" "attest" "author" "board" "bridge" "bundle"
     "comment" "debug" "dispute" "effects" "export" "gc" "graph" "init"
-    "lint" "mcp" "migrate" "new" "pack" "probe" "process" "retract"
-    "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"
+    "lint" "mcp" "new" "pack" "probe" "process" "retract"
+    "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"
     "verify" "witness"})
 
 (def ^:private machine-invocations

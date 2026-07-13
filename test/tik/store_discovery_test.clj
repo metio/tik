@@ -312,7 +312,7 @@
                    :process/stages [{:stage/id :here :guards []}]}))
     (let [id (str/trim (:out (tik-at top nil "new" "track" "--title" "mover")))]
       (is (re-find #"rules:   :track v1" (:out (tik-at top nil "status" id))))
-      (tik-at top nil "migrate" id ".tik/processes/second.edn" "--apply"
+      (tik-at top nil "reprocess" id ".tik/processes/second.edn" "--apply"
               "--reason" "moving on")
       (testing "the pinned definition names the rules, not the create label"
         (is (re-find #"rules:   :second v3"

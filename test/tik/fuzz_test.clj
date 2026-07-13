@@ -575,7 +575,7 @@
                   ["ls" "--format" "yaml"] ["ls" "--format"]
                   ["query"] ["query" "bogus=1"] ["search"]
                   ["whatif" "zzzz" "+NOT-A-DURATION"]
-                  ["migrate" "zzzz"] ["bundle"] ["witness" "zzzz"]
+                  ["reprocess" "zzzz"] ["bundle"] ["witness" "zzzz"]
                   ["attest" "zzzz"] ["work" "??"]
                   ["author" "--from" "/nonexistent.edn"]
                   ["adopt"] ["adopt" "/nonexistent.tmpl.edn"]
