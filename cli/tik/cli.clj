@@ -1,5 +1,3 @@
-;; SPDX-FileCopyrightText: The tik Authors
-;; SPDX-License-Identifier: 0BSD
 (ns tik.cli
   "The tik CLI. babashka-first, JVM-compatible.
 
@@ -16,18 +14,17 @@
             [tik.audit :as audit]
             [tik.bridge :as bridge]
             [tik.effects :as effects]
+            [tik.storeops :as storeops]
             [tik.cli-core :refer [*exit-fn* all-ticket-ctx append!* archive-process!
-                                  by-hash-file cache-entries
-                                  cache-flush! cache-state context-facts db-path die
-                                  display-title event-ids-fingerprint exit! git-tracked?
-                                  guard-ops load-process load-process-arg
-                                  load-ticket now process-file process-name
-                                  put-signature! resolve-id resolve-id-soft root
-                                  signed-event-ids
-                                  signing-key store-established? store-holder
-                                  the-store ticket-ctx]]
+                                  by-hash-file cache-flush! context-facts die
+                                  display-title exit! link-facts link-lines link-row
+                                  load-process
+                                  load-process-arg load-ticket now
+                                  put-signature! resolve-file resolve-id
+                                  resolve-id-soft root signed-event-ids signing-key
+                                  store-established? the-store ticket-ctx
+                                  ticket-row]]
             [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [tik.author :as author]
@@ -54,9 +51,7 @@
                                 emit-data paint-stage paint-explain]]
             [tik.sign :as sign]
             [tik.stage :as stage]
-            [tik.store.file :as fstore]
-            [tik.store.protocol :as store]
-            [tik.store.sqlite :as sqlite])
+            [tik.store.protocol :as store])
   (:import (java.io File)
            (java.time Duration Instant)))
 
@@ -73,7 +68,6 @@
     (parse-instant at)
     (now)))
 
-(declare link-facts)
 
 ;; ------------------------------------------------ derived-state cache
 ;; ADR 0013 made disposable caches legal; ticket 11ae2438 settled this
@@ -86,99 +80,6 @@
 ;; processes reading the log clock (:attested-within) never cache.
 ;; Deleting the cache file can only cost a recompute, never truth.
 
-(defn- compute-row
-  "The full derivation for one ticket, shaped for the board lenses,
-  plus its cache validity: nil valid-until means the row holds until
-  the event set changes (reached is monotone without time guards);
-  a time-guarded ticket expires at the earliest unsatisfied :due;
-  :attested-within makes the ticket uncacheable."
-  [s t id]
-  (let [{:keys [events state process roles]} (ticket-ctx s id)
-        reached (stage/effective-reached process events t roles)
-        current (stage/current-stages process reached)
-        ops (guard-ops process)
-        blocks (when (contains? ops :elapsed-since)
-                 (explain/explain process events t roles reached))
-        ;; :due can sit at the top of a :time/not-elapsed reason OR nested
-        ;; inside an :or's :options — walk the whole reason tree so a
-        ;; time-gated row inside an [:or …] still expires at its due, not
-        ;; cached as if time-independent (a stale pre-due board row).
-        ;; `when` (not `and`) — `keep` drops nil but KEEPS false, so
-        ;; `(and (map? x) …)` would leak a Boolean into dues.
-        dues (keep #(when (map? %) (:due %))
-                   (tree-seq coll? #(if (map? %) (vals %) (seq %))
-                             (vec (mapcat :missing blocks))))
-        fm (guard/fact-map state)]
-    {:valid-until (cond
-                    (contains? ops :attested-within) :never-cache
-                    (and (contains? ops :elapsed-since) (seq dues))
-                    (inst-ms (first (sort dues)))
-                    :else nil)
-     :row {:title (display-title state)
-           :depth (if (seq current)
-                    (apply min (map #(count (stage/ancestor-closure
-                                             process %))
-                                    current))
-                    -1)
-           :repo (red/fact-value state [:repo])
-           :describe (some fm [[:description] [:summary] [:statement]])
-           :current (vec (sort-by str current))
-           :reached (vec (sort-by str reached))
-           :settled? (next-lens/settled-reached? process reached)
-           :last-event-ms (reduce (fn [acc e]
-                                    (max acc (inst-ms (:event/at e))))
-                                  0 events)
-           :links (vec (link-facts state))
-           :process-id (or (:process/id process) (:process state))
-           :haystack (str/lower-case
-                      (str (display-title state) " "
-                           (str/join " " (map (comp str :value)
-                                              (vals (:facts state))))))}}))
-
-(defn- error-row
-  "A poisoned ticket (unreadable event, unevaluable guard) must not
-  hide its healthy neighbors: aggregate lenses render it as a visible
-  error row and keep going. verify and single-ticket commands still
-  fail loudly — isolation is for LISTS, never for audits."
-  [id e]
-  {:title (str "cannot derive: " (ex-message e))
-   :error (ex-message e)
-   :current [:error]
-   :reached []
-   :settled? false
-   :depth -1
-   :last-event-ms 0
-   :links []
-   :haystack (str/lower-case (str id " " (ex-message e)))})
-
-(defn- ticket-row
-  "The board row for one ticket, cached when the store is file-backed:
-  a hit costs one directory listing, a miss folds and remembers.
-  Failures isolate into an error row (cached under the same
-  fingerprint, so a fixed ticket recovers on its next event)."
-  [s t id]
-  (try
-    (if-let [fp (event-ids-fingerprint id)]
-      (let [entry (get (cache-entries) (str id))]
-        (if (and entry
-                 (= fp (:fp entry))
-                 (let [vu (:valid-until entry)]
-                   (and (not= :never-cache vu)
-                        (or (nil? vu) (< (inst-ms t) vu)))))
-          (:row entry)
-          (let [{:keys [valid-until row]} (compute-row s t id)]
-            (swap! cache-state #(-> %
-                                    (assoc-in [:entries (str id)]
-                                              {:fp fp :valid-until valid-until
-                                               :row row})
-                                    (assoc :dirty? true)))
-            row)))
-      (:row (compute-row s t id)))
-    (catch Exception e
-      (error-row id e))))
-
-;; ---------------------------------------------------------------- commands
-
 (defn- open-ticket-rows
   "{:id :title :text} for every unsettled ticket — the duplicate
   radar's comparison set."
@@ -188,359 +89,6 @@
          :let [{:keys [settled? title haystack]} (ticket-row s t id)]
          :when (not settled?)]
      {:id id :title title :text haystack})))
-
-(declare link-row link-lines resolve-file)
-
-(defn- cmd-rollout
-  "rollout <process> [--parent <id>] [--parent-title T]
-  One ticket per git repository under the store holder, each carrying
-  its repo=<name> fact, all wired as link.<repo> facts on a parent —
-  a checklist whose checkmarks DERIVE from each child's evidence.
-  Idempotent: re-runs create only uncovered repos and missing links,
-  and report coverage. The parent's own completion stays a human
-  signature; guards never query across tickets (ADR 0004 scope).
-
-  Repos are found RECURSIVELY (GitLab-style group/subgroup/repo trees
-  work); descent stops at each repo, hidden directories are skipped.
-  A nested repo's identity is its relative path: the [:repo] fact and
-  queries use the string \"group/repo\", flat repos keep the keyword."
-  [{:keys [pos opts]}]
-  (let [proc-name (or (first pos)
-                      (die "usage: tik rollout <process> [--parent <id>] [--parent-title T]"))
-        proc (load-process proc-name)
-        holder (store-holder)
-        walk (fn walk [^File d rel]
-               (cond
-                 (str/starts-with? (.getName d) ".") []
-                 (.exists (io/file d ".git")) [rel]
-                 :else (mapcat #(walk % (str rel "/" (.getName ^File %)))
-                               (filter #(.isDirectory ^File %)
-                                       (or (.listFiles d) [])))))
-        repos (sort (mapcat #(walk % (.getName ^File %))
-                            (filter #(.isDirectory ^File %)
-                                    (or (.listFiles holder) []))))
-        repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
-                      (keyword %)
-                      ;; spaces, slashes, EDN-hostile characters: the
-                      ;; name rides as a string (mint would refuse a
-                      ;; keyword that cannot round-trip)
-                      %)
-        _ (when (empty? repos)
-            (die (str "no git repositories directly under " holder)))
-        s (the-store)
-        t (now)
-        all (vec (all-ticket-ctx s))
-        child-of (into {}
-                       (for [{:keys [id state]} all
-                             :when (= (keyword proc-name) (:process state))
-                             :let [r (red/fact-value state [:repo])]
-                             :when r]
-                         [(safe-name r) id]))
-        parent-title (or (:parent-title opts) (str proc-name " rollout"))
-        parent-id
-        (or (when-let [p (:parent opts)] (resolve-id s p))
-            (some (fn [{:keys [id state events process roles]}]
-                    (when (and (= parent-title (display-title state))
-                               (not (next-lens/settled? process events t roles)))
-                      id))
-                  all)
-            (let [track (load-process "track")
-                  e (event/create-ticket
-                     {:ticket (random-uuid) :actor (actor opts) :at (now)
-                      :title parent-title :process :track
-                      :version (:process/version track)
-                      :process-hash (archive-process! track)})]
-              (append!* s e opts)
-              (println (str "parent " (sid (:event/ticket e))
-                            " \"" parent-title "\""))
-              (:event/ticket e)))
-        created (atom 0)]
-    (doseq [repo repos]
-      (let [child-title (str proc-name ": " repo)
-            child (or (child-of repo)
-                      (let [e (event/create-ticket
-                               {:ticket (random-uuid) :actor (actor opts)
-                                :at (now) :title child-title
-                                :process (keyword proc-name)
-                                :version (:process/version proc)
-                                :process-hash (archive-process! proc)})]
-                        (append!* s e opts)
-                        (append!* s (event/assert-fact
-                                     {:ticket (:event/ticket e)
-                                      :actor (actor opts) :at (now)
-                                      :parents #{(:event/id e)}
-                                      :path [:repo] :value (repo-value repo)})
-                                  opts)
-                        (swap! created inc)
-                        (:event/ticket e)))
-            {:keys [state]} (ticket-ctx s parent-id)]
-        ;; re-runs converge names too: retitling is a superseding fact
-        (let [cstate (:state (ticket-ctx s child))]
-          (when-not (= child-title (display-title cstate))
-            (append!* s (event/assert-fact
-                         {:ticket child :actor (actor opts) :at (now)
-                          :parents (dag/heads (store/events s child))
-                          :path [:title] :value child-title})
-                      opts)))
-        ;; the link rel is the repo's OWN identity (repo-value: a keyword
-        ;; for a flat repo, the "group/repo" string for a nested one) — an
-        ;; injective key, so a flat `a.b` and a nested `a/b` never collapse
-        ;; to the same [:link] path and drop a child from the checklist.
-        (let [rel (repo-value repo)]
-          (when-not (= (str child)
-                       (red/fact-value state [:link rel]))
-            (append!* s (event/assert-fact
-                         {:ticket parent-id :actor (actor opts) :at (now)
-                          :parents (dag/heads (store/events s parent-id))
-                          :path [:link rel]
-                          :value (str child)})
-                      opts)))))
-    (println (str @created " ticket(s) created, "
-                  (- (count repos) @created) " already covered, "
-                  (count repos) " repo(s) total — the living checklist:"))
-    (let [{:keys [state]} (ticket-ctx s parent-id)]
-      (doseq [line (link-lines s t state)]
-        (println "  " line)))
-    (println (str "watch it: tik status " (sid parent-id)))))
-
-(defn- cmd-probe
-  "probe [<id>] [--command C]
-  Auto-derive facts from the world: for every open ticket carrying a
-  [:repo] fact (or just <id>), run the probe — an executable printing
-  key=value lines — with cwd set to that ticket's repository under the
-  store holder, and assert each CHANGED value as an ordinary signed
-  fact. The probe comes from --command or the :probe field of the
-  ticket's process definition (looked up by name — a porcelain
-  convenience, never derivation semantics). Idempotent by
-  construction: unchanged values assert nothing; stages derive from
-  whatever landed."
-  [{:keys [pos opts]}]
-  (let [s (the-store)
-        t (now)
-        holder (store-holder)
-        ;; a named ticket derives strictly (die if it cannot); the whole
-        ;; store isolates per ticket, so one poison never aborts the sweep
-        ctxs (if (seq pos)
-               [(load-ticket s (first pos))]
-               (all-ticket-ctx s))
-        changed (atom 0)]
-    (doseq [{:keys [id events state process roles]} ctxs
-            :let [repo (red/fact-value state [:repo])]
-            :when (and repo
-                       (or (seq pos)
-                           (not (next-lens/settled? process events t roles))))
-            :let [repo-name (safe-name repo)
-                  dir (io/file holder repo-name)
-                  probe (or (:command opts)
-                            (let [f (process-file (process-name state))]
-                              (when (.exists f)
-                                (:probe (read-edn-file f)))))]]
-      (cond
-        (nil? probe) nil
-        (not (.isDirectory dir))
-        (println (str (sid id) " " repo-name
-                      ": no such directory under " holder " — skipped"))
-        :else
-        (let [^File f (resolve-file probe)
-              argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
-              r (apply sh/sh (concat argv
-                                     [:dir (str dir)
-                                      :env (assoc (into {} (System/getenv))
-                                                  "TIK_TICKET" (str id)
-                                                  "TIK_REPO" repo-name)]))
-              before (stage/effective-reached process events t roles)]
-          (if-not (zero? (:exit r))
-            (println (str (sid id) " " repo-name ": probe failed — "
-                          (str/trim (:err r))))
-            (do
-              (doseq [line (str/split-lines (:out r))
-                      :let [[_ k v] (re-matches #"\s*([^=\s]+)=(.*)" line)]
-                      :when k
-                      :let [path (parse-key k)
-                            value (typed-value process path (str/trim v))]
-                      :when (not= value (red/fact-value
-                                         (red/ticket-state (store/events s id))
-                                         path))]
-                (append!* s (event/assert-fact
-                             {:ticket id :actor (actor opts) :at (now)
-                              :parents (dag/heads (store/events s id))
-                              :path path :value value})
-                          opts)
-                (swap! changed inc)
-                (println (str (sid id) " " repo-name ": " k " = "
-                              (pr-str value))))
-              (let [evs (store/events s id)
-                    after (stage/effective-reached process evs (now) roles)
-                    gained (sort-by str (remove before after))]
-                (when (seq gained)
-                  (println (str (sid id) " " repo-name " -> "
-                                (tint "32" (str/join ", " (map name gained))))))))))))
-    (println (str @changed " fact(s) derived from the world — signed like"
-                  " any other claim"))))
-
-(defn- cmd-pack
-  "pack [<id>]: consolidate settled tickets' loose event files into
-  one content-addressed events.pack + index per ticket (given an id,
-  pack that ticket regardless of settledness). The pack holds the
-  exact per-event hashed byte regions, so verify still checks every
-  event against its id — as a slice. Appends after packing land loose
-  and merge on read; re-packing folds them in. Fewer inodes, fewer
-  git objects, and the board fingerprints a packed ticket by one
-  address instead of a directory listing."
-  [{:keys [pos]}]
-  (when (db-path)
-    (die "pack is for the file store — the SQLite backend is already one file"))
-  (let [s (the-store)
-        t (now)
-        ids (if (seq pos)
-              [(resolve-id s (first pos))]
-              (for [{:keys [id events process roles]} (all-ticket-ctx s)
-                    :when (next-lens/settled? process events t roles)]
-                id))
-        packed (atom 0)]
-    (doseq [id ids
-            :let [r (fstore/pack! (root) id)]
-            :when r]
-      (swap! packed inc)
-      (println (str (sid id) " packed " (:packed r)
-                    " event(s) -> " (shash (:pack r)) "…")))
-    (println (str @packed " ticket(s) packed"))
-    (cache-flush!)))
-
-(defn- cmd-gc
-  "gc [--apply]: collect ORPHANED archived process definitions — files
-  in processes/by-hash/ that NO ticket currently pins (every ticket that
-  once used one has since migrated away). Dry-run BY DEFAULT (ADR 0002
-  caution): lists candidates and states the one cost.
-
-  Removing an orphan is safe for the load-bearing surfaces: `verify`
-  stays PASS and every CURRENT derivation is unchanged — the pinned hash
-  of every live ticket still resolves, because an orphan is by definition
-  pinned by none. The only thing lost is historical time-travel: `status
-  <id> --at <before the migration that abandoned it>` then derives under
-  the current named rules with a warning, instead of the exact old
-  definition. The store is a git repo, so a removed definition is
-  recoverable from history. Value is tidiness, not disk — definitions are
-  a few KB."
-  [{:keys [opts]}]
-  (let [s (the-store)
-        ;; live = every process-hash a ticket currently pins
-        live (into #{}
-                   (keep #(:process-hash (red/ticket-state (store/events s %))))
-                   (store/ticket-ids s))
-        dir (io/file (root) "processes" "by-hash")
-        archives (when (.isDirectory dir)
-                   (filter #(str/ends-with? (.getName ^File %) ".edn")
-                           (.listFiles dir)))
-        orphans (remove #(contains? live (str/replace (.getName ^File %)
-                                                      #"\.edn$" ""))
-                        archives)]
-    (if (empty? orphans)
-      (println (str "gc: no orphaned definitions — every archived process"
-                    " is currently pinned by a ticket"))
-      (do
-        (println (str (count orphans) " orphaned definition(s), pinned by no"
-                      " ticket:"))
-        (doseq [^File f (sort-by #(.getName ^File %) orphans)]
-          (println (str "  " (str/replace (.getName f) #"\.edn$" ""))))
-        (println (str "removing these keeps `verify` PASS and every current"
-                      " derivation intact;"))
-        (println (str "only `status --at <before a migration>` degrades to a"
-                      " warning + current-"))
-        (println "rules fallback for tickets that once used them.")
-        (if (:apply opts)
-          (do (doseq [^File f orphans] (io/delete-file f))
-              (println (str "removed " (count orphans) " definition(s)."
-                            (if (git-tracked? (root))
-                              " Recoverable from git history if needed."
-                              (str " This store is NOT version-controlled —"
-                                   " back up first (or `git init` the store)"
-                                   " if you might ever need the old rules.")))))
-          (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
-
-(defn- cmd-init
-  "init [--sqlite] [--hidden]: mark this directory as a store. The
-  backend is the store's own shape (ADR 0020): the default is the
-  file/git store (a `tickets/` tree, sha256sum-auditable); --sqlite is
-  the single-file operational store (a `tik.db`). --hidden puts
-  everything inside .tik/ (one dot-entry beside your repos — the
-  portfolio-store shape); without it the store is the classic visible
-  layout. Either marker makes every tik command work from ANY
-  directory beneath this one. Switch backends later with `tik store
-  migrate`."
-  [{:keys [opts]}]
-  (let [here (.getCanonicalFile (io/file "."))
-        store (if (:hidden opts) (io/file here ".tik") here)
-        tickets (io/file store "tickets")
-        db (io/file store "tik.db")]
-    (when (or (.isDirectory tickets) (.isFile db))
-      (die (str "already a store: " store)))
-    (.mkdirs store)
-    (if (:sqlite opts)
-      (do (sqlite/sqlite-store (str db))       ; init! writes the schema file
-          (println (str "SQLite store initialized at " db)))
-      (do (.mkdirs tickets)
-          (println (str "store initialized at " store))))
-    (println (str "every tik command run at or below " here
-                  " now uses it — try:"))
-    (println "  tik new track --title \"the first thing\"")
-    (println "  tik author --template bug")))
-
-(defn- delete-tree!
-  "Remove a file or directory tree, postorder (contents before the dir)."
-  [^File f]
-  (doseq [^File c (reverse (file-seq f))] (.delete c)))
-
-(defn- cmd-store
-  "store migrate --to sqlite|file: convert THIS store's event backend in
-  place (ADR 0020). Reads every event AND every detached sidecar
-  (signatures/witnesses) from the current backend, writes them to the
-  other (append is idempotent by id), verifies the full event-id and
-  sidecar-name sets carried over, then removes the source. Lossless —
-  authorship and countersignatures travel with the events (both backends
-  hold sidecars, ADR 0007). Blobs, the actors registry, and processes are
-  untouched — they live filesystem-side regardless of backend."
-  [{:keys [pos opts]}]
-  (when-not (= "migrate" (first pos))
-    (die "usage: tik store migrate --to sqlite|file"))
-  (let [to (some-> (:to opts) str keyword)
-        _ (when-not (#{:sqlite :file} to)
-            (die "usage: tik store migrate --to sqlite|file"))
-        r (root)
-        db (io/file r "tik.db")
-        tickets (io/file r "tickets")
-        from (if (.isFile db) :sqlite :file)]
-    (when (= from to)
-      (die (str "this store is already " (name to) "-backed")))
-    (let [src (the-store)
-          ids (vec (store/ticket-ids src))
-          events (vec (mapcat #(store/events src %) ids))
-          src-ids (set (map :event/id events))
-          sidecars (vec (for [id ids, name (store/sidecar-names src id)]
-                          [id name]))
-          dst (case to
-                :sqlite (sqlite/sqlite-store (str db))
-                :file (fstore/file-store r))]
-      ;; move bytes only — no re-signing (migration preserves authorship,
-      ;; it does not re-author); events then their endorsements
-      (doseq [e events] (store/append! dst e))
-      (doseq [[id name] sidecars]
-        (store/put-sidecar! dst id name (store/read-sidecar src id name)))
-      (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
-                                 (store/ticket-ids dst)))
-            dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))]
-        (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars))
-          (die (str "migration incomplete: " (count src-ids) " event(s)/"
-                    (count sidecars) " sidecar(s) read, " (count dst-ids) "/"
-                    dst-sidecars " written — source left intact for retry"))))
-      (case from
-        :sqlite (doseq [suffix ["" "-journal" "-wal" "-shm"]]
-                  (.delete (io/file (str db suffix))))
-        :file (delete-tree! tickets))
-      (println (str "migrated " (count ids) " ticket(s), " (count src-ids)
-                    " event(s), " (count sidecars) " sidecar(s) to the "
-                    (name to) " backend"))
-      (println "run `tik verify` to confirm the derivation is unchanged"))))
 
 (defn- field-hint
   "A short type hint for prompting one template parameter."
@@ -856,63 +404,6 @@
                   :path (str "comment/" at) :hash hash})
               opts)
     (println "ok" hash)))
-
-(defn- link-facts
-  "[{:rel :target}] for every present [:link <rel>] fact — the
-  reference is DECLARED (an id is stable), the target's stage is
-  DERIVED at render time, which is why links cannot rot the way
-  prose status reports do."
-  [state]
-  (for [[path _] (:facts state)
-        :when (and (= 2 (count path)) (= :link (first path)))
-        :let [{:keys [status value]} (red/fact-status state path)]
-        :when (= :present status)]
-    ;; strip a leading ':' so a link stored as a keyword (an older set,
-    ;; a hand-edit) still resolves — targets are ids, never keywords
-    {:rel (second path) :target (str/replace (str value) #"^:" "")}))
-
-(defn- link-row
-  "One link as data for sorted display: the derived stage leads, the
-  rel shows only when the title does not already say it, and :sort
-  orders by the TARGET process\u2019s own stage depth (ancestor count) —
-  parallel branches tie and fall back to names. Unresolved links sink
-  to the end instead of crashing a lens."
-  [s t {:keys [rel target]}]
-  (if-let [target-id (resolve-id-soft s target)]
-    (let [{:keys [current title depth settled?]} (ticket-row s t target-id)
-          stages (str/join ", " (map name current))]
-      {:sort [0 depth stages title]
-       :stage (str "(" stages ")")
-       :stage-kws (set current)
-       :settled? settled?
-       :parked? (contains? (set current) :parked)
-       :rest (str (sid target-id) " " title
-                  ;; nested-repo rels dot their slashes; either spelling
-                  ;; in the title makes the suffix redundant
-                  (when-not (or (str/includes? title (safe-name rel))
-                                (str/includes? title (str/replace (safe-name rel)
-                                                                  "." "/")))
-                    (str "  [" (safe-name rel) "]")))})
-    {:sort [1 0 "" (str target)]
-     :stage "(unresolved)"
-     :stage-kws #{}
-     :rest (str target "  [" (safe-name rel) "]")}))
-
-(defn- link-lines
-  "Every link of `state`, rendered and ordered for humans: least
-  progressed first, per the targets\u2019 own process ordering; `only`
-  narrows to rows whose current stages include it. The stage column
-  pads to the widest stage on THIS list and paints like ls does."
-  ([s t state] (link-lines s t state nil))
-  ([s t state only]
-   (let [links (if (map? state) (link-facts state) state)
-         rows (cond->> (sort-by :sort (map #(link-row s t %) links))
-                only (filter #(contains? (:stage-kws %) only)))
-         width (transduce (map (comp count :stage)) max 0 rows)]
-     (for [{:keys [stage rest settled? parked?]} rows]
-       (str (paint-stage (format (str "%-" (max 1 width) "s") stage)
-                         settled? parked?)
-            "  " rest)))))
 
 (defn- unmet-deps
   "The tickets this one `[:link :depends-on]`s that are NOT yet settled —
@@ -1502,16 +993,6 @@
 (defn- sim-load [^File f]
   (let [p (read-edn-file f)]
     (when-not (print-problems (lint/lint p)) p)))
-
-(defn- resolve-file
-  "A file argument as given, else relative to the store root — so
-  `tik test processes/bug.tests.edn` works both inside the store and
-  wherever TIK_ROOT points from."
-  ^File [path]
-  (let [as-given (io/file path)]
-    (if (or (.exists as-given) (.isAbsolute as-given))
-      as-given
-      (io/file (root) path))))
 
 (defn- cmd-sim
   "Live process design: a scratch ticket in memory, a definition that
@@ -2624,12 +2105,12 @@ Each entry in :needs is one of:
 
 (defn- dispatch [cmd parsed]
   (case cmd
-      "init"    (cmd-init parsed)
-      "store"   (cmd-store parsed)
-      "rollout" (cmd-rollout parsed)
-      "probe"   (cmd-probe parsed)
-      "pack"    (cmd-pack parsed)
-      "gc"      (cmd-gc parsed)
+      "init"    (storeops/cmd-init parsed)
+      "store"   (storeops/cmd-store parsed)
+      "rollout" (storeops/cmd-rollout parsed)
+      "probe"   (storeops/cmd-probe parsed)
+      "pack"    (storeops/cmd-pack parsed)
+      "gc"      (storeops/cmd-gc parsed)
       "plan"    (cmd-plan parsed)
       "show"    (cmd-show parsed)
       "new"     (cmd-new parsed)
@@ -2751,6 +2232,8 @@ Each entry in :needs is one of:
             (when-not (contains? (ex-data e) ::exit)
               (vreset! code 1))))))
     {:exit @code :out (str out) :err (str err)}))
+
+
 
 
 

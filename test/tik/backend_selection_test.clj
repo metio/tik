@@ -104,7 +104,7 @@
         (tik.cli/run-argv ["new" "grace" "--title" "g"])
         (let [id (java.util.UUID/fromString
                   (uuid-in (:out (tik.cli/run-argv ["ls" "--edn"]))))
-              compute-row @#'tik.cli/compute-row
+              compute-row @#'tik.cli-core/compute-row
               the-store @#'tik.cli-core/the-store]
           (is (number? (:valid-until (compute-row (the-store)
                                                   (java.time.Instant/now) id)))

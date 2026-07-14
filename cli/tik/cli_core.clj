@@ -19,12 +19,17 @@
             [tik.store.sqlite :as sqlite]
             [tik.templates :as templates]
             [tik.dag :as dag]
+            [tik.explain :as explain]
+            [tik.guard :as guard]
+            [tik.next :as next-lens]
             [tik.process :as process]
             [tik.reduce :as red]
-            [tik.render :refer [sid]]
+            [tik.render :refer [paint-stage sid]]
             [tik.sign :as sign]
+            [tik.stage :as stage]
             [tik.store.file :as fstore]
-            [tik.store.protocol :as store])
+            [tik.store.protocol :as store]
+            [tik.text :refer [safe-name]])
   (:import (java.io File)
            (java.time Instant)))
 
@@ -444,3 +449,162 @@
 
 (defn root-dir-roots ^File [] (io/file (root) "roots"))
 
+(defn link-facts
+  "[{:rel :target}] for every present [:link <rel>] fact — the
+  reference is DECLARED (an id is stable), the target's stage is
+  DERIVED at render time, which is why links cannot rot the way
+  prose status reports do."
+  [state]
+  (for [[path _] (:facts state)
+        :when (and (= 2 (count path)) (= :link (first path)))
+        :let [{:keys [status value]} (red/fact-status state path)]
+        :when (= :present status)]
+    ;; strip a leading ':' so a link stored as a keyword (an older set,
+    ;; a hand-edit) still resolves — targets are ids, never keywords
+    {:rel (second path) :target (str/replace (str value) #"^:" "")}))
+
+(defn error-row
+  "A poisoned ticket (unreadable event, unevaluable guard) must not
+  hide its healthy neighbors: aggregate lenses render it as a visible
+  error row and keep going. verify and single-ticket commands still
+  fail loudly — isolation is for LISTS, never for audits."
+  [id e]
+  {:title (str "cannot derive: " (ex-message e))
+   :error (ex-message e)
+   :current [:error]
+   :reached []
+   :settled? false
+   :depth -1
+   :last-event-ms 0
+   :links []
+   :haystack (str/lower-case (str id " " (ex-message e)))})
+
+(defn compute-row
+  "The full derivation for one ticket, shaped for the board lenses,
+  plus its cache validity: nil valid-until means the row holds until
+  the event set changes (reached is monotone without time guards);
+  a time-guarded ticket expires at the earliest unsatisfied :due;
+  :attested-within makes the ticket uncacheable."
+  [s t id]
+  (let [{:keys [events state process roles]} (ticket-ctx s id)
+        reached (stage/effective-reached process events t roles)
+        current (stage/current-stages process reached)
+        ops (guard-ops process)
+        blocks (when (contains? ops :elapsed-since)
+                 (explain/explain process events t roles reached))
+        ;; :due can sit at the top of a :time/not-elapsed reason OR nested
+        ;; inside an :or's :options — walk the whole reason tree so a
+        ;; time-gated row inside an [:or …] still expires at its due, not
+        ;; cached as if time-independent (a stale pre-due board row).
+        ;; `when` (not `and`) — `keep` drops nil but KEEPS false, so
+        ;; `(and (map? x) …)` would leak a Boolean into dues.
+        dues (keep #(when (map? %) (:due %))
+                   (tree-seq coll? #(if (map? %) (vals %) (seq %))
+                             (vec (mapcat :missing blocks))))
+        fm (guard/fact-map state)]
+    {:valid-until (cond
+                    (contains? ops :attested-within) :never-cache
+                    (and (contains? ops :elapsed-since) (seq dues))
+                    (inst-ms (first (sort dues)))
+                    :else nil)
+     :row {:title (display-title state)
+           :depth (if (seq current)
+                    (apply min (map #(count (stage/ancestor-closure
+                                             process %))
+                                    current))
+                    -1)
+           :repo (red/fact-value state [:repo])
+           :describe (some fm [[:description] [:summary] [:statement]])
+           :current (vec (sort-by str current))
+           :reached (vec (sort-by str reached))
+           :settled? (next-lens/settled-reached? process reached)
+           :last-event-ms (reduce (fn [acc e]
+                                    (max acc (inst-ms (:event/at e))))
+                                  0 events)
+           :links (vec (link-facts state))
+           :process-id (or (:process/id process) (:process state))
+           :haystack (str/lower-case
+                      (str (display-title state) " "
+                           (str/join " " (map (comp str :value)
+                                              (vals (:facts state))))))}}))
+
+(defn ticket-row
+  "The board row for one ticket, cached when the store is file-backed:
+  a hit costs one directory listing, a miss folds and remembers.
+  Failures isolate into an error row (cached under the same
+  fingerprint, so a fixed ticket recovers on its next event)."
+  [s t id]
+  (try
+    (if-let [fp (event-ids-fingerprint id)]
+      (let [entry (get (cache-entries) (str id))]
+        (if (and entry
+                 (= fp (:fp entry))
+                 (let [vu (:valid-until entry)]
+                   (and (not= :never-cache vu)
+                        (or (nil? vu) (< (inst-ms t) vu)))))
+          (:row entry)
+          (let [{:keys [valid-until row]} (compute-row s t id)]
+            (swap! cache-state #(-> %
+                                    (assoc-in [:entries (str id)]
+                                              {:fp fp :valid-until valid-until
+                                               :row row})
+                                    (assoc :dirty? true)))
+            row)))
+      (:row (compute-row s t id)))
+    (catch Exception e
+      (error-row id e))))
+
+;; ---------------------------------------------------------------- commands
+
+(defn link-row
+  "One link as data for sorted display: the derived stage leads, the
+  rel shows only when the title does not already say it, and :sort
+  orders by the TARGET process\u2019s own stage depth (ancestor count) —
+  parallel branches tie and fall back to names. Unresolved links sink
+  to the end instead of crashing a lens."
+  [s t {:keys [rel target]}]
+  (if-let [target-id (resolve-id-soft s target)]
+    (let [{:keys [current title depth settled?]} (ticket-row s t target-id)
+          stages (str/join ", " (map name current))]
+      {:sort [0 depth stages title]
+       :stage (str "(" stages ")")
+       :stage-kws (set current)
+       :settled? settled?
+       :parked? (contains? (set current) :parked)
+       :rest (str (sid target-id) " " title
+                  ;; nested-repo rels dot their slashes; either spelling
+                  ;; in the title makes the suffix redundant
+                  (when-not (or (str/includes? title (safe-name rel))
+                                (str/includes? title (str/replace (safe-name rel)
+                                                                  "." "/")))
+                    (str "  [" (safe-name rel) "]")))})
+    {:sort [1 0 "" (str target)]
+     :stage "(unresolved)"
+     :stage-kws #{}
+     :rest (str target "  [" (safe-name rel) "]")}))
+
+(defn link-lines
+  "Every link of `state`, rendered and ordered for humans: least
+  progressed first, per the targets\u2019 own process ordering; `only`
+  narrows to rows whose current stages include it. The stage column
+  pads to the widest stage on THIS list and paints like ls does."
+  ([s t state] (link-lines s t state nil))
+  ([s t state only]
+   (let [links (if (map? state) (link-facts state) state)
+         rows (cond->> (sort-by :sort (map #(link-row s t %) links))
+                only (filter #(contains? (:stage-kws %) only)))
+         width (transduce (map (comp count :stage)) max 0 rows)]
+     (for [{:keys [stage rest settled? parked?]} rows]
+       (str (paint-stage (format (str "%-" (max 1 width) "s") stage)
+                         settled? parked?)
+            "  " rest)))))
+
+(defn resolve-file
+  "A file argument as given, else relative to the store root — so
+  `tik test processes/bug.tests.edn` works both inside the store and
+  wherever TIK_ROOT points from."
+  ^File [path]
+  (let [as-given (io/file path)]
+    (if (or (.exists as-given) (.isAbsolute as-given))
+      as-given
+      (io/file (root) path))))
