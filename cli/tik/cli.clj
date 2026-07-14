@@ -9,544 +9,23 @@
   - actor:       --actor, else $TIK_ACTOR, else the OS user
   - fact keys:   dotted paths -> keyword vectors
   - fact values: parsed as EDN; bare words become keywords"
-  (:require [tik.args :refer [parse-args actor parse-key
-                              read-edn-file slurp-existing typed-value]]
+  (:require [tik.args :refer [parse-args]]
+            [tik.adopt :as adopt]
+            [tik.admin :as admin]
+            [tik.agent :as agent]
             [tik.audit :as audit]
             [tik.authoring :as authoring]
             [tik.bridge :as bridge]
+            [tik.cli-core :refer [*exit-fn* exit!]]
             [tik.design :as design]
             [tik.effects :as effects]
             [tik.inspect :as inspect]
             [tik.linting :as linting]
             [tik.query :as query]
+            [tik.serve :as serve]
             [tik.storeops :as storeops]
-            [tik.write :as write]
-            [tik.cli-core :refer [*exit-fn* all-ticket-ctx append!* archive-process!
-                                  by-hash-file die
-                                  exit!
-                                  load-process parse-instant
-                                  stage-delta
-                                  now
-                                  put-signature! resolve-id
-                                  resolve-id-soft root signing-key
-                                  the-store ticket-ctx]]
-            [clojure.java.io :as io]
-            [clojure.pprint :as pp]
-            [clojure.string :as str]
-            [tik.canonical :as canonical]
-            [tik.dag :as dag]
-            [tik.event :as event]
-            [tik.explain :as explain]
-            [tik.lint :as lint]
-            [tik.next :as next-lens]
-            [tik.template :as template]
-            [tik.work :as work]
-            [malli.core :as m]
-            [tik.process :as process]
-            [tik.render :refer [tint sid shash print-problems
-                                emit-data]]
-            [tik.sign :as sign]
-            [tik.stage :as stage]
-            [tik.store.protocol :as store])
-  (:import (java.io File)))
-
-
-
-
-
-
-
-(defn- field-hint
-  "A short type hint for prompting one template parameter."
-  [child]
-  (case (m/type child)
-    :boolean "(y/N)"
-    (:vector :sequential :set) "(one or more, space-separated)"
-    (:int :double) "(a number)"
-    :enum (str "(one of: " (str/join ", " (m/children child)) ")")
-    ""))
-
-(defn- coerce-param
-  "Coerce a raw string answer to a template parameter's declared type."
-  [child raw]
-  (let [raw (str/trim raw)]
-    (case (m/type child)
-      :boolean (contains? #{"y" "yes" "true" "1"} (str/lower-case raw))
-      :int (parse-long raw)
-      :double (parse-double raw)
-      :string raw
-      :keyword (keyword raw)
-      (:vector :sequential) (mapv #(coerce-param (first (m/children child)) %)
-                                  (remove str/blank? (str/split raw #"[\s,]+")))
-      :set (set (mapv #(coerce-param (first (m/children child)) %)
-                      (remove str/blank? (str/split raw #"[\s,]+"))))
-      :enum (let [vs (m/children child)]
-              (or (some #(when (= raw (str %)) %) vs) (keyword raw)))
-      (canonical/parse raw))))
-
-(defn- template-fields
-  "Prompt specs for a template's :tik/params — one per :map entry."
-  [tmpl]
-  (when-let [schema (:tik/params tmpl)]
-    (for [[k props child] (m/children (m/schema schema))]
-      {:key k :optional? (boolean (:optional props))
-       :desc (:description props) :child child :hint (field-hint child)})))
-
-(defn- prompt-params
-  "Interactively ask for each parameter, typed and validated by the
-  template's own :tik/params spec — no hand-writing EDN. Eager (a
-  reduce, not a lazy for) so the prompt/read side effects stay ordered."
-  [proc-name fields]
-  (println (str "\n" proc-name " needs a few choices:\n"))
-  (reduce (fn [acc {:keys [key optional? desc child hint]}]
-            (print (str "  " (format "%-14s" (name key))
-                        (when desc (str desc "  ")) hint "\n              > "))
-            (flush)
-            (let [raw (or (read-line) "")]
-              (if (and optional? (str/blank? raw))
-                acc
-                (assoc acc key (coerce-param child raw)))))
-          {}
-          fields))
-
-(defn- collect-params
-  "Parameters for a template: from --params <file.edn>, else interactive
-  prompts driven by the template's spec."
-  [tmpl proc-name opts]
-  (if-let [pf (:params opts)]
-    (read-edn-file (io/file pf))
-    (prompt-params proc-name (template-fields tmpl))))
-
-(defn- source-root
-  "Where a bundle's :hint paths resolve: the store-root above a
-  processes/ or templates/ file, else the file's own directory."
-  ^File [^File f]
-  (let [parent (.getParentFile (.getCanonicalFile f))]
-    (if (#{"processes" "templates"} (.getName parent))
-      (.getParentFile parent)
-      parent)))
-
-(defn- adopt-runbooks!
-  "Copy the runbooks a definition's stages :hint into this store, from
-  the bundle's source root. Returns how many were copied."
-  [definition ^File src-root dest-root]
-  (let [n (atom 0)]
-    (doseq [h (keep :hint (:process/stages definition))
-            :let [sf (io/file src-root h) df (io/file dest-root h)]
-            :when (and (.exists sf) (not (.exists df)))]
-      (io/make-parents df)
-      (io/copy sf df)
-      (swap! n inc))
-    @n))
-
-(defn- cmd-adopt
-  "adopt <process-or-template.edn> [--params <p.edn>]: bring a process
-  from a library into this store. A plain definition is copied; a
-  template (carries :tik/params) is filled — interactively by default,
-  its own spec driving typed, validated prompts — expanded to a
-  definition, linted, and written to processes/, with its runbooks
-  copied alongside. The expanded EDN is authoritative; nothing runs the
-  template as code (§19)."
-  [{:keys [pos opts]}]
-  (let [src (or (first pos)
-                (die "usage: tik adopt <process-or-template.edn> [--params p.edn]"))
-        srcf (io/file src)
-        _ (when-not (.exists srcf) (die (str "no such file: " src)))
-        raw (read-edn-file srcf)
-        tmpl? (template/template? raw)
-        body (if tmpl? (:tik/template raw) raw)
-        nameable? #(or (keyword? %) (string? %) (symbol? %))
-        ;; a label for the prompts only — the body's id may be a param
-        ;; marker (a vector), resolved only by expansion, so fall back to
-        ;; the file stem rather than calling `name` on a non-name
-        label (let [pid (:process/id body)]
-                (if (nameable? pid)
-                  (name pid)
-                  (str/replace (.getName srcf) #"\.(tmpl\.)?edn$" "")))
-        definition (if tmpl? (template/expand raw (collect-params raw label opts)) raw)
-        ;; the authoritative id comes from the EXPANDED definition, and
-        ;; must be a real name — a template that expands to no usable id
-        ;; is rejected here, not cast-crashed downstream
-        _ (when-not (and (map? definition) (nameable? (:process/id definition)))
-            (die "not a process or template (its :process/id is missing or not a name)"))
-        _ (when (print-problems (lint/lint definition))
-            (die "refusing to adopt a definition with lint errors"))
-        pname (name (:process/id definition))
-        dest (io/file (root) "processes" (str pname ".edn"))]
-    (io/make-parents dest)
-    (spit dest (with-out-str (pp/pprint definition)))
-    (let [copied (adopt-runbooks! definition (source-root srcf) (root))]
-      (println (str "✓ " (if tmpl? "expanded" "adopted") " · lint clean → processes/"
-                    pname ".edn"
-                    (when (pos? copied) (str "  (+ " copied " runbook(s))"))))
-      (when (some #(empty? (:members (val %) [])) (:process/roles definition))
-        (println "  fill in the empty roles (tik actor add …), then:"))
-      (println (str "  tik new " pname)))))
-
-(defn- cmd-reprocess
-  "reprocess <id> <new.edn> [--apply]: re-pin a ticket to a new process
-  definition. Dry-run BY DEFAULT (ADR 0002): a re-pin is a consequence-
-  bearing decision, so show the derived-stage diff under the pinned
-  definition vs the proposed one before anyone commits. --apply appends
-  the signed :process/migrate event and archives the new definition by
-  hash. (Distinct from `store migrate`, which converts the storage
-  backend — this changes a ticket's rules, not where events live.)"
-  [{:keys [pos opts]}]
-  (let [s (the-store)
-        id (resolve-id s (first pos))
-        new-file (or (second pos)
-                     (die "usage: tik reprocess <id> <new.edn> [--apply]"))
-        _ (when-not (.exists (io/file new-file)) (die "no such file:" new-file))
-        new-proc (read-edn-file (io/file new-file))
-        _ (when (print-problems (lint/lint new-proc))
-            (die "refusing to migrate to a definition with lint errors"))
-        {:keys [events process]} (ticket-ctx s id)
-        t (now)
-        old-roles (:process/roles process {})
-        new-roles (:process/roles new-proc {})
-        before (stage/effective-reached process events t old-roles)
-        after (stage/effective-reached new-proc events t new-roles)
-        old-hash (process/process-hash process)
-        new-hash (process/process-hash new-proc)]
-    (when (= old-hash new-hash)
-      (die "that is the definition the ticket is already pinned to"))
-    (println (str "pinned:   v" (:process/version process) " @ " (shash old-hash) "…"))
-    (println (str "proposed: v" (:process/version new-proc) " @ " (shash new-hash) "…"))
-    (let [{:keys [gained lost]} (stage-delta before after)]
-      (doseq [stage-id lost]
-        (println "  - stage" stage-id "would REGRESS (no longer derivable)"))
-      (doseq [stage-id gained]
-        (println "  + stage" stage-id "would become derivable"))
-      (when (= before after)
-        (println "  derived stages unchanged")))
-    ;; what the new rules would newly demand, for stages lost or blocked
-    (doseq [{:keys [stage missing]} (explain/explain new-proc events t new-roles)
-            :when (contains? before stage)]
-      (println (str "  new blockers for " stage ":"))
-      (doseq [r missing]
-        (println (str "    ✗ " (explain/reason->text r)))))
-    (if-not (:apply opts)
-      (println "dry run — nothing recorded. Re-run with --apply to migrate.")
-      (do (archive-process! new-proc)
-          (append!* s (event/migrate-process
-                       {:ticket id :actor (actor opts) :at t
-                        :parents (dag/heads events)
-                        :version (:process/version new-proc)
-                        :process-hash new-hash
-                        :reason (:reason opts)})
-                    opts)
-          (println "migrated — ticket now pins" (shash new-hash) "…")))))
-
-(defn- cmd-process
-  "process sign <name> [--key K]: publish the current definition —
-  archive it content-addressed and sign the archived canonical bytes
-  (namespace tik-process, ADR 0015). The hash stays the identity; the
-  signature is the authority."
-  [{:keys [pos opts]}]
-  (let [[sub proc-name] pos]
-    (when-not (and (= "sign" sub) proc-name)
-      (die "usage: tik process sign <name> [--key K]"))
-    (let [key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
-          proc (load-process proc-name)
-          hash (archive-process! proc)
-          f (by-hash-file hash)
-          sig (sign/sign! key f hash sign/namespace-process)]
-      (println "published" proc-name "@" hash)
-      (println "signature" (.getName ^File sig)))))
-
-(defn- cmd-attest
-  "attest <id> <claim-edn> [--body <edn>]: record an attestation — a
-  signed claim whose semantics the kernel ignores (ADR 0009), read by
-  lenses and by the v2 :attested-within guard."
-  [{:keys [pos opts]}]
-  (let [[ticket claim-str] pos
-        _ (when-not claim-str (die "usage: tik attest <id> <claim-edn>"))
-        s (the-store)
-        id (resolve-id s ticket)
-        claim (canonical/parse claim-str)
-        extra (some-> (:body opts) canonical/parse)]
-    (append!* s (event/add-attestation
-                 {:ticket id :actor (actor opts) :at (now)
-                  :parents (dag/heads (store/events s id))
-                  :claim (merge {:claim claim} extra)})
-              opts)
-    (println "attested" (pr-str claim) "as" (actor opts))))
-
-(defn- agent-admissible
-  "The actions the frontier admits for this actor on this ticket —
-  derived from process + roles + current evidence, nothing else. THE
-  authorization boundary (PLAN §12): not a permission table, a
-  projection of the process definition."
-  [id actor-name]
-  (let [s (the-store)
-        {:keys [events process roles]} (ticket-ctx s id)
-        {:keys [actions]} (next-lens/contributions id process events
-                                                   (now) roles)]
-    ;; the SAME admissibility the inbox projects — role membership plus
-    ;; the four-eyes :not-actor exclusion — so the gate never admits a
-    ;; write the inbox would deny (they share next-lens/admissible?)
-    (filterv #(next-lens/admissible? % actor-name) actions)))
-
-(defn- agent-refuse! [opts actor-name attempted admissible]
-  ;; a refusal is an error: it goes to stderr and exits 3 in every format,
-  ;; so a machine reads the verdict from the exit code and a JSON body from
-  ;; the same stream an MCP client already captures.
-  (binding [*out* *err*]
-    (when-not (emit-data opts {:refused attempted
-                               :actor actor-name
-                               :admissible (mapv :action admissible)})
-      (println "REFUSED:" (pr-str attempted) "is not admitted by the"
-               "frontier for actor" actor-name)
-      (println "admissible now:"
-               (pr-str (mapv :action admissible)))))
-  (exit! 3))
-
-(defn- cmd-agent
-  "The gated surface an agent works through (H7):
-    agent actions <id> --actor A         the admissible action set (EDN)
-    agent set <id> k=v --actor A         assert — ONLY if admitted
-    agent attest <id> <claim> --actor A  attest — ONLY if admitted
-  Enforcement is derivation: the same contributions the inbox shows.
-  Everything an agent does lands as ordinary signed events; the
-  accountability trail is the ticket itself (PLAN §12/§13)."
-  [{:keys [pos opts]}]
-  (let [[sub ticket & args] pos
-        who (or (:actor opts) (die "agent commands require --actor"))
-        _ (when-not (contains? #{"actions" "set" "attest"} sub)
-            (die "usage: tik agent actions|set|attest <id> ... --actor A"))
-        _ (when-not ticket
-            (die (str "usage: tik agent " sub " <id> ... --actor A")))
-        s (the-store)
-        id (resolve-id s ticket)
-        admissible (agent-admissible id who)]
-    (case sub
-      "actions" (let [data {:actor who :ticket id
-                            :admissible (mapv #(select-keys % [:action :stage])
-                                              admissible)}]
-                  (when-not (emit-data opts data)
-                    (prn data)))
-      "set" (let [kv (or (first args)
-                         (die "usage: tik agent set <id> key=value --actor A"))
-                  [k v] (str/split kv #"=" 2)
-                  path (parse-key k)
-                  attempted [:set path]]
-              (when-not (some #(= attempted (:action %)) admissible)
-                (agent-refuse! opts who attempted admissible))
-              ;; declared-type aware, exactly as `tik set` — an agent and a
-              ;; human must ground the same key=value identically
-              (append!* s (event/assert-fact
-                           {:ticket id :actor who :at (now)
-                            :parents (dag/heads (store/events s id))
-                            :path path
-                            :value (typed-value (:process (ticket-ctx s id))
-                                                path v)})
-                        opts)
-              (when-not (emit-data opts {:ok true :action attempted})
-                (println "ok" (pr-str attempted))))
-      "attest" (let [claim (canonical/parse
-                            (or (first args)
-                                (die "usage: tik agent attest <id> <claim-edn> --actor A")))
-                     attempted [:attest claim]]
-                 (when-not (some #(= attempted (:action %)) admissible)
-                   (agent-refuse! opts who attempted admissible))
-                 (append!* s (event/add-attestation
-                              {:ticket id :actor who :at (now)
-                               :parents (dag/heads (store/events s id))
-                               :claim {:claim claim}})
-                           opts)
-                 (when-not (emit-data opts {:ok true :action attempted})
-                   (println "ok" (pr-str attempted))))
-      (die "usage: tik agent actions|set|attest <id> ... --actor A"))))
-
-(defn- cmd-actor
-  "actor add <name> <pubkey-file>: bind an actor to a key in the store's
-  allowed-signers registry (identity ladder rung 1, PLAN §9)."
-  [{:keys [pos]}]
-  (let [[sub actor-name pubkey-file] pos]
-    (when-not (and (= "add" sub) actor-name pubkey-file)
-      (die "usage: tik actor add <name> <pubkey-file>"))
-    ;; the name is written verbatim into the OpenSSH allowed-signers
-    ;; registry (`<name> namespaces="tik-*" <key>`); whitespace, a quote,
-    ;; or a newline would split it into a second, attacker-shaped line
-    ;; (binding a victim principal to a stray key) or widen the namespace
-    ;; restriction — reject it rather than corrupt the trust base
-    (when (re-find #"[\s\"\\]" actor-name)
-      (die (str "invalid actor name " (pr-str actor-name)
-                ": no whitespace, quotes, or backslashes (the name is"
-                " written verbatim into the allowed-signers registry)")))
-    (let [pubkey (str/trim (slurp-existing "public key" pubkey-file))
-          line (sign/allowed-signers-line actor-name pubkey)
-          f (io/file (root) "actors")]
-      (spit f (str line "
-") :append true)
-      (println "ok" (sign/fingerprint pubkey)))))
-
-(defn- cmd-sign
-  "Sign this actor's OWN events that this key has not signed yet. A
-  signature is an authorship claim (ADR 0010), so signing another
-  actor's events would assert something false — those are skipped."
-  [{:keys [pos opts]}]
-  (let [s (the-store)
-        id (resolve-id s (first pos))
-        key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
-        me (actor opts)
-        fpr (sign/fingerprint (sign/pubkey key))
-        names (set (store/sidecar-names s id))
-        mine (filter #(= me (:event/actor %)) (store/events s id))
-        unsigned (remove #(contains? names (str (:event/id %) ".sig." fpr))
-                         mine)]
-    (doseq [e unsigned]
-      (put-signature! s key id (:event/id e) "sig" sign/namespace-event
-                      (store/event-bytes s id (:event/id e))))
-    (println "signed" (count unsigned) "event(s) as" me
-             (str "(" (count mine) " authored, key " fpr ")"))))
-
-(defn- cmd-serve
-  "serve [--port N]: the live board over HTTP, read-only. GET / renders
-  the same HTML as `tik board` — freshly derived per request, because
-  derivation is cheap and caches lie eventually. /tickets.edn and
-  /explain/<id>.edn expose the ADR 0016 data for tools. httpkit ships
-  inside babashka: zero new dependencies, and READ-ONLY on purpose —
-  writes stay with the signed CLI/bridge/MCP surfaces where authorship
-  is enforced."
-  [{:keys [opts]}]
-  (let [run-server (requiring-resolve 'org.httpkit.server/run-server)
-        port (if-let [p (:port opts)]
-               (or (parse-long (str p))
-                   (die (str "serve --port must be a number, got " p)))
-               7777)
-        handler
-        ;; a server request must NEVER reach a die/System-exit path —
-        ;; one hostile GET would take the board down for everyone. Ids
-        ;; resolve softly (404, not exit) and everything else that
-        ;; raises answers 500 with words, request-scoped
-        (fn [{:keys [uri]}]
-          (try
-            (cond
-              (= uri "/")
-              {:status 200
-               :headers {"Content-Type" "text/html; charset=utf-8"}
-               :body (with-out-str (query/cmd-board {:pos []}))}
-
-              (= uri "/tickets.edn")
-              {:status 200
-               :headers {"Content-Type" "application/edn"}
-               :body (with-out-str
-                       (query/cmd-ls {:opts {:edn true :all true}}))}
-
-              (re-matches #"/explain/[0-9a-f-]+\.edn" uri)
-              (let [prefix (second (re-matches #"/explain/([0-9a-f-]+)\.edn"
-                                               uri))]
-                (if-let [id (resolve-id-soft (the-store) prefix)]
-                  {:status 200
-                   :headers {"Content-Type" "application/edn"}
-                   :body (with-out-str
-                           (inspect/cmd-explain {:pos [(str id)] :opts {:edn true}}))}
-                  {:status 404
-                   :headers {"Content-Type" "text/plain; charset=utf-8"}
-                   :body (str "tik: no unique ticket matching '" prefix
-                              "'\n")}))
-
-              :else {:status 404 :body "tik: not found\n"})
-            (catch Throwable e
-              {:status 500
-               :headers {"Content-Type" "text/plain; charset=utf-8"}
-               :body (str "tik: " (or (ex-message e)
-                                      (.getName (class e))) "\n")})))]
-    (run-server handler {:port port})
-    (println (str "tik board live at http://127.0.0.1:" port
-                  "  (read-only; ctrl-c stops)"))
-    @(promise)))
-
-(defn- cmd-work
-  "The work-evidence surface (H6):
-    work record <id> <edn>          agent/tool telemetry as a :work claim
-    work week [--actor A] [--from I --to I] [--sign]
-                                    machine-drafted activity: method
-                                    declared, durations marked as
-                                    inferences, every line tracing to
-                                    event ids; --sign turns the draft
-                                    into human-signed per-ticket claims
-    work cost [--pricing F]         usage totals derived by folding;
-                                    money only via an explicit pricing
-                                    table — observations never rot"
-  [{:keys [pos opts]}]
-  (let [s (the-store)
-        sub (first pos)]
-    (case sub
-      "record"
-      (let [id (resolve-id s (second pos))
-            body (canonical/parse (nth pos 2))]
-        (append!* s (event/add-attestation
-                     {:ticket id :actor (actor opts) :at (now)
-                      :parents (dag/heads (store/events s id))
-                      :claim (merge {:claim :work} body)})
-                  opts)
-        (println "recorded" (pr-str (:work/kind body :work))
-                 "on" (sid id)))
-
-      "week"
-      (let [who (or (:actor opts) (die "work week requires --actor"))
-            from (some-> (:from opts) parse-instant)
-            to (some-> (:to opts) parse-instant)
-            per-ticket (for [{:keys [id events state]} (all-ticket-ctx s)]
-                         {:ticket id :title (:title state) :events events})
-            d (work/draft per-ticket who from to)]
-        (when-not (emit-data opts d)
-                    (println (tint "1" (str "activity draft — " who))
-                   (tint "2" (str "(" (get-in d [:method :statement]) ")")))
-          (doseq [{:keys [ticket title sessions duration evidence]}
-                  (:tickets d)]
-            (println (format "  %s  ~%-10s %d session(s), %d event(s)  %s"
-                             (sid ticket)
-                             (subs (str duration) 2)
-                             sessions (count evidence) title)))
-          (println (tint "1" (str "  total ~" (subs (:total d) 2)
-                                  "  — an inference, not a measurement")))
-          (if-not (:sign opts)
-            (println (tint "2" "  review, then --sign to record it as your claim"))
-            (do
-              (doseq [{:keys [ticket duration evidence]} (:tickets d)]
-                (append!* s (event/add-attestation
-                             {:ticket ticket :actor who :at (now)
-                              :parents (dag/heads (store/events s ticket))
-                              :claim {:claim :work
-                                      :work/kind :human
-                                      :work/duration duration
-                                      :work/method (get-in d [:method :method])
-                                      :work/evidence evidence}})
-                          opts))
-              (println (tint "32"
-                             (str "  signed " (count (:tickets d))
-                                  " per-ticket claim(s) — corrected by"
-                                  " you, carried with evidence")))))))
-
-      "cost"
-      (let [pricing (some-> (:pricing opts) io/file read-edn-file)
-            records (mapcat (fn [id]
-                              (map #(assoc % :ticket id)
-                                   (work/work-records
-                                    (store/events s id))))
-                            (store/ticket-ids s))
-            agent-runs (filter :usage records)
-            totals (work/usage-totals agent-runs pricing)]
-        (when-not (emit-data opts totals)
-                    (doseq [[model u] (:observations totals)]
-            (println (tint "1" (str model)))
-            (doseq [[k v] (sort u)]
-              (println (format "    %-20s %,d" (name k) (long v))))
-            (when-let [cost (get-in totals [:priced model])]
-              (println (tint "33" (format "    ≈ %.2f (per --pricing table, today)"
-                                          (double cost))))))
-          (when (empty? agent-runs)
-            (println "no agent-run work records yet — tik work record"))
-          (when-not pricing
-            (println (tint "2" (str "  raw observations only — pass"
-                                    " --pricing <file.edn> to price them"
-                                    " (money is a lens, prices change,"
-                                    " observations don't rot)"))))))
-
-      (die "usage: tik work record|week|cost ..."))))
+            [tik.workcmd :as workcmd]
+            [tik.write :as write]))
 
 (def ^:private usage
   "tik — a process system, not a ticket system
@@ -747,7 +226,7 @@
       "plan"    (query/cmd-plan parsed)
       "show"    (linting/cmd-show parsed)
       "new"     (write/cmd-new parsed)
-      "adopt"   (cmd-adopt parsed)
+      "adopt"   (adopt/cmd-adopt parsed)
       "set"     (write/cmd-set parsed)
       "retract" (write/cmd-retract parsed)
       "dispute" (write/cmd-dispute parsed)
@@ -765,7 +244,7 @@
       "whatif"  (design/cmd-whatif parsed)
       "debug"   (design/cmd-debug parsed)
       "board"   (query/cmd-board parsed)
-      "serve"   (cmd-serve parsed)
+      "serve"   (serve/cmd-serve parsed)
       ;; the MCP stdio loop lives in tik.mcp (which requires this ns);
       ;; resolve it lazily to avoid the require cycle — tik.main force-
       ;; requires tik.mcp so the native image can resolve it here too.
@@ -778,14 +257,14 @@
       "roles"   (query/cmd-roles parsed)
       "bundle"  (audit/cmd-bundle parsed)
       "lint"    (linting/cmd-lint parsed)
-      "actor"   (cmd-actor parsed)
-      "attest"  (cmd-attest parsed)
-      "work"    (cmd-work parsed)
+      "actor"   (admin/cmd-actor parsed)
+      "attest"  (admin/cmd-attest parsed)
+      "work"    (workcmd/cmd-work parsed)
       "witness" (audit/cmd-witness parsed)
-      "agent"   (cmd-agent parsed)
-      "process" (cmd-process parsed)
-      "sign"    (cmd-sign parsed)
-      "reprocess" (cmd-reprocess parsed)
+      "agent"   (agent/cmd-agent parsed)
+      "process" (admin/cmd-process parsed)
+      "sign"    (admin/cmd-sign parsed)
+      "reprocess" (admin/cmd-reprocess parsed)
       "export"  (audit/cmd-export parsed)
       "sim"     (design/cmd-sim parsed)
       "test"    (design/cmd-test parsed)
@@ -865,6 +344,11 @@
             (when-not (contains? (ex-data e) ::exit)
               (vreset! code 1))))))
     {:exit @code :out (str out) :err (str err)}))
+
+
+
+
+
 
 
 
