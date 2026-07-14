@@ -779,6 +779,51 @@ construct every generated event deterministically so identical intent
 yields an identical hash. Hold that line and there is no global
 coordination point anywhere in the data plane.
 
+### Backend — open threads (unjudged)
+
+- **Backend as composable slices, not one monolith.** Split `tik backend`
+  into per-concern servers — `tik backend serve` (read/write API + web
+  UI), `tik backend schedule` (recur/probe cadences), `tik backend
+  effects` (outbound delivery), `tik backend ingest` (inbound sources) —
+  so each slice scales on its own axis: many stateless read replicas, a
+  couple of effects workers, one lightly-loaded scheduler. Coordination-
+  free-by-construction (ADR 0021) is what makes this clean — every slice
+  is stateless and idempotent, so "run N of the busy one, 1 of the quiet
+  one" needs no cross-slice coordination. The all-in-one `tik backend` is
+  then just every slice in one process for the easy single-binary install.
+
+- **How do replicas exchange events?** Two substrates, both compatible
+  with the second law, pick per deployment: (a) **one shared store backend**
+  — all replicas read/write a single Postgres/object-store EventStore (ADR
+  0020), so "sync" is just the shared DB and every backend is a stateless
+  compute pod (simplest Kubernetes story: one managed Postgres, N identical
+  backends, no gossip). Convergence is trivial because there is one event
+  set. (b) **replica-per-store gossip** — each backend keeps its own store
+  and reconciles git-style have/want over event ids (ADR 0020), lock-free
+  and partition-tolerant, for edge/offline/multi-region. The store seam
+  already abstracts this; the backend does not care which is underneath.
+  Likely default: shared object store for the log (infinite, idempotent
+  PUTs) with per-replica disposable indexes.
+
+- **Emit ActivityPub — federate tickets into the fediverse.** The backend
+  could render a ticket as an ActivityPub actor and its events as
+  activities (Create/Update/Note), so progress federates to Mastodon et al.
+  and remote actors follow a ticket or reply. Purely porcelain outbound
+  (an effect target, §12), a projection of explain/timeline — the log stays
+  the truth; ActivityPub is a rendering. Natural fit with the
+  witnessing/federation thread (§10): a followed ticket is a public,
+  append-only, signed feed. Inbound replies would re-enter as signed events
+  only via the same accountability gate as any external claim.
+
+- **Ingest real email over IMAP/POP3.** The inbound complement to the
+  existing DKIM-verified mail *out*: `tik backend ingest` polls an IMAP/POP3
+  mailbox and turns each message into a signed event — a comment/artifact
+  on the ticket its subject/headers address, or a new ticket — with
+  provenance back to the sender (DKIM pass pinned as the authorship
+  evidence, fail-closed as elsewhere). Content-addressed like any event, so
+  re-polling the same message is idempotent (dedup by hash — the second law
+  again). Porcelain ingest, delegate-signed, the kernel untouched.
+
 ## Commercial
 
 - **The "evidence bundle"** — a named, portable witnessed.dev

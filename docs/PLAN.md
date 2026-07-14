@@ -16,6 +16,24 @@ refusing to store what can be derived:
   later. **Derived beats declared** — the system's one law, applied to
   stage, to cost, and (§13) to work records.
 
+The first law has a companion the second the first makes reachable:
+**coordination-free by construction — no leader, no lock, no consensus**
+(ADR 0021). Every operation must be correct on arbitrarily many replicas
+that share nothing and reconcile only by eventually unioning their
+grow-only, content-addressed event sets. Because nothing derived is stored
+as authority, nothing must be serialized behind a lock or agreed by a
+quorum: reads read one ticket's own log and shard without limit; writes
+are either content-addressed events that are a pure function of their
+intent (identical intent → byte-identical event → union keeps one) or
+CRDT-safe appends whose contention resolves by *derivation* (`:conflicted`),
+never a lock; and any event a replica mints on its own derives its id and
+every byte — `:at` included — deterministically, so concurrent replicas
+never duplicate. A design that needs a replica to win an election, take a
+lock, or agree with a quorum before it can act violates this law as surely
+as caching a derived value violates the first. A tik replica is therefore
+stateless by construction, which is why horizontal scaling is the
+preferred deployment.
+
 Lineage: GSM/CMMN artifact-centric process models (stages guarded by
 conditions over data, not edges in a flowchart), build systems (derive,
 don't store), stratified Datalog (fixpoint semantics with provable

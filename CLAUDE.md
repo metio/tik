@@ -17,6 +17,21 @@ authoritative state is a bug. Every design question in this repo eventually
 resolves against that law — a PR that caches a derived value isn't declined
 as a preference, it violates the law.
 
+The one law has a companion, equally absolute: **coordination-free by
+construction — no leader, no lock, no consensus** (ADR 0021). Every
+operation must be correct on arbitrarily many replicas that share nothing
+and reconcile only by eventually unioning their grow-only,
+content-addressed event sets. Reads read one ticket's own log and shard
+without limit; writes are either content-addressed events that are a pure
+function of their intent (identical intent → byte-identical event → union
+keeps one) or CRDT-safe appends whose contention resolves by *derivation*
+(`:conflicted`), never a lock; any event a replica mints on its own (e.g.
+`recur`) derives its id and every byte — `:at` included — deterministically.
+A design that needs a replica to win an election, hold a lock, or agree
+with a quorum before it can act violates this law as surely as caching a
+derived value violates the first. A tik replica is stateless by
+construction; horizontal scaling is the preferred deployment.
+
 **The kernel answers "what follows from these signed facts?" It never
 answers "what should happen next?"** That is why there are no workflow
 transitions, schedulers, policy engines, or external queries in the core;
@@ -147,6 +162,16 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
 - **Reduction order is `(at, id)` over the event set** — parents (Merkle
   DAG, mandatory per ADR 0004) are for integrity/causality/sync, never
   ordering. The reducer is total, commutative, idempotent (property-tested).
+- **Coordination-free by construction (ADR 0021).** No operation may need
+  leader election, a distributed lock, or consensus to be correct across
+  replicas. Any event a replica mints on its own must be a pure function of
+  its inputs — id and every byte, `:at` included — so concurrent replicas
+  emit byte-identical events that union-merge to one (the standard evidence
+  is a property test that two independent stores produce an identical
+  event-id set, as `recur` has). Contention resolves by derivation
+  (`:conflicted`), never a lock. The one admissible exception is outbound
+  side-effect *delivery* that cannot be made idempotent — a narrow
+  per-pipeline lease may serialize delivery there, never the log.
 
 ### The test stack (five independent layers)
 
@@ -183,6 +208,11 @@ rather than extending it — read PLAN §19 before writing code:
 - ordering behavior derived from parents (parents are integrity/causality;
   order is `(at, id)`)
 - a guard that queries anything — another ticket, a service, a clock
+- a leader, a distributed lock, a quorum/consensus round, or a
+  "designated" replica anywhere on a correctness path — or a
+  self-minted event with a non-deterministic field (`random-uuid`,
+  wall-clock `:at`) that would duplicate under concurrent replicas
+  (violates coordination-free-by-construction, ADR 0021)
 - kernel code importing from `cli/` or doing I/O
 - English strings in kernel output (the kernel speaks EDN; prose lives in
   lenses)
