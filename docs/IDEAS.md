@@ -703,6 +703,82 @@ attestation claim shape plus a delegation lens for the chain. Trigger to
 build: the first non-CLI deployment — someone who wants unattended
 cadences and a web UI for less technical users.
 
+### Scaling the backend horizontally — to infinity
+
+The kernel's purity is not only what forbids an in-kernel scheduler — it
+is what makes the backend scale out with almost no coordination. **tik is
+already a CRDT**: a grow-only set of immutable, content-addressed, signed
+events, folded by a total/commutative/idempotent function whose order is
+`(at, id)` over the set, merged by union (the TLA+ Merge model). Almost
+every ceiling is therefore already lifted; the residue is small and
+named below.
+
+**Read/derive plane — infinite by construction.** A ticket's stage needs
+only that ticket's own log (guards never query another ticket — load-
+bearing invariant), so:
+
+- Stateless derivation replicas behind a load balancer scale reads N×
+  with no shared mutable state to contend on.
+- The store shards cleanly by `hash(ticket-id)` with zero cross-shard
+  coordination for derivation; cross-ticket views (inbox, board) are
+  scatter-gather over shards or a rebuildable porcelain index.
+- Events are immutable and content-addressed (`sha256 = id`), so they
+  cache like a CDN — fetched once, valid everywhere forever.
+
+**Write plane — idempotent PUTs that never conflict.** Appending is
+adding a hash-keyed immutable blob to a G-Set; merge is union; the fold
+orders by `(at, id)`, not arrival — so concurrent writes on different
+nodes converge without a lock. Therefore:
+
+- No consensus log on the hot path — nodes gossip event sets and converge
+  by anti-entropy, the Merkle DAG making the diff cheap (compare heads,
+  walk missing parents, exactly `git fetch`). An AP system that survives
+  partitions and still scales out.
+- Object storage is the natural substrate: an append is an idempotent PUT
+  (same content → same key → one object), so two nodes writing "the same"
+  event collide into one, never conflict.
+- Races become derivations, not locks: two nodes asserting a competing
+  fact yield `:conflicted` from the reducer, not a lock contention. tik
+  turns contention into derivable state, which is why the write plane
+  needs no linearizability.
+
+**The one real bottleneck — exactly-once *scheduled creation* — and its
+dissolution.** `recur` today reads "does `period=L` exist? if not, create
+with `random-uuid`"; two backends firing the same cron both mint, and
+union keeps both (CRDT convergence does not help — both are valid, only
+semantically duplicate). Fix it by making the generated event a
+*deterministic function of its identity*: ticket id = `hash(process,
+period-label)`, `:at` = deterministic period-start (never wall-`now`),
+`:actor` = the delegate. Then the create event is byte-identical on every
+node → identical content address → **union merge dedups it
+automatically.** Every backend may fire the same cron; duplicates
+collapse to one event by hash; no leader, no lease. "Exactly once" becomes
+"idempotent by construction." Signatures are detached sidecars over the
+id-bearing bytes, so N backends signing the same event yield N
+corroborating witnesses on one event — strictly better, never a conflict.
+(Actionable delta: change `cmd-recur`'s `random-uuid` to a deterministic
+id derived from process + period.)
+
+**Residual coordinated surface — kept deliberately tiny.**
+
+- Outbound effect *delivery* (webhooks/mail) is the un-idempotent side
+  effect — deliver at-least-once with an idempotency key
+  `hash(event, effect-id)` and dedup at the receiver; a *per-pipeline*
+  lease (never a whole-backend leader) covers a strict single-fire need.
+- At huge N, assign pipeline P to `rendezvous-hash(P)` so not every node
+  recomputes every cron — self-healing on membership change, still no
+  leader election, no consensus.
+
+**The discipline that keeps it infinite.** The whole property rests on
+one rule — the law restated for the distributed setting: **never
+introduce authoritative mutable state.** A current-assignment table, a
+uniqueness lock, a linearizable first-come claim is exactly what buys you
+Raft and caps scale. Keep truth derived (conflicts included), let
+automation only *produce evidence* (signed, content-addressed events), and
+construct every generated event deterministically so identical intent
+yields an identical hash. Hold that line and there is no global
+coordination point anywhere in the data plane.
+
 ## Commercial
 
 - **The "evidence bundle"** — a named, portable witnessed.dev
