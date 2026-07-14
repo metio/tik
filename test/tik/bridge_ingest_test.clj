@@ -124,8 +124,9 @@
         fp (fn []
              (let [{:keys [root store]} (h/temp-store!)]
                (ingest root store cfg msg)
-               (let [tid (first (.list (io/file (str root) "tickets")))]
-                 [tid (sort (seq (.list (io/file (str root "/tickets/" tid) "events"))))])))]
+               ;; deterministic identity (asserts one ticket, sorts events) —
+               ;; never `(first (.list …))`, whose order is filesystem-defined.
+               (h/sole-ticket-fingerprint root)))]
     (is (= (fp) (fp)) "same message -> identical ticket id and event ids across nodes")))
 
 (deftest routing_reaches_the_right_ticket_every_way

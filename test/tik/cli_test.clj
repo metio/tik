@@ -165,10 +165,9 @@
   (System/setProperty "user.name" "tester")
   (let [rootA (h/temp-dir! "tik-recurA")
         rootB (h/temp-dir! "tik-recurB")
-        fingerprint (fn [root]
-                      (let [tdir (io/file root "tickets")
-                            tid (first (.list tdir))]
-                        [tid (sort (seq (.list (io/file tdir tid "events"))))]))]
+        ;; the deterministic per-store identity: asserts exactly one ticket,
+        ;; sorts event names — never depends on `.listFiles` order.
+        fingerprint h/sole-ticket-fingerprint]
     (doseq [root [rootA rootB]]
       (is (re-find #"created track for 2026-W29"
                    (:out (in root "recur" "track" "--period" "2026-W29"

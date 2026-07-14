@@ -7,7 +7,9 @@
   stack-trace regex — and each had drifted apart across files; one home
   keeps the contract (and especially the forbidden-output token list)
   from skewing between suites."
-  (:require [clojure.java.shell :as sh]
+  (:require [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [tik.event :as event]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
@@ -75,6 +77,55 @@
       (throw (ex-info (str "tik " (first args) " failed")
                       {:args args :exit (:exit r) :err (:err r)})))
     r))
+
+;; ---- addressing tickets in a store WITHOUT depending on listing order ----
+;;
+;; `.listFiles`/`.list` return entries in filesystem order, which is arbitrary
+;; and OS-dependent — so `(first (.listFiles tickets))` picks a NON-deterministic
+;; ticket. That is a real bug when a test plants a bomb/sidecar meaning to hit a
+;; SPECIFIC ticket in a multi-ticket store (it once corrupted the healthy
+;; neighbor on some filesystems). Address tickets by id, or assert there is
+;; exactly one, so the assumption is checked rather than silently violated.
+
+(defn events-dir
+  "The events/ directory of a ticket, built from its id — no directory
+  listing, so it never depends on filesystem order."
+  ^File [root id]
+  (io/file (str root) "tickets" (str id) "events"))
+
+(defn new-ticket!
+  "Run `tik new …` via a tik-runner `run` and return the CREATED ticket's id
+  (the UUID new prints on its first line). The deterministic way to target a
+  SPECIFIC ticket in a multi-ticket store — never `(first (.listFiles …))`."
+  [run & args]
+  (-> (apply run "new" args) :out str/split-lines first str/trim))
+
+(defn- sole-ticket-dir
+  ^File [root]
+  (let [dirs (->> (.listFiles (io/file (str root) "tickets"))
+                  (filter #(.isDirectory ^File %)))]
+    (when-not (= 1 (count dirs))
+      (throw (ex-info (str "expected exactly one ticket in the store, found "
+                           (count dirs))
+                      {:count (count dirs)})))
+    (first dirs)))
+
+(defn sole-ticket-events-dir
+  "The events/ dir of the store's ONLY ticket, asserting exactly one exists —
+  so a test relying on it fails LOUDLY the moment it grows a second ticket,
+  instead of silently picking an arbitrary one."
+  ^File [root]
+  (io/file (sole-ticket-dir root) "events"))
+
+(defn sole-ticket-fingerprint
+  "[<ticket-dir-name> <sorted event filenames>] for a store with exactly one
+  ticket — the deterministic identity two independent stores are compared on.
+  Asserts one ticket (the comparison is meaningless otherwise) and sorts the
+  event names so the result never depends on listing order."
+  [root]
+  (let [^File d (sole-ticket-dir root)]
+    [(.getName d)
+     (sort (map #(.getName ^File %) (.listFiles (io/file d "events"))))]))
 
 (def forbidden-output
   "Tokens that must never reach a user, whatever the input: raw stack

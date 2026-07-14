@@ -945,16 +945,18 @@
   (let [root (h/temp-dir! "tik-bomb")
         run (h/tik-runner root)]
     (run "new" "track" "--title" "healthy neighbor")
-    (run "new" "track" "--title" "the bombed one")
-    (let [evdirs (->> (io/file root "tickets") .listFiles
-                      (map #(io/file % "events")))
+    ;; Plant the bomb in "the bombed one" DETERMINISTICALLY — target the ticket
+    ;; by its id, never `(first (.listFiles tickets))` whose order is
+    ;; filesystem-defined and would just as well bomb the healthy neighbor
+    ;; (green locally, red in CI).
+    (let [evdir (h/events-dir root (h/new-ticket! run "track" "--title" "the bombed one"))
           bomb (.getBytes (str (str/join (repeat 100000 "["))
                                "1"
                                (str/join (repeat 100000 "]")))
                           "UTF-8")
           name (str "sha256-" (canonical/sha256-hex-bytes bomb) ".edn")]
       (java.nio.file.Files/write
-       (.toPath (io/file (first evdirs) name)) ^bytes bomb
+       (.toPath (io/file evdir name)) ^bytes bomb
        ^"[Ljava.nio.file.OpenOption;"
        (make-array java.nio.file.OpenOption 0)))
     (testing "ls isolates the bombed ticket"
@@ -1003,8 +1005,7 @@
   (let [root (h/temp-dir! "tik-sig")
         run (h/tik-runner root)]
     (run "new" "track" "--title" "sig fodder")
-    (let [evdir (->> (io/file root "tickets") .listFiles first
-                     (#(io/file % "events")))
+    (let [evdir (h/sole-ticket-events-dir root)
           id (-> ^java.io.File (first (.listFiles ^java.io.File evdir))
                  .getName
                  (str/replace #"\.edn$" ""))]
@@ -1037,8 +1038,7 @@
                 "sha256-ab.witness.0000000000000000"]]
       (spit (io/file root "roots" nm) "garbage"))
     ;; a short-named event file and a short by-hash file
-    (let [evdir (->> (io/file root "tickets") .listFiles first
-                     (#(io/file % "events")))]
+    (let [evdir (h/sole-ticket-events-dir root)]
       (spit (io/file evdir "short.edn") "{:not :an-event}"))
     (.mkdirs (io/file root "processes" "by-hash"))
     (spit (io/file root "processes" "by-hash" "short.edn") "{:x 1}")
