@@ -667,3 +667,13 @@
   [before after]
   {:gained (sort-by str (remove before after))
    :lost (sort-by str (remove after before))})
+
+(defn open-ticket-rows
+  "{:id :title :text} for every unsettled ticket — the duplicate
+  radar's comparison set."
+  [s t]
+  (vec
+   (for [id (store/ticket-ids s)
+         :let [{:keys [settled? title haystack]} (ticket-row s t id)]
+         :when (not settled?)]
+     {:id id :title title :text haystack})))
