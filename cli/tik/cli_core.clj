@@ -31,7 +31,7 @@
             [tik.store.protocol :as store]
             [tik.text :refer [safe-name]])
   (:import (java.io File)
-           (java.time Instant)))
+           (java.time Duration Instant)))
 
 (defn discover-root
   "Git-style upward search from cwd: the nearest ancestor holding a
@@ -608,3 +608,62 @@
     (if (or (.exists as-given) (.isAbsolute as-given))
       as-given
       (io/file (root) path))))
+
+(defn bad-time!
+  "Raise a clean, example-carrying rejection for an unparsable time
+  argument — never leak a raw DateTimeParseException as 'a bug in tik'."
+  [kind w]
+  (throw (ex-info (str "not an ISO-8601 "
+                       (if (= :duration kind)
+                         "duration (e.g. +PT48H = 48 hours, +PT30M = 30 min)"
+                         "instant (e.g. 2026-01-01T00:00:00Z)")
+                       ": " w)
+                  {:reason :time/unparsable :arg w})))
+
+(defn parse-instant
+  "An absolute ISO-8601 instant from a CLI option (--at/--from/--to),
+  failing well on a typo instead of a raw DateTimeParseException."
+  [w]
+  (try (Instant/parse w)
+       (catch java.time.DateTimeException _ (bad-time! :instant w))))
+
+(defn parse-when
+  "A :now step's argument: `+<ISO-8601 duration>` advances from `now`
+  (e.g. +PT48H), a bare string is an absolute ISO-8601 instant. A typo —
+  a wall-clock `+2d`, a plain date, an out-of-range duration — must be a
+  clean message, never a raw DateTimeParseException surfaced as 'a bug in
+  tik'. Overflow of `.plus` throws Arithmetic/DateTimeException too."
+  [^Instant now w]
+  (if (str/starts-with? w "+")
+    (try (.plus now (Duration/parse (subs w 1)))
+         (catch java.time.DateTimeException _ (bad-time! :duration w))
+         (catch ArithmeticException _ (bad-time! :duration w)))
+    (parse-instant w)))
+
+(defn eval-instant
+  "--at <inst>: evaluate at any moment — status on March 1 is just
+  f(events, March 1); time travel was free the whole time (ADR 0012)."
+  [opts]
+  (if-let [at (:at opts)]
+    (parse-instant at)
+    (now)))
+
+
+;; ------------------------------------------------ derived-state cache
+;; ADR 0013 made disposable caches legal; ticket 11ae2438 settled this
+;; design; the 10k-ticket benchmark (3.6s ls) fired its trigger. The
+;; KEY is the input identity itself: event filenames ARE content
+;; addresses, so the sorted directory listing hashes to a complete
+;; fingerprint of everything derivation consumes — invalidation cannot
+;; be got wrong because a changed input IS a changed key. Time-guarded
+;; tickets carry a validity horizon (the earliest unsatisfied :due);
+;; processes reading the log clock (:attested-within) never cache.
+;; Deleting the cache file can only cost a recompute, never truth.
+
+(defn stage-delta
+  "The stages gained and lost moving from reached-set `before` to `after`,
+  each sorted for stable display — the shared arithmetic behind diff,
+  whatif, and reprocess (each words and colors its own rendering)."
+  [before after]
+  {:gained (sort-by str (remove before after))
+   :lost (sort-by str (remove after before))})

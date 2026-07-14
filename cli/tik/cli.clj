@@ -13,12 +13,14 @@
                               read-edn-file slurp-existing typed-value]]
             [tik.audit :as audit]
             [tik.bridge :as bridge]
+            [tik.design :as design]
             [tik.effects :as effects]
             [tik.storeops :as storeops]
             [tik.cli-core :refer [*exit-fn* all-ticket-ctx append!* archive-process!
                                   by-hash-file cache-flush! context-facts die
-                                  display-title exit! link-facts link-lines link-row
-                                  load-process
+                                  display-title eval-instant exit! link-facts link-lines
+                                  link-row load-process parse-instant
+                                  stage-delta
                                   load-process-arg load-ticket now
                                   put-signature! resolve-file resolve-id
                                   resolve-id-soft root signed-event-ids signing-key
@@ -52,33 +54,11 @@
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.protocol :as store])
-  (:import (java.io File)
-           (java.time Duration Instant)))
+  (:import (java.io File)))
 
 
 
 
-(declare parse-instant)
-
-(defn- eval-instant
-  "--at <inst>: evaluate at any moment — status on March 1 is just
-  f(events, March 1); time travel was free the whole time (ADR 0012)."
-  [opts]
-  (if-let [at (:at opts)]
-    (parse-instant at)
-    (now)))
-
-
-;; ------------------------------------------------ derived-state cache
-;; ADR 0013 made disposable caches legal; ticket 11ae2438 settled this
-;; design; the 10k-ticket benchmark (3.6s ls) fired its trigger. The
-;; KEY is the input identity itself: event filenames ARE content
-;; addresses, so the sorted directory listing hashes to a complete
-;; fingerprint of everything derivation consumes — invalidation cannot
-;; be got wrong because a changed input IS a changed key. Time-guarded
-;; tickets carry a validity horizon (the earliest unsatisfied :due);
-;; processes reading the log clock (:attested-within) never cache.
-;; Deleting the cache file can only cost a recompute, never truth.
 
 (defn- open-ticket-rows
   "{:id :title :text} for every unsettled ticket — the duplicate
@@ -296,14 +276,6 @@
                   :reason (:reason opts)})
               opts)
     (println "ok")))
-
-(defn- stage-delta
-  "The stages gained and lost moving from reached-set `before` to `after`,
-  each sorted for stable display — the shared arithmetic behind diff,
-  whatif, and reprocess (each words and colors its own rendering)."
-  [before after]
-  {:gained (sort-by str (remove before after))
-   :lost (sort-by str (remove after before))})
 
 (defn- cmd-diff
   "Evidence gained between two points in the log: derive at event n-k and
@@ -906,208 +878,6 @@
                         :where (str/join " " (map #(str "~" %) pos))
                         :all true)}))
 
-(defn- bad-time!
-  "Raise a clean, example-carrying rejection for an unparsable time
-  argument — never leak a raw DateTimeParseException as 'a bug in tik'."
-  [kind w]
-  (throw (ex-info (str "not an ISO-8601 "
-                       (if (= :duration kind)
-                         "duration (e.g. +PT48H = 48 hours, +PT30M = 30 min)"
-                         "instant (e.g. 2026-01-01T00:00:00Z)")
-                       ": " w)
-                  {:reason :time/unparsable :arg w})))
-
-(defn- parse-instant
-  "An absolute ISO-8601 instant from a CLI option (--at/--from/--to),
-  failing well on a typo instead of a raw DateTimeParseException."
-  [w]
-  (try (Instant/parse w)
-       (catch java.time.DateTimeException _ (bad-time! :instant w))))
-
-(defn- parse-when
-  "A :now step's argument: `+<ISO-8601 duration>` advances from `now`
-  (e.g. +PT48H), a bare string is an absolute ISO-8601 instant. A typo —
-  a wall-clock `+2d`, a plain date, an out-of-range duration — must be a
-  clean message, never a raw DateTimeParseException surfaced as 'a bug in
-  tik'. Overflow of `.plus` throws Arithmetic/DateTimeException too."
-  [^Instant now w]
-  (if (str/starts-with? w "+")
-    (try (.plus now (Duration/parse (subs w 1)))
-         (catch java.time.DateTimeException _ (bad-time! :duration w))
-         (catch ArithmeticException _ (bad-time! :duration w)))
-    (parse-instant w)))
-
-(defn- apply-step
-  "One scripted step against sim/test state {:events :now :actor}. Steps:
-  [:actor \"x\"] [:now \"+PT48H\"|\"<inst>\"] [:set path value]
-  [:retract path] [:dispute path reason] [:attach path]. Appended events
-  get strictly increasing claimed times so supersedes never lose ties."
-  [{:keys [events now actor] :as st} step]
-  (when-not (sequential? step)
-    (die (str "each step must be a list like [:set [:path] value], got "
-              (pr-str step))))
-  (let [[op & args] step
-        tick (.plusMillis ^Instant now 1)
-        arg {:ticket (:event/ticket (first events)) :actor actor :at tick
-             :parents #{(:event/id (peek events))}}
-        append (fn [e] (-> st (update :events conj e) (assoc :now tick)))]
-    (case op
-      :actor (assoc st :actor (first args))
-      :now (assoc st :now (parse-when now (first args)))
-      :set (append (event/assert-fact (assoc arg :path (first args)
-                                             :value (second args))))
-      :retract (append (event/retract-fact (assoc arg :path (first args))))
-      :dispute (append (event/dispute-fact (assoc arg :path (first args)
-                                                  :reason (second args))))
-      :attach (append (event/attach-artifact
-                       (assoc arg :path (first args)
-                              :hash (str "sha256-" (canonical/sha256-hex
-                                                    (first args))))))
-      (die (str "unknown step op " (pr-str op)
-                " — use :actor :now :set :retract :dispute :attach")))))
-
-(defn- sim-render [proc events sim-now]
-  (let [roles (:process/roles proc {})
-        reached (stage/effective-reached proc events sim-now roles)
-        current (stage/current-stages proc reached)
-        state (red/ticket-state events)]
-    (println (str "now:   " sim-now))
-    (println (str "stage: " (str/join ", " (map name (sort-by str current)))
-                  "  (reached: "
-                  (str/join ", " (map name (sort-by str reached))) ")"))
-    (doseq [[path _] (sort-by (comp pr-str first) (:facts state))
-            :let [{:keys [status value by]} (red/fact-status state path)]]
-      (println "  " path "=" (pr-str value)
-               (if (= :present status) (str "(by " by ")")
-                   (str "[" (name status) "]"))))
-    (print (explain/render
-            (explain/explain proc events sim-now roles reached)))))
-
-(def ^:private sim-help
-  "  set k=v [k=v ...]   assert facts        retract <k>      withdraw a fact
-  dispute <k> <why>   dispute a fact      attach <name>    fake artifact
-  now +PT48H | <inst> move evaluation time                 actor <name>
-  reset               fresh scratch ticket                 quit
-  (empty line re-renders; the process file reloads automatically on change)")
-
-(defn- sim-load [^File f]
-  (let [p (read-edn-file f)]
-    (when-not (print-problems (lint/lint p)) p)))
-
-(defn- cmd-sim
-  "Live process design: a scratch ticket in memory, a definition that
-  reloads whenever its file changes. Assert facts and watch stages
-  derive; edit the EDN in another window and the next render uses the
-  new rules. Pure derivation each round — nothing is stored."
-  [{:keys [pos opts]}]
-  (let [f (resolve-file (first pos))]
-    (when-not (.exists f) (die "no such file:" (str f)))
-    (let [tid (random-uuid)
-          base (now)
-          create (event/create-ticket {:ticket tid :actor "sim" :at base
-                                       :title "sim" :process :sim})]
-      (println sim-help)
-      (loop [proc (or (sim-load f) (die "process has errors"))
-             mtime (.lastModified f)
-             st {:events [create] :now base :actor (actor opts)}]
-        (let [changed? (not= mtime (.lastModified f))
-              proc (if changed? (or (sim-load f) proc) proc)
-              mtime (.lastModified f)]
-          (when changed? (println "(process reloaded)"))
-          (println)
-          (sim-render proc (:events st) (:now st))
-          (print "sim> ")
-          (flush)
-          (when-let [line (read-line)]
-            (let [words (remove str/blank? (str/split (str/trim line) #"\s+"))
-                  cmd (first words)
-                  ;; string command -> apply-step step vectors
-                  steps (case cmd
-                          "actor" [[:actor (second words)]]
-                          "now" [[:now (second words)]]
-                          "set" (for [kv (rest words)
-                                      :let [[k v] (str/split kv #"=" 2)]]
-                                  [:set (parse-key k) (parse-value v)])
-                          "retract" [[:retract (parse-key (second words))]]
-                          "dispute" [[:dispute (parse-key (second words))
-                                      (str/join " " (drop 2 words))]]
-                          "attach" [[:attach (second words)]]
-                          nil)]
-              (cond
-                (= "quit" cmd) nil
-                (= "reset" cmd) (recur proc mtime
-                                       {:events [create] :now base
-                                        :actor (:actor st)})
-                (nil? cmd) (recur proc mtime st)
-                steps (recur proc mtime (reduce apply-step st steps))
-                :else (do (println sim-help)
-                          (recur proc mtime st))))))))))
-
-(def ^:private test-epoch (Instant/parse "2026-01-01T00:00:00Z"))
-
-(defn- cmd-test
-  "Process tests: scripted inputs, expected derived outcomes. The file is
-  {:test/process \"<path relative to this file>\"
-   :test/cases [{:case/name … :case/steps [[:set [:category] :technical] …]
-                 :case/expect {:reached #{…} :current #{…}
-                               :includes #{…} :excludes #{…}}} …]}
-  Deterministic: fixed epoch, pure derivation. A failing case prints
-  explain — the process tells you WHY the stage did not derive."
-  [{:keys [pos]}]
-  (let [f (resolve-file (first pos))
-        _ (when-not (.exists f) (die "no such file:" (str f)))
-        spec (read-edn-file f)
-        _ (when-not (map? spec)
-            (die "test file must be a map with :test/process and :test/cases"))
-        {:test/keys [process cases]} spec
-        _ (when-not (string? process)
-            (die (str "test file needs :test/process: a path to the process"
-                      " definition, relative to this file")))
-        _ (when-not (or (nil? cases) (sequential? cases))
-            (die ":test/cases must be a list of cases"))
-        proc (read-edn-file (io/file (.getParentFile (.getAbsoluteFile f))
-                                     process))
-        _ (when-not (map? proc)
-            (die (str "the :test/process path holds no process definition: "
-                      process)))
-        roles (:process/roles proc {})
-        failures (atom 0)]
-    (when (print-problems (lint/lint proc))
-      (die "process definition has lint errors"))
-    (doseq [{:case/keys [name steps expect]} cases]
-      (let [create (event/create-ticket {:ticket (random-uuid) :actor "test"
-                                         :at test-epoch :title name
-                                         :process (:process/id proc)})
-            {:keys [events now]} (reduce apply-step
-                                         {:events [create] :now test-epoch
-                                          :actor "test"}
-                                         steps)
-            reached (stage/effective-reached proc events now roles)
-            current (stage/current-stages proc reached)
-            problems
-            (concat
-             (when (and (:reached expect) (not= (:reached expect) reached))
-               [(str "reached " (pr-str reached)
-                     ", expected " (pr-str (:reached expect)))])
-             (when (and (:current expect) (not= (:current expect) current))
-               [(str "current " (pr-str current)
-                     ", expected " (pr-str (:current expect)))])
-             (for [s (:includes expect) :when (not (contains? reached s))]
-               (str "expected " s " to be reached"))
-             (for [s (:excludes expect) :when (contains? reached s)]
-               (str "expected " s " NOT to be reached")))]
-        (if (empty? problems)
-          (println "  ok   " name)
-          (do (swap! failures inc)
-              (println "  FAIL " name)
-              (doseq [p problems] (println "        " p))
-              (print (str/replace
-                      (explain/render
-                       (explain/explain proc events now roles reached))
-                      #"(?m)^" "        "))))))
-    (if (zero? @failures)
-      (println "test: PASS")
-      (do (println (str "test: FAIL (" @failures ")")) (exit! 1)))))
 
 (defn- cmd-reprocess
   "reprocess <id> <new.edn> [--apply]: re-pin a ticket to a new process
@@ -1326,66 +1096,6 @@
                       (store/event-bytes s id (:event/id e))))
     (println "signed" (count unsigned) "event(s) as" me
              (str "(" (count mine) " authored, key " fpr ")"))))
-
-(defn- cmd-debug
-  "The fixpoint with its working shown: every sweep, every stage, every
-  guard verdict against the sweep-start snapshot. tik's EXPLAIN plan."
-  [{:keys [pos opts]}]
-  (let [proc-name (first pos)
-        proc (load-process-arg proc-name)
-        s (the-store)
-        [state t roles]
-        (if-let [tid (second pos)]
-          (let [{:keys [state roles]} (load-ticket s tid)]
-            [state (now) roles])
-          [red/empty-state (now) (:process/roles proc {})])
-        {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
-    (when-not (emit-data opts {:reached reached :sweeps sweeps})
-            (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
-        (println (tint "1" (str "sweep " sweep))
-                 (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))
-        (doseq [{:keys [stage prereqs-met? guards]} evaluated]
-          (if-not prereqs-met?
-            (println (tint "2" (str "  " stage " prerequisites not reached — not evaluated")))
-            (do (println (str "  " stage))
-                (doseq [{:keys [guard verdict]} guards]
-                  (println (if (:satisfied? verdict)
-                             (tint "32" (str "    ✓ " (pr-str guard)))
-                             (tint "31" (str "    ✗ " (pr-str guard)))))))))
-        (println (str "  => added " (pr-str (vec (sort-by str added))))))
-      (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached)))))))))
-
-(defn- cmd-whatif
-  "Counterfactuals: apply hypothetical steps to a ticket IN MEMORY and
-  show what would change. Nothing is written — derivation over a
-  hypothetical event set is the same pure function (PLAN §19)."
-  [{:keys [pos opts]}]
-  (let [s (the-store)
-        {:keys [events process roles]} (load-ticket s (first pos))
-        t (now)
-        steps (for [kv (rest pos)]
-                (cond
-                  (str/starts-with? kv "+") [:now (str kv)]
-                  (str/starts-with? kv "retract:") [:retract (parse-key (subs kv 8))]
-                  :else (let [[k v] (str/split kv #"=" 2)]
-                          [:set (parse-key k) (parse-value v)])))
-        before (stage/effective-reached process events t roles)
-        st (reduce apply-step
-                   {:events (vec (red/ordered events)) :now t
-                    :actor (actor opts)}
-                   steps)
-        after (stage/effective-reached process (:events st) (:now st) roles)
-        {:keys [gained lost]} (stage-delta before after)
-        data {:steps (vec (rest pos)) :gained (vec gained) :lost (vec lost)}]
-    (when-not (emit-data opts data)
-      (println (tint "2" (str "whatif " (str/join " " (rest pos))
-                              "  (nothing recorded)")))
-      (doseq [g gained]
-        (println (tint "32" (str "  + " g " would become derivable"))))
-      (doseq [l lost]
-        (println (tint "31" (str "  - " l " would no longer derive"))))
-      (when (= before after)
-        (println "  no derived change")))))
 
 (defn- cmd-dupes
   "dupes [--threshold 0.4]: pairwise near-title similarity across open
@@ -2129,8 +1839,8 @@ Each entry in :needs is one of:
       "next"    (cmd-next parsed)
       "search"  (cmd-search parsed)
       "dupes"   (cmd-dupes parsed)
-      "whatif"  (cmd-whatif parsed)
-      "debug"   (cmd-debug parsed)
+      "whatif"  (design/cmd-whatif parsed)
+      "debug"   (design/cmd-debug parsed)
       "board"   (cmd-board parsed)
       "serve"   (cmd-serve parsed)
       ;; the MCP stdio loop lives in tik.mcp (which requires this ns);
@@ -2154,8 +1864,8 @@ Each entry in :needs is one of:
       "sign"    (cmd-sign parsed)
       "reprocess" (cmd-reprocess parsed)
       "export"  (audit/cmd-export parsed)
-      "sim"     (cmd-sim parsed)
-      "test"    (cmd-test parsed)
+      "sim"     (design/cmd-sim parsed)
+      "test"    (design/cmd-test parsed)
       ("help" "--help" "-h" nil) (println usage)
       (do (println (str "tik: '" cmd "' is not a command — the full list:\n"))
           (println usage))))
@@ -2232,6 +1942,9 @@ Each entry in :needs is one of:
             (when-not (contains? (ex-data e) ::exit)
               (vreset! code 1))))))
     {:exit @code :out (str out) :err (str err)}))
+
+
+
 
 
 
