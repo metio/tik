@@ -7,4 +7,13 @@
  ;; The flagged wrappers are EDN reader fns around static interop
  ;; (Instant/parse); bare method values are 1.12-only syntax and the
  ;; wrapper form is the one that reads identically under babashka.
- lint/fn-wrapper {:enabled false}}
+ lint/fn-wrapper {:enabled false}
+ ;; Catching Throwable is deliberate at our fail-well boundaries. The fuzz
+ ;; harness feeds garbage and asserts the MANNER of failure, so it must
+ ;; catch Errors (a recursion bomb raises StackOverflowError, not an
+ ;; Exception); the top-level CLI net catches everything to print a bug
+ ;; report instead of dumping a raw JVM stacktrace; the supervisor and the
+ ;; I/O seams degrade on any Throwable rather than dying. Narrowing these to
+ ;; Exception would silently let Errors through — the opposite of the
+ ;; contract. See CLAUDE.md ("fail well: never a raw JVM exception").
+ lint/catch-throwable {:enabled false}}

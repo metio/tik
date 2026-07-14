@@ -63,10 +63,10 @@
                       [form (= ::eof rest)]))
                   (catch Exception _ [nil false]))]
     (cond
-      (not ok?) s
-      ;; empty/whitespace-only input reads as the eof sentinel — that must
-      ;; never land in a signed fact; it is the literal (empty) string
-      (= ::eof v) s
+      ;; A parse failure, or empty/whitespace-only input that reads as the eof
+      ;; sentinel — neither must land in a signed fact, so pass the literal
+      ;; (possibly empty) string through untouched.
+      (or (not ok?) (= ::eof v)) s
       (symbol? v) (keyword (str v))
       :else v)))
 

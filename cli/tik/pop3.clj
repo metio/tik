@@ -27,8 +27,8 @@
   (loop [acc []]
     (let [line (read-line-crlf in)]
       (cond
-        (nil? line) acc                                    ; truncated: stop, don't hang
-        (= line ".") acc                                   ; terminator
+        ;; the `.` terminator, or a truncated stream (nil): stop, don't hang
+        (or (nil? line) (= line ".")) acc
         :else (recur (conj acc (if (str/starts-with? line ".") (subs line 1) line)))))))
 
 (defprotocol Pop3

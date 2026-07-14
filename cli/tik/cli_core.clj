@@ -46,8 +46,9 @@
       (when d
         (cond
           (.isDirectory (io/file d ".tik")) (str (io/file d ".tik"))
-          (.isDirectory (io/file d "tickets")) (str d)
-          (.isFile (io/file d "tik.db")) (str d)
+          ;; a store root is a dir holding tickets/ (file store) or tik.db (sqlite)
+          (or (.isDirectory (io/file d "tickets"))
+              (.isFile (io/file d "tik.db"))) (str d)
           (= (str d) home) nil
           :else (recur (.getParentFile d)))))))
 
@@ -315,8 +316,7 @@
     (keyword? x) (str x)
     (map? x) (into {} (map (fn [[k v]] [(cache-encode k)
                                         (cache-encode v)]) x))
-    (sequential? x) (mapv cache-encode x)
-    (set? x) (mapv cache-encode x)
+    (or (sequential? x) (set? x)) (mapv cache-encode x)
     :else x))
 
 (defn cache-decode [x]
