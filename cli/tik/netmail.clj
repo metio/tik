@@ -32,3 +32,10 @@
   "A TLS socket to host:port (implicit TLS, e.g. IMAPS 993, POP3S 995)."
   ^Socket [host port default-port]
   (.createSocket (SSLSocketFactory/getDefault) ^String host (int (or port default-port))))
+
+(defn plain-socket
+  "A plaintext socket to host:port (IMAP 143, POP3 110). Only for a mailbox
+  reached over a trusted local path — a loopback relay or an in-pod
+  gateway/stunnel sidecar that terminates TLS — never the open internet."
+  ^Socket [host port default-port]
+  (Socket. ^String host (int (or port default-port))))

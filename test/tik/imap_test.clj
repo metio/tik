@@ -84,6 +84,17 @@
                                         (imap/login! s "u" "p")
                                         (imap/select! s "NoSuch")))))))
 
+(deftest connect_refused_is_a_clean_ex_info
+  ;; a mail server that is down is OPERATIONAL, not a bug: the connect must
+  ;; fail well (ex-info the dispatch turns into `tik: …`), never a raw
+  ;; ConnectException reaching the "bug in tik" handler.
+  (let [ss (java.net.ServerSocket. 0)
+        port (.getLocalPort ss)]
+    (.close ss)                                            ; the port is now closed
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"imap: cannot connect to"
+                          (imap/fetch-messages {:host "127.0.0.1" :port port :tls false
+                                                :user "u" :password "p"})))))
+
 (deftest select_count_reads_the_exists_baseline
   (let [script (str "* OK ready\r\n"
                     "* 42 EXISTS\r\n* 0 RECENT\r\na1 OK [READ-WRITE] SELECT\r\n")

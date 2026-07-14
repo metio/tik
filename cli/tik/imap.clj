@@ -164,13 +164,23 @@
         vec)))
 
 (defn connect
-  "Open a TLS session to an IMAP server (implicit TLS, port 993 by
-  default). Returns {:session … :socket …}; the caller LOGINs/SELECTs and
-  closes the socket when done."
-  [{:keys [host port]}]
-  (let [sock ^Socket (net/tls-socket host port 993)]
-    {:socket sock
-     :session (session (.getInputStream sock) (.getOutputStream sock))}))
+  "Open a session to an IMAP server — implicit TLS on port 993 by default,
+  or plaintext (port 143) when the config sets `:tls false` for a
+  loopback/trusted-relay mailbox. Returns {:session … :socket …}; the
+  caller LOGINs/SELECTs and closes the socket when done."
+  [{:keys [host port] :as conn}]
+  (let [tls? (not (false? (:tls conn true)))]
+    (try
+      (let [sock ^Socket (if tls? (net/tls-socket host port 993) (net/plain-socket host port 143))]
+        {:socket sock
+         :session (session (.getInputStream sock) (.getOutputStream sock))})
+      ;; a server that is down / unresolvable is an OPERATIONAL error, not a
+      ;; bug: fail well with a clean ex-info instead of leaking a raw
+      ;; ConnectException/UnknownHostException to the "bug in tik" handler.
+      (catch java.io.IOException e
+        (throw (ex-info (str "imap: cannot connect to " host ":" (or port (if tls? 993 143))
+                             " — " (ex-message e))
+                        {:reason :imap/connect :host host} e))))))
 
 (defn fetch-messages
   "The whole client: connect, LOGIN, SELECT, fetch, LOGOUT, close. Returns

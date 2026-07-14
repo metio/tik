@@ -95,7 +95,10 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   (multipart/HTML → text) as `bridge email`, so a cron/timer runs the inbox.
   Config adds an `:imap {:host … :user … :password <secret-spec> :mailbox
   "INBOX" :search "UNSEEN"}` block (the password resolves via `tik.secret` —
-  `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`). Atom-bomb proof:
+  `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`). TLS is implicit
+  and on by default (IMAPS 993 / POP3S 995); set `:tls false` in the `:imap`/
+  `:pop3` block only for a loopback or trusted-relay mailbox (an in-pod
+  stunnel/gateway sidecar), which switches to plaintext 143/110. Atom-bomb proof:
   every message is ingested in isolation (a refusal/error skips one with a
   clean stderr line, the poll continues), idempotent (content-addressed, so
   re-polling dedups), and loop-safe — our own returned mail is dropped and

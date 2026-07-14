@@ -82,12 +82,20 @@
     (when (= :ok status) (str/join "\r\n" lines))))
 
 (defn connect
-  "Open a TLS session to a POP3 server (implicit TLS, port 995 by
-  default). Returns {:session … :socket …}."
-  [{:keys [host port]}]
-  (let [sock ^Socket (net/tls-socket host port 995)]
-    {:socket sock
-     :session (session (.getInputStream sock) (.getOutputStream sock))}))
+  "Open a session to a POP3 server — implicit TLS on port 995 by default,
+  or plaintext (port 110) when the config sets `:tls false` for a
+  loopback/trusted-relay mailbox. Returns {:session … :socket …}."
+  [{:keys [host port] :as conn}]
+  (let [tls? (not (false? (:tls conn true)))]
+    (try
+      (let [sock ^Socket (if tls? (net/tls-socket host port 995) (net/plain-socket host port 110))]
+        {:socket sock
+         :session (session (.getInputStream sock) (.getOutputStream sock))})
+      ;; a down / unresolvable server is operational, not a bug — clean ex-info.
+      (catch java.io.IOException e
+        (throw (ex-info (str "pop3: cannot connect to " host ":" (or port (if tls? 995 110))
+                             " — " (ex-message e))
+                        {:reason :pop3/connect :host host} e))))))
 
 (defn process-mailbox
   "Open POP3-over-TLS, LOGIN, and for each waiting message call

@@ -86,6 +86,16 @@
                             (fn [_ _] true)))                  ; handler says "done"
     (is (not (str/includes? (sent out) "DELE")) "nothing is deleted with :delete off")))
 
+(deftest connect_refused_is_a_clean_ex_info
+  ;; a down POP3 server is operational, not a bug — clean ex-info.
+  (let [ss (java.net.ServerSocket. 0)
+        port (.getLocalPort ss)]
+    (.close ss)
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"pop3: cannot connect to"
+                          (pop3/process-mailbox {:host "127.0.0.1" :port port :tls false
+                                                 :user "u" :password "p"}
+                                                (fn [_ _] true))))))
+
 (deftest truncated_multiline_terminates
   ;; a hostile/truncated server (no terminating dot) must not hang
   (let [[in out] (streams "+OK ready\r\n+OK\r\n+OK\r\n+OK\r\npartial line no dot")
