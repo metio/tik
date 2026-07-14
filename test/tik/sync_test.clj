@@ -24,8 +24,13 @@
   (h/temp-dir! name))
 
 (defn- git! [dir & args]
+  ;; Pin init.defaultBranch so the bare origin's HEAD is `main` regardless of
+  ;; the host/CI git default (unset → `master`), which would otherwise make a
+  ;; clone track `master` while the replica pushes `main` — `git pull` then
+  ;; fails with "no such ref". A command-line -c outranks any global/env config.
   (let [r (apply sh/sh "git" "-C" (str dir)
                  "-c" "user.email=replica@test" "-c" "user.name=replica"
+                 "-c" "init.defaultBranch=main"
                  args)]
     (when-not (zero? (:exit r))
       (throw (ex-info (str "git " (first args) " failed")
