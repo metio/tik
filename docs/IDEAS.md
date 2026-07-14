@@ -504,6 +504,33 @@ abstractions generalize.
   is a fact and "overdue" is a lens, but the system acting on a schedule
   is not tik. Composes with the general-ranking lens above (order the
   plan by readiness, critical-path position, or time-remaining).
+- **Recurring tickets as porcelain (`tik recur`)** — "mint a fresh ticket
+  every Monday / every sprint / every quarter." The *schedule* is
+  rejected in-kernel on principle: §19 refuses time-driven action and a
+  stored, enforced schedule ("the workflow engine wearing our clothes"),
+  and the kernel has no implicit clock. But recurrence lives exactly
+  where `effects`, `probe`, and `rollout` live — porcelain behind an
+  EXTERNAL trigger (cron, a systemd timer, a CI schedule), holding the
+  line: tik never stores or enforces the cadence; the timer does the
+  tickling, tik does an idempotent *derived* create. Shape, no kernel
+  change: `tik recur <process> --period <label>` (the caller passes the
+  period label — `2026-W29`, `2026-Q3` — since the kernel supplies no
+  clock) DERIVES "does a ticket already carry `period=<label>` for this
+  process?" (a store query, the same idempotence `rollout` uses — "create
+  only what is uncovered"), and if not, mints one and stamps the `period`
+  fact; if so, it is a no-op. So re-running the timer is safe, a missed
+  run self-heals on the next fire, and the whole cadence stays auditable
+  as ordinary `period`-tagged tickets — the schedule is data OUTSIDE the
+  signed log (your crontab), never a stored authoritative plan inside it.
+  Overdue-ness of the current period's ticket is then just the existing
+  `:elapsed-since`/`:due` lens. The ALWAYS-OPEN dashboard variant (a
+  Renovate-style standing ticket that never closes) needs nothing new at
+  all: a process with no sticky-terminal stage never `settled?`s, `probe`
+  keeps its facts current, and a lens renders it — which is precisely the
+  `rollout` parent/checklist shape above. Trigger to build: a real
+  recurring cadence someone runs by hand more than a few times; the
+  natural home is `tik.storeops`, beside `rollout`, whose idempotent
+  create it mirrors.
 - **Formal verification of the user's process definition** — turn the
   formal-methods investment outward: a process definition IS a small
   state machine over a closed guard basis, so it is a natural target
