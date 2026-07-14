@@ -86,8 +86,7 @@
                          (let [l (try (read-line-crlf in)
                                       (catch java.net.SocketTimeoutException _ ::timeout))]
                            (cond
-                             (= l ::timeout) nil
-                             (nil? l) nil
+                             (or (= l ::timeout) (nil? l)) nil
                              :else (if-let [m (re-find #"(?i)^\* (\d+) EXISTS" l)]
                                      (parse-long (second m))
                                      (recur)))))]         ; ignore RECENT etc., keep waiting

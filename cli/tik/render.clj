@@ -69,8 +69,7 @@
                              [(if (or (keyword? k) (string? k)) k (pr-str k))
                               (json-safe v)]))
                    x)
-    (set? x) (mapv json-safe x)
-    (sequential? x) (mapv json-safe x)
+    (or (set? x) (sequential? x)) (mapv json-safe x)
     :else x))
 
 (defn json-encode [x]

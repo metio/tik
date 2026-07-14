@@ -107,8 +107,8 @@
     (boolean? x) (str x)
     (int? x)     (str (long x))
     (string? x)  (pr-str x)
-    (keyword? x) (str x)
-    (symbol? x)  (str x)
+    ;; keyword and symbol both canonicalize to their printed name
+    (or (keyword? x) (symbol? x)) (str x)
     (uuid? x)    (str "#uuid \"" x "\"")
     (instance? Instant x)        (emit-inst x)
     ;; entries sort by the CANONICAL form of the key, never pr-str:
