@@ -8,7 +8,10 @@
   Results verdict of the MTA it runs behind (RFC 8601), pinned to a
   trusted authserv-id. A leaf: no store, no process control (the DKIM
   refusal throws an ex-info dispatch-guarded turns into `tik: …` + exit 1)."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [tik.mime :as mime])
+  (:import (java.time Instant)
+           (java.time.format DateTimeFormatter)))
 
 (defn addr-spec
   "The RFC 5322 addr-spec of a From/To header value: the address inside
@@ -28,7 +31,7 @@
   ticket association (see ticket-ref-of)."
   [text]
   (let [lines (str/split-lines text)
-        [head body] (split-with #(not (str/blank? %)) lines)
+        head (take-while #(not (str/blank? %)) lines)
         headers (loop [hs [] [l & more] head]
                   (cond
                     (nil? l) hs
@@ -43,13 +46,65 @@
         header (fn [k] (first (header-vals k)))]
     {:from (addr-spec (header "From"))
      :subject (or (header "Subject") "")
+     :message-id (some->> (header "Message-ID")
+                          (re-find #"<([^>]+)>")
+                          second)
+     :date (header "Date")
      :in-reply-to (header "In-Reply-To")
      :references (header "References")
      :x-tik-ticket (header "X-Tik-Ticket")
+     ;; loop-prevention signals (RFC 3834 and de-facto): an auto-reply,
+     ;; a bulk/list send, or a null return-path must never provoke another
+     ;; auto-reply — the ingest records them but sets no cascading facts.
+     :auto-submitted (header "Auto-Submitted")
+     :precedence (header "Precedence")
+     :list-id (header "List-Id")
+     :auto-response-suppress (header "X-Auto-Response-Suppress")
+     :return-path (header "Return-Path")
      ;; every Authentication-Results header (there can be several) — the
      ;; DKIM verdict tik's own MTA stamped; the actor gate reads these
      :auth-results (vec (header-vals "Authentication-Results"))
-     :body (str/trim (str/join "\n" (rest body)))}))
+     ;; the readable body: MIME-decoded (multipart/alternative, base64,
+     ;; quoted-printable, HTML→text). A plain message passes through.
+     :body (mime/best-text text)}))
+
+(defn parse-date
+  "The message's Date header as an Instant (RFC 1123 / 2822), or nil when
+  absent or unparsable — a deterministic `:at` for content-addressed
+  ingest, so re-polling the same message re-mints the same event."
+  [date-header]
+  (when date-header
+    (try
+      (Instant/from (.parse DateTimeFormatter/RFC_1123_DATE_TIME (str/trim date-header)))
+      (catch Exception _ nil))))
+
+(def ^:private our-message-id
+  ;; our outbound sink stamps Message-ID `<tik.<ticket>.<stage>@…>`; an
+  ;; inbound message whose OWN id matches is our mail returned to us.
+  #"^tik\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.")
+
+(defn own-message?
+  "Is this inbound message one WE sent, come back to us (a bounce, a
+  self-subscribed list, a misrouted copy)? The hardest loop stop: our
+  outbound Message-ID shape is unmistakable, and a genuine human reply
+  never reuses it as its OWN id (it threads on it via In-Reply-To)."
+  [{:keys [message-id]}]
+  (boolean (and message-id (re-find our-message-id message-id))))
+
+(defn auto-generated?
+  "Is this an automatic message that must NOT trigger an auto-reply?
+  RFC 3834 `Auto-Submitted` (anything but `no`), a bulk/list/junk
+  `Precedence`, a mailing-list `List-Id`, a Microsoft
+  `X-Auto-Response-Suppress`, or a null `Return-Path: <>` (bounces and
+  auto-responders). Recording such a message is fine; replying to it is
+  how a loop is born."
+  [{:keys [auto-submitted precedence list-id auto-response-suppress return-path]}]
+  (boolean
+   (or (and auto-submitted (not (re-matches #"(?i)\s*no\s*" auto-submitted)))
+       (and precedence (re-matches #"(?i)\s*(bulk|list|junk)\s*" precedence))
+       (not (str/blank? list-id))
+       (not (str/blank? auto-response-suppress))
+       (and return-path (contains? #{"" "<>"} (str/trim return-path))))))
 
 (defn ticket-ref-of
   "Which ticket an inbound message is about, most reliable source first:

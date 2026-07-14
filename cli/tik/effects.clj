@@ -92,6 +92,11 @@
        ;; reply's In-Reply-To carries it straight back to ticket-ref-of
        "Message-ID: <tik." ticket "." (name stage) "@tik.local>\r\n"
        "X-Tik-Ticket: " ticket "\r\n"
+       ;; loop citizenship: this IS an automatic message (RFC 3834), so a
+       ;; well-behaved recipient MUST NOT auto-reply to it — and X-Tik-Loop
+       ;; makes our own mail unmistakable if it ever returns to the inbox.
+       "Auto-Submitted: auto-generated\r\n"
+       "X-Tik-Loop: " ticket "\r\n"
        "Subject: [tik " ticket "] " title " — " stage "\r\n"
        "\r\n"
        "\"" title "\" reached " stage " and needs something only you"

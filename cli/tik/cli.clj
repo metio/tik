@@ -103,7 +103,10 @@
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments that ticket and
                                                 tik> key=value lines become facts;
-                                                else a new ticket
+                                                else a new ticket. loop-safe, idempotent
+  tik bridge imap [--config imap.edn]           poll an IMAP mailbox over TLS and ingest
+                                                new mail: same routing, DKIM gate, and loop
+                                                guards, one message at a time, skip-and-go
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U]                    a signed key-binding attestation on the
                   [--password-command C |       registry ticket; verification never
