@@ -815,14 +815,67 @@ coordination point anywhere in the data plane.
   append-only, signed feed. Inbound replies would re-enter as signed events
   only via the same accountability gate as any external claim.
 
-- **Ingest real email over IMAP/POP3.** The inbound complement to the
-  existing DKIM-verified mail *out*: `tik backend ingest` polls an IMAP/POP3
-  mailbox and turns each message into a signed event — a comment/artifact
-  on the ticket its subject/headers address, or a new ticket — with
-  provenance back to the sender (DKIM pass pinned as the authorship
-  evidence, fail-closed as elsewhere). Content-addressed like any event, so
-  re-polling the same message is idempotent (dedup by hash — the second law
-  again). Porcelain ingest, delegate-signed, the kernel untouched.
+- **Ingest real email over IMAP** — BUILT as `tik bridge imap`. Polls a
+  mailbox over TLS and ingests each message through the same routing, DKIM
+  gate, and MIME decoding (multipart/HTML → text) as `bridge email`;
+  content-addressed so re-polling dedups (the second law), loop-safe (own
+  mail dropped, auto-replies recorded but never answered — RFC 3834), and
+  batch-isolated (one bad message skips, the poll continues). The remaining
+  thread is POP3 (a smaller protocol subset) and a raw-message artifact for
+  full fidelity beside the decoded comment; hand-rolled `tik.imap` +
+  `tik.mime`, no jakarta.mail (absent on babashka, hostile to native-image).
+
+## An `idea` / decision process (a shareable process definition)
+
+A committee decides whether an idea is accepted or rejected, then accepted
+ideas spawn implementation tickets. This maps cleanly onto the kernel with
+**nothing new** — the outcome is *derived* from signed votes, never stored:
+
+- **The idea** is a ticket; its text is an artifact (a text blob by hash).
+- **Committee members** are actors holding a role (`:process/roles`).
+- **A vote** is a signed fact or attestation — `[:vote <member>] = :yes`,
+  or a `{:claim :vote :choice :yes}` attestation. Signed → attributable,
+  offline-verifiable, forever.
+- **The verdict is a guard.** Stage `:accepted` is guarded by a formula
+  over the vote facts; `:rejected` by its stratified negation. The *voting
+  mechanism is just the formula*: simple majority, a `[:count … ≥ N]`
+  quorum, a supermajority ratio, or unanimity — all derivations, no engine.
+- **Acceptance fans out** the way `rollout` does: porcelain (or the
+  delegated backend, §backend) observes the derived `:accepted` stage and
+  mints the implementation tickets. The kernel only ever answers "is it
+  accepted?"; spawning is porcelain reacting to that answer.
+
+**Secret ballot, public result** — the interesting cryptographic ask, and
+it is *literally content-addressing* via **commit–reveal**:
+
+1. Each member first attaches a **commitment** artifact `hash(choice ‖
+   nonce)` — the choice is sealed (the store already stores blobs by hash).
+2. After the deadline (an `[:elapsed-since …]` guard), each member
+   **reveals** `choice ‖ nonce` as a fact.
+3. The tally guard counts revealed choices *and* checks
+   `hash(reveal) = commitment`, so nobody could change a vote after seeing
+   others. Secrecy *during* voting, a fully public, offline-verifiable
+   result *after* — with zero trusted tallier. (A trusted-teller or
+   threshold/homomorphic scheme could give secrecy-forever, but it needs a
+   decryptor + a ZK proof to stay offline-derivable; commit–reveal is the
+   natural first fit because it *is* the mechanism tik already is.)
+
+**Revising the idea, and re-review** — the log is append-only, so a
+revision is not an edit, it is a **new idea artifact** superseding the old
+by `(at, id)`; the "current idea" is derived as the latest revision (or a
+`[:idea]` fact pointing at the current idea hash), and the whole revision
+trail stays in the log. Committee feedback is comments (artifacts). The
+elegant part is the **re-review reset, by derivation, not by an action**:
+a vote carries *which idea it endorses* (`:vote/on <idea-hash>`), and the
+accept guard requires N yes-votes whose `:vote/on` equals the *current*
+idea hash. Publish a revised idea → its hash changes → every prior vote now
+endorses a stale hash → the tally silently drops back below threshold and
+the committee re-reviews. No "dismiss stale approvals" action exists to
+forget — it falls out of content-addressing plus a guard that ties votes to
+the revision they were cast on (the derived analogue of a PR review being
+dismissed on a new commit). Stages read `:drafted → :under-review →
+(:revised → :under-review)* → :accepted | :rejected`, where `:revised` is
+just "the accept guard is unsatisfied for the current hash."
 
 ## Commercial
 

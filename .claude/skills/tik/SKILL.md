@@ -90,6 +90,16 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   the sender's From must be DKIM-authenticated (a `dkim=pass` from your MTA's
   own `Authentication-Results`, pinned by `authserv-id` so a forged verdict
   is ignored) before it is trusted enough to attribute events to an actor.
+- `tik bridge imap [--config imap.edn]` — poll an IMAP mailbox over TLS and
+  ingest new mail through the same routing, DKIM gate, and MIME decoding
+  (multipart/HTML → text) as `bridge email`, so a cron/timer runs the inbox.
+  Config adds an `:imap {:host … :user … :password <secret-spec> :mailbox
+  "INBOX" :search "UNSEEN"}` block (the password resolves via `tik.secret` —
+  `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`). Atom-bomb proof:
+  every message is ingested in isolation (a refusal/error skips one with a
+  clean stderr line, the poll continues), idempotent (content-addressed, so
+  re-polling dedups), and loop-safe — our own returned mail is dropped and
+  auto-replies/bulk/bounces (RFC 3834) are recorded but never answered.
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
   device-flow (or `--user` + a password) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never
