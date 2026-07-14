@@ -133,11 +133,15 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   facts (`[:link …]` paths); work records are `:work` attestation claims;
   witness countersignatures are detached sidecars over a head, not events
   (an event would move the head it witnesses).
-- **10 guard operators** (`guard.cljc`): `:fact :fact= :artifact
-  :signed-by :stage-reached :elapsed-since :and :or :not :malli`.
+- **12 guard operators** (`guard.cljc`, vocabulary v2): `:fact :fact=
+  :artifact :signed-by :stage-reached :elapsed-since :attested-within
+  :different-person :and :or :not :malli`.
   (`:fact=` was briefly v6 sugar; restored as an operator by dogfood
-  evidence — reasons are the API, ADR 0016.) New keywords require a
-  version bump and a PLAN §19 verdict.
+  evidence — reasons are the API, ADR 0016. `:attested-within` closes the
+  stale-evidence gap — a fresh-enough attestation; `:different-person` is
+  separation of duties — two facts signed by distinct actors. Both read the
+  log yet stay pure functions of `(state, now, reached)`.) New keywords
+  require a version bump and a PLAN §19 verdict.
 - **fact-status** (`reduce.cljc`) is the single choke point for why a fact
   does/doesn't satisfy guards: `:present :absent :retracted :disputed
   :conflicted`. Guards consult nothing else about facts.
