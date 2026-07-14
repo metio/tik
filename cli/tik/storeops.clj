@@ -13,9 +13,9 @@
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
             [tik.cli-core :refer [all-ticket-ctx append!* archive-process! cache-flush!
                                   db-path die display-title git-tracked? link-lines
-                                  load-process load-ticket now process-file process-name
-                                  resolve-file resolve-id root store-holder the-store
-                                  ticket-ctx]]
+                                  load-process load-ticket now parse-instant process-file
+                                  process-name resolve-file resolve-id root store-holder
+                                  the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.next :as next-lens]
@@ -26,7 +26,8 @@
             [tik.store.protocol :as store]
             [tik.store.sqlite :as sqlite]
             [tik.text :refer [safe-name]])
-  (:import (java.io File)))
+  (:import (java.io File)
+           (java.time LocalDate ZoneOffset)))
 
 (defn cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T]
@@ -140,8 +141,50 @@
         (println "  " line)))
     (println (str "watch it: tik status " (sid parent-id)))))
 
+(defn- recur-id
+  "A ticket id that is a pure function of (process, period): identical on
+  every node, so independent backends firing the same schedule mint the
+  SAME create event — byte-identical, one content address, so a later
+  union merge keeps ONE ticket. This is what makes recurring-ticket
+  creation leaderless: exactly-once without a lock. Namespaced so these
+  ids never collide with random-uuid tickets or across processes/periods."
+  [proc-name period]
+  (java.util.UUID/nameUUIDFromBytes
+   (.getBytes (str "tik/recur " proc-name " " period) "UTF-8")))
+
+(defn- period-start
+  "Porcelain-only: the canonical UTC start instant of a recurring PERIOD
+  label, so the minted events carry a deterministic `:at` and stay
+  byte-identical across nodes (the content-address dedup above needs every
+  field deterministic, `:at` included — wall-clock `now` would differ per
+  fire and defeat it). Only porcelain reads a calendar; the kernel stays
+  clockless. Recognizes the ISO forms schedules use — year, quarter,
+  month, day, and ISO week (Monday 00:00Z of the week). A freeform label
+  that matches none needs an explicit --at to pin its instant."
+  [label at-opt]
+  (if at-opt
+    (parse-instant at-opt)
+    (letfn [(utc [^LocalDate d] (.toInstant (.atStartOfDay d ZoneOffset/UTC)))
+            (iso-week [y w]
+              (let [jan4 (LocalDate/of (int y) 1 4)              ; ISO week 1 always contains Jan 4
+                    monday1 (.minusDays jan4 (dec (.getValue (.getDayOfWeek jan4))))]
+                (.plusWeeks monday1 (dec w))))]
+      (try
+        (condp re-matches label
+          #"(\d{4})"                 :>> (fn [[_ y]] (utc (LocalDate/of (Integer/parseInt y) 1 1)))
+          #"(\d{4})-Q([1-4])"        :>> (fn [[_ y q]] (utc (LocalDate/of (Integer/parseInt y)
+                                                                          (int (inc (* 3 (dec (Integer/parseInt q))))) 1)))
+          #"(\d{4})-(\d{2})"         :>> (fn [[_ y m]] (utc (LocalDate/of (Integer/parseInt y) (Integer/parseInt m) 1)))
+          #"(\d{4})-(\d{2})-(\d{2})" :>> (fn [[_ y m d]] (utc (LocalDate/of (Integer/parseInt y) (Integer/parseInt m) (Integer/parseInt d))))
+          #"(\d{4})-W(\d{2})"        :>> (fn [[_ y w]] (utc (iso-week (Integer/parseInt y) (Integer/parseInt w))))
+          (die (str "recur period " label " is not a recognized calendar label"
+                    " (yyyy, yyyy-Qn, yyyy-MM, yyyy-MM-dd, yyyy-Www);"
+                    " pass --at <ISO-8601 instant> to pin a freeform label")))
+        (catch java.time.DateTimeException _
+          (die (str "recur period " label " has an out-of-range date component")))))))
+
 (defn cmd-recur
-  "recur <process> --period <label> [--title T] [--actor A]
+  "recur <process> --period <label> [--at <inst>] [--title T] [--actor A]
   Idempotently mint the CURRENT period's ticket for a recurring process:
   create one only if no ticket for this process already carries
   period=<label>, else report the existing one. The cadence lives OUTSIDE
@@ -150,10 +193,17 @@
   ticket exist yet?\" and mints on a miss. So re-running is safe and a
   missed run self-heals on the next fire. The label is the caller's word
   (2026-W29, 2026-Q3) — the kernel supplies no clock. Sibling of rollout:
-  the same idempotent-create-what-is-missing shape."
+  the same idempotent-create-what-is-missing shape.
+
+  The minted events are a PURE FUNCTION of (process, period): a
+  deterministic ticket id and a period-start `:at` (derived from the
+  label, or --at for a freeform one). So two backends that cannot see each
+  other yet — firing the same schedule concurrently — mint byte-identical
+  events that union-merge into ONE ticket. That is the leaderless
+  exactly-once path: no lock, no single writer needed to avoid duplicates."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
-                      (die "usage: tik recur <process> --period <label> [--title T]"))
+                      (die "usage: tik recur <process> --period <label> [--at <inst>] [--title T]"))
         period (or (:period opts)
                    (die (str "recur needs --period <label> (e.g. 2026-W29):"
                              " the kernel has no clock, so the caller names"
@@ -169,15 +219,16 @@
     (if existing
       (println (str "already have " proc-name " for " period ": " (sid existing)
                     " — nothing recorded"))
-      (let [id (random-uuid)
-            e (event/create-ticket {:ticket id :actor (actor opts) :at (now)
+      (let [at (period-start period (:at opts))
+            id (recur-id proc-name period)
+            e (event/create-ticket {:ticket id :actor (actor opts) :at at
                                     :title (or (:title opts)
                                                (str proc-name " " period))
                                     :process pk
                                     :version (:process/version proc)
                                     :process-hash (archive-process! proc)})]
         (append!* s e opts)
-        (append!* s (event/assert-fact {:ticket id :actor (actor opts) :at (now)
+        (append!* s (event/assert-fact {:ticket id :actor (actor opts) :at at
                                         :parents #{(:event/id e)}
                                         :path [:period] :value period})
                   opts)

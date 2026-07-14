@@ -10,6 +10,7 @@
             [tik.cli :as cli]
             [tik.cli-core]
             [tik.bridge]
+            [tik.storeops]
             [tik.args :as args]
             [tik.event :as event]
             [tik.store.protocol :as store]))
@@ -152,6 +153,66 @@
       (let [r (in root "recur" "track")]
         (is (= 1 (:exit r)))
         (is (re-find #"needs --period" (str (:out r) (:err r))))))))
+
+(deftest recur_mints_byte_identical_events_on_independent_stores
+  ;; the leaderless exactly-once property: two backends that cannot see
+  ;; each other (separate stores, no sync) firing recur for the SAME
+  ;; (process, period) mint BYTE-IDENTICAL events — same deterministic
+  ;; ticket id AND same content-addressed event ids — so a later union
+  ;; merge keeps ONE ticket with no lock, leader, or single writer. This
+  ;; is what removes the last coordination point from a horizontally
+  ;; scaled backend.
+  (System/setProperty "user.name" "tester")
+  (let [rootA (h/temp-dir! "tik-recurA")
+        rootB (h/temp-dir! "tik-recurB")
+        fingerprint (fn [root]
+                      (let [tdir (io/file root "tickets")
+                            tid (first (.list tdir))]
+                        [tid (sort (seq (.list (io/file tdir tid "events"))))]))]
+    (doseq [root [rootA rootB]]
+      (is (re-find #"created track for 2026-W29"
+                   (:out (in root "recur" "track" "--period" "2026-W29"
+                             "--actor" "tik-backend")))))
+    (is (= (fingerprint rootA) (fingerprint rootB))
+        "same (process, period) → identical ticket id and event ids across nodes")
+    (testing "a different period diverges (no accidental id collision)"
+      (let [rootC (h/temp-dir! "tik-recurC")]
+        (in rootC "recur" "track" "--period" "2026-W30" "--actor" "tik-backend")
+        (is (not= (first (fingerprint rootA)) (first (fingerprint rootC))))))))
+
+(deftest recur_derives_a_deterministic_period_start
+  ;; porcelain (never the kernel) parses the ISO period forms schedules
+  ;; fire on into a canonical UTC start instant, so `:at` is deterministic
+  ;; and the minted events stay byte-identical across nodes. The happy
+  ;; forms are pure; the refusals (a freeform label with no --at, an
+  ;; out-of-range component) die, so they run through the CLI where exit
+  ;; is trapped into a code.
+  (let [ps #'tik.storeops/period-start
+        inst #(java.time.Instant/parse %)]
+    (testing "the ISO forms parse to their UTC period start"
+      (is (= (inst "2026-01-01T00:00:00Z") (ps "2026" nil)))
+      (is (= (inst "2026-07-01T00:00:00Z") (ps "2026-Q3" nil)))
+      (is (= (inst "2026-07-01T00:00:00Z") (ps "2026-07" nil)))
+      (is (= (inst "2026-07-14T00:00:00Z") (ps "2026-07-14" nil)))
+      ;; ISO week 29 of 2026 begins Monday 2026-07-13
+      (is (= (inst "2026-07-13T00:00:00Z") (ps "2026-W29" nil))))
+    (testing "--at pins any freeform label deterministically"
+      (is (= (inst "2026-07-14T09:00:00Z")
+             (ps "nightly-42" "2026-07-14T09:00:00Z")))))
+  (System/setProperty "user.name" "tester")
+  (let [root (h/temp-dir! "tik-recurps")]
+    (testing "a freeform label with no --at is refused, not guessed"
+      (let [r (in root "recur" "track" "--period" "nightly-42")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"not a recognized calendar label" (str (:out r) (:err r))))))
+    (testing "an out-of-range component fails cleanly, never a raw exception"
+      (let [r (in root "recur" "track" "--period" "2026-13")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"out-of-range date component" (str (:out r) (:err r))))))
+    (testing "--at pins a freeform label end to end"
+      (is (re-find #"created track for nightly-42"
+                   (:out (in root "recur" "track" "--period" "nightly-42"
+                             "--at" "2026-07-14T09:00:00Z")))))))
 
 (defn- at [s] (java.time.Instant/parse s))
 
