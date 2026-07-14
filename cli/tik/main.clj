@@ -9,6 +9,7 @@
   (:require [babashka.http-client]
             [cheshire.core]
             [org.httpkit.server]
+            [tik.backend]
             [tik.cli :as cli]
             [tik.mcp]
             [tik.store.sqlite-jdbc])

@@ -27,7 +27,7 @@
 (def ^:private human-only
   "Commands that do not produce queryable data — actions, servers, visual
   renderers, or pass/fail audits — so --format does not apply."
-  #{"actor" "adopt" "attach" "attest" "author" "board" "bridge" "bundle"
+  #{"actor" "adopt" "attach" "attest" "author" "backend" "board" "bridge" "bundle"
     "comment" "debug" "dispute" "effects" "export" "gc" "init"
     "lint" "mcp" "new" "pack" "probe" "process" "recur" "retract"
     "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"

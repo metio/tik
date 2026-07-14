@@ -554,6 +554,20 @@ abstractions generalize.
 
 ## The tik backend — a delegated-agent server (client/server tik)
 
+**Status: the supervisor is BUILT as `tik backend`.** It runs a
+`pipelines.edn` of continuous pipelines (`:watch true` — `serve`, `bridge
+imap --watch`, each restarted on exit) and scheduled pipelines (a verb on
+an `:every` ISO-8601 interval — `recur`/`probe`/`bridge pop3`/`effects`),
+each firing as its `:as` delegate with `TIK_KEY` the delegate key, in
+isolation (one failing tick never aborts the loop). It only decides WHEN to
+run a porcelain verb; idempotency (deterministic `recur`) keeps it
+leaderless (ADR 0021) and lets a missed fire self-heal. What remains from
+the vision below: the **delegation-attestation lens** (deriving "this event
+was fired by tik-backend, on seb's authority, within scope, before expiry"
+from a `:claim :delegation` attestation), pipelines-as-signed-facts (vs. the
+porcelain `pipelines.edn`), and bundling `mcp` as a pipeline. The design
+that motivated it:
+
 One long-running `tik backend` process is the server; the CLI and the web
 UI are just clients of it. It bundles everything for a one-binary install:
 the embedded store (the SQLite backend ships for exactly this "one

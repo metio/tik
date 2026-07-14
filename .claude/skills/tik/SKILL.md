@@ -145,6 +145,17 @@ which admits exactly the actions its actor may take on a ticket right now.
   identity; with `TIK_KEY` set each accepted call is signed. It runs from the
   shipped binary (`tik mcp`) — the enforcement is the derivation, so it holds
   whatever the client sends.
+- `tik backend [--config pipelines.edn]` — the supervised server that runs
+  your **pipelines** as a delegate: continuous ones (`:watch true` — `serve`,
+  `bridge imap --watch`) each get a restart-on-exit thread, scheduled ones
+  fire a verb on an `:every` ISO-8601 interval (`recur`/`probe`/`bridge pop3`/
+  `effects`). Each runs as its `:as` delegate with `TIK_KEY` the delegate's
+  key, so every event it produces is signed and traces back — via a §9
+  delegation attestation — to the human who authorized the delegate. It never
+  changes what a fact means; it only decides WHEN to run a porcelain verb, and
+  idempotency (recur is deterministic) means it needs no leader and a missed
+  fire self-heals. This is the all-in-one deployment; the chart can also run
+  the slices as separate workloads.
 
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a
 keyword (`sev=high` → `:high`), a number stays a number, and anything the

@@ -100,6 +100,10 @@
                                                 /tickets.edn + /explain/<id>.edn for tools)
   tik mcp                                        MCP server over stdio: the frontier as an
                                                 agent's gated tool surface (TIK_ACTOR/TIK_KEY)
+  tik backend [--config pipelines.edn]          the supervised server: run your pipelines as
+                                                a delegate — continuous (serve, imap --watch)
+                                                and scheduled (recur/probe/pop3/effects on an
+                                                :every interval). signs with TIK_KEY
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments that ticket and
                                                 tik> key=value lines become facts;
@@ -263,6 +267,10 @@
       ;; resolve it lazily to avoid the require cycle — tik.main force-
       ;; requires tik.mcp so the native image can resolve it here too.
       "mcp"     ((requiring-resolve 'tik.mcp/-main))
+      ;; the pipeline supervisor lives in tik.backend (which requires this
+      ;; ns to reuse run-argv); resolve it lazily to avoid the require cycle,
+      ;; exactly like mcp. tik.main force-requires it for the native image.
+      "backend" ((requiring-resolve 'tik.backend/cmd-backend) parsed)
       "bridge"  (bridge/cmd-bridge parsed)
       "effects" (effects/cmd-effects parsed)
       "verify"  (audit/cmd-verify parsed)
