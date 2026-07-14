@@ -74,9 +74,11 @@
   [p]
   (let [argv (tick-argv (LocalDate/now ZoneOffset/UTC) p)
         {:keys [exit out err]} (try (cli/run-argv argv)
-                                    (catch Throwable e {:exit 1 :err (ex-message e)}))]
-    (println (label p) (str/join " " argv) "->" (if (zero? (long exit)) "ok" (str "exit " exit))
-             (some-> out str/split-lines first str/trim not-empty (->> (str "· "))))
+                                    (catch Throwable e {:exit 1 :err (ex-message e)}))
+        tail (some-> out str/split-lines first str/trim not-empty)]
+    (println (str (label p) " " (str/join " " argv) " -> "
+                  (if (zero? (long exit)) "ok" (str "exit " exit))
+                  (when tail (str " · " tail))))
     (when-not (zero? (long exit))
       (binding [*out* *err*] (println (label p) "failed:" (str/trim (str err)))))))
 
