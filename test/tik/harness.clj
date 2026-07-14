@@ -102,8 +102,8 @@
 
 (defn- sole-ticket-dir
   ^File [root]
-  (let [dirs (->> (.listFiles (io/file (str root) "tickets"))
-                  (filter #(.isDirectory ^File %)))]
+  (let [dirs (filter #(.isDirectory ^File %)
+                     (.listFiles (io/file (str root) "tickets")))]
     (when-not (= 1 (count dirs))
       (throw (ex-info (str "expected exactly one ticket in the store, found "
                            (count dirs))
