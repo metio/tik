@@ -323,18 +323,30 @@
 
   Every message is ingested in ISOLATION (see ingest-one!): loop-safe,
   idempotent (BODY.PEEK never marks \\Seen; content addressing dedups a
-  re-fetch), so a cron/timer can run it as often as you like."
+  re-fetch), so a cron/timer can run it as often as you like.
+
+  With --watch it does NOT return: it holds the connection open and uses
+  IMAP IDLE (RFC 2177) to ingest mail the instant it arrives, reconnecting
+  with backoff on any drop — the long-running mode for a service unit.
+  Same isolated, idempotent, loop-safe ingest; only the delivery timing
+  differs."
   [{:keys [opts]}]
   (let [cfg-file (or (:config opts) (str (io/file (root) "imap.edn")))
         _ (when-not (.exists (io/file cfg-file))
             (die (str "no imap config at " cfg-file
                       " (need {:imap {:host … :user … :password …} :process … :default-actor …})")))
         cfg (read-edn-file (io/file cfg-file))
+        imapcfg (secret/resolve-secrets (:imap cfg))
         s (the-store)
-        tally (atom {})]
-    (doseq [{:keys [uid raw]} (imap/fetch-messages (secret/resolve-secrets (:imap cfg)))]
-      (ingest-one! s cfg opts uid raw tally))
-    (report! tally)))
+        tally (atom {})
+        handle (fn [uid raw] (let [r (ingest-one! s cfg opts uid raw tally)] (cache-flush!) r))]
+    (if (:watch opts)
+      (do (println (str "watching " (:host imapcfg) " over IMAP IDLE (Ctrl-C to stop) …"))
+          (imap/watch imapcfg handle)
+          (report! tally))                                ; reached only if watch returns
+      (do (doseq [{:keys [uid raw]} (imap/fetch-messages imapcfg)]
+            (handle uid raw))
+          (report! tally)))))
 
 (defn cmd-bridge-pop3
   "bridge pop3 [--config pop3.edn]

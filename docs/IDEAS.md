@@ -830,20 +830,21 @@ coordination point anywhere in the data plane.
   decoded comment for full MIME/attachment fidelity — a per-deployment
   `tik backend` config toggle (fidelity vs. store size), not a default,
   since some operators want the raw bytes archived and others do not.
-  Second open thread: a **persistent IMAP IDLE driver** for the running
-  backend. `tik bridge imap` is the one-shot/cron mode (connect → sweep →
-  disconnect); a long-running `tik backend` would instead hold the
-  connection open and use IMAP IDLE (RFC 2177) for push-driven, near-
-  instant delivery — a supervised loop that re-issues IDLE before the
-  ~29-min server drop and reconnects with backoff, degrading to a plain
-  SEARCH poll on failure. IDLE is IMAP-only, so POP3 stays timer-polled
-  (the asymmetry). Crucially the connection model is a latency/efficiency
-  choice, NEVER a correctness one: because ingest is content-addressed,
-  idempotent, loop-safe, and batch-isolated, duplicate deliveries from a
-  reconnect or an overlapping poll are no-ops — so the IDLE driver is just
-  a new *driver* reusing `ingest-one!` verbatim (stdin → IMAP-sweep →
-  IMAP-IDLE, same core), and it is the first concrete slice of the
-  long-running backend to build.
+  Second thread — a **persistent IMAP IDLE driver** — is now BUILT as
+  `tik bridge imap --watch`. `tik bridge imap` alone stays the one-shot/
+  cron mode; `--watch` holds the connection open and uses IMAP IDLE
+  (RFC 2177) for push-driven, near-instant delivery — a supervised loop
+  (`tik.imap/watch`) that re-issues IDLE before the ~29-min server drop,
+  fetches the newly-arrived sequence range on each wake, and reconnects
+  with backoff (re-sweeping the backlog) on any failure. IDLE is IMAP-only,
+  so POP3 stays timer-polled (the asymmetry). The connection model is a
+  latency choice, NEVER a correctness one: because ingest is
+  content-addressed, idempotent, loop-safe, and batch-isolated, a missed
+  push or an overlapping fetch is a no-op — so `--watch` is just a new
+  driver reusing `ingest-one!` verbatim (stdin → IMAP-sweep → IMAP-IDLE,
+  one core). It is the first concrete slice of the long-running backend;
+  wiring it (plus the POP3 timer and the recur/probe cadences) into one
+  supervised `tik backend` process is what remains.
 
 ## An `idea` / decision process (a shareable process definition)
 

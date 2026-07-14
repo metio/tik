@@ -100,6 +100,11 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   clean stderr line, the poll continues), idempotent (content-addressed, so
   re-polling dedups), and loop-safe — our own returned mail is dropped and
   auto-replies/bulk/bounces (RFC 3834) are recorded but never answered.
+  `--watch` turns the one-shot poll into a long-running service: it holds
+  the connection open and uses IMAP IDLE (RFC 2177) to ingest the instant
+  mail arrives, re-issuing IDLE before the ~29-min server drop and
+  reconnecting with backoff on failure — the delivery timing changes, the
+  isolated/idempotent/loop-safe ingest does not.
 - `tik bridge pop3 [--config pop3.edn]` — the same for POP3 mailboxes
   (config under a `:pop3` key). `:delete false` (default) leaves mail on
   the server and re-fetches each poll — harmless because dedup is by

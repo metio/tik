@@ -105,8 +105,10 @@
                                                 tik> key=value lines become facts;
                                                 else a new ticket. loop-safe, idempotent
   tik bridge imap [--config imap.edn]           poll an IMAP mailbox over TLS and ingest
-                                                new mail: same routing, DKIM gate, and loop
-                                                guards, one message at a time, skip-and-go
+                  [--watch]                     new mail: same routing, DKIM gate, and loop
+                                                guards, one message at a time, skip-and-go.
+                                                --watch holds the connection open (IMAP
+                                                IDLE) and ingests the instant mail arrives
   tik bridge pop3 [--config pop3.edn]           same, for POP3 mailboxes (:delete false by
                                                 default — dedup makes a re-fetch harmless)
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->

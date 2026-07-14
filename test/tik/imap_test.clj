@@ -83,3 +83,56 @@
                           (run script (fn [s]
                                         (imap/login! s "u" "p")
                                         (imap/select! s "NoSuch")))))))
+
+(deftest select_count_reads_the_exists_baseline
+  (let [script (str "* OK ready\r\n"
+                    "* 42 EXISTS\r\n* 0 RECENT\r\na1 OK [READ-WRITE] SELECT\r\n")
+        [n _] (run script #(imap/select-count! % "INBOX"))]
+    (is (= 42 n))))
+
+(deftest idle_returns_the_pushed_exists_count
+  (let [script (str "* OK ready\r\n"
+                    "+ idling\r\n* 3 EXISTS\r\na1 OK IDLE terminated\r\n")
+        [n cmds] (run script imap/idle!)]
+    (is (= 3 n) "the new message count the server pushed")
+    (is (str/includes? cmds "a1 IDLE\r\n"))
+    (is (str/includes? cmds "DONE\r\n") "IDLE is always ended with DONE")))
+
+(deftest idle_returns_nil_when_the_connection_drops
+  (let [script "* OK ready\r\n+ idling\r\n"                ; no EXISTS, then EOF
+        [n _] (run script imap/idle!)]
+    (is (nil? n) "a drop/idle-with-no-activity yields nil (a refresh signal)")))
+
+(deftest fetch_seq_range_pairs_uid_with_body
+  ;; one FETCH response carrying two messages, each with its UID + literal
+  (let [m1 "From: a@b\r\n\r\none"
+        m2 "From: c@d\r\n\r\ntwo"
+        script (str "* OK ready\r\n"
+                    "* 5 FETCH (UID 5 BODY[] {" (count m1) "}\r\n" m1 ")\r\n"
+                    "* 6 FETCH (UID 6 BODY[] {" (count m2) "}\r\n" m2 ")\r\n"
+                    "a1 OK FETCH\r\n")
+        [msgs _] (run script #(imap/fetch-seq-range % 5 6))]
+    (is (= [{:uid 5 :raw m1} {:uid 6 :raw m2}] msgs))))
+
+(deftest watch_sweeps_backlog_then_delivers_on_idle_push
+  ;; one full watch iteration (capped by *watch-cycles*): connect, login,
+  ;; SELECT baseline, an empty backlog sweep, then IDLE reports one new
+  ;; message which is fetched and handed to the callback.
+  (let [msg "From: alice@x\r\nSubject: new\r\n\r\nhello"
+        script (str "* OK ready\r\n"                       ; greeting
+                    "a1 OK LOGIN\r\n"                       ; login
+                    "* 0 EXISTS\r\na2 OK [READ-WRITE]\r\n"  ; select-count! -> 0
+                    "* SEARCH\r\na3 OK\r\n"                 ; backlog UNSEEN -> empty
+                    "+ idling\r\n* 1 EXISTS\r\na4 OK\r\n"   ; idle! -> 1
+                    "* 1 FETCH (UID 9 BODY[] {" (count msg) "}\r\n" msg ")\r\na5 OK\r\n")
+        in (ByteArrayInputStream. (.getBytes ^String script StandardCharsets/ISO_8859_1))
+        out (ByteArrayOutputStream.)
+        got (atom [])]
+    (with-redefs [imap/connect (fn [_] {:socket (proxy [java.net.Socket] []
+                                                  (setSoTimeout [_] nil)
+                                                  (close [] nil))
+                                        :session (imap/session in out)})]
+      (binding [imap/*watch-cycles* 1]
+        (imap/watch {:host "mx" :user "u" :password "p"}
+                    (fn [uid raw] (swap! got conj [uid raw])))))
+    (is (= [[9 msg]] @got) "the pushed message is fetched by sequence range and delivered")))

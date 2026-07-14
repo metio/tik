@@ -13,7 +13,7 @@
   the handler confirms it was dealt with, and QUIT commits the deletes."
   (:require [clojure.string :as str]
             [tik.netmail :as net :refer [read-line-crlf]])
-  (:import (java.io InputStream OutputStream OutputStreamWriter Writer)
+  (:import (java.io InputStream OutputStream OutputStreamWriter)
            (java.net Socket)
            (java.nio.charset StandardCharsets)))
 
@@ -39,7 +39,7 @@
   "A POP3 session over an open input/output stream pair; the +OK greeting
   is consumed on construction."
   [^InputStream in ^OutputStream out]
-  (let [w ^Writer (OutputStreamWriter. out StandardCharsets/ISO_8859_1)
+  (let [w (OutputStreamWriter. out StandardCharsets/ISO_8859_1)
         send! (fn [s] (.write w (str s "\r\n")) (.flush w))]
     (read-line-crlf in)                                    ; greeting
     (reify Pop3
