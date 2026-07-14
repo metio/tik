@@ -138,6 +138,12 @@
                                                 a parent: a checklist whose checkmarks
                                                 derive from each child's evidence.
                                                 Idempotent; re-runs report coverage
+  tik recur <process> --period <label>          mint THIS period's ticket for a recurring
+            [--title T]                         process, once: create only if no ticket
+                                                already carries period=<label>, else no-op.
+                                                Run it from cron/a timer — the schedule
+                                                lives outside the log; tik just derives
+                                                \"does this period exist yet?\" (§19)
   tik probe [<id>] [--command C]                auto-derive facts from the world: run
                                                 each repo ticket's probe (the :probe
                                                 script of its process; any executable
@@ -220,6 +226,7 @@
       "init"    (storeops/cmd-init parsed)
       "store"   (storeops/cmd-store parsed)
       "rollout" (storeops/cmd-rollout parsed)
+      "recur"   (storeops/cmd-recur parsed)
       "probe"   (storeops/cmd-probe parsed)
       "pack"    (storeops/cmd-pack parsed)
       "gc"      (storeops/cmd-gc parsed)

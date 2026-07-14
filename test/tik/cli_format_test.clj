@@ -29,7 +29,7 @@
   renderers, or pass/fail audits — so --format does not apply."
   #{"actor" "adopt" "attach" "attest" "author" "board" "bridge" "bundle"
     "comment" "debug" "dispute" "effects" "export" "gc" "init"
-    "lint" "mcp" "new" "pack" "probe" "process" "retract"
+    "lint" "mcp" "new" "pack" "probe" "process" "recur" "retract"
     "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"
     "verify" "witness"})
 

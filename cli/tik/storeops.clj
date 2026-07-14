@@ -140,6 +140,50 @@
         (println "  " line)))
     (println (str "watch it: tik status " (sid parent-id)))))
 
+(defn cmd-recur
+  "recur <process> --period <label> [--title T] [--actor A]
+  Idempotently mint the CURRENT period's ticket for a recurring process:
+  create one only if no ticket for this process already carries
+  period=<label>, else report the existing one. The cadence lives OUTSIDE
+  the log — a cron/systemd timer runs this on schedule; tik never stores
+  or enforces a schedule (§19), it only derives \"does this period's
+  ticket exist yet?\" and mints on a miss. So re-running is safe and a
+  missed run self-heals on the next fire. The label is the caller's word
+  (2026-W29, 2026-Q3) — the kernel supplies no clock. Sibling of rollout:
+  the same idempotent-create-what-is-missing shape."
+  [{:keys [pos opts]}]
+  (let [proc-name (or (first pos)
+                      (die "usage: tik recur <process> --period <label> [--title T]"))
+        period (or (:period opts)
+                   (die (str "recur needs --period <label> (e.g. 2026-W29):"
+                             " the kernel has no clock, so the caller names"
+                             " the period")))
+        proc (load-process proc-name)
+        pk (keyword proc-name)
+        s (the-store)
+        existing (some (fn [{:keys [id state]}]
+                         (when (and (= pk (:process state))
+                                    (= period (str (red/fact-value state [:period]))))
+                           id))
+                       (all-ticket-ctx s))]
+    (if existing
+      (println (str "already have " proc-name " for " period ": " (sid existing)
+                    " — nothing recorded"))
+      (let [id (random-uuid)
+            e (event/create-ticket {:ticket id :actor (actor opts) :at (now)
+                                    :title (or (:title opts)
+                                               (str proc-name " " period))
+                                    :process pk
+                                    :version (:process/version proc)
+                                    :process-hash (archive-process! proc)})]
+        (append!* s e opts)
+        (append!* s (event/assert-fact {:ticket id :actor (actor opts) :at (now)
+                                        :parents #{(:event/id e)}
+                                        :path [:period] :value period})
+                  opts)
+        (cache-flush!)
+        (println (str "created " proc-name " for " period ": " (sid id)))))))
+
 (defn cmd-probe
   "probe [<id>] [--command C]
   Auto-derive facts from the world: for every open ticket carrying a

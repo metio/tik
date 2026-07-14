@@ -129,6 +129,30 @@
     (testing "nothing given -> nil (device flow)"
       (is (nil? (resolve-pw {}))))))
 
+(deftest recur_is_idempotent_per_period
+  ;; recurrence is porcelain, not a kernel scheduler (§19): `recur` mints
+  ;; the current period's ticket ONLY if none already carries that period
+  ;; fact — so a cron/timer can fire it repeatedly and a missed run
+  ;; self-heals, all without tik storing or enforcing a schedule.
+  (let [root (h/temp-dir! "tik-recur")]
+    (System/setProperty "user.name" "tester")
+    (testing "first fire mints; a repeat fire for the same period is a no-op"
+      (is (re-find #"created track for 2026-W29"
+                   (:out (in root "recur" "track" "--period" "2026-W29"))))
+      (is (re-find #"already have track for 2026-W29"
+                   (:out (in root "recur" "track" "--period" "2026-W29")))))
+    (testing "a new period mints again"
+      (is (re-find #"created track for 2026-W30"
+                   (:out (in root "recur" "track" "--period" "2026-W30")))))
+    (testing "exactly one ticket per period — no duplicate from re-fires"
+      (let [edn (:out (in root "ls" "--all" "--edn"))]
+        (is (= 1 (count (re-seq #"2026-W29" edn))))
+        (is (= 1 (count (re-seq #"2026-W30" edn))))))
+    (testing "the kernel has no clock, so --period is required"
+      (let [r (in root "recur" "track")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"needs --period" (str (:out r) (:err r))))))))
+
 (defn- at [s] (java.time.Instant/parse s))
 
 (deftest verify_changed_catches_a_pruned_inner_ancestor
