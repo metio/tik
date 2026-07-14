@@ -30,13 +30,13 @@ jobs:
       - id: gate
         # Release only when something that changes the shipped binary/image
         # actually moved since the last tag.
-        uses: metio/ci/needs-release@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        uses: metio/ci/needs-release@ea61d45334e3168b830e6aff85446858b8e60031 # 2026.7.14190952
         with:
           paths: deps.edn bb.edn build.clj src cli Containerfile dev/build-native.sh
       - id: version
         if: steps.gate.outputs.needed == 'true'
         # Calendar version (YYYY.M.D + UTC time), shared across every metio artifact.
-        uses: metio/ci/calver@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        uses: metio/ci/calver@ea61d45334e3168b830e6aff85446858b8e60031 # 2026.7.14190952
 
   release:
     name: Release
@@ -65,7 +65,7 @@ jobs:
         # <image>:<version> and :latest, attaches SBOM + provenance, and signs
         # the image with cosign keyless. platforms is pinned to linux/amd64
         # because target/tik is a single-arch native binary (no cross-compile).
-        uses: metio/ci/container-release@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        uses: metio/ci/container-release@ea61d45334e3168b830e6aff85446858b8e60031 # 2026.7.14190952
         with:
           image: ghcr.io/${{ github.repository }}
           version: ${{ needs.prepare.outputs.version }}
@@ -83,12 +83,12 @@ jobs:
           cp target/tik dist/tik-linux-amd64-glibc
           ( cd dist && sha256sum tik.jar tik-linux-amd64-glibc > SHA256SUMS )
       - name: Sign the checksums (cosign keyless)
-        uses: metio/ci/cosign-sign-blob@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        uses: metio/ci/cosign-sign-blob@ea61d45334e3168b830e6aff85446858b8e60031 # 2026.7.14190952
         with:
           file: dist/SHA256SUMS
       - id: notes
         # git-cliff release notes from the org-wide config.
-        uses: metio/ci/release-notes@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        uses: metio/ci/release-notes@ea61d45334e3168b830e6aff85446858b8e60031 # 2026.7.14190952
         with:
           version: ${{ needs.prepare.outputs.version }}
           previous: ${{ needs.prepare.outputs.previous }}
