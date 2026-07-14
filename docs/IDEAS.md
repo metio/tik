@@ -552,6 +552,157 @@ abstractions generalize.
   debugger and governance analyses: reachability failures ARE dead
   stages, invariant violations ARE the counterexample trace to show.
 
+## The tik backend — a delegated-agent server (client/server tik)
+
+One long-running `tik backend` process is the server; the CLI and the web
+UI are just clients of it. It bundles everything for a one-binary install:
+the embedded store (the SQLite backend ships for exactly this "one
+artifact, works everywhere" reason), the read/write HTTP+EDN surface
+`serve` already exposes, the `mcp` agent surface, a scheduler loop, a
+delegate signing key, and a config of pipelines. Drop the binary, point it
+at a store dir, give it a key, write a config — done.
+
+**Why this does NOT re-open §19's "no in-kernel scheduler."** That
+rejection is precise: the KERNEL must never loop or act, because a
+scheduler in the kernel would (a) require a runtime the pure function
+`f(events, now)` does not have, (b) break offline re-derivability and
+union-merge convergence by making the event set depend on *when clocks
+fired across replicas*, and (c) forge authorless events. A backend
+dissolves all three, because the loop moves from the *replicated, pure*
+kernel to a *singular, porcelain* server:
+
+- (a) The runtime is porcelain — the same category as `serve` (httpkit)
+  and `mcp`. The kernel stays a pure function the backend *calls* with an
+  explicit `now`; there is still no implicit clock in the core.
+- (b) The backend acts by producing a REAL signed event, so an auditor
+  re-derives from the log with no schedule knowledge ("actor `tik-backend`
+  signed a create at T"), fully offline. Convergence holds because there
+  is a SINGLE authoritative writer for scheduled events, not one clock per
+  replica; its events sync like any other. The single backend is not just
+  install convenience — it is what keeps merge conflict-free.
+- (c) The backend signs with a delegate key whose authority traces to the
+  human who set up the pipeline (§9 delegation + §13 authority chains). It
+  is an accountable agent, not an authorless clock.
+
+So the boundary restated exactly: it is not "nothing may act on a
+schedule" — it is *"whatever acts must produce a signed event by an
+accountable actor, and the kernel must not be that actor."* A time-
+triggered backend is simply an **agent whose trigger is a clock instead of
+a prompt**, and §12 already says an agent's every action lands as an
+ordinary signed event through the gated frontier.
+
+**Delegate identity + delegation attestation (the accountability spine).**
+The backend is a registered actor (identity rung 1, the `actors` allowed-
+signers) with its own key, e.g. `tik-backend`. A human authorizes it with
+a signed **delegation attestation** on the identity-registry ticket — the
+§9/§19 "delegation as an attestation claim with capability scope and
+`:valid-until`, including human→agent delegation" made concrete:
+
+```clojure
+{:claim :delegation
+ :delegation/from    "seb"            ; the accountable human (key bound via rung-2 OIDC)
+ :delegation/to      "tik-backend"    ; the delegate key (a rung-1 actor)
+ :delegation/scope   [[:recur "release-train"]  ; what it may do, per pipeline/process
+                      [:probe "*"]
+                      [:effects "*"]]
+ :delegation/valid-until #inst "2027-01-01T00:00:00Z"
+ :delegation/reason  "unattended release-train cadence"}
+```
+
+- Signed by `seb`, so the chain is `event ← tik-backend ← delegated-by seb
+  ← IdP-bound`. `tik causal` plus a delegation lens answer "the backend
+  fired this, on seb's authority, within scope, before expiry" — pure
+  derivation over delegation attestations (§13: "Alice, delegated by Bob,
+  therefore authorized").
+- **Revocation is a retraction, not a keyserver call:** retract the
+  delegation or let `:valid-until` lapse and the backend's future
+  signatures no longer trace to any authority — `verify` and the
+  delegation lens flag them, offline, contacting nothing. Rotation is a
+  newer delegation to a new key.
+- Scope is the safety rail: a delegation for `release-train` recur cannot
+  be replayed to sign arbitrary facts; the frontier gate (below) enforces
+  the rest.
+
+**The pipeline / config is declared INPUT, not derived truth.** A cadence
+("every Monday", "each release") is a genuine human intent, not a value
+derived from evidence — so storing it never touches the law, which forbids
+only storing *derived* values as authoritative (§13 blesses declared data
+— `:effort`, priority — where declaration is the honest form). Two homes,
+both legitimate: **porcelain config** (`pipelines.edn`, beside
+`effects.edn`/`oidc.edn`) — cheapest install, edited by hand or by the UI;
+or **signed facts/attestations in the log** — "who set up this pipeline,
+when, on what authority" becomes itself derivable, and editing a cadence
+is a signed event. Prefer the latter when the deployment cares who changed
+a schedule. A pipeline names a process, a cadence, an action, and the
+delegate:
+
+```clojure
+{:pipelines
+ [{:id     "release-train"
+   :on     {:cron "0 9 * * MON"}      ; the wall-clock trigger — porcelain, OUTSIDE the log
+   :period {:format "yyyy-'W'ww"}      ; how the backend stamps the label recur keys on
+   :do     [:recur "release-train"]    ; the porcelain verb (idempotent by period)
+   :as     "tik-backend"}              ; the delegate; must hold a valid delegation for :do
+  {:id "dep-dashboard"
+   :on {:cron "0 * * * *"}             ; hourly
+   :do [:probe "<parent-id>"]          ; refresh a standing (never-settling) ticket's facts
+   :as "tik-backend"}]}
+```
+
+**What a tick does — and the frontier within it.** On each fire the
+backend runs a porcelain verb *as the delegate*, and every write is a
+signed, re-derivable event:
+
+- `recur` — idempotently mint this period's ticket (derive "does
+  `period=L` exist?", create on a miss). Single-writer-safe; multi-backend
+  HA needs leader election or leans on the derive-before-create dedup.
+- `probe` — refresh a standing ticket's facts from the world (the always-
+  open dashboard: a non-terminal process kept current — the rollout
+  parent/checklist shape).
+- `effects` — fire OUTBOUND integrations on derived transitions
+  (webhooks/mail/chat). Effects write NOTHING to the log (delivery lives
+  outside it, §12), so they are unconditionally fine.
+
+The precise frontier to hold: **time-triggered creation (recur) and
+outbound reaction (effects) are clean; a backend that *writes new log
+events* in reaction to *derived-state conditions* ("when stage S is
+reached, assert fact F") is a condition→action rule — porcelain, so the
+LAW permits it (the events are signed and re-derivable, the kernel never
+acts), but it is BPMN reincarnated in porcelain if overused, which defeats
+the point.** Three rules keep a delegated agent from becoming a workflow
+engine: (1) every action is a signed, accountable, re-derivable event; (2)
+truth stays *derived* — automation only *produces evidence*, it is never
+itself the source of truth; (3) autonomous writes go through the same
+frontier gate (`next-lens/admissible?`) as any agent, scoped by the
+delegation. Trigger the backend on **time and explicit request**, not on
+"any fact changed, do X"; react to derived state *outbound* via effects
+rather than by auto-writing the log — and you have a delegated agent, not
+a rules engine.
+
+**Concurrency / clock, stated exactly.** The kernel still takes `now` as
+an explicit argument; the backend's wall clock is the porcelain clock it
+passes in — no implicit clock enters the core. Convergence needs a single
+logical writer for scheduled events (one backend = trivially met) OR
+idempotent-by-derivation writes plus leader election for HA. A missed fire
+self-heals on the next fire (idempotency), so downtime costs a delayed
+ticket, never a lost or duplicated one.
+
+**Clients.** CLI and web UI talk to the backend over the HTTP/EDN surface
+`serve` already exposes (`/tickets.edn`, `/explain/<id>.edn`, board HTML);
+a human's writes authenticate them (rung-2 OIDC) and land as their signed
+events, or as backend-delegated events with the chain recorded. The store
+is embedded; the whole thing is one process on one port.
+
+**New vs. composed.** Nothing in the kernel changes. The plan's deferred
+pieces compose into this: §9 delegation-as-attestation and OIDC identity,
+§12 agents-act-as-signed-events-through-the-gate, §13 authority chains and
+agent accountability, the effects planner, and the `recur`/`probe`/
+`rollout` porcelain. The only new build is (1) the backend loop (porcelain,
+like `serve`), (2) the `pipelines` config, and (3) the delegation-
+attestation claim shape plus a delegation lens for the chain. Trigger to
+build: the first non-CLI deployment — someone who wants unattended
+cadences and a web UI for less technical users.
+
 ## Commercial
 
 - **The "evidence bundle"** — a named, portable witnessed.dev
