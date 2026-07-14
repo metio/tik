@@ -100,6 +100,12 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   clean stderr line, the poll continues), idempotent (content-addressed, so
   re-polling dedups), and loop-safe — our own returned mail is dropped and
   auto-replies/bulk/bounces (RFC 3834) are recorded but never answered.
+- `tik bridge pop3 [--config pop3.edn]` — the same for POP3 mailboxes
+  (config under a `:pop3` key). `:delete false` (default) leaves mail on
+  the server and re-fetches each poll — harmless because dedup is by
+  content address; `:delete true` removes a message only after it ingests
+  cleanly, so a mid-poll crash loses nothing (the next poll re-fetches,
+  dedups, then deletes).
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
   device-flow (or `--user` + a password) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never

@@ -21,6 +21,7 @@
             [tik.cli-core]
             [tik.harness :as h]
             [tik.imap]
+            [tik.pop3]
             [tik.mail :as mail]
             [tik.store.protocol :as store]))
 
@@ -206,6 +207,32 @@
         (is (zero? (:exit r)) (:err r))
         (is (str/includes? (:err r) "skip uid 2") "the bad message is skipped with a clean line")
         (is (= 2 (count (store/ticket-ids store))) "both good messages ingested despite the bad one")))))
+
+(deftest pop3_ingests_through_the_shared_core_and_signals_delete
+  ;; `bridge pop3` drives the same isolated ingest as imap: a good message
+  ;; ingests (handler returns truthy -> caller may delete it), a bad one
+  ;; is skipped (handler returns falsey -> kept on the server).
+  (let [{:keys [root store]} (h/temp-store!)
+        ar "mx.example; dkim=pass header.d=customer.example"
+        good (email {:from "alice@customer.example" :subject "hi" :ar ar
+                     :msgid "<g@x>" :body "hello"})
+        bad  (email {:from "alice@customer.example" :subject "no-auth"  ; no A-R -> DKIM refusal
+                     :msgid "<b@x>" :body "boom"})
+        results (atom [])]
+    (spit (io/file (str root) "pop3.edn")
+          (pr-str {:process :track :default-actor "inbound"
+                   :dkim {:require true :authserv-id "mx.example"}}))
+    (with-redefs [tik.pop3/process-mailbox
+                  (fn [_conn handle]
+                    (swap! results conj (handle "AAA" good))
+                    (swap! results conj (handle "BBB" bad)))]
+      (let [r (h/with-cli-root root
+                #(tik.cli/run-argv ["bridge" "pop3"
+                                    "--config" (str (io/file (str root) "pop3.edn"))]))]
+        (is (zero? (:exit r)) (:err r))
+        (is (= [true false] @results) "handled -> deletable; refused -> kept on server")
+        (is (str/includes? (:err r) "skip uid BBB"))
+        (is (= 1 (count (store/ticket-ids store))) "only the good message became a ticket")))))
 
 ;; ---------------------------------------------------------------- generators
 

@@ -14,29 +14,12 @@
   `connect` supplies the real TLS socket. Bytes are read as ISO-8859-1
   (each octet -> one char) so a message round-trips losslessly into the
   MIME decoder."
-  (:require [clojure.string :as str])
+  (:require [clojure.string :as str]
+            [tik.netmail :as net :refer [read-line-crlf]])
   (:import (java.io ByteArrayOutputStream InputStream OutputStream
                     OutputStreamWriter)
            (java.net Socket)
-           (java.nio.charset StandardCharsets)
-           (javax.net.ssl SSLSocketFactory)))
-
-(defn- read-line-crlf
-  "One IMAP response line without its trailing CRLF, or nil at end of
-  stream. Reads octets as latin-1 so a following literal's byte count is
-  exact."
-  ^String [^InputStream in]
-  (let [buf (ByteArrayOutputStream.)]
-    (loop []
-      (let [b (.read in)]
-        (cond
-          (= b -1) (when (pos? (.size buf))
-                     (String. (.toByteArray buf) StandardCharsets/ISO_8859_1))
-          (= b 10) (let [^bytes arr (.toByteArray buf)
-                         len (alength arr)
-                         len (int (if (and (pos? len) (= 13 (aget arr (dec len)))) (dec len) len))]
-                     (String. arr 0 len StandardCharsets/ISO_8859_1))
-          :else (do (.write buf b) (recur)))))))
+           (java.nio.charset StandardCharsets)))
 
 (defn- read-n
   "Exactly n octets as a latin-1 string — an IMAP literal payload."
@@ -138,8 +121,7 @@
   default). Returns {:session … :socket …}; the caller LOGINs/SELECTs and
   closes the socket when done."
   [{:keys [host port]}]
-  (let [^SSLSocketFactory f (SSLSocketFactory/getDefault)
-        sock ^Socket (.createSocket f ^String host (int (or port 993)))]
+  (let [sock ^Socket (net/tls-socket host port 993)]
     {:socket sock
      :session (session (.getInputStream sock) (.getOutputStream sock))}))
 

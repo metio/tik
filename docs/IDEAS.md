@@ -815,15 +815,21 @@ coordination point anywhere in the data plane.
   append-only, signed feed. Inbound replies would re-enter as signed events
   only via the same accountability gate as any external claim.
 
-- **Ingest real email over IMAP** — BUILT as `tik bridge imap`. Polls a
-  mailbox over TLS and ingests each message through the same routing, DKIM
-  gate, and MIME decoding (multipart/HTML → text) as `bridge email`;
-  content-addressed so re-polling dedups (the second law), loop-safe (own
-  mail dropped, auto-replies recorded but never answered — RFC 3834), and
-  batch-isolated (one bad message skips, the poll continues). The remaining
-  thread is POP3 (a smaller protocol subset) and a raw-message artifact for
-  full fidelity beside the decoded comment; hand-rolled `tik.imap` +
-  `tik.mime`, no jakarta.mail (absent on babashka, hostile to native-image).
+- **Ingest real email over IMAP and POP3** — BUILT as `tik bridge imap`
+  and `tik bridge pop3`. Both poll a mailbox over TLS and ingest each
+  message through the same routing, DKIM gate, and MIME decoding
+  (multipart/HTML → text) as `bridge email`; content-addressed so
+  re-polling dedups (the second law), loop-safe (own mail dropped,
+  auto-replies recorded but never answered — RFC 3834), and batch-isolated
+  (one bad message skips, the poll continues). POP3 defaults to leaving
+  mail on the server (`:delete false`) — dedup makes the re-fetch harmless
+  — and deletes only after a clean ingest when asked. Hand-rolled
+  `tik.imap`/`tik.pop3` over a shared `tik.netmail` transport plus
+  `tik.mime`; no jakarta.mail (absent on babashka, hostile to
+  native-image). Open thread: a **raw-message artifact** stored beside the
+  decoded comment for full MIME/attachment fidelity — a per-deployment
+  `tik backend` config toggle (fidelity vs. store size), not a default,
+  since some operators want the raw bytes archived and others do not.
 
 ## An `idea` / decision process (a shareable process definition)
 

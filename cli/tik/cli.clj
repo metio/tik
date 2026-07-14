@@ -107,6 +107,8 @@
   tik bridge imap [--config imap.edn]           poll an IMAP mailbox over TLS and ingest
                                                 new mail: same routing, DKIM gate, and loop
                                                 guards, one message at a time, skip-and-go
+  tik bridge pop3 [--config pop3.edn]           same, for POP3 mailboxes (:delete false by
+                                                default — dedup makes a re-fetch harmless)
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U]                    a signed key-binding attestation on the
                   [--password-command C |       registry ticket; verification never

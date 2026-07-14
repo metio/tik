@@ -22,6 +22,7 @@
                               require-dkim! ticket-ref-of]]
             [tik.oid4vci :as oid4vci]
             [tik.oidc :as oidc]
+            [tik.pop3 :as pop3]
             [tik.render :refer [shash sid]]
             [tik.secret :as secret]
             [tik.store.protocol :as store]
@@ -273,6 +274,41 @@
                   (mail-blob! s id actor-name at path (str subject "\n\n" body) opts)
                   {:outcome (if auto? :auto :ticket) :id id :msgid msgid :actor actor-name})))))))))
 
+(defn- ingest-one!
+  "Ingest one FETCHED message in isolation: record its outcome in `tally`,
+  print a line, and return TRUE when it was handled (so a POP3 caller may
+  delete it) or FALSE on a skip/error (leave it on the server for retry or
+  an admin's eyes). NEVER throws — a refusal or crash is logged and
+  swallowed so a batch poll continues past one bad message. This is the
+  atom-bomb-proof heart shared by every mailbox protocol."
+  [s cfg opts uid raw tally]
+  (let [bump #(swap! tally update % (fnil inc 0))]
+    (try
+      (let [{:keys [outcome id msgid facts]} (ingest-message! s cfg raw opts)]
+        (bump outcome)
+        (println (case outcome
+                   :own (str "uid " uid ": dropped our own mail (loop guard)")
+                   :dup (str "uid " uid ": already ingested " msgid)
+                   :auto (str "uid " uid ": recorded auto-reply -> " (sid id) " (no cascade)")
+                   :comment (str "uid " uid ": comment -> " (sid id)
+                                 (when (pos? (long (or facts 0))) (str " (+" facts " fact(s))")))
+                   :ticket (str "uid " uid ": new ticket " (sid id))
+                   (str "uid " uid ": " outcome)))
+        true)
+      (catch clojure.lang.ExceptionInfo e
+        (bump :skip)
+        (binding [*out* *err*] (println (str "skip uid " uid ": " (ex-message e))))
+        false)
+      (catch Throwable e
+        (bump :error)
+        (binding [*out* *err*] (println (str "error uid " uid ": " (ex-message e))))
+        false))))
+
+(defn- report! [tally]
+  (cache-flush!)
+  (println (str "ingest complete: " (into (sorted-map) @tally)))
+  (exit! 0))
+
 (defn cmd-bridge-imap
   "bridge imap [--config imap.edn]
   Poll an IMAP mailbox over TLS and ingest new mail — the inbound
@@ -285,10 +321,7 @@
      :from->actor {\"vip@corp.com\" \"vip\"}
      :dkim {:require true :authserv-id \"mx.example.com\"}}
 
-  Every message is ingested in ISOLATION: a DKIM refusal, an unknown
-  sender, or any error skips just that message with a clear line on
-  stderr and the poll continues — nothing aborts the batch. Loop-safe
-  (own mail dropped, auto-replies recorded but never answered) and
+  Every message is ingested in ISOLATION (see ingest-one!): loop-safe,
   idempotent (BODY.PEEK never marks \\Seen; content addressing dedups a
   re-fetch), so a cron/timer can run it as often as you like."
   [{:keys [opts]}]
@@ -297,32 +330,38 @@
             (die (str "no imap config at " cfg-file
                       " (need {:imap {:host … :user … :password …} :process … :default-actor …})")))
         cfg (read-edn-file (io/file cfg-file))
-        imapcfg (secret/resolve-secrets (:imap cfg))
         s (the-store)
-        msgs (imap/fetch-messages imapcfg)
         tally (atom {})]
-    (doseq [{:keys [uid raw]} msgs]
-      (let [bump #(swap! tally update % (fnil inc 0))]
-        (try
-          (let [{:keys [outcome id msgid facts]} (ingest-message! s cfg raw opts)]
-            (bump outcome)
-            (println (case outcome
-                       :own (str "uid " uid ": dropped our own mail (loop guard)")
-                       :dup (str "uid " uid ": already ingested " msgid)
-                       :auto (str "uid " uid ": recorded auto-reply -> " (sid id) " (no cascade)")
-                       :comment (str "uid " uid ": comment -> " (sid id)
-                                     (when (pos? (long (or facts 0))) (str " (+" facts " fact(s))")))
-                       :ticket (str "uid " uid ": new ticket " (sid id))
-                       (str "uid " uid ": " outcome))))
-          (catch clojure.lang.ExceptionInfo e
-            (bump :skip)
-            (binding [*out* *err*] (println (str "skip uid " uid ": " (ex-message e)))))
-          (catch Throwable e
-            (bump :error)
-            (binding [*out* *err*] (println (str "error uid " uid ": " (ex-message e))))))))
-    (cache-flush!)
-    (println (str "ingest complete: " (into (sorted-map) @tally)))
-    (exit! 0)))
+    (doseq [{:keys [uid raw]} (imap/fetch-messages (secret/resolve-secrets (:imap cfg)))]
+      (ingest-one! s cfg opts uid raw tally))
+    (report! tally)))
+
+(defn cmd-bridge-pop3
+  "bridge pop3 [--config pop3.edn]
+  Poll a POP3 mailbox over TLS and ingest new mail — same routing, DKIM
+  gate, MIME decoding, and loop guards as `bridge imap`, for mailboxes
+  that only speak POP3. Config mirrors imap.edn under a :pop3 key:
+
+    {:pop3 {:host \"pop.example.com\" :user \"desk@example.com\"
+            :password {:credential \"pop-pw\"} :delete false}
+     :process :support :default-actor \"inbound\" …}
+
+  With :delete false (the default, safest) messages are LEFT on the
+  server and re-fetched each poll — harmless because content addressing
+  dedups them. Set :delete true for a busy mailbox: a message is removed
+  only AFTER it was ingested cleanly, so nothing is lost to a mid-poll
+  crash (the next poll re-fetches and dedups, then deletes)."
+  [{:keys [opts]}]
+  (let [cfg-file (or (:config opts) (str (io/file (root) "pop3.edn")))
+        _ (when-not (.exists (io/file cfg-file))
+            (die (str "no pop3 config at " cfg-file
+                      " (need {:pop3 {:host … :user … :password …} :process … :default-actor …})")))
+        cfg (read-edn-file (io/file cfg-file))
+        s (the-store)
+        tally (atom {})]
+    (pop3/process-mailbox (secret/resolve-secrets (:pop3 cfg))
+                          (fn [uidl raw] (ingest-one! s cfg opts uidl raw tally)))
+    (report! tally)))
 
 (defn cmd-bridge
   "bridge email [--config bridge.edn] < message
@@ -339,9 +378,11 @@
   (when (= "oidc" (first pos)) (cmd-bridge-oidc opts))
   (when (= "oid4vci" (first pos)) (cmd-bridge-oid4vci opts))
   (when (= "imap" (first pos)) (cmd-bridge-imap {:opts opts}))
+  (when (= "pop3" (first pos)) (cmd-bridge-pop3 {:opts opts}))
   (when-not (= "email" (first pos))
     (die (str "usage: tik bridge email [--config bridge.edn] < message\n"
               "       tik bridge imap [--config imap.edn]\n"
+              "       tik bridge pop3 [--config pop3.edn]\n"
               "       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]\n"
               "       tik bridge oid4vci --credential vc.jwt --registry ID"
               " [--jwks-url URL | --jwks FILE]")))
