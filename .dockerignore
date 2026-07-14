@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+# The image copies ONLY the prebuilt native binary, so send nothing else as the
+# build context — this keeps the buildx upload tiny and keeps the .git dir, the
+# event store, and the sources out of the image build entirely.
+*
+!target/tik

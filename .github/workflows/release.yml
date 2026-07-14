@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+# Least privilege at the top; the release job raises exactly what it needs.
+permissions:
+  contents: read
+# Serialize releases — release-notes reads tags/history and gh release create
+# writes a tag; overlapping runs would race. Never cancel a release in flight.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      needed: ${{ steps.gate.outputs.needed }}
+      version: ${{ steps.version.outputs.version }}
+      previous: ${{ steps.gate.outputs.last }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0 # needs-release / calver read tags and full history
+      - id: gate
+        # Release only when something that changes the shipped binary/image
+        # actually moved since the last tag.
+        uses: metio/ci/needs-release@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        with:
+          paths: deps.edn bb.edn build.clj src cli Containerfile dev/build-native.sh
+      - id: version
+        if: steps.gate.outputs.needed == 'true'
+        # Calendar version (YYYY.M.D + UTC time), shared across every metio artifact.
+        uses: metio/ci/calver@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+
+  release:
+    name: Release
+    needs: prepare
+    if: needs.prepare.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    # native-image is slow (uberjar + GraalVM compile), then a multi-step buildx
+    # push + cosign signing follows.
+    timeout-minutes: 60
+    permissions:
+      contents: write # create the GitHub release + tag
+      packages: write # push the image to GHCR
+      id-token: write # cosign keyless (image + checksum blob) via Fulcio OIDC
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - name: Build the uberjar and native binary
+        # The same toolchain developers run locally — produces target/tik.jar
+        # (portable, any JDK) and target/tik (glibc-dynamic linux/amd64 native).
+        run: nix develop --command sh dev/build-native.sh
+      - id: image
+        name: Build, push and sign the container image
+        # container-release builds the Containerfile with buildx, pushes
+        # <image>:<version> and :latest, attaches SBOM + provenance, and signs
+        # the image with cosign keyless. platforms is pinned to linux/amd64
+        # because target/tik is a single-arch native binary (no cross-compile).
+        uses: metio/ci/container-release@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        with:
+          image: ghcr.io/${{ github.repository }}
+          version: ${{ needs.prepare.outputs.version }}
+          file: ./Containerfile
+          platforms: linux/amd64
+      - name: Assemble release artifacts
+        # The portable download for CLI users is the uberjar (any OS + JDK 21);
+        # the native binary is offered too, explicitly labelled so nobody
+        # mistakes a glibc/amd64 build for a universal one. GraalVM cannot
+        # cross-compile, so macOS/Windows/arm users use the uberjar (or the
+        # container image, which is the universal deployment path).
+        run: |
+          mkdir -p dist
+          cp target/tik.jar dist/tik.jar
+          cp target/tik dist/tik-linux-amd64-glibc
+          ( cd dist && sha256sum tik.jar tik-linux-amd64-glibc > SHA256SUMS )
+      - name: Sign the checksums (cosign keyless)
+        uses: metio/ci/cosign-sign-blob@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        with:
+          file: dist/SHA256SUMS
+      - id: notes
+        # git-cliff release notes from the org-wide config.
+        uses: metio/ci/release-notes@aec58ab29b70164cbb45864d38e4122fe4bfd59f # 2026.7.9215937
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          previous: ${{ needs.prepare.outputs.previous }}
+      - name: Publish the GitHub release
+        # The release job needs the image pushed first, so a failed build never
+        # leaves a published release pointing at a missing image.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file "$NOTES" \
+            dist/tik.jar \
+            dist/tik-linux-amd64-glibc \
+            dist/SHA256SUMS \
+            dist/SHA256SUMS.bundle
