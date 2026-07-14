@@ -1,59 +1,59 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 {:paths ["src" "cli"]
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        metosin/malli {:mvn/version "0.17.0"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.5"}
+        metosin/malli {:mvn/version "0.20.1"}
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.
-        cheshire/cheshire {:mvn/version "6.0.0"}
+        cheshire/cheshire {:mvn/version "6.2.0"}
         ;; the SQLite backend embeds the driver (bundled native lib,
         ;; version-pinned) so the shipped binary carries its own SQLite —
         ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
         ;; harness (file store), the native binary is where SQLite runs.
-        org.xerial/sqlite-jdbc {:mvn/version "3.47.1.0"}}
+        org.xerial/sqlite-jdbc {:mvn/version "3.53.2.0"}}
  :aliases
  {;; the native binary's closed world: bb ships http-client and httpkit
   ;; as builtins, the JVM/native build declares them; graal-build-time
   ;; marks Clojure namespaces initialize-at-build-time for native-image
-  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.22"}
-                        http-kit/http-kit {:mvn/version "2.8.0"}
-                        com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}}
+  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.23"}
+                        http-kit/http-kit {:mvn/version "2.8.1"}
+                        com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}}
   :build {:extra-paths ["."]
           :deps {io.github.clojure/tools.build {:mvn/version "0.10.6"}}
           :ns-default build}
   :test {:extra-paths ["test"]
          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                      org.clojure/test.check {:mvn/version "1.1.1"}
+                      org.clojure/test.check {:mvn/version "1.1.3"}
                       ;; an in-process real IMAP/POP3/SMTP server for the mail
                       ;; ingestion end-to-end tests (JVM suite only; never in
                       ;; the native binary or babashka)
-                      com.icegreen/greenmail {:mvn/version "2.1.3"}}
+                      com.icegreen/greenmail {:mvn/version "2.1.9"}}
          :main-opts ["-m" "kaocha.runner"]}
   :bench {:extra-paths ["dev"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}
           :main-opts ["-m" "bench"]}
   :dev {:extra-paths ["test" "dev"]
-        :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}
+        :extra-deps {org.clojure/test.check {:mvn/version "1.1.3"}}}
   ;; static analysis — the full battery runs in CI (metio/ci clojure.yml)
   ;; and locally via `bb analyze` / `bb fmt`
   :eastwood {:extra-paths ["test"]
              ;; tik.main requires the :native closed-world deps; the
              ;; analyzer needs them resolvable to lint that namespace
              :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
-                          org.clojure/test.check {:mvn/version "1.1.1"}
+                          org.clojure/test.check {:mvn/version "1.1.3"}
                           lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                          org.babashka/http-client {:mvn/version "0.4.22"}
-                          http-kit/http-kit {:mvn/version "2.8.0"}
+                          org.babashka/http-client {:mvn/version "0.4.23"}
+                          http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
-                          com.icegreen/greenmail {:mvn/version "2.1.3"}
-                          com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}
+                          com.icegreen/greenmail {:mvn/version "2.1.9"}
+                          com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
-  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.15.2"}}
+  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.24.0"}}
            :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
-  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.13.0"}}
+  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.4"}}
            :main-opts ["-m" "cljfmt.main"]}
   :watson {:extra-deps {io.github.clj-holmes/clj-watson
                         {:git/tag "v6.1.0" :git/sha "be98e4db74fb8927db4825cc73bbe2606e44e5e3"}}
