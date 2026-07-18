@@ -28,7 +28,7 @@
                       ;; an in-process real IMAP/POP3/SMTP server for the mail
                       ;; ingestion end-to-end tests (JVM suite only; never in
                       ;; the native binary or babashka)
-                      com.icegreen/greenmail {:mvn/version "2.1.9"}}
+                      com.icegreen/greenmail {:mvn/version "2.1.10"}}
          :main-opts ["-m" "kaocha.runner"]}
   :bench {:extra-paths ["dev"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}
@@ -47,13 +47,13 @@
                           http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
-                          com.icegreen/greenmail {:mvn/version "2.1.9"}
+                          com.icegreen/greenmail {:mvn/version "2.1.10"}
                           com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
   :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.24.0"}}
            :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
-  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.4"}}
+  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.5"}}
            :main-opts ["-m" "cljfmt.main"]}
   :watson {:extra-deps {io.github.clj-holmes/clj-watson
                         {:git/tag "v6.1.0" :git/sha "be98e4db74fb8927db4825cc73bbe2606e44e5e3"}}
