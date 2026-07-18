@@ -28,7 +28,7 @@
                       ;; an in-process real IMAP/POP3/SMTP server for the mail
                       ;; ingestion end-to-end tests (JVM suite only; never in
                       ;; the native binary or babashka)
-                      com.icegreen/greenmail {:mvn/version "2.1.10"}}
+                      com.icegreen/greenmail {:mvn/version "2.1.11"}}
          :main-opts ["-m" "kaocha.runner"]}
   :bench {:extra-paths ["dev"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}
@@ -47,7 +47,7 @@
                           http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
-                          com.icegreen/greenmail {:mvn/version "2.1.10"}
+                          com.icegreen/greenmail {:mvn/version "2.1.11"}
                           com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
