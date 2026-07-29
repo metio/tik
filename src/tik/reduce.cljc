@@ -28,10 +28,22 @@
 (defn dedupe-events
   "Union semantics: duplicates (same content address) collapse to one.
   Retention order is irrelevant — the caller re-sorts by (at, id) via
-  `order`, and same-id events carry the same bytes."
+  `order`, and same-id events carry the same bytes.
+
+  Keyed on the id ALONE, not on the (id, event) pair: an id is a claim
+  about the whole hashed region, so two maps sharing one must be one
+  event, and a store that offers two is malformed rather than holding
+  two facts. Deduping the pair would keep both and make 'merge is set
+  union' hold only for stores that were already well-formed."
   [events]
-  (into [] (comp (map (juxt :event/id identity)) (distinct) (map second))
-        events))
+  (first
+   (core/reduce (fn [[acc seen] e]
+                  (let [id (:event/id e)]
+                    (if (contains? seen id)
+                      [acc seen]
+                      [(conj acc e) (conj seen id)])))
+                [[] #{}]
+                events)))
 
 (defn order [events]
   (sort-by (juxt :event/at :event/id) events))

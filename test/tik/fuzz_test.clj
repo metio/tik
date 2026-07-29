@@ -450,7 +450,8 @@
   "Public kernel fns deliberately NOT in the registry, each with why.
   Explicit so the exemption is a decision on the record, not an
   oversight the sweep silently tolerates."
-  '{tik.canonical/sha256-hex        "total by construction: SHA-256 over any string"
+  '{tik.canonical/normalize-inst    "total by construction: truncates an Instant, passes everything else through untouched"
+    tik.canonical/sha256-hex        "total by construction: SHA-256 over any string"
     tik.canonical/sha256-hex-bytes  "total by construction: SHA-256 over any byte array"
     tik.event/valid?                "malli validator over the Event schema: a boolean over any input"
     tik.event/explain-event         "malli explainer over the Event schema: an explanation or nil over any input"

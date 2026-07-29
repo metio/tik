@@ -10,6 +10,7 @@
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.test.check.generators :as gen]
+            [tik.canonical :as canonical]
             [tik.event :as event])
   (:import (java.time Instant)))
 
@@ -18,6 +19,17 @@
 (def tid #uuid "018f2f6e-7c1a-7000-8000-00000000beef")
 (def ^Instant base (Instant/parse "2026-07-08T10:00:00Z"))
 (defn at-sec ^Instant [s] (.plusSeconds base (long s)))
+
+(defn at-sec+nanos
+  "A claimed time `s` seconds past base plus a SUB-MILLISECOND remainder.
+  A real clock has nanosecond precision and the canonical form commits
+  to milliseconds, so histories generated at whole seconds inhabit a
+  domain the CLI never writes in — and the laws proved over them would
+  say nothing about the events a store actually holds. Two events at
+  the same second with different nanos collapse to one instant once
+  normalized, which is exactly the tie the reducer must survive."
+  ^Instant [s nanos]
+  (.plusNanos (at-sec s) (long nanos)))
 
 (def actors ["seb" "billing" "customer" "rando"])
 (def known-paths [[:category] [:severity] [:resolution :ref] [:customer :ack]])
@@ -43,15 +55,21 @@
              (gen/elements paths)
              gen-value
              ;; narrow window on purpose: (at, id) tie-breaks get exercised
-             (gen/choose 0 600)))
+             (gen/choose 0 600)
+             ;; sub-millisecond remainder, so normalization is exercised
+             ;; and same-millisecond ties arise from distinct raw clocks
+             (gen/choose 0 999999)))
 
 (defn- unknown-event
   "A type outside the closed vocabulary, minted by hand (event/mint
   rightly rejects it). The reducer must carry it in the log untouched."
   [{:keys [parents actor at]}]
+  ;; normalized here as mint would: a foreign implementation's event
+  ;; still reaches us as canonical bytes, so its :at is millisecond
+  ;; precision by the time any reducer sees it
   (let [e {:event/ticket tid :event/type :something/new
-           :event/actor actor :event/at at :event/parents (set parents)
-           :event/body {:x 1}}]
+           :event/actor actor :event/at (canonical/normalize-inst at)
+           :event/parents (set parents) :event/body {:x 1}}]
     (assoc e :event/id (event/event-id e))))
 
 (defn ops->events
@@ -60,9 +78,10 @@
   and causal order are independent axes, and both codepaths must cope."
   [ops]
   (reduce
-   (fn [evs [op actor path value sec]]
+   ;; `nanos` is optional so hand-written op tuples stay five elements
+   (fn [evs [op actor path value sec nanos]]
      (let [parents #{(:event/id (peek evs))}
-           at (at-sec sec)
+           at (at-sec+nanos sec (or nanos 0))
            arg {:ticket tid :actor actor :at at :parents parents}]
        (conj evs
              (case op

@@ -55,8 +55,22 @@
                          {:reason :edn/malformed}
                          e)))))
 
+(defn normalize-inst
+  "An instant at the precision the canonical form commits to —
+  milliseconds. Minting normalizes through this so an event's in-memory
+  :event/at IS the value its bytes, and therefore its id, commit to;
+  without it a nanosecond-precision clock (Instant/now) yields events
+  that sort one way in memory and another after a store round trip,
+  and (at, id) order stops being a property of the event set.
+
+  Total: a non-Instant passes through untouched and meets its ordinary
+  rejection downstream (the printer's, the schema's) rather than a type
+  error here."
+  [x]
+  (if (instance? Instant x) (.truncatedTo ^Instant x ChronoUnit/MILLIS) x))
+
 (defn- emit-inst ^String [^Instant i]
-  (str "#inst \"" (str (.truncatedTo i ChronoUnit/MILLIS)) "\""))
+  (str "#inst \"" (str (normalize-inst i)) "\""))
 
 (def max-depth
   "Bound on container nesting, write side and read side alike. The

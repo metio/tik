@@ -60,7 +60,14 @@
   (when-not (map? event)
     (throw (ex-info "an event must be a map"
                     {:reason :event/malformed :event event})))
-  (let [e (assoc event :event/id (event-id event))]
+  ;; :at is normalized to the canonical form's millisecond precision
+  ;; BEFORE the id is taken, so the returned event carries exactly the
+  ;; instant its bytes commit to. The id is unchanged either way (the
+  ;; emitter always truncated); what changes is that reduction order —
+  ;; (at, id) over the set — no longer depends on whether an event has
+  ;; been through the store yet.
+  (let [event (update event :event/at canonical/normalize-inst)
+        e (assoc event :event/id (event-id event))]
     (when-not (valid? e)
       (throw (ex-info "invalid event" {:explain (explain-event e)})))
     ;; the stored bytes must READ BACK to the event, or the store gains

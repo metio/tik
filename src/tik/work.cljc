@@ -43,7 +43,12 @@
   carries the event ids that produced it."
   [events]
   (let [gap (Duration/parse (:gap method))
-        sorted (sort-by (comp str :event/at) events)]
+        ;; chronological by the instant itself: Instant/toString omits
+        ;; trailing zero fractions, so a lexicographic sort places
+        ;; "10:00:00.500Z" before "10:00:00Z" ('.' < 'Z') and inverts a
+        ;; session — start after end, a negative duration the floor
+        ;; would launder into a plausible five minutes.
+        sorted (sort-by :event/at events)]
     (reduce
      (fn [acc e]
        (let [t (->instant (:event/at e))

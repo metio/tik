@@ -23,6 +23,19 @@
       (is (= (Duration/parse "PT20M")
              (work/session-duration (first ss)))))))
 
+(deftest sessions-order-by-the-instant-not-its-printed-form
+  (testing "sub-second events cluster chronologically"
+    ;; Instant/toString drops trailing zero fractions, so the printed
+    ;; forms of these two order the opposite way round from the instants
+    (let [[s :as ss] (work/sessions [(ev "later" "2026-07-10T10:00:00.500Z")
+                                     (ev "earlier" "2026-07-10T10:00:00Z")])]
+      (is (= 1 (count ss)))
+      (is (= ["earlier" "later"] (:events s)))
+      (is (not (.isAfter ^Instant (:start s) ^Instant (:end s)))
+          "a session never starts after it ends")
+      (is (= (Duration/parse "PT5M") (work/session-duration s))
+          "the floor applies to a real sub-floor span, never to a negative one"))))
+
 (deftest single-event-sessions-get-the-floor-never-zero
   (let [[s] (work/sessions [(ev "a" "2026-07-10T10:00:00Z")])]
     (is (= (Duration/parse "PT5M") (work/session-duration s))
