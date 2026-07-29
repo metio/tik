@@ -860,6 +860,49 @@ coordination point anywhere in the data plane.
   wiring it (plus the POP3 timer and the recur/probe cadences) into one
   supervised `tik backend` process is what remains.
 
+## External issue-tracker adapters (Redmine / Jira / GitHub Issues / Linear)
+
+A bidirectional integration with external ticket systems, built **entirely as
+porcelain over the seams that already exist — zero kernel change.** It is not a
+new capability to design; it is the effects/bridge model (§12–13) with a remote
+system on the other end.
+
+- **Outbound (tik → remote) is an effect (§12).** An effect planner observes
+  derived frontier transitions and writes to the remote system (create/update
+  the issue, mirror the derived stage). Idempotency needs no stored state
+  machine: the effect key is the content hash of `(ticket, stage, sink)` —
+  deliberately NOT the head, which moves with every appended event and would
+  re-notify the same stage on every later write. Re-derivations therefore
+  dedupe *structurally*. Across replicas they do not: the ledger that records
+  which keys were sent is local, so N runners deliver N times, and closing that
+  is the narrow per-pipeline delivery lease ADR 0021 admits as its one
+  coordination exception (needed here anyway, since a remote API that is not
+  idempotent cannot absorb the duplicates). Delivery success/failure never
+  touches ticket truth; there are **no `:webhook/*` / `:redmine/*` event types**
+  (transport is not a domain concept — §19 rejects this class).
+- **Inbound (remote → tik) is a bridge.** The remote system is "just another
+  actor whose bridge" mints signed, content-addressed attestations from each
+  remote change — symmetric to the IMAP/OID4VCI bridges. To stay
+  coordination-free (ADR 0021), the event id and `:at` derive from the remote
+  record's stable key + `updated_at` (the email Message-ID pattern), so
+  concurrent replicas polling the same remote mint byte-identical events that
+  union-merge to one.
+- **The tik↔remote link is a fact** (`[:link :redmine <id>]` — links are
+  facts), a remote status is an **attestation**, and the tik/remote field
+  mapping is **config, never code**. So Redmine/Jira/GitHub/Linear are adapters
+  over ONE generic contract, and the remote system is a *source of facts + a
+  mirror*, **never authoritative** — tik's signed log stays the source of truth,
+  which sidesteps the "who wins?" of bidirectional sync entirely.
+- **Guardrails, already litigated:** loop-safety so tik's own outbound writes
+  are not re-ingested as fresh facts (the email-bridge loop-guard); a noisy
+  integration flip-flopping a fact surfaces as `:conflicted` with source
+  attribution, not a lock (§5). The semantic impedance — a remote's *declared*
+  workflow vs. tik's *derived* stage — lives in the adapter config and must
+  never leak toward the kernel.
+
+Build Redmine first as the proof of the generic contract; Jira/GitHub/Linear
+then fall out as config over the same bridge + effect halves.
+
 ## An `idea` / decision process (a shareable process definition)
 
 A committee decides whether an idea is accepted or rejected, then accepted
