@@ -577,8 +577,13 @@ webhooks, mail, chat — but delivery lives entirely outside the log:
 success or failure of a webhook never touches ticket truth, and there
 are no `:webhook/*` event types, because transport is not a domain
 concept. Idempotency needs no stored state machine — the effect key is
-the content hash of `(ticket, stage, effect-id, head)`, so replays and
-re-derivations dedupe structurally. Inbound is symmetric and already
+the content hash of `(ticket, stage, sink)`, deliberately not the head,
+which moves with every appended event and would re-notify the same stage
+on every later write; replays and re-derivations therefore dedupe
+structurally. Across runners they do not: the ledger recording which
+keys were sent is local, so N runners deliver N times, and closing that
+is the narrow per-pipeline delivery lease ADR 0021 admits as its one
+coordination exception. Inbound is symmetric and already
 covered: an external system's webhook is just another actor whose bridge
 appends signed events (§5, §9). When the *business fact* matters —
 "customer was notified" — that is asserted as a fact or attestation like

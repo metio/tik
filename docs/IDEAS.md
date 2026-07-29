@@ -668,8 +668,10 @@ backend runs a porcelain verb *as the delegate*, and every write is a
 signed, re-derivable event:
 
 - `recur` — idempotently mint this period's ticket (derive "does
-  `period=L` exist?", create on a miss). Single-writer-safe; multi-backend
-  HA needs leader election or leans on the derive-before-create dedup.
+  `period=L` exist?", create on a miss). Multi-backend HA needs no leader:
+  the minted event is a deterministic function of (process, period), so
+  every backend firing the same cron produces byte-identical events that
+  union-merge to one (ADR 0021's standard evidence).
 - `probe` — refresh a standing ticket's facts from the world (the always-
   open dashboard: a non-terminal process kept current — the rollout
   parent/checklist shape).
@@ -695,9 +697,12 @@ a rules engine.
 
 **Concurrency / clock, stated exactly.** The kernel still takes `now` as
 an explicit argument; the backend's wall clock is the porcelain clock it
-passes in — no implicit clock enters the core. Convergence needs a single
-logical writer for scheduled events (one backend = trivially met) OR
-idempotent-by-derivation writes plus leader election for HA. A missed fire
+passes in — no implicit clock enters the core. Convergence needs no
+writer discipline at all once a scheduled event is a deterministic
+function of its identity: every backend may fire the same cron, the
+events are byte-identical, and union merge collapses them — no leader,
+no lease (see "the one real bottleneck and its dissolution" below, and
+ADR 0021, which forbids a leader on any correctness path). A missed fire
 self-heals on the next fire (idempotency), so downtime costs a delayed
 ticket, never a lost or duplicated one.
 
@@ -776,9 +781,10 @@ id derived from process + period.)
 **Residual coordinated surface — kept deliberately tiny.**
 
 - Outbound effect *delivery* (webhooks/mail) is the un-idempotent side
-  effect — deliver at-least-once with an idempotency key
-  `hash(event, effect-id)` and dedup at the receiver; a *per-pipeline*
-  lease (never a whole-backend leader) covers a strict single-fire need.
+  effect — deliver at-least-once with the effect key itself
+  (`hash(ticket, stage, sink)` — effects fire on derived transitions, not
+  on events) as the receiver's idempotency key; a *per-pipeline* lease
+  (never a whole-backend leader) covers a strict single-fire need.
 - At huge N, assign pipeline P to `rendezvous-hash(P)` so not every node
   recomputes every cron — self-healing on membership change, still no
   leader election, no consensus.
