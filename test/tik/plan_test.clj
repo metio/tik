@@ -104,3 +104,27 @@
     (testing "a cycle is caught, not silently deadlocked"
       (let [bad (assoc edges :design #{:ship})] ; design now waits on ship
         (is (= #{:design :build :test :ship} (plan/cyclic-nodes bad)))))))
+
+(deftest longest-paths-over-a-cycle-is-simple-and-order-independent
+  ;; lp is a function of (node, seen) while the memo can only key on the
+  ;; node, so a cyclic graph is where the two can disagree.
+  (let [edges {:d #{:c} :c #{:b} :b #{:a} :a #{:c}}
+        run (fn [order] (plan/longest-paths #(plan/prereqs edges %)
+                                            order (constantly false)))
+        orders [[:d :c :b :a] [:a :b :c :d] [:c :d :a :b] [:b :a :d :c]]
+        results (map run orders)]
+    (testing "no returned path names a node twice"
+      (doseq [r results, [_ p] r]
+        (is (= (count p) (count (distinct p)))
+            (str "walk revisits a node: " (pr-str p)))))
+    (testing "the answer does not depend on which node is visited first"
+      (is (apply = results)))
+    (is (= [:a :b :c :d] (get (first results) :d)))))
+
+(deftest longest-paths-over-a-dag-is-the-plain-longest-path
+  (let [edges {:c #{:b} :b #{:a} :d #{:a}}
+        r (plan/longest-paths #(plan/prereqs edges %)
+                              (plan/nodes edges) (constantly false))]
+    (is (= [:a :b :c] (:c r)))
+    (is (= [:a :d] (:d r)))
+    (is (= [:a] (:a r)))))

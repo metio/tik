@@ -294,6 +294,27 @@
       (do (println (str "tik: '" cmd "' is not a command — the full list:\n"))
           (println usage))))
 
+(defn- guidance
+  "What to DO about a kernel rejection. The kernel names what it refused,
+  in the only language it speaks; a person at a terminal needs the next
+  move, and that belongs out here in the porcelain."
+  [{:keys [reason value]}]
+  (case reason
+    :canonical/unsupported-type
+    (str "  " (pr-str value) " has no byte-stable written form — decimals,"
+         " ratios and\n  bigdecimals print differently across runtimes, so a"
+         " signed event cannot\n  carry one. Record the text instead"
+         " (key=\"" value "\"), or use a whole\n  number in the smallest unit"
+         " (cents, minutes, bytes).")
+
+    :mail/msgid-collision
+    (str "  a Message-ID is chosen by the sender, so this one is either"
+         " reused or\n  crafted. The message was NOT recorded; decide whether"
+         " it belongs on that\n  ticket and ingest it with an explicit"
+         " X-Tik-Ticket header if so.")
+
+    nil))
+
 (defn- dispatch-guarded
   "dispatch with the standard escape handling every entry point shares:
   an ex-info becomes its own one-line message (the kernel already words
@@ -316,6 +337,7 @@
             (throw e)
             (do (binding [*out* *err*]
                   (println (str "tik: " (ex-message e)))
+                  (when-let [g (guidance (ex-data e))] (println g))
                   (when-let [file (:file (ex-data e))]
                     (println (str "  in: " file))))
                 (exit! 1))))

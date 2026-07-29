@@ -106,23 +106,39 @@
   `skip?` predicate excludes nodes entirely (critical-path drops settled
   and cyclic nodes, making its walk a DAG), and a seen-set truncates any
   back-edge that still remains (draw must place cyclic stages somewhere
-  rather than not draw them). Skipped nodes get no entry."
+  rather than not draw them). Skipped nodes get no entry.
+
+  Two properties the cyclic case must hold, because `lp` is a function of
+  (node, seen) while the memo can only be keyed by node:
+
+  - A back-edge contributes NOTHING (not the revisited node), so no
+    returned path ever names a node twice. Splicing the revisited node in
+    produced walks like [:c :a :b :c :d] — not a path at all.
+  - A result whose subtree truncated is NOT memoized, because it is a
+    function of the caller's `seen` and reusing it under a different one
+    made an unrelated node's answer depend on iteration order.
+
+  On an acyclic graph nothing truncates, every result is memoized, and
+  this is the plain memoized longest path. On a cyclic one the answer is
+  the longest simple walk this DFS finds — a maximum does not exist
+  there, and the callers that allow cycles want a layout, not an
+  optimum."
   [parents-of nodes skip?]
   (let [memo (volatile! {})]
     (letfn [(lp [n seen]
-              (or (get @memo n)
-                  (if (contains? seen n)
-                    [n]                          ; back-edge: truncate here
-                    (let [seen' (conj seen n)
-                          best (->> (parents-of n)
-                                    (remove skip?)
-                                    (map #(lp % seen'))
-                                    (sort-by count >)
-                                    first)
-                          path (conj (vec best) n)]
-                      (vswap! memo assoc n path)
-                      path))))]
-      (into {} (map (fn [n] [n (lp n #{})])) (remove skip? nodes)))))
+              (if-let [hit (get @memo n)]
+                [hit false]
+                (if (contains? seen n)
+                  [[] true]                      ; back-edge: contributes nothing
+                  (let [seen' (conj seen n)
+                        results (mapv #(lp % seen')
+                                      (remove skip? (parents-of n)))
+                        best (->> results (map first) (sort-by count >) first)
+                        truncated? (boolean (some second results))
+                        path (conj (vec best) n)]
+                    (when-not truncated? (vswap! memo assoc n path))
+                    [path truncated?]))))]
+      (into {} (map (fn [n] [n (first (lp n #{}))])) (remove skip? nodes)))))
 
 (defn critical-path
   "The longest chain of UNSETTLED, acyclic nodes along dependency edges —

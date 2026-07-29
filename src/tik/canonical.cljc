@@ -141,8 +141,12 @@
                      "}")
     (vector? x) (str "[" (str/join " " (map #(emit* % (inc depth)) x)) "]")
     (seq? x)    (str "(" (str/join " " (map #(emit* % (inc depth)) x)) ")")
+    ;; carries a :reason so the porcelain can turn "the kernel refused
+    ;; this type" into "here is what to type instead" — the kernel names
+    ;; what it refused, a lens says what to do about it
     :else (throw (ex-info "unsupported type in canonical EDN"
-                          {:type (type x) :value x}))))
+                          {:reason :canonical/unsupported-type
+                           :type (type x) :value x}))))
 
 (defn emit
   "Return the canonical string form of `x`. Throws on unsupported types

@@ -168,3 +168,33 @@
                       _ (dkim-passing-domains m #{"mx"})]
                   (boolean? (dkim-aligned? (:from m) #{"x" "mx"})))
                 (catch Throwable _ false))))))
+
+(deftest addr-spec-never-harvests-a-sender-controlled-phrase
+  (testing "the display name may contain anything, including brackets"
+    (is (= "bob@corp.com" (mail/addr-spec "\"admin@corp.com\" <bob@corp.com>")))
+    (is (= "mallory@evil.com"
+           (mail/addr-spec "\"<seb@corp.com>\" <mallory@evil.com>"))
+        "brackets inside the quoted phrase must not win")
+    (is (= "mallory@evil.com"
+           (mail/addr-spec "\"a\\\"b <seb@corp.com>\" <mallory@evil.com>"))
+        "an escaped quote does not end the phrase early"))
+  (testing "RFC 5322 comments are sender-controlled too"
+    (is (= "bob@corp.com" (mail/addr-spec "(<seb@corp.com>) bob@corp.com")))
+    (is (= "bob@corp.com"
+           (mail/addr-spec "(nested (<seb@corp.com>) still) bob@corp.com"))))
+  (testing "plain shapes still work"
+    (is (= "bob@corp.com" (mail/addr-spec "bob@corp.com")))
+    (is (= "bob@corp.com" (mail/addr-spec "Bob Smith <BOB@corp.com>")))
+    (is (nil? (mail/addr-spec nil))))
+  (testing "more than one routable address has no single sender"
+    (is (nil? (mail/addr-spec "<seb@corp.com> <mallory@evil.com>")))
+    (is (nil? (mail/addr-spec "friends: a@x.com, b@y.com;")))))
+
+(deftest two-from-headers-have-no-single-sender
+  (testing "verifiers disagree about which From they authenticate"
+    (is (nil? (:from (mail/parse-rfc822
+                      (str "From: seb@corp.com\r\nFrom: mallory@evil.com\r\n"
+                           "Subject: hi\r\n\r\nbody\r\n")))))
+    (is (= "seb@corp.com"
+           (:from (mail/parse-rfc822
+                   "From: seb@corp.com\r\nSubject: hi\r\n\r\nbody\r\n"))))))

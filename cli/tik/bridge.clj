@@ -157,20 +157,62 @@
   "A deterministic ticket id for a fresh inbound message, keyed by its
   Message-ID — so re-polling the same first message resolves to the same
   ticket (content-addressed idempotency, ADR 0021) rather than spawning a
-  duplicate the way a random id would."
+  duplicate the way a random id would.
+
+  SHA-256, like every other id in the store (ADR 0006's one-algorithm
+  policy), shaped into a well-formed UUIDv8. The Message-ID is chosen by
+  the sender, so the derivation must not be one where two chosen inputs
+  can be driven to the same output — which is exactly what UUIDv3's MD5
+  no longer resists."
+  [msgid]
+  (let [hex (canonical/sha256-hex (str "tik/mail " msgid))
+        msb (Long/parseUnsignedLong (subs hex 0 16) 16)
+        lsb (Long/parseUnsignedLong (subs hex 16 32) 16)]
+    (java.util.UUID. (bit-or (bit-and msb (bit-not 0xF000)) 0x8000)   ; version 8
+                     (bit-or (bit-and lsb 0x3FFFFFFFFFFFFFFF)         ; variant 10x
+                             Long/MIN_VALUE))))
+
+(defn- legacy-mail-ticket-id
+  "The UUIDv3/MD5 id mail tickets were minted under before the switch to
+  SHA-256. Consulted on LOOKUP only, never to mint: without it, re-polling
+  a message ingested by an older build would derive a different id, find
+  no events, and open a duplicate ticket for mail already on record."
   [msgid]
   (java.util.UUID/nameUUIDFromBytes (.getBytes (str "tik/mail " msgid) "UTF-8")))
 
 (defn- resolve-or-nil [s ref]
   (try (resolve-id s ref) (catch Exception _ nil)))
 
+(defn- mail-artifact
+  "The artifact this ticket already holds at mail/<message-id>, or nil."
+  [s id msgid]
+  (some-> (try (ticket-ctx s id) (catch Exception _ nil))
+          :state :artifacts (get (str "mail/" msgid))))
+
 (defn- already-have?
   "Has this message already been ingested onto this ticket? The artifact
   path mail/<message-id> is the dedup key; its presence in derived state
   means a prior poll recorded it — so re-polling is a no-op."
   [s id msgid]
-  (boolean (some-> (try (ticket-ctx s id) (catch Exception _ nil))
-                   :state :artifacts (contains? (str "mail/" msgid)))))
+  (boolean (mail-artifact s id msgid)))
+
+(defn- refuse-msgid-collision!
+  "A Message-ID is sender-chosen, so two senders can present the same one.
+  When the stored artifact for this id holds DIFFERENT bytes, the message
+  is not a re-poll — treating it as one would silently swallow it, which
+  is how a crafted duplicate id suppresses somebody else's mail. Refuse
+  loudly instead; the operator sees a message that needs a decision."
+  [s id msgid text]
+  (when-let [prior (mail-artifact s id msgid)]
+    (let [hash (str "sha256-" (canonical/sha256-hex-bytes
+                               (.getBytes ^String text "UTF-8")))]
+      (when (not= hash (:hash prior))
+        (throw (ex-info (str "Message-ID " msgid " is already on ticket " id
+                             " with different content — refusing to treat"
+                             " this as a re-poll (a sender-chosen id collided"
+                             " or was reused)")
+                        {:reason :mail/msgid-collision
+                         :msgid msgid :ticket id}))))))
 
 (defn- mail-blob!
   "Store TEXT as a content-addressed blob under the ticket and attach it
@@ -240,7 +282,9 @@
               existing (when ref (resolve-or-nil s ref))]
           (cond
             (and existing (already-have? s existing msgid))
-            {:outcome :dup :id existing :msgid msgid}
+            (do (refuse-msgid-collision! s existing msgid
+                                         (str subject "\n\n" body))
+                {:outcome :dup :id existing :msgid msgid})
 
             existing
             (do
@@ -256,12 +300,19 @@
                  :facts (count facts) :actor actor-name}))
 
             :else
-            (let [id (mail-ticket-id msgid)]
-              ;; the deterministic id IS the dedup key here: if this
-              ;; message already opened its ticket, re-polling finds the
-              ;; create event and stops — robust even for a blank body.
-              (if (seq (store/events s id))
-                {:outcome :dup :id id :msgid msgid}
+            (let [id (mail-ticket-id msgid)
+                  ;; the deterministic id IS the dedup key here: if this
+                  ;; message already opened its ticket, re-polling finds
+                  ;; the create event and stops — robust even for a blank
+                  ;; body. The legacy MD5 id is consulted too, so mail
+                  ;; ingested by an older build re-polls to its existing
+                  ;; ticket instead of opening a second one.
+                  prior (first (filter #(seq (store/events s %))
+                                       [id (legacy-mail-ticket-id msgid)]))]
+              (if prior
+                (do (refuse-msgid-collision! s prior msgid
+                                             (str subject "\n\n" body))
+                    {:outcome :dup :id prior :msgid msgid})
                 (let [proc-name (safe-name (or (:process cfg)
                                                (throw (ex-info "no :process in config for a new-ticket mail"
                                                                {:reason :mail/no-process}))))

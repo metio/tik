@@ -12,7 +12,8 @@
             [tik.canonical :as canonical]
             [tik.store.protocol :as p])
   (:import (java.io File)
-           (java.nio.file Files)))
+           (java.nio.file CopyOption Files OpenOption StandardCopyOption
+                          StandardOpenOption)))
 
 (defn- file-bytes
   "The raw bytes of a file, or nil if absent — no charset round-trip, so
@@ -49,6 +50,36 @@
   (parse-event (String. (file-bytes f) "UTF-8")
                (str/replace (.getName f) #"\.edn$" "")
                {:file (str f)}))
+
+(defn- write-synced!
+  "Write `chunks` to `f` and force them to disk before returning. `pack!`
+  deletes the loose event files on the strength of the pack and index
+  existing; without the fsync, a crash in that window loses events the
+  store already reported as packed — the bytes were only ever in the page
+  cache.
+  Written through java.nio.file with StandardOpenOption/SYNC rather than
+  FileOutputStream + FileDescriptor.sync: the CLI runs on babashka, whose
+  class allowlist has no FileDescriptor.sync, and the store must behave
+  identically on bb, the JVM, and the native binary."
+  [^File f chunks]
+  (let [^bytes joined (byte-array (mapcat seq chunks))]
+    (Files/write (.toPath f) joined
+                 ^"[Ljava.nio.file.OpenOption;"
+                 (into-array OpenOption [StandardOpenOption/CREATE
+                                         StandardOpenOption/WRITE
+                                         StandardOpenOption/TRUNCATE_EXISTING
+                                         StandardOpenOption/SYNC]))))
+
+(defn pack-installed!
+  "Move the finished pack into place. Files/move THROWS when the install
+  fails; File.renameTo returns a boolean that is easy to drop, and
+  dropping it deletes the loose events against a pack that was never
+  installed — an index describing a pack that is not there, with no
+  originals left to rebuild from. Named so a test can make the install
+  fail and assert that packing is all-or-nothing."
+  [^File tmp ^File dest]
+  (Files/move (.toPath tmp) (.toPath dest)
+              (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))
 
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))
@@ -134,15 +165,18 @@
                                           :length (alength
                                                    ^bytes (first cs))}))))
             tmp (io/file dir "events.pack.tmp")]
-        (with-open [out (java.io.FileOutputStream. tmp)]
-          (doseq [^bytes c chunks] (.write out c)))
+        (write-synced! tmp chunks)
         (let [pack-hash (canonical/sha256-hex-bytes
                          (java.nio.file.Files/readAllBytes (.toPath tmp)))]
-          (.renameTo tmp (pack-file dir))
-          (spit (pack-index-file dir)
-                (pr-str {:pack (str "sha256-" pack-hash)
-                         :entries entries}))
-          ;; loose files leave only after the pack fully exists
+          ;; packing is all-or-nothing: an install that does not happen
+          ;; throws here, before anything is deleted, so the loose files
+          ;; are left exactly as they are
+          (pack-installed! tmp (pack-file dir))
+          (write-synced! (pack-index-file dir)
+                         [(.getBytes (pr-str {:pack (str "sha256-" pack-hash)
+                                              :entries entries})
+                                     "UTF-8")])
+          ;; loose files leave only once the pack AND its index are durable
           (doseq [^File f loose-files] (.delete f))
           {:packed (count events) :pack (str "sha256-" pack-hash)})))))
 

@@ -13,16 +13,65 @@
   (:import (java.time Instant)
            (java.time.format DateTimeFormatter)))
 
+(defn strip-phrases
+  "A header value with its RFC 5322 quoted-strings and (nesting) comments
+  removed, backslash escapes honored. Both constructs are free-form and
+  entirely sender-chosen, and both may contain angle brackets — so an
+  address search that runs before this one reads the SENDER'S CHOICE of
+  address out of the display name (`\"<victim@corp>\" <me@evil>`) or out
+  of a comment (`(<victim@corp>) me@evil`). Removing them first is what
+  makes the remaining angle brackets the real routable address."
+  [^String s]
+  (let [n (count s)
+        out (StringBuilder.)]
+    (loop [i 0 quoted? false comment-depth 0]
+      (if (>= i n)
+        (str out)
+        (let [c (.charAt s i)]
+          (cond
+            quoted?
+            (case c
+              \\ (recur (+ i 2) true comment-depth)
+              \" (recur (inc i) false comment-depth)
+              (recur (inc i) true comment-depth))
+
+            (pos? comment-depth)
+            (case c
+              \\ (recur (+ i 2) false comment-depth)
+              \( (recur (inc i) false (inc comment-depth))
+              \) (recur (inc i) false (dec comment-depth))
+              (recur (inc i) false comment-depth))
+
+            (= c \") (recur (inc i) true comment-depth)
+            (= c \() (recur (inc i) false 1)
+            :else (do (.append out c) (recur (inc i) false comment-depth))))))))
+
 (defn addr-spec
   "The RFC 5322 addr-spec of a From/To header value: the address inside
   the angle brackets when present, else the bare address — NEVER an
-  address harvested from the display-name phrase, which the sender fully
-  controls (`\"admin@corp.com\" <bob@corp.com>` is bob, not admin)."
+  address harvested from the display-name phrase or a comment, both of
+  which the sender fully controls (`\"admin@corp.com\" <bob@corp.com>` is
+  bob, not admin, and so is `\"<admin@corp.com>\" <bob@corp.com>`).
+
+  nil when the value carries MORE THAN ONE routable address — a group
+  address, or the two-bracket spoof `<victim@corp> <me@evil>`. A header
+  with no single sender has no actor to attribute to, and guessing which
+  one an upstream verifier authenticated is exactly the ambiguity that
+  gets exploited; the caller's unknown-sender path is the right answer."
   [header-value]
   (when header-value
-    (let [bracketed (second (re-find #"<([^>]*)>" header-value))]
-      (some-> (re-find #"[\w.+-]+@[\w.-]+" (or bracketed header-value))
-              str/lower-case))))
+    (let [addr #"[\w.+-]+@[\w.-]+"
+          bare (strip-phrases header-value)
+          bracketed (map second (re-seq #"<([^>]*)>" bare))]
+      (cond
+        ;; `<a@x> <b@y>` — two routable addresses, no way to tell which
+        (< 1 (count bracketed)) nil
+        (= 1 (count bracketed)) (some-> (re-find addr (first bracketed))
+                                        str/lower-case)
+        ;; unbracketed: a bare address is fine, a group list is not
+        :else (let [addrs (re-seq addr bare)]
+                (when (= 1 (count addrs))
+                  (str/lower-case (first addrs))))))))
 
 (defn parse-rfc822
   "Minimal RFC822: headers to the first blank line, body after.
@@ -44,7 +93,15 @@
                                (str/trim v))
                             headers))
         header (fn [k] (first (header-vals k)))]
-    {:from (addr-spec (header "From"))
+    {;; RFC 5322 permits EXACTLY ONE From. A message carrying two is
+     ;; malformed, and verifiers disagree about which one they
+     ;; authenticate — the classic way a DKIM-passing message is made to
+     ;; display, and here to ATTRIBUTE, as somebody else. With no single
+     ;; sender there is nobody to attribute to, so the ingest falls to
+     ;; its unknown-sender path (and the DKIM gate, which reads the same
+     ;; nil domain, refuses).
+     :from (let [from-headers (vec (header-vals "From"))]
+             (when (= 1 (count from-headers)) (addr-spec (first from-headers))))
      :subject (or (header "Subject") "")
      :message-id (some->> (header "Message-ID")
                           (re-find #"<([^>]+)>")

@@ -357,3 +357,45 @@
     (testing "a missing or unparseable date falls back"
       (is (= n (core/claimed-at nil n)))
       (is (= n (core/claimed-at "not-an-instant" n))))))
+
+(deftest a_reused_message_id_with_other_content_is_refused_not_swallowed
+  ;; A Message-ID is chosen by the sender. Treating a second, DIFFERENT
+  ;; message bearing a known id as a re-poll would drop it silently —
+  ;; which is how a crafted duplicate id suppresses somebody else's mail.
+  (let [{:keys [root store]} (h/temp-store!)
+        mid "<shared-id@customer.example>"
+        r1 (ingest root store cfg (email {:from "alice@customer.example"
+                                          :subject "help" :msgid mid
+                                          :body "the real one"}))
+        n1 (event-count store)]
+    (is (= :ticket (:outcome r1)))
+    (testing "the identical message re-fetched is still an ordinary no-op"
+      (is (= :dup (:outcome (ingest root store cfg
+                                    (email {:from "alice@customer.example"
+                                            :subject "help" :msgid mid
+                                            :body "the real one"})))))
+      (is (= n1 (event-count store))))
+    (testing "a different message under the same id is a loud refusal"
+      (let [e (is (thrown-with-msg?
+                   clojure.lang.ExceptionInfo #"different content"
+                   (ingest root store cfg
+                           (email {:from "mallory@evil.example"
+                                   :subject "help" :msgid mid
+                                   :body "the impostor"}))))]
+        (is (= :mail/msgid-collision (:reason (ex-data e)))))
+      (is (= n1 (event-count store)) "and nothing was written either way"))))
+
+(deftest mail_ticket_ids_do_not_come_from_md5
+  ;; ADR 0006 keeps one hash per store, and the input here is chosen by
+  ;; the sender — a derivation whose collisions are constructible is the
+  ;; wrong tool for an identifier somebody else supplies.
+  (let [{:keys [root store]} (h/temp-store!)
+        mid "<fresh@customer.example>"
+        r (ingest root store cfg (email {:from "alice@customer.example"
+                                         :subject "hi" :msgid mid
+                                         :body "x"}))
+        legacy (java.util.UUID/nameUUIDFromBytes
+                (.getBytes (str "tik/mail " mid) "UTF-8"))]
+    (is (= :ticket (:outcome r)))
+    (is (not= legacy (:id r)))
+    (is (= 8 (.version ^java.util.UUID (:id r))) "a well-formed UUIDv8")))

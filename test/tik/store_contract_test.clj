@@ -139,3 +139,31 @@
         (store/append! (:store b) e))
       (= (red/ticket-state (store/events (:store a) tid))
          (red/ticket-state (store/events (:store b) tid))))))
+
+(deftest packing-is-all-or-nothing
+  ;; pack! deletes the loose events on the strength of the pack being
+  ;; installed. An install that does not happen must leave them alone —
+  ;; the failure mode being guarded is an index describing a pack that is
+  ;; not there, with no originals left to rebuild from.
+  (let [{:keys [root store]} (h/temp-store!)
+        events (ge/ops->events [[:assert "seb" [:category] :technical 60]
+                                [:assert "seb" [:severity] :high 90]])
+        tid (:event/ticket (first events))]
+    (doseq [e events] (store/append! store e))
+    (let [dir (io/file root "tickets" (str tid) "events")
+          loose #(count (filter (fn [^java.io.File f]
+                                  (str/ends-with? (.getName f) ".edn"))
+                                (.listFiles dir)))
+          before (loose)]
+      (is (pos? before))
+      (testing "a failing install leaves every loose event in place"
+        (with-redefs [tik.store.file/pack-installed!
+                      (fn [& _] (throw (java.io.IOException. "no space left")))]
+          (is (thrown? java.io.IOException (fstore/pack! root tid))))
+        (is (= before (loose)) "loose events survive a failed pack")
+        (is (= (count events) (count (store/events store tid)))
+            "and the ticket still reads back in full"))
+      (testing "a successful install consolidates and still reads back"
+        (fstore/pack! root tid)
+        (is (zero? (loose)))
+        (is (= (count events) (count (store/events store tid))))))))
