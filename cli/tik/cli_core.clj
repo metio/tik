@@ -71,6 +71,42 @@
 
 (defn now [] (Instant/now))
 
+(def ^Duration future-skew-tolerance
+  "How far ahead of our own clock a foreign claimed time may sit before
+  we decline to repeat it. Ordinary NTP drift is seconds; five minutes
+  is generous and still far short of useful to an attacker."
+  (Duration/ofMinutes 5))
+
+(defn claimed-at
+  "The :at we are willing to SIGN for a timestamp that arrived from
+  outside — an email Date: header, an imported record. A forward-dated
+  claim is clamped to our own clock; anything else passes through.
+
+  Forward-dating is not merely a lie about when something happened.
+  :at is the reduction sort key AND the instant `evolve` evaluates
+  guards at, so an event claiming next century sorts last forever — no
+  honest later write can supersede it — and satisfies :elapsed-since the
+  moment it lands, permanently when the stage it gates is sticky.
+  Backdating needs no clamp: it loses the sort and satisfies fewer time
+  guards, which is why ADR 0012 can leave it detectable-not-prevented.
+
+  We sign this event, so we do not repeat a clock we do not believe.
+  This bounds what enters through OUR bridges; it is not a claim about
+  what other replicas admit (see `tik verify`, which reports
+  future-dated events already in a log)."
+  [foreign fallback]
+  (let [n (now)]
+    (cond
+      (not (instance? Instant foreign)) fallback
+
+      (.isAfter ^Instant foreign (.plus ^Instant n future-skew-tolerance))
+      (do (binding [*out* *err*]
+            (println (str "warning: claimed time " foreign " is ahead of this"
+                          " clock — signing " n " instead")))
+          n)
+
+      :else foreign)))
+
 (defn process-exit!
   "The one true process boundary: really terminate. Bound as the default
   *exit-fn* for the binary entry point."
@@ -263,13 +299,32 @@
                 " tickets — add more characters:\n  "
                 (str/join "\n  " (sort hits)))))))
 
-(defn ticket-ctx [s id]
+(defn ticket-ctx
+  "One ticket's derivation inputs, plus the completeness of the log they
+  came from. A replica's event set is partial between syncs by
+  definition, and a derivation over a partial log is not merely
+  incomplete — it is confidently WRONG in a specific way: ancestry it
+  cannot see reads as concurrency, so writes that supersede each other
+  in a linear history surface as :conflicted, and explain tells the
+  operator to resolve a conflict that does not exist. Every lens sharing
+  this opener therefore learns whether ancestors are missing, and says
+  so, rather than presenting a mid-sync view with the confidence of a
+  complete one."
+  [s id]
   (let [evs (store/events s id)
         state (red/ticket-state evs)
-        proc (load-pinned-process state)]
-    {:events evs :state state :process proc
-     :roles (:process/roles proc {})
-     :heads (dag/heads evs)}))
+        proc (load-pinned-process state)
+        absent (dag/missing-parents evs)]
+    (when (seq absent)
+      (binding [*out* *err*]
+        (println (str "warning: ticket " id " derives over an INCOMPLETE log — "
+                      (count absent) " referenced ancestor(s) absent."
+                      " Facts may read :conflicted that a complete log"
+                      " resolves; sync before trusting this view."))))
+    (cond-> {:events evs :state state :process proc
+             :roles (:process/roles proc {})
+             :heads (dag/heads evs)}
+      (seq absent) (assoc :missing-parents (vec (sort absent))))))
 
 (defn display-title
   "The title a lens shows: a [:title] fact supersedes the created

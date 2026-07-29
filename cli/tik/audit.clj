@@ -529,6 +529,23 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                           nil))]
       (check (empty? (dag/missing-parents evs)) "all parents present")
       (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
+      ;; A claimed time ahead of the verifier's clock is ADMISSIBLE
+      ;; (ADR 0011 — the log holds every well-formed claim) and
+      ;; consequential: :at is the reduction sort key AND the instant
+      ;; guards evaluate at, so such an event sorts last until its time
+      ;; arrives and satisfies :elapsed-since on the spot — permanently
+      ;; where the stage it gates is sticky. Noted, never failed: the
+      ;; log records claims and the auditor reads them.
+      (let [t (now)
+            ahead (filterv #(let [a (:event/at %)]
+                              (and (instance? java.time.Instant a)
+                                   (.isAfter ^java.time.Instant a t)))
+                           evs)]
+        (when (seq ahead)
+          (println (str "  note  " (count ahead) " event(s) claim a time ahead"
+                        " of this clock (latest "
+                        (:event/at (last (sort-by :event/at ahead)))
+                        ") — these sort last and satisfy elapsed-since early"))))
       (println "L1 authenticity")
       (let [signers (io/file (root) "actors")]
         (if-not (.exists signers)

@@ -7,6 +7,7 @@
   SET (commutative), even under adversarially backdated claimed times."
   (:require [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing]]
+            [tik.dag :as dag]
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.reduce :as red]
@@ -119,3 +120,49 @@
       (is (= :conflicted
              (:status (red/fact-status (red/ticket-state perm) [:category])))
           (pr-str (map :event/at perm))))))
+
+(deftest a-partial-log-fakes-concurrency-and-must-announce-itself
+  (testing "a strictly linear history minus one unrelated intermediate"
+    (let [a1 (assert* "seb" "2026-07-08T10:01:00Z" head [:category] :technical)
+          mid (assert* "seb" "2026-07-08T10:02:00Z" #{(:event/id a1)}
+                       [:severity] :high)
+          a2 (assert* "seb" "2026-07-08T10:03:00Z" #{(:event/id mid)}
+                      [:category] :billing)
+          complete [create a1 mid a2]
+          partial-log [create a1 a2]]
+      (is (= :present (:status (red/fact-status (red/ticket-state complete)
+                                                [:category])))
+          "with every ancestor present the later write simply supersedes")
+      (is (= :conflicted (:status (red/fact-status (red/ticket-state partial-log)
+                                                   [:category])))
+          "ancestry the replica cannot see is indistinguishable from concurrency")
+      (testing "so the gap must be detectable rather than silent"
+        (is (empty? (dag/missing-parents complete)))
+        (is (= 1 (count (dag/missing-parents partial-log)))
+            "the qualifier every lens needs: this derivation is mid-sync")))))
+
+(deftest the-linearity-shortcut-never-changes-a-verdict
+  (testing "conflict detection agrees with a shortcut-free maximality check"
+    ;; The fold carries :linear-writes as a one-way proof that a path's
+    ;; writes form a chain. Stripping it must leave every verdict intact,
+    ;; on forked and linear histories alike — otherwise the optimization
+    ;; is deciding conflicts rather than merely skipping work.
+    (let [a (assert* "seb" "2026-07-08T10:01:00Z" head [:category] :technical)
+          b (assert* "billing" "2026-07-08T10:02:00Z" head [:category] :billing)
+          c (assert* "seb" "2026-07-08T10:03:00Z"
+                     #{(:event/id a) (:event/id b)} [:category] :account)
+          lin1 (assert* "seb" "2026-07-08T10:04:00Z" head [:severity] :low)
+          lin2 (assert* "seb" "2026-07-08T10:05:00Z" #{(:event/id lin1)}
+                        [:severity] :high)
+          histories [[create a b]          ; forked, disagreeing
+                     [create a b c]        ; resolved by an observer
+                     [create lin1 lin2]    ; linear
+                     [create a b lin1 lin2]]]
+      (doseq [evs histories
+              path [[:category] [:severity]]
+              :let [state (red/ticket-state evs)
+                    stripped (assoc state :linear-writes {})]]
+        (is (= (red/conflicting-claims state path)
+               (red/conflicting-claims stripped path))
+            (str "shortcut changed the verdict for " path
+                 " over " (count evs) " events"))))))

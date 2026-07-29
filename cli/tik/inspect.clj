@@ -38,7 +38,8 @@
 
 (defn cmd-status [{:keys [pos opts]}]
   (let [s (the-store)
-        {:keys [id events state process roles]} (load-ticket s (first pos))
+        {:keys [id events state process roles missing-parents]}
+        (load-ticket s (first pos))
         t (eval-instant opts)
         reached (stage/effective-reached process events t roles)
         current (stage/current-stages process reached)
@@ -61,6 +62,10 @@
               :links (vec (sort-by :sort (map #(link-row s t %)
                                               (link-facts state))))
               :blocks (explain/explain process events t roles reached)
+              ;; the qualifier travels with the answer: a machine reader
+              ;; must be able to tell a complete derivation from a
+              ;; mid-sync one without parsing stderr
+              :missing-parents missing-parents
               :at (when (:at opts) t)}]
     (when-not (emit-data opts data)
      (println "ticket: " id)
@@ -76,6 +81,10 @@
                   "…)"))
     (println "stage:  " (str/join ", " (map name current))
              (str "(reached: " (str/join ", " (map name (sort-by str reached))) ")"))
+    (when (seq missing-parents)
+      (println "log:    " (str "INCOMPLETE — " (count missing-parents)
+                               " referenced ancestor(s) absent; this view"
+                               " may show conflicts a complete log resolves")))
     (when-let [deps (seq (unmet-deps s t id))]
       (println "blocked:"
                (str/join ", "

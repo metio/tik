@@ -8,7 +8,8 @@
   stages), stratified negation (ADR 0005), and the time/signature operator
   argument checks. Pure over a definition; a leaf over tik.process (its
   schema and guard vocabulary), never the reverse."
-  (:require [clojure.walk :as walk]
+  (:require [clojure.string :as str]
+            [clojure.walk :as walk]
             [tik.process :refer [explain-process guard-operators guard-operators-v1
                                  valid?]]))
 
@@ -74,6 +75,10 @@
   each carries an over-path (a pathless form can never be satisfied)."
   [guard]
   (collect #(when (and (vector? %) (= :signed-by (first %))) %) guard))
+
+(defn- artifact-prefixes [guard]
+  (collect #(when (and (vector? %) (= :artifact (first %))) (nth % 1 nil))
+           guard))
 
 (defn- stage-refs [guard]
   (collect #(when (and (vector? %) (= :stage-reached (first %)))
@@ -173,6 +178,20 @@
            :msg (str "stage " (:stage/id s) " references fact " path
                      " not declared in :process/facts (no schema,"
                      " no generated form, no generator).")})
+        ;; :artifact matches a raw string prefix, so one that does not
+        ;; end at a path boundary also accepts sibling names — a
+        ;; "review" prefix is satisfied by "review-notes-fake.txt".
+        ;; The operator cannot be tightened without changing what
+        ;; already-pinned definitions derive, so the prefix carries the
+        ;; boundary and lint is where the footgun gets named.
+        (for [s stages, g (all-guards s)
+              p (artifact-prefixes g)
+              :when (and (string? p) (seq p) (not (str/ends-with? p "/")))]
+          {:level :warning
+           :msg (str "stage " (:stage/id s) " demands an artifact under "
+                     (pr-str p) " — that is a raw string prefix, so it"
+                     " also accepts " (pr-str (str p "-anything"))
+                     ". End it at a path boundary: " (pr-str (str p "/")) ".")})
         ;; unknown stage refs
         (for [s stages, g (all-guards s)
               target (stage-refs g) :when (not (stage-ids target))]

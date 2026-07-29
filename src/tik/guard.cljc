@@ -91,7 +91,13 @@
                :errors (me/humanize (m/explain schema (:value fs)))})
         ok))))
 
-(defn- eval-artifact [[_ prefix] {:keys [state]}]
+(defn- eval-artifact
+  "A RAW STRING prefix, not a path prefix: \"review\" accepts
+  \"review-notes.txt\" as readily as \"review/notes.txt\". Tightening it
+  to a path boundary would change what already-pinned definitions
+  derive — old definitions evaluate unchanged forever — so the boundary
+  belongs in the prefix, and lint warns when one is missing."
+  [[_ prefix] {:keys [state]}]
   (if (some #(str/starts-with? % prefix) (keys (:artifacts state)))
     ok
     (fail {:reason :artifact/missing :prefix prefix})))

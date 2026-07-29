@@ -7,7 +7,8 @@
   satisfied, and :missing never empty. explain never speculates.
   COMPLETE — every unreached stage whose prerequisites are reached
   appears as a block. explain never omits."
-  (:require [clojure.test.check.clojure-test :refer [defspec]]
+  (:require [clojure.test :refer [deftest is testing]]
+            [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [tik.explain :as explain]
@@ -80,3 +81,32 @@
                      (every? #(explain/actionable-by? % ge/roles who)
                              (:missing m))))
               (map vector blocks mine)))))
+
+(deftest an-all-waiting-alternative-is-nobody's-work
+  (testing "an :or every branch of which is a pure wait"
+    (let [r {:reason :alternatives
+             :options [[{:reason :time/not-elapsed :duration "P7D"
+                         :since :ticket/create}]
+                       [{:reason :stage/not-reached :stage :qa}]]}]
+      (is (not (explain/actionable-by? r {} "seb"))
+          "nothing in either branch is anyone's to do")
+      (is (= 5 (explain/actionability r))
+          "and it ranks as its most actionable branch, not last"))))
+
+(deftest an-alternative-with-one-open-branch-is-anyone's-work
+  (testing "a choice is as reachable as its easiest option"
+    (let [r {:reason :alternatives
+             :options [[{:reason :time/not-elapsed :duration "P7D"
+                         :since :ticket/create}]
+                       [{:reason :fact/missing :path [:category]}]]}]
+      (is (explain/actionable-by? r {} "seb"))
+      (is (zero? (explain/actionability r))))))
+
+(deftest role-bound-alternatives-follow-the-role
+  (let [roles {:triager {:members ["seb"]}}
+        r {:reason :alternatives
+           :options [[{:reason :role/unsatisfied :role :triager
+                       :path [:kind] :by "rando"}]]}]
+    (is (explain/actionable-by? r roles "seb"))
+    (is (not (explain/actionable-by? r roles "rando"))
+        "a branch only its role can take is not everyone's work")))

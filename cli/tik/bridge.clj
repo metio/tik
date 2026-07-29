@@ -12,8 +12,9 @@
             [clojure.string :as str]
             [tik.args :refer [actor parse-key read-edn-file slurp-existing typed-value]]
             [tik.canonical :as canonical]
-            [tik.cli-core :refer [append!* archive-process! cache-flush! die exit!
-                                  load-process now resolve-id root the-store ticket-ctx]]
+            [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
+                                  die exit! load-process now resolve-id root
+                                  the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.imap :as imap]
@@ -230,7 +231,10 @@
                                              {:reason :mail/unknown-sender :from from})))
               opts (assoc opts :actor actor-name)
               auto? (auto-generated? msg)
-              at (or (parse-date (:date msg)) (now))
+              ;; the sender's Date: header is attacker-controlled and we
+              ;; are the actor signing these events — a future-dated
+              ;; claim is clamped to our own clock (cli-core/claimed-at)
+              at (claimed-at (parse-date (:date msg)) (now))
               path (str "mail/" msgid)
               ref (ticket-ref-of msg)
               existing (when ref (resolve-or-nil s ref))]

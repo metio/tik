@@ -69,7 +69,9 @@
   (order (dedupe-events (well-formed! events))))
 
 (def empty-state
-  {:facts {} :artifacts {} :log []})
+  {:facts {} :artifacts {} :log [] :writes {} :parents {} :linear-writes {}})
+
+(declare ancestor?)
 
 (defn- push-history [prev entry]
   (assoc entry :history
@@ -127,11 +129,58 @@
    :fact/dispute    h-dispute
    :artifact/attach h-artifact})
 
+(defn- index-event
+  "The fold's two INDEXES, maintained incrementally.
+
+  Both answer questions conflict detection used to ask by scanning the
+  whole log on every call — once per fact per stage per sweep per event,
+  which is what made derivation quadratic. Neither is new authoritative
+  state: both are rebuilt from the event set on every fold and hold
+  nothing that is not already in :log. They are the indexes CLAUDE.md
+  permits, not a cache of a derived answer.
+
+  :writes  path -> the claims about it, in fold order (which is
+           (at, id) order, since the fold consumes `ordered` events)
+  :parents event-id -> its parent ids, or nil when :event/parents is not
+           a collection — a corrupt store must leave the DAG walk total
+           rather than raw-throwing, exactly as tik.dag/parent-ids does.
+  :linear-writes
+           path -> whether every write on it so far observed the one
+           before, i.e. the history on this path is a chain and no
+           conflict is possible. Each new write costs ONE ancestry walk
+           here instead of a walk per write on every conflict query.
+           Sound but not complete: a write folded before its own parent
+           (a backdated claim) reads as non-linear and simply falls
+           through to the full maximality check, which is correct and
+           merely slower. A `true` is never wrong — ancestor? answers
+           true only when it finds the ancestor."
+  [state {:keys [event/id event/type event/at event/actor event/parents
+                 event/body]}]
+  (let [state (assoc-in state [:parents id] (when (coll? parents) parents))
+        write (case type
+                :fact/assert {:kind :assert :value (:fact/value body)
+                              :by actor :at at :event id}
+                :fact/retract {:kind :retract :by actor :at at :event id}
+                nil)]
+    (if-not write
+      state
+      (let [path (:fact/path body)
+            prior (peek (get-in state [:writes path]))]
+        (-> state
+            (update-in [:writes path] (fnil conj []) write)
+            (assoc-in [:linear-writes path]
+                      (and (get-in state [:linear-writes path] true)
+                           (or (nil? prior)
+                               (ancestor? (:parents state)
+                                          (:event prior) id)))))))))
+
 (defn apply-event
-  "Apply one event (handler if known, identity otherwise) and log it."
+  "Apply one event (handler if known, identity otherwise), log it, index it."
   [state event]
   (let [h (get handlers (:event/type event) (fn [s _] s))]
-    (update (h state event) :log conj event)))
+    (-> (h state event)
+        (update :log conj event)
+        (index-event event))))
 
 (defn ticket-state [events]
   (core/reduce apply-event empty-state (ordered events)))
@@ -144,9 +193,18 @@
 ;; :conflicted until a write that OBSERVED all competitors supersedes
 ;; them. Parents answer only "did these writes see each other?" — the
 ;; effective value of a non-conflicted fact stays with (at, id) order.
-;; Computed from the complete log rather than maintained incrementally:
-;; an incremental frontier is order-dependent when a backdated
-;; intermediate event folds late, and commutativity is a law.
+;; THE ANSWER is computed from the complete write set, never carried
+;; forward: an incrementally maintained frontier is order-dependent when
+;; a backdated intermediate event folds late, and commutativity is a law.
+;;
+;; What the fold does carry (:linear-writes) is not that answer but a
+;; one-way shortcut to it — "these writes form a chain, so exactly one
+;; is maximal". It is sound in one direction only: `true` is a proof (an
+;; ancestry walk found the link) and lets the query skip the maximality
+;; check; `false` proves nothing and falls through to the full
+;; computation. A late backdated event can therefore cost the shortcut,
+;; never the verdict — which is exactly why this may be incremental
+;; where a frontier may not.
 
 (defn- ancestor?
   "Is event id `a` an ancestor of event id `b`, per the parents index?"
@@ -161,61 +219,53 @@
                      seen)))))
 
 (defn- path-writes
-  "The claims about a path's state: asserts and retracts. Disputes are
-  meta (challenges of a claim) and precede conflicts in fact-status."
-  [log path]
-  (keep (fn [e]
-          (let [body (:event/body e)]
-            (when (= path (:fact/path body))
-              (case (:event/type e)
-                :fact/assert {:kind :assert :value (:fact/value body)
-                              :by (:event/actor e) :at (:event/at e)
-                              :event (:event/id e)}
-                :fact/retract {:kind :retract
-                               :by (:event/actor e) :at (:event/at e)
-                               :event (:event/id e)}
-                nil))))
-        log))
+  "The claims about a path's state: asserts and retracts, in fold order.
+  Disputes are meta (challenges of a claim) and precede conflicts in
+  fact-status. Read from the fold's :writes index rather than by
+  scanning the log, so the cost is the number of writes ON THIS PATH,
+  never the length of the whole history."
+  [state path]
+  (get-in state [:writes path] []))
 
 (defn conflicting-claims
   "The causally-maximal writes on `path` when they disagree, else nil.
   Concurrent writes that agree (same value, or both retracts) are not a
   conflict — there is no disagreement to surface.
 
-  Fast path for the overwhelmingly common shape: when every other
-  write is an ancestor of the newest write (a linear or converging
-  history), exactly one write is maximal and no conflict can exist —
-  W-1 walks instead of the W\u00b2 pairwise maximality check."
+  Fast path for the overwhelmingly common shape: when every write
+  observed the one before, exactly one write is maximal and no conflict
+  can exist. The fold answers that as the writes arrive, one walk each
+  (:linear-writes), so the common case costs a map lookup rather than
+  re-deriving linearity per query — and the pairwise maximality check
+  below, quadratic in the writes on ONE path, runs only for histories
+  that actually forked."
   [state path]
-  (let [writes (path-writes (:log state) path)]
-    (when (< 1 (count writes))
-      ;; index a parents value only when it is a collection, mirroring
+  (let [writes (path-writes state path)]
+    (when (and (< 1 (count writes))
+               ;; the fold already proved this path linear one walk at a
+               ;; time; a `true` here means exactly one maximal write
+               (not (get-in state [:linear-writes path] false)))
+      ;; the parents index comes from the fold (see index-event), so it
+      ;; is built once per history instead of rebuilt per call. It holds
+      ;; a parents value only when it is a collection, mirroring
       ;; tik.dag/parent-ids: a corrupt/hostile store whose :event/parents
       ;; is a scalar folds cleanly (well-formed! does not check the shape),
       ;; and ancestor?'s contains?/mapcat must stay total over it rather
       ;; than raw-throwing — this walk carries the same guarantee the DAG
       ;; walk does. verify L0's schema check names the malformation.
-      (let [index (into {} (map (fn [e]
-                                  (let [p (:event/parents e)]
-                                    [(:event/id e) (when (coll? p) p)])))
-                        (:log state))]
-        ;; consecutive ancestry composes: every write is then an
-        ;; ancestor of the newest, exactly one write is maximal, no
-        ;; conflict — and each hop is usually a single parent step
-        (when-not (every? (fn [[a b]] (ancestor? index (:event a) (:event b)))
-                          (partition 2 1 writes))
-          (let [maximal (filterv (fn [w]
-                                   (not-any? #(and (not= (:event %) (:event w))
-                                                   (ancestor? index (:event w)
-                                                              (:event %)))
-                                             writes))
-                                 writes)
-                outcomes (distinct (map #(if (= :assert (:kind %))
-                                           [:value (:value %)]
-                                           [:retracted])
-                                        maximal))]
-            (when (and (< 1 (count maximal)) (< 1 (count outcomes)))
-              maximal)))))))
+      (let [index (:parents state)
+            maximal (filterv (fn [w]
+                               (not-any? #(and (not= (:event %) (:event w))
+                                               (ancestor? index (:event w)
+                                                          (:event %)))
+                                         writes))
+                             writes)
+            outcomes (distinct (map #(if (= :assert (:kind %))
+                                       [:value (:value %)]
+                                       [:retracted])
+                                    maximal))]
+        (when (and (< 1 (count maximal)) (< 1 (count outcomes)))
+          maximal)))))
 
 (defn fact-status
   "THE choke point. Returns

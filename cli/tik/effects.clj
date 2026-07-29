@@ -170,7 +170,14 @@
   Config: {:sinks [{:type :slack :url \"…\"} …] :stages #{:landed}}
   (:stages optional — default every transition). Idempotent via
   content-hashed effect keys in .effects-sent; at-least-once on ledger
-  loss, exactly what ADR 0019 promises."
+  loss, exactly what ADR 0019 promises.
+
+  The key is (ticket, stage, sink identity) and deliberately carries NO
+  head: a head moves with every appended event, so keying on it would
+  re-notify the same stage on every later write. The ledger it is
+  checked against is LOCAL, so the dedup is per-runner — run one effect
+  runner per estate, or give it the per-pipeline delivery lease ADR 0021
+  admits as its one coordination exception."
   [{:keys [pos opts]}]
   (when-not (= "run" (first pos))
     (die "usage: tik effects run [--config effects.edn] [--dry-run]"))

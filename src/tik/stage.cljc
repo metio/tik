@@ -6,9 +6,23 @@
   v4 collapses what were three traversals (state reduce, per-prefix sticky
   replay, timeline) into ONE left fold: `evolve`. The accumulator carries
   {:state :reached :sticky-ever :timeline}; sticky milestones are a
-  monotone set carried through the fold (O(n·|stages|) instead of the old
-  O(n²) prefix replay). State, sticky semantics, the notifier's timeline,
-  and status are now views of the same fold — one thing to test.
+  monotone set carried through the fold, replacing a prefix replay that
+  re-derived the whole history per event. State, sticky semantics, the
+  notifier's timeline, and status are now views of the same fold — one
+  thing to test.
+
+  What the fold costs, stated honestly because someone will size a
+  deployment against it: `evolve` runs a full `reached-set` fixpoint per
+  event, because sticky makes the reached set path-dependent — it is a
+  function of the trajectory, not of the final state, so no per-event
+  work can be skipped in general. Each fixpoint is bounded by
+  |stages| sweeps over |stages| stages, and each guard's fact lookup is
+  memoized per fixpoint (tik.guard/fact-status*) and served from the
+  reducer's :writes / :parents indexes rather than a log scan. So the
+  fold is linear in events and polynomial in the SIZE OF THE PROCESS,
+  which is authored and small — not quadratic in history length, which
+  is unbounded. Anything that reintroduces a per-call whole-log scan
+  puts the quadratic back.
 
   Internal vocabulary (lattice, maximal, fixpoint) stays internal; user-
   facing surfaces say 'process graph' and 'current stage'."

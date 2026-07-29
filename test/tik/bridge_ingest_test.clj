@@ -18,7 +18,7 @@
             [clojure.test.check :as tc]
             [tik.bridge :as bridge]
             [tik.cli]
-            [tik.cli-core]
+            [tik.cli-core :as core]
             [tik.harness :as h]
             [tik.imap]
             [tik.pop3]
@@ -331,3 +331,29 @@
                (map? (tik.imap/cmd s "UID SEARCH UNSEEN")))
              (catch java.io.IOException _ true)
              (catch Throwable _ false)))))))
+
+(deftest a-future-dated-sender-clock-is-not-repeated
+  (testing "we sign the event, so we do not claim a time we disbelieve"
+    (let [^java.time.Instant n (core/now)
+          far (.plus n (java.time.Duration/ofDays 3650))
+          signed (core/claimed-at far n)]
+      (is (not= far signed)
+          "a forward-dated foreign claim is not the time we sign")
+      (is (not (.isAfter ^java.time.Instant signed
+                         (.plus ^java.time.Instant (core/now)
+                                core/future-skew-tolerance)))
+          "what we sign sits within tolerance of our own clock")
+      (is (not (.isBefore ^java.time.Instant signed n))
+          "and is not backdated either — it is simply now"))))
+
+(deftest ordinary-clock-skew-and-backdating-pass-through
+  (let [^java.time.Instant n (core/now)]
+    (testing "a minute of drift is drift, not an attack"
+      (let [near (.plus n (java.time.Duration/ofMinutes 1))]
+        (is (= near (core/claimed-at near n)))))
+    (testing "backdating loses the sort and unlocks nothing — ADR 0012 keeps it"
+      (let [old (.minus n (java.time.Duration/ofDays 30))]
+        (is (= old (core/claimed-at old n)))))
+    (testing "a missing or unparseable date falls back"
+      (is (= n (core/claimed-at nil n)))
+      (is (= n (core/claimed-at "not-an-instant" n))))))
