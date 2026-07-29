@@ -1200,3 +1200,63 @@ optimized/reference agreement property), and a decision on whether
 form at lint so no ticket strands silently. Trigger to revisit: a
 process that genuinely wants "a role member has participated" as a gate
 rather than "a role member signed THIS fact."
+
+## AT Protocol DIDs as an identity rung (banked)
+
+The identity ladder (§9) runs SSH keys in the store's `actors` registry,
+then the OIDC bridge, then Sigstore-keyless. BANKED: `did:plc` as a rung
+beside OIDC, because its operation log is the shape the ladder is
+missing. Each PLC operation is signed by a rotation key authorized in
+the *previous* operation and references prior state by hash — a
+self-authenticating, hash-chained history of a key's authority. That is
+precisely what "was this actor a member of the role WHEN they signed?"
+needs, and today nothing in the store can answer it: role membership is
+a static list inside the hash-pinned definition, so authority is frozen
+at ticket creation and personnel churn becomes a definition version
+bump. ADR 0010 promises time-dependent membership, delegation with
+expiry, and authority chains; §18 names the role-decay attack. The PLC
+log is a ready-made, externally-maintained instance of the evidence all
+three want.
+
+The shape is the one the OIDC bridge already established: a bridge
+performs the binding and mints a signed ATTESTATION EVENT carrying the
+relevant PLC log segment, so verification never calls the directory and
+survives its death. The snapshot is sound evidence rather than hearsay
+precisely because the log verifies itself — a reader re-checks the
+rotation chain offline from the bytes in the ticket.
+
+That snapshot is MANDATORY, not a convenience. The PLC directory is a
+centralized service today (Bluesky-operated, with a stated intent to
+become a permissioned consortium later), and resolving it at
+verification time would make a past conclusion depend on a key server's
+current opinion — exactly what ADR 0010 forbids. `did:web` trades that
+for a dependency on DNS and HTTPS, which is no better offline. Pinning
+the chain into the log is what makes either method admissible.
+
+What this does NOT bring is the repository. atproto records are mutable
+and, per its own repository spec, "record deletion is supported without
+leaving a trace or 'tombstone' of previous contents"; the commit `prev`
+chain is documented as "largely unused". An actor who can delete the
+record that damns them erases the thing tik exists to preserve
+(ADR 0011, ADR 0017). atproto is therefore admissible as identity
+evidence and, someday, as transport — never as the store of record.
+
+Two notes for whoever reads this next. First, do not file this under the
+ActivityPub rejection in §10 ("push-based social broadcast is the wrong
+shape for pull-based verifiable claims"): atproto is repo-and-CID based,
+pull-oriented, and content-addressed, which is the shape §10 says it
+wants — the rejection does not extend to it, and refusing it for that
+reason would be right by accident at best. Second, §11 calls `did:key`
+"a harmless notation we may adopt someday; it changes nothing
+structural" — `did:plc` is a different proposition, because the log, not
+the notation, is the substance.
+
+Necessary but not sufficient: even with DID-backed bindings in the log,
+role membership must first move out of the hash-pinned definition, or
+there is nowhere for time-varying authority to live. That decoupling is
+the prior fix; this is what makes it worth doing well.
+
+Trigger to revisit: a deployment whose actors already carry atproto
+identities, or the Phase 2 identity work reaching the point where the
+key-validity-at-a-past-time question needs a concrete backing store and
+we would otherwise design one from scratch.
