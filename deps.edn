@@ -11,12 +11,12 @@
         ;; version-pinned) so the shipped binary carries its own SQLite —
         ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
         ;; harness (file store), the native binary is where SQLite runs.
-        org.xerial/sqlite-jdbc {:mvn/version "3.53.2.0"}}
+        org.xerial/sqlite-jdbc {:mvn/version "3.53.2.1"}}
  :aliases
  {;; the native binary's closed world: bb ships http-client and httpkit
   ;; as builtins, the JVM/native build declares them; graal-build-time
   ;; marks Clojure namespaces initialize-at-build-time for native-image
-  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.23"}
+  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.24"}
                         http-kit/http-kit {:mvn/version "2.8.1"}
                         com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}}
   :build {:extra-paths ["."]
@@ -43,7 +43,7 @@
              :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
                           org.clojure/test.check {:mvn/version "1.1.3"}
                           lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                          org.babashka/http-client {:mvn/version "0.4.23"}
+                          org.babashka/http-client {:mvn/version "0.4.24"}
                           http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
