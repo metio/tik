@@ -23,6 +23,14 @@ ENV TIK_ROOT=/var/lib/tik
 
 COPY --chown=nonroot:nonroot target/tik /usr/local/bin/tik
 
+# The uid behind distroless's `nonroot`, stated rather than inherited from the
+# base tag: choosing a base is a live decision here (see the glibc reasoning
+# above), and a tag without `:nonroot` would otherwise hand tik root without a
+# line of this file changing. It is the uid the binary above is chowned to. A
+# pod securityContext still wins where one is set — the Helm chart runs tik
+# under its own uid — so this is what the bare image runs as.
+USER 65532:65532
+
 # `tik` with no arguments prints usage; the Helm chart supplies `serve …` or
 # `bridge imap --watch …` as args.
 ENTRYPOINT ["/usr/local/bin/tik"]
