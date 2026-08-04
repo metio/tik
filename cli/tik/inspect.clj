@@ -123,15 +123,50 @@
             (explain/render (explain/explain process events t roles reached)))))
     (cache-flush!)))
 
+(defn- no-frontier
+  "Why explain has nothing to say. It covers the FRONTIER — unreached
+  stages whose prerequisites are all reached — so an empty result means
+  either a finished ticket or a definition whose remaining stages can
+  never be enabled. Those are opposite situations, and silence renders
+  them identically on the surface people read before asking a human
+  anything."
+  [process reached]
+  (let [stages (:process/stages process)
+        unreached (remove (comp reached :stage/id) stages)
+        known (into #{} (map :stage/id) stages)
+        dangling (for [s unreached
+                       a (:after s [])
+                       :when (not (contains? known a))]
+                   (str (:stage/id s) " waits on " a))]
+    (cond
+      (empty? unreached)
+      "nothing is missing — every stage is reached"
+
+      (seq dangling)
+      (str "no stage is reachable: " (str/join ", " dangling)
+           " — no such stage in this process. `tik lint` names it.")
+
+      :else
+      (str "no stage is reachable: all " (count unreached)
+           " unreached stage(s) wait on another unreached stage —"
+           " a cycle or an unenterable branch. `tik lint` names it."))))
+
 (defn cmd-explain [{:keys [pos opts]}]
   (let [s (the-store)
         {:keys [events process roles]} (load-ticket s (first pos))
-        blocks (explain/explain process events (eval-instant opts) roles)
+        t (eval-instant opts)
+        reached (stage/effective-reached process events t roles)
+        blocks (explain/explain process events t roles reached)
+        ;; `for-actor` narrows each block's :missing and counts the rest
+        ;; as :hidden — it never drops a block, so an empty result here
+        ;; is always the frontier's own emptiness, never the filter's
         blocks (if-let [who (:actor opts)]
                  (explain/for-actor blocks roles who)
                  blocks)]
     (when-not (emit-data opts blocks)
-      (print (paint-explain (explain/render blocks))))))
+      (if (seq blocks)
+        (print (paint-explain (explain/render blocks)))
+        (println (no-frontier process reached))))))
 
 (defn cmd-causal
   "Which signed events made each reached stage true — forensics: the
