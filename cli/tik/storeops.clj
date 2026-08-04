@@ -27,7 +27,7 @@
             [tik.store.sqlite :as sqlite]
             [tik.text :refer [safe-name]])
   (:import (java.io File)
-           (java.time LocalDate ZoneOffset)))
+           (java.time Instant LocalDate ZoneOffset)))
 
 (defn cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T]
@@ -235,6 +235,62 @@
         (cache-flush!)
         (println (str "created " proc-name " for " period ": " (sid id)))))))
 
+(defn- env-name
+  "A fact path as an environment variable name: segments joined with
+  `__`, upper-cased, every character outside [A-Z0-9_] replaced with
+  `_`, under the `TIK_FACT_` prefix — so [:candidate :repo] becomes
+  TIK_FACT_CANDIDATE__REPO. Path segments are rendered without `name`,
+  which throws on the non-keyword a hostile log can carry."
+  [path]
+  (str "TIK_FACT_"
+       (-> (str/join "__" (map #(str/replace (str %) #"^:" "") path))
+           str/upper-case
+           (str/replace #"[^A-Z0-9_]" "_"))))
+
+(defn- env-value
+  "A fact value as a shell would want it: a keyword loses its colon
+  (:carry -> carry), an Instant its object wrapper, and anything with no
+  flat form keeps its EDN so the probe can parse what it asked for."
+  [v]
+  (cond
+    (keyword? v) (subs (pr-str v) 1)
+    (string? v) v
+    (or (number? v) (boolean? v) (uuid? v) (instance? Instant v)) (str v)
+    :else (pr-str v)))
+
+(defn fact-env
+  "The ticket's own PRESENT facts as environment variables, so a probe
+  whose subject is a fact rather than a repository can tell WHICH
+  subject this invocation is about. One repository holding many
+  subjects — a package, a service, a tenant, a workload per ticket — is
+  otherwise unprobeable: cwd and TIK_REPO are identical across every one
+  of those tickets, and the discriminator sits in a fact the probe
+  cannot see.
+
+  Only :present facts are exported: a retracted fact lingering in the
+  environment would answer a question the log no longer answers.
+
+  Returns {:env {name value} :collisions [[name [path ...]] ...]}.
+  Sanitising is lossy — [:a-b] and [:a_b] both yield TIK_FACT_A_B — and
+  colliding names are DROPPED rather than resolved by an arbitrary
+  winner, because a probe silently reading the wrong subject's value has
+  no way to notice, while a missing variable announces itself on the
+  first run. The reserved TIK_TICKET and TIK_REPO cannot be shadowed: a
+  fact named `ticket` exports as TIK_FACT_TICKET, a different name by
+  construction."
+  [state]
+  (let [entries (for [path (sort-by pr-str (keys (:facts state)))
+                      :let [{:keys [status value]} (red/fact-status state path)]
+                      :when (= :present status)]
+                  {:name (env-name path) :value (env-value value) :path path})
+        by-name (group-by :name entries)]
+    {:env (into {} (for [[n [e :as es]] by-name
+                         :when (= 1 (count es))]
+                     [n (:value e)]))
+     :collisions (vec (for [[n es] (sort-by key by-name)
+                            :when (< 1 (count es))]
+                        [n (mapv :path es)]))}))
+
 (defn cmd-probe
   "probe [<id>] [--command C]
   Auto-derive facts from the world: for every open ticket carrying a
@@ -252,7 +308,12 @@
   ran is an unperformed measurement wearing the shape of a clean one.
   A ticket is unprobeable when it carries no [:repo] fact, when its
   process declares no :probe and no --command supplies one, or when the
-  repository is absent under the store holder."
+  repository is absent under the store holder.
+
+  The probe's environment carries TIK_TICKET, TIK_REPO, and every
+  present fact as TIK_FACT_<PATH> (see `fact-env`) — the facts are the
+  ergonomic path, the id the escape hatch for a probe that needs more
+  than them (`tik status \"$TIK_TICKET\" --format json`)."
   [{:keys [pos opts]}]
   (let [s (the-store)
         t (now)
@@ -300,11 +361,22 @@
         :else
         (let [^File f (resolve-file probe)
               argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
+              {facts :env collisions :collisions} (fact-env state)
+              _ (doseq [[n paths] collisions]
+                  (binding [*out* *err*]
+                    (println (str (sid id) " " repo-name ": " n
+                                  " is ambiguous between "
+                                  (str/join " and " (map pr-str paths))
+                                  " — exported for neither"))))
               r (apply sh/sh (concat argv
                                      [:dir (str dir)
-                                      :env (assoc (into {} (System/getenv))
-                                                  "TIK_TICKET" (str id)
-                                                  "TIK_REPO" repo-name)]))
+                                      ;; the reserved names land LAST: a
+                                      ;; fact can add to the probe's world,
+                                      ;; never rewrite which ticket it is
+                                      :env (merge (into {} (System/getenv))
+                                                  facts
+                                                  {"TIK_TICKET" (str id)
+                                                   "TIK_REPO" repo-name})]))
               before (stage/effective-reached process events t roles)]
           (swap! ran inc)
           (if-not (zero? (:exit r))

@@ -80,6 +80,67 @@
     (is (re-find #"0 probe\(s\) ran" (:out r)))
     (is (re-find #"1 ticket\(s\) had nothing to probe" (:out r)))))
 
+(deftest facts_reach_the_probe_as_environment_variables
+  ;; One repository, many subjects (a package, a tenant, a workload per
+  ;; ticket) is unprobeable when cwd and TIK_REPO are the whole
+  ;; discriminator — every such ticket looks identical to the probe.
+  (let [fact-env #'tik.storeops/fact-env
+        ;; resolves through the redirected root each caller installs
+        state (fn [id] (:state (tik.cli-core/load-ticket
+                                (tik.cli-core/the-store) id)))]
+    (testing "path shape: segments join with __, the prefix is TIK_FACT_"
+      (let [{:keys [root id]} (store-with-ticket!
+                               "tik-probe-env" "workload=opengist"
+                               "candidate.repo=https://example.test/o/g"
+                               "decision=carry")]
+        (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
+          (fn []
+            (let [{:keys [env collisions]} (fact-env (state id))]
+              (is (= "opengist" (get env "TIK_FACT_WORKLOAD")))
+              (is (= "carry" (get env "TIK_FACT_DECISION"))
+                  "a keyword value loses its colon — shells want the word")
+              (is (= "https://example.test/o/g"
+                     (get env "TIK_FACT_CANDIDATE__REPO"))
+                  "[:candidate :repo] joins with __, not _")
+              (is (empty? collisions)))))))
+    (testing "a retracted fact leaves the environment with it"
+      (let [{:keys [root id]} (store-with-ticket!
+                               "tik-probe-envretract" "workload=opengist")]
+        (in root "retract" id "workload")
+        (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
+          (fn []
+            (is (nil? (get (:env (fact-env (state id))) "TIK_FACT_WORKLOAD"))
+                "the environment must not answer what the log stopped answering")))))
+    (testing "ambiguous names are dropped for BOTH paths, and named"
+      (let [{:keys [root id]} (store-with-ticket!
+                               "tik-probe-envclash" "a-b=one" "a_b=two")]
+        (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
+          (fn []
+            (let [{:keys [env collisions]} (fact-env (state id))]
+              (is (nil? (get env "TIK_FACT_A_B"))
+                  "an arbitrary winner would be read as authoritative")
+              (is (= 1 (count collisions)))
+              (is (= "TIK_FACT_A_B" (ffirst collisions))))))))))
+
+(deftest the_probe_sees_its_subject_end_to_end
+  (let [{:keys [root id]} (store-with-ticket! "tik-probe-e2e"
+                                              "repo=widget" "workload=opengist")
+        _ (.mkdirs (io/file root "widget"))
+        r (in root "probe" id "--command" "echo subject=$TIK_FACT_WORKLOAD")]
+    (is (zero? (:exit r)))
+    (is (re-find #"subject = :opengist" (:out r))
+        "the probe derived a fact it could only have learned from the environment")))
+
+(deftest reserved_names_cannot_be_shadowed_by_a_fact
+  ;; A fact named `ticket` exports as TIK_FACT_TICKET — a different name
+  ;; by construction — so no fact can rewrite which ticket a probe is for.
+  (let [{:keys [root id]} (store-with-ticket! "tik-probe-reserved"
+                                              "repo=widget" "ticket=impostor")
+        _ (.mkdirs (io/file root "widget"))
+        r (in root "probe" id "--command" "echo seen=$TIK_TICKET")]
+    (is (zero? (:exit r)))
+    (is (re-find (re-pattern (str "seen = \"" id "\"")) (:out r)))))
+
 (deftest a_probe_that_runs_derives_facts_and_reports_that_it_ran
   (let [{:keys [root id]} (store-with-ticket! "tik-probe-happy" "repo=widget")
         _ (.mkdirs (io/file root "widget"))

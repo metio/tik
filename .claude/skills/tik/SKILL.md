@@ -67,6 +67,16 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik plan [<file.html>]` — the dependency-link roadmap: ready / blocked /
   done / cyclic, the critical path, and each item's unlock impact — all
   derived, never stale. A `.html` argument writes a fancy self-contained page.
+- `tik probe [<id>] [--command C]` — re-derive facts from the world instead of
+  remembering them: run the process's `:probe` (an executable printing
+  `key=value` lines) with cwd in the ticket's `[:repo]` repository, and assert
+  each **changed** value as an ordinary signed fact, so a ticket regresses on
+  its own when reality does. The probe's environment carries `TIK_TICKET`,
+  `TIK_REPO`, and every present fact as `TIK_FACT_<PATH>` (`[:candidate :repo]`
+  → `TIK_FACT_CANDIDATE__REPO`) — that is what lets one repository hold many
+  subjects, a package or tenant or workload per ticket, each probe told which
+  subject it is running for. Naming an id refuses with a reason when that
+  ticket cannot be probed; the whole-store sweep skips and counts instead.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
   (versions everything migrated away from). Dry-run by default; `verify`
