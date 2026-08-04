@@ -89,6 +89,33 @@
         (is (integer? (:exit r)))
         (is (str/includes? (str (:out r) (:err r)) "not a command"))))))
 
+(deftest an_unknown_flag_stops_the_command_instead_of_widening_it
+  ;; parse-args puts an unrecognised token in :opts and leaves :pos
+  ;; empty — and empty :pos means "the whole store" to probe, ls and
+  ;; verify. So a misread argument does not narrow a command, it widens
+  ;; it to every ticket: `tik probe --help` swept the store and wrote
+  ;; signed facts. Nothing may run until the arguments are understood.
+  (let [root (h/temp-dir! "tik-unknownflag")]
+    (System/setProperty "user.name" "tester")
+    (testing "the flag is named, and nothing ran"
+      (let [r (in root "probe" "--typo")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"unknown flag --typo" (str (:out r) (:err r))))
+        (is (re-find #"nothing ran" (str (:out r) (:err r))))
+        (is (not (re-find #"derived from the world" (:out r))))))
+    (testing "several unknown flags are all named at once"
+      (let [r (in root "ls" "--nope" "--alsonope")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"--alsonope, --nope" (str (:out r) (:err r))))))
+    (testing "--help on a command prints usage and does NOT run it"
+      (let [r (in root "probe" "--help")]
+        (is (zero? (:exit r)))
+        (is (re-find #"tik probe" (:out r)))
+        (is (not (re-find #"derived from the world" (:out r))))))
+    (testing "a known flag still reaches its command"
+      (let [r (in root "ls" "--edn")]
+        (is (zero? (:exit r)))))))
+
 (deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
   ;; the name is written verbatim into the OpenSSH allowed-signers file;
   ;; whitespace/quote/newline would split it into a second attacker-shaped

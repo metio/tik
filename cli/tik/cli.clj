@@ -9,7 +9,8 @@
   - actor:       --actor, else $TIK_ACTOR, else the OS user
   - fact keys:   dotted paths -> keyword vectors
   - fact values: parsed as EDN; bare words become keywords"
-  (:require [tik.args :refer [parse-args]]
+  (:require [clojure.string :as str]
+            [tik.args :refer [parse-args]]
             [tik.adopt :as adopt]
             [tik.admin :as admin]
             [tik.agent :as agent]
@@ -232,7 +233,44 @@
   tik test <tests.edn>                          run scripted process tests (steps in,
                                                 expected stages out)")
 
+(def known-flags
+  "Every flag any command reads. Deliberately GLOBAL rather than
+  per-command: the job is to refuse what nothing reads, and a flag
+  misapplied to the wrong verb is inert, while a per-verb table drifts
+  the moment a command grows an option and silently rejects it.
+
+  Unknown flags cannot be tolerated, because `parse-args` gives an
+  unrecognised token to `:opts` and leaves `pos` empty — and an empty
+  `pos` means \"the whole store\" to `probe`, `verify`, `ls` and friends.
+  `tik probe --help` therefore read as \"probe every ticket\" and wrote
+  signed facts nobody asked for. A verb that can write to every ticket
+  in the store has earned the stricter reading of its arguments."
+  #{"actor" "all" "anchor" "apply" "at" "audience" "body" "changed"
+    "client-id" "command" "config" "credential" "dry-run" "edn" "force"
+    "format" "from" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
+    "links" "long" "name" "out" "params" "parent" "parent-title"
+    "password" "password-command" "password-file" "period" "port"
+    "reason" "registry" "role" "sqlite" "template" "threshold" "title"
+    "to" "user" "watch" "where" "witness"})
+
+(defn- check-flags!
+  "Refuse flags nothing reads, naming them, before any command runs."
+  [cmd {:keys [opts]}]
+  (when-let [unknown (seq (sort (remove known-flags (map name (keys opts)))))]
+    (binding [*out* *err*]
+      (println (str "tik: unknown flag" (when (< 1 (count unknown)) "s") " "
+                    (str/join ", " (map #(str "--" %) unknown))
+                    (when cmd (str " for '" cmd "'"))))
+      (println "  nothing ran — `tik help` lists every command and its flags"))
+    (exit! 1)))
+
 (defn- dispatch [cmd parsed]
+  ;; --help asks to be TOLD, never to act; on a verb whose empty
+  ;; positional means "the whole store", running anyway is a write
+  (when (:help (:opts parsed))
+    (println usage)
+    (exit! 0))
+  (check-flags! cmd parsed)
   (case cmd
       "init"    (storeops/cmd-init parsed)
       "store"   (storeops/cmd-store parsed)
