@@ -1260,3 +1260,67 @@ Trigger to revisit: a deployment whose actors already carry atproto
 identities, or the Phase 2 identity work reaching the point where the
 key-validity-at-a-past-time question needs a concrete backing store and
 we would otherwise design one from scratch.
+
+## Cross-store gates — B blocks until A reaches a stage (banked)
+
+Two stores, one gate: a stage in store B may not derive until a ticket
+in store A has reached a stage. The §10 federation shape covers it with
+zero kernel change — B never reads A; a bridge (an actor, like every
+other bridge) mints into B's OWN log, and B's guards evaluate locally,
+offline, forever, including after store A is gone. Banked because the
+mechanism is settled and the two gaps below are not.
+
+The bridge mints TWO things in one batch, each for what it is good at.
+A **fact** — `{:fact/path [:link :blocks/upstream-approved] :fact/value
+"sha256-…"}`, the value being A's head hash — is what the guard reads.
+An **attestation** — `{:claim {:store … :ticket … :stage … :head …}}` —
+carries the signature and the pinned head as the audit trail, and
+ADR 0004 makes that one signature cover A's entire ancestry.
+
+The guard reads the fact rather than the attestation, which refines
+§10's wording. `:attested-within` is the only operator that reads
+attestations and its duration window is mandatory
+(`src/tik/guard.cljc:152`), so an attestation-backed gate OPENS when A
+is approved and CLOSES again when the window lapses — right for a
+condition, wrong for a milestone. Facts persist until retracted and
+carry `fact-status` for free: dispute, supersession, `:conflicted` when
+two bridges disagree, and a real retraction path, which attestations
+have no analogue for.
+
+**The gated stage in A must be `:stage/sticky?`.** Stage is derived, so
+a non-sticky stage un-reaches when its supporting facts are retracted;
+only `:sticky-ever` is monotone (`src/tik/stage.cljc:43`). A gate on a
+non-sticky stage is a gate on a value that can evaporate with no signal
+to B. Either mark the stage sticky in A — correct when the gate is a
+milestone, which most "blocks until approved" gates are — or accept
+that the gate means "was true at head H" and use
+attestation + `:attested-within` + a re-attestation loop, which is
+§18's stale-evidence problem arrived at deliberately instead of by
+accident.
+
+Retraction propagates only because the bridge keeps observing. If A
+retracts the approval, B's fact stands until the same bridge mints the
+`fact/retract`; a fire-and-forget bridge that observes once turns the
+gate into a lie. Determinism is the usual ADR 0021 discipline: event id
+and `:at` derive from `(store, ticket, stage, head)`, the Message-ID
+pattern, so replicas polling A mint byte-identical events that
+union-merge to one. Use A's stage-reached instant for `:at` — it is
+deterministic and semantically right; it lands in B's `(at, id)` order
+in the past, which the total commutative reducer absorbs and B's
+timeline then renders where the upstream event actually happened.
+
+Two gaps this needs and does not have. **Store identity**: within a
+store a link value is a uuid, across stores it must name `(store,
+ticket)`, and no vocabulary for that exists — the choice (scoped fact
+path vs. map-valued fact) is inherited by every later integration, so
+make it once. **Cross-store cycles**: `tik lint` reasons over one
+definition, so A-gates-on-B-gates-on-A deadlocks with no diagnostic
+anywhere; detecting it is porcelain someone has to write. Smaller: a
+gate waiting on an external store surfaces as `:fact/missing`,
+indistinguishable from "nobody here did the work yet" — a reserved
+`[:link …]` path prefix is what lets a lens tell the two apart.
+
+Trigger to revisit: the first deployment that actually runs two stores
+with a gate between them, or the store-identity question arriving from
+another direction (bundles, registry, the external-tracker adapters
+above all want to name a foreign ticket).
