@@ -12,7 +12,7 @@
             [clojure.string :as str]
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
             [tik.cli-core :refer [all-ticket-ctx append!* archive-process! cache-flush!
-                                  db-path die display-title git-tracked? link-lines
+                                  db-path die display-title exit! git-tracked? link-lines
                                   load-process load-ticket now parse-instant process-file
                                   process-name resolve-file resolve-id root store-holder
                                   the-store ticket-ctx]]
@@ -245,33 +245,58 @@
   ticket's process definition (looked up by name — a porcelain
   convenience, never derivation semantics). Idempotent by
   construction: unchanged values assert nothing; stages derive from
-  whatever landed."
+  whatever landed.
+
+  The sweep skips what it cannot probe and counts it; naming an id
+  refuses instead, because \"0 fact(s) derived\" for a probe that never
+  ran is an unperformed measurement wearing the shape of a clean one.
+  A ticket is unprobeable when it carries no [:repo] fact, when its
+  process declares no :probe and no --command supplies one, or when the
+  repository is absent under the store holder."
   [{:keys [pos opts]}]
   (let [s (the-store)
         t (now)
         holder (store-holder)
+        named (first pos)
         ;; a named ticket derives strictly (die if it cannot); the whole
         ;; store isolates per ticket, so one poison never aborts the sweep
-        ctxs (if (seq pos)
-               [(load-ticket s (first pos))]
+        ctxs (if named
+               [(load-ticket s named)]
                (all-ticket-ctx s))
-        changed (atom 0)]
+        changed (atom 0)
+        ran (atom 0)
+        skipped (atom 0)]
     (doseq [{:keys [id events state process roles]} ctxs
-            :let [repo (red/fact-value state [:repo])]
-            :when (and repo
-                       (or (seq pos)
-                           (not (next-lens/settled? process events t roles))))
-            :let [repo-name (safe-name repo)
-                  dir (io/file holder repo-name)
+            ;; the sweep leaves settled tickets alone; a named ticket is
+            ;; probed on request, settled or not
+            :when (or named
+                      (not (next-lens/settled? process events t roles)))
+            :let [repo (red/fact-value state [:repo])
+                  repo-name (when repo (safe-name repo))
+                  ^File dir (when repo-name (io/file holder repo-name))
                   probe (or (:command opts)
                             (let [f (process-file (process-name state))]
                               (when (.exists f)
-                                (:probe (read-edn-file f)))))]]
+                                (:probe (read-edn-file f)))))
+                  ;; why this ticket cannot be probed AT ALL, or nil when
+                  ;; it can. Distinct from "probed and nothing changed":
+                  ;; conflating the two reports an unperformed measurement
+                  ;; as a clean one.
+                  blocked
+                  (cond
+                    (nil? repo)
+                    "no [:repo] fact — a probe runs with cwd in the ticket's repository"
+                    (nil? probe)
+                    (str "process " (process-name state)
+                         " declares no :probe — pass --command to run one")
+                    (not (.isDirectory dir))
+                    (str "no such directory under " holder ": " repo-name)
+                    :else nil)]]
       (cond
-        (nil? probe) nil
-        (not (.isDirectory dir))
-        (println (str (sid id) " " repo-name
-                      ": no such directory under " holder " — skipped"))
+        ;; Naming an id asks for THIS ticket's probe; when it cannot run,
+        ;; the answer is why, not a summary line that reads like success.
+        (and blocked named) (die (str "cannot probe " (sid id) " — " blocked))
+        blocked (swap! skipped inc)
         :else
         (let [^File f (resolve-file probe)
               argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
@@ -281,9 +306,13 @@
                                                   "TIK_TICKET" (str id)
                                                   "TIK_REPO" repo-name)]))
               before (stage/effective-reached process events t roles)]
+          (swap! ran inc)
           (if-not (zero? (:exit r))
-            (println (str (sid id) " " repo-name ": probe failed — "
-                          (str/trim (:err r))))
+            (do (println (str (sid id) " " repo-name ": probe failed — "
+                              (str/trim (:err r))))
+                ;; one bad repo must not abort a store sweep, but a named
+                ;; ticket whose probe failed did not measure anything
+                (when named (exit! 1)))
             (do
               (doseq [line (str/split-lines (:out r))
                       :let [[_ k v] (re-matches #"\s*([^=\s]+)=(.*)" line)]
@@ -307,8 +336,15 @@
                 (when (seq gained)
                   (println (str (sid id) " " repo-name " -> "
                                 (tint "32" (str/join ", " (map name gained))))))))))))
+    ;; the count of facts alone cannot separate "every probe ran and the
+    ;; world had not moved" from "no probe ran"; both are 0, and only one
+    ;; of them measured anything
     (println (str @changed " fact(s) derived from the world — signed like"
-                  " any other claim"))))
+                  " any other claim"
+                  " (" @ran " probe(s) ran"
+                  (when (pos? @skipped)
+                    (str ", " @skipped " ticket(s) had nothing to probe"))
+                  ")"))))
 
 (defn cmd-pack
   "pack [<id>]: consolidate settled tickets' loose event files into
