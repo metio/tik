@@ -77,10 +77,26 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   subjects, a package or tenant or workload per ticket, each probe told which
   subject it is running for. Naming an id refuses with a reason when that
   ticket cannot be probed; the whole-store sweep skips and counts instead.
+- `tik reprocess <id> <new.edn> [--apply]` — migrate ONE ticket onto a newer
+  version of its process. A ticket is judged by the rules it was minted
+  under, so a definition that grows (a value added to an enum, a stage
+  added) leaves existing tickets deriving under the old one until you move
+  them — deliberately, never automatically, because an implicit upgrade
+  would re-judge a whole store on an edit. The re-pin is a signed
+  `:process/migrate` event, so the log keeps which rules judged the ticket
+  when. Dry-run by default: it prints the pinned-vs-proposed hashes, which
+  stages would be gained or REGRESS, and the new blockers, writing nothing
+  until `--apply`. (`store migrate` is unrelated — that moves where events
+  live.)
+- `tik debug <id>` — the fixpoint with its working shown: every sweep, every
+  guard verdict. An id alone debugs the definition the ticket **pins**, so it
+  agrees with `status`; `tik debug <process> <id>` asks about a different
+  definition instead and warns on stderr that it is not the pin.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
-  (versions everything migrated away from). Dry-run by default; `verify`
-  stays PASS, only historical `--at` degrades. Tidiness, not disk.
+  (versions every ticket has been moved off with `reprocess`). Dry-run by
+  default; `verify` stays PASS, only historical `--at` degrades. Tidiness,
+  not disk.
 
 ### Bringing the outside world in — the bridges
 

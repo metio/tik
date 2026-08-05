@@ -12,12 +12,14 @@
             [tik.args :refer [actor parse-key parse-value read-edn-file]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [die exit! load-process-arg load-ticket now
-                                  parse-when resolve-file stage-delta the-store]]
+                                  parse-when resolve-file resolve-id-soft
+                                  stage-delta the-store]]
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.lint :as lint]
+            [tik.process :as process]
             [tik.reduce :as red]
-            [tik.render :refer [emit-data print-problems tint]]
+            [tik.render :refer [emit-data print-problems shash tint]]
             [tik.stage :as stage])
   (:import (java.io File)
            (java.time Instant)))
@@ -194,20 +196,48 @@
       (println "test: PASS")
       (do (println (str "test: FAIL (" @failures ")")) (exit! 1)))))
 
+(defn- debug-args
+  "debug's positionals as [process-arg ticket-ref]. Two arguments are
+  unambiguous; a lone argument is a TICKET when it resolves in this
+  store, so `tik debug <id>` shows the working of the fixpoint the
+  ticket actually has — the one `status` reports — and naming a
+  definition stays the deliberate act of asking about a different one."
+  [s pos]
+  (let [[a b] pos]
+    (cond
+      b [a b]
+      (nil? a) (die "usage: tik debug <process>|<id> [<id>]")
+      (and (not (str/ends-with? a ".edn")) (resolve-id-soft s a)) [nil a]
+      :else [a nil])))
+
 (defn cmd-debug
   "The fixpoint with its working shown: every sweep, every stage, every
   guard verdict against the sweep-start snapshot. tik's EXPLAIN plan."
   [{:keys [pos opts]}]
-  (let [proc-name (first pos)
-        proc (load-process-arg proc-name)
-        s (the-store)
-        [state t roles]
-        (if-let [tid (second pos)]
-          (let [{:keys [state roles]} (load-ticket s tid)]
-            [state (now) roles])
-          [red/empty-state (now) (:process/roles proc {})])
+  (let [s (the-store)
+        [proc-arg tid] (debug-args s pos)
+        {pinned :process pinned-state :state} (when tid (load-ticket s tid))
+        proc (if proc-arg (load-process-arg proc-arg) pinned)
+        pinned-hash (:process-hash pinned-state)
+        hash (process/process-hash proc)
+        state (or pinned-state red/empty-state)
+        roles (:process/roles proc {})
+        t (now)
+        ;; a named definition that is not the ticket's pin derives a
+        ;; fixpoint the ticket does not have — say so, or this lens and
+        ;; `status` disagree with nothing to explain the disagreement
+        drift (when (and tid pinned-hash (not= hash pinned-hash))
+                {:debugged hash :pinned pinned-hash})
         {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
-    (when-not (emit-data opts {:reached reached :sweeps sweeps})
+    (when drift
+      (binding [*out* *err*]
+        (println (str "note: debugging against " (:process/name proc)
+                      " v" (:process/version proc) " (" (shash hash) "…);"
+                      " ticket pins " (shash pinned-hash) "…"
+                      " — `tik status` derives under the pin,"
+                      " `tik reprocess` moves the ticket onto this one"))))
+    (when-not (emit-data opts (cond-> {:reached reached :sweeps sweeps}
+                                drift (assoc :version-drift drift)))
             (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
         (println (tint "1" (str "sweep " sweep))
                  (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))

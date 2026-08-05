@@ -1324,3 +1324,38 @@ Trigger to revisit: the first deployment that actually runs two stores
 with a gate between them, or the store-identity question arriving from
 another direction (bundles, registry, the external-tracker adapters
 above all want to name a foreign ticket).
+
+## Migration ergonomics — refuse a narrowing re-pin, and whatif over it (unjudged)
+
+Field report from an agent driving a store of its own (`kurly`): a
+closed vocabulary in a process definition grew by one enum value, and
+every ticket minted before that edit went on deriving under the old
+definition — correctly, since a ticket is judged by the rules it was
+minted under. The verb to move them (`tik reprocess`) already exists
+with the properties the report asked for: a signed `:process/migrate`
+event, dry-run by default, never automatic (ADR 0002). Two asks are
+not covered.
+
+**Refuse, rather than warn, when the new version cannot judge the old
+facts.** `reprocess` prints the stage delta — which stages would be
+gained, which would REGRESS, and the new blockers — and then lets
+`--apply` proceed. The report wants a hard refusal for the narrowing
+cases: a value removed from an enum, a fact whose schema narrowed, a
+stage that no longer exists, all of which invalidate facts already
+asserted. The counter-argument is that the operator may legitimately
+accept the regression, and a refusal is *declared* policy sitting on
+top of a *derived* diff. A middle shape: keep the delta as evidence,
+but require `--force` when a fact present in the log fails the new
+version's schema, since that case is not a stage regressing — it is
+evidence the new rules cannot read at all. Naming the offending facts
+(not just the stages) is the part worth having either way.
+
+**`tik whatif <id> repin:<version>`.** The `reprocess` dry run already
+answers this, so the ask is really about one surface: whatif is where
+people go for "what would change", and it takes fact/time steps only.
+Whether the migration counterfactual belongs there or stays a
+`reprocess` concern is a lens question, not a kernel one — the
+derivation is the same pure function over a different definition.
+
+Trigger to revisit: a second report of a migration that lost facts, or
+a whatif redesign that generalizes its step vocabulary anyway.

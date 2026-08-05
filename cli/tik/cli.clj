@@ -42,6 +42,8 @@
                                                 default is the file/git store. --hidden:
                                                 everything inside .tik/, e.g. above many repos).
   tik store migrate --to sqlite|file            convert this store's backend in place
+                                                (where events live; `tik reprocess`
+                                                moves a TICKET to newer rules)
                                                 Commands find the store git-style:
                                                 TIK_ROOT, else the nearest ancestor
                                                 with .tik/ or tickets/, else here
@@ -94,7 +96,11 @@
   tik whatif <id> k=v|retract:k|+PT48H ...      counterfactual: stage diff, nothing
                                                 written — e.g. tik whatif 3184 sev=:low
                                                 +P2D (two days pass) retract:category
-  tik debug <process> [<id>]                    the fixpoint with its working shown
+  tik debug <id> | <process> [<id>]             the fixpoint with its working shown
+                                                (an id alone debugs the definition the
+                                                ticket PINS — same answer as status;
+                                                naming a process asks about that one
+                                                instead, and says so when they differ)
   tik board [<file.html>]                       the whole board as ONE dependency-free
                                                 HTML file — mail it, archive it
   tik serve [--port N]                          the live board over HTTP (read-only;
@@ -177,7 +183,8 @@
                                                 derived, never stale. .html arg writes
                                                 the fancy self-contained page
   tik gc [--apply]                              remove archived process definitions no
-                                                ticket pins (migrated-away versions);
+                                                ticket pins (versions every ticket has
+                                                been moved off with `tik reprocess`);
                                                 dry-run by default, verify stays PASS,
                                                 only historical --at degrades
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store
@@ -201,8 +208,12 @@
   tik actor add <name> <key.pub>                register a signer (identity rung 1)
   tik sign <id> [--key K]                       sign your events (or set TIK_KEY to
                                                 sign every write as it happens)
-  tik reprocess <id> <new.edn> [--reason R]     re-pin a ticket to a new definition;
-                [--apply]                       derived-stage diff, dry-run unless --apply
+  tik reprocess <id> <new.edn> [--reason R]     migrate ONE ticket onto a newer version
+                [--apply]                       of its process: re-pins by hash as a
+                                                signed event, so the log keeps which
+                                                rules judged it when. Prints the
+                                                derived-stage diff and dry-runs unless
+                                                --apply
   tik export <dir>                              materialize any store as the file/git
                                                 format (the audit interchange)
   tik bundle <id> [--out file.tgz]              ONE ticket as a portable evidence

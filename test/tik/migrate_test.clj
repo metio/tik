@@ -17,6 +17,9 @@
 (defn- tik! [root & args]
   (:out (apply h/tik! {:root root :actor "seb"} args)))
 
+(defn- tik-full! [root & args]
+  (apply h/tik! {:root root :actor "seb"} args))
+
 (deftest migrate-dry-run-then-apply
   (let [root (h/temp-dir! "tik-migrate")
         _ (io/make-parents (io/file root "processes" "x"))
@@ -69,3 +72,42 @@
             "pinned hash resolves through the archive")
         (is (str/includes? (tik! root "verify" id) "verify: PASS")
             "the migrated ticket verifies under v2")))))
+
+(deftest debug-agrees-with-status-unless-asked-otherwise
+  (let [root (h/temp-dir! "tik-debug-pin")
+        _ (io/make-parents (io/file root "processes" "x"))
+        _ (io/copy (io/file repo "processes/tik-dev.edn")
+                   (io/file root "processes/tik-dev.edn"))
+        v1 (edn/read-string (slurp (io/file root "processes/tik-dev.edn")))
+        ;; v2 drops the :landed requirements, so the two versions reach
+        ;; different fixpoints over the same facts
+        v2 (-> v1
+               (assoc :process/version 2)
+               (update :process/stages
+                       (fn [stages]
+                         (mapv #(if (= :landed (:stage/id %))
+                                  (assoc % :guards [])
+                                  %)
+                               stages))))
+        id (str/trim (tik! root "new" "tik-dev" "--title" "debug subject"))
+        _ (tik! root "set" id "summary=\"a ticket pinned to v1\"" "kind=:feature")]
+
+    (testing "an id alone debugs the pinned definition — status's answer"
+      (let [{:keys [out err]} (tik-full! root "debug" id)]
+        (is (not (str/includes? out "fixpoint: [:landed")))
+        (is (not (str/includes? err "note: debugging against")))))
+
+    (testing "a named definition that is not the pin says so"
+      (spit (io/file root "processes/tik-dev.edn") (pr-str v2))
+      (let [{:keys [out err]} (tik-full! root "debug" "tik-dev" id)]
+        (is (str/includes? out ":landed"))
+        (is (str/includes? err "note: debugging against"))
+        (is (str/includes? err "ticket pins"))
+        (is (str/includes? err "tik reprocess"))))
+
+    (testing "the pinned view is unchanged by the file moving on"
+      (let [{:keys [err]} (tik-full! root "debug" id)]
+        (is (not (str/includes? err "note: debugging against")))))
+
+    (testing "a process name alone still debugs the empty ticket"
+      (is (str/includes? (tik! root "debug" "tik-dev") "fixpoint:")))))
