@@ -1,0 +1,27 @@
+{{/*
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+Pages mounted from the knowledge bundle under kb/ carry their own heading —
+they are read from a checkout and on GitHub as well as here, and a process
+`:hint` addresses them by path. Rendering the theme's title heading on top of
+that one would show the name twice, so this template lets the document's own
+heading stand and puts the repository links beneath it.
+*/}}
+{{ define "title" }}
+    {{ .Site.Title }} &ndash; {{ .Title }}
+{{ end }}
+{{ define "main" }}
+    <div id="post-content">
+        {{ .Content }}
+        {{ if and .File .Site.Params.github .Site.Params.editContentPath }}
+            {{ $branch := .Site.Params.editBranch | default "main" }}
+            {{ $path := printf "kb/%ss/%s" .Type .File.LogicalName }}
+            <p class="subtitle">
+                <a href="https://github.com/{{ .Site.Params.github }}/commits/{{ $branch }}/{{ $path }}">see history</a>
+                &middot;
+                <a href="https://github.com/{{ .Site.Params.github }}/edit/{{ $branch }}/{{ $path }}">edit this page</a>
+            </p>
+        {{ end }}
+    </div>
+{{ end }}

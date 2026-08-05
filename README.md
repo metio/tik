@@ -10,11 +10,23 @@ stages derive, and `tik explain` always knows exactly what is needed next.
 git answers "what changed?"; tik answers "what is true, why is it true,
 who proved it, and can anyone reproduce the conclusion?"
 
+**Documentation: [tik.projects.metio.wtf](https://tik.projects.metio.wtf/)**
+
 The elevator version lives in [docs/PITCH.md](docs/PITCH.md).
 Part of the [metio](https://metio.wtf) family. Licensed 0BSD,
 [REUSE](https://reuse.software)-compliant. Full design: [docs/PLAN.md](docs/PLAN.md).
 Decisions and concepts live in the OKF bundle under [kb/](kb/index.md);
 unjudged ideas under [docs/IDEAS.md](docs/IDEAS.md).
+
+## Claude Code
+
+The skill under [skills/tik/](skills/tik/) ships as a Claude Code plugin, so
+Claude drives a store correctly — recording evidence and letting stages derive:
+
+```text
+/plugin marketplace add metio/tik
+/plugin install tik@tik
+```
 
 ## Quickstart
 

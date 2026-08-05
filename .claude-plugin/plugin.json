@@ -1,0 +1,20 @@
+{
+  "name": "tik",
+  "displayName": "tik",
+  "description": "Teach Claude to drive a tik store and author sound process definitions — record evidence, read what is missing, and design stages that derive rather than task lists that do not.",
+  "author": {
+    "name": "The tik Authors",
+    "url": "https://github.com/metio/tik"
+  },
+  "homepage": "https://tik.projects.metio.wtf/",
+  "repository": "https://github.com/metio/tik",
+  "license": "0BSD",
+  "keywords": [
+    "tik",
+    "process",
+    "tickets",
+    "event-sourcing",
+    "derivation",
+    "workflow"
+  ]
+}

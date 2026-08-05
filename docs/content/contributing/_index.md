@@ -1,0 +1,84 @@
+---
+title: Contributing
+description: The toolchain, the gate a change passes, and where new code belongs.
+---
+
+```sh
+git clone https://github.com/metio/tik.git
+cd tik
+nix develop
+```
+
+The flake carries the whole toolchain — JVM, Clojure, babashka, clj-kondo,
+TLC, GraalVM, ssh-keygen, Hugo — so local and CI resolve identical
+versions. Every command below assumes `nix develop --command`.
+
+## The gate
+
+```sh
+bb test        # JVM test suite (kaocha + test.check)
+bb lint        # clj-kondo: 0 errors, 0 warnings
+bb analyze     # eastwood + splint
+bb fmt         # cljfmt (bb fmt fix rewrites)
+bb tla         # TLC model checks
+bb tik test processes/support-request.tests.edn
+reuse lint     # every file carries SPDX headers (0BSD)
+```
+
+All of it is green on main and expected to stay that way. `bb tla` asserts
+that `ChaoticFixpoint` **fails** — a passing chaotic model means a
+documented counterexample was lost.
+
+Focus a single namespace or var while iterating:
+
+```sh
+clojure -M:test --focus tik.stage-test
+clojure -M:test --focus tik.stage-test/sticky-milestone-survives-retraction
+```
+
+## Where code belongs
+
+- **Kernel** (`src/tik/*.cljc`) — deterministic, pure, replayable forever.
+  No I/O of any kind: no HTTP, no SQL, no environment variables, no
+  implicit clock. Time enters as the explicit `now` argument. Everything
+  external arrives as a signed event.
+- **Store** (`src/tik/store/`) — the one I/O seam, behind the EventStore
+  protocol.
+- **Porcelain** (`cli/`) — may format, cache, and do I/O, and may evolve
+  quickly, as long as nothing it caches is treated as authoritative.
+
+Dependencies point one way: porcelain depends on the kernel, never the
+reverse. The kernel speaks EDN; English prose belongs in lenses.
+
+## Five test layers
+
+Each has caught a real bug the others missed, so a change to kernel
+semantics extends the layer that would have caught its bug:
+
+1. **Golden byte tests** pin the canonical serialization. A change to
+   `canonical.cljc` invalidates every event id and signature ever written.
+2. **The conformance corpus** (`corpus/`) — event files plus expected
+   derivations. The corpus, not the Clojure, is the definition of tik.
+3. **Property tests against a reference kernel** — a deliberately slow
+   prefix-replay implementation the optimized fold must agree with, with
+   generators biased toward timestamp ties.
+4. **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics.
+5. **Fuzzing** — the other layers feed valid input and check the answers;
+   this one feeds garbage and checks the *manner* of failure. The contract
+   is to fail well: structured rejection, never a raw exception, never a
+   silent pass.
+
+## Smells
+
+A change carrying any of these is probably changing the model rather than
+extending it, and wants a design discussion first: caching a derived value
+as authoritative, a new event type or guard keyword, ordering derived from
+parents, a guard that queries anything, a leader or lock or quorum on a
+correctness path, a self-minted event with a non-deterministic field, or
+kernel code doing I/O.
+
+## Licensing
+
+Every file carries `SPDX-FileCopyrightText` and `SPDX-License-Identifier`
+(0BSD), inline where the format allows comments and through `REUSE.toml`
+where it does not.

@@ -1,0 +1,24 @@
+{
+  "name": "tik",
+  "owner": {
+    "name": "The tik Authors"
+  },
+  "description": "tik — a process system, not a ticket system: stage is derived, never stored.",
+  "plugins": [
+    {
+      "name": "tik",
+      "source": "./",
+      "description": "Teach Claude to drive a tik store and author sound process definitions.",
+      "homepage": "https://tik.projects.metio.wtf/",
+      "license": "0BSD",
+      "keywords": [
+        "tik",
+        "process",
+        "tickets",
+        "event-sourcing",
+        "derivation",
+        "workflow"
+      ]
+    }
+  ]
+}

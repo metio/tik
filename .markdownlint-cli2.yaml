@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+#
+# Rule configuration lives in .markdownlint.yaml; this file only says which
+# files the sweep covers. docs/themes/ is the shared metio theme, a separate
+# repository with its own CI — the lint job checks out without submodules, so
+# ignoring it keeps a local run agreeing with CI rather than flagging prose
+# nobody here maintains. docs/public/ is Hugo's generated output.
+ignores:
+  - docs/themes/**
+  - docs/public/**

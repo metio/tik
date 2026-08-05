@@ -269,6 +269,13 @@ lands you record it on its ticket — `tik set <id> commit=<sha> gate=:green` �
 never by flipping a status. Read `CLAUDE.md` for the store's signing setup and
 the full local gate before calling work done.
 
+## Going deeper
+
+The documentation site is <https://tik.projects.metio.wtf/> — including a
+machine-readable `/llms.txt` index and a concatenated `/llms-full.txt`. Reach
+for it when a command's flags, a guard's exact semantics, or a runbook a
+`:hint` names would otherwise be a guess.
+
 ## What NOT to do
 
 - Do not store or set a stage/status — stages are derived; there is no such verb.

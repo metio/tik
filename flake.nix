@@ -15,11 +15,16 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        # The website's theme uses template features newer than the hugo in
+        # our pinned nixpkgs, so hugo alone comes from the shared devshell's
+        # nixpkgs. Everything else stays on the pin the test gate is proven
+        # against.
+        docsPkgs = devshell.inputs.nixpkgs.legacyPackages.${system};
       in
       {
         devShells.default = devshell.lib.mkDevShell {
           inherit pkgs;
-          packages = with pkgs; [
+          packages = (with pkgs; [
             jdk21          # JVM for the full library / server work
             clojure        # tools.deps CLI (tests, deep analysis, REPL)
             babashka       # the tik CLI runtime
@@ -32,6 +37,8 @@
             git            # storage & replication substrate
             openssh        # ssh-keygen -Y: detached event signatures (verify L1)
             sqlite         # embedded store tier (Phase 2 spike)
+          ]) ++ [
+            docsPkgs.hugo  # the website under docs/ (theme: docs/themes/metio)
           ];
 
           menu = ''

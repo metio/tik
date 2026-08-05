@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+name: Documentation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      # The site publishes the knowledge bundle itself — runbooks a process
+      # `:hint` addresses by path, and the decision log — so a change there
+      # is a change to the website.
+      - kb/**
+      # The Claude Code skill page describes what the plugin ships.
+      - skills/**
+      - .claude-plugin/**
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - docs/**
+      - kb/**
+      - skills/**
+      - .claude-plugin/**
+      - .github/workflows/docs.yml
+permissions:
+  contents: read
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Clone Git Repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          # the theme lives at docs/themes/metio as a submodule
+          submodules: recursive
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - name: Build Website
+        run: nix develop --command hugo --minify --printI18nWarnings --printPathWarnings --source docs
+      - name: Deploy Website
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/public
+          force_orphan: true
+          cname: tik.projects.metio.wtf

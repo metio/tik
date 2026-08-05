@@ -1,0 +1,228 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+baseURL = "https://tik.projects.metio.wtf/"
+locale = "en"
+defaultContentLanguage = "en"
+theme = "metio"
+title = "tik"
+
+enableGitInfo = true
+enableRobotsTXT = true
+enableInlineShortcodes = true
+pygmentsUseClasses = true
+
+# The mounted knowledge bundle carries navigation files that are not site
+# pages: kb/index.md is the bundle's own README, and kb/log.md its changelog.
+# ignoreFiles is a regex list over the whole render, so it names them by path.
+ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
+
+# The knowledge bundle's markdown predates the site and contains inline HTML;
+# Goldmark must pass it through rather than strip it.
+[markup.goldmark.renderer]
+  unsafe = true
+
+[outputs]
+  home = ["HTML", "RSS", "ATOM", "HUMANS", "FOAF", "LLMS", "LLMSINDEX"]
+  section = ["HTML", "RSS", "ATOM"]
+  term = ["HTML", "RSS", "ATOM"]
+
+[params]
+  mainSections = ["get-started", "concepts", "cli", "authoring", "integrations", "runbooks", "decisions", "contributing"]
+  author = "metio.wtf"
+  github = "metio/tik"
+  fediverseCreator = "@sebhoss@mastodon.online"
+  # Render the per-page "see history" / "edit this page" icons next to the
+  # title. editContentPath is the repo-root-relative path to this content
+  # tree, joined with each page's .File.Path to build the GitHub URLs.
+  editContentPath = "docs/content"
+  editBranch = "main"
+  work = "tik.projects.metio.wtf"
+  description = "a process system, not a ticket system: stage is derived, never stored"
+  relatedProjects = [
+    { name = "jaas", url = "https://jaas.projects.metio.wtf/" },
+    { name = "stageset-controller", url = "https://stageset.projects.metio.wtf/" },
+  ]
+
+# Navigation. The theme renders a main-menu entry with a child list only when
+# it has children. The menu is a reader's journey — most important first — and
+# each group is a content section under docs/content of the same name, so a
+# page's URL matches where it sits in the menu.
+[menu]
+  # 1 ── Get started: a working store in five minutes.
+  [[menu.main]]
+    identifier = "get-started"
+    name = "Get started"
+    url = "/get-started/"
+    weight = 10
+  [[menu.main]]
+    parent = "get-started"
+    name = "Install"
+    url = "/get-started/install/"
+    weight = 1
+  [[menu.main]]
+    parent = "get-started"
+    name = "Five-minute guide"
+    url = "/get-started/guide/"
+    weight = 2
+
+  # 2 ── Concepts: the model, and the law that shapes it.
+  [[menu.main]]
+    identifier = "concepts"
+    name = "Concepts"
+    url = "/concepts/"
+    weight = 20
+  [[menu.main]]
+    parent = "concepts"
+    name = "Derived beats declared"
+    url = "/concepts/derived-beats-declared/"
+    weight = 1
+  [[menu.main]]
+    parent = "concepts"
+    name = "Events and facts"
+    url = "/concepts/events-and-facts/"
+    weight = 2
+  [[menu.main]]
+    parent = "concepts"
+    name = "Stages"
+    url = "/concepts/stages/"
+    weight = 3
+  [[menu.main]]
+    parent = "concepts"
+    name = "Guards"
+    url = "/concepts/guards/"
+    weight = 4
+  [[menu.main]]
+    parent = "concepts"
+    name = "Explain"
+    url = "/concepts/explain/"
+    weight = 5
+  [[menu.main]]
+    parent = "concepts"
+    name = "Replication"
+    url = "/concepts/replication/"
+    weight = 6
+  [[menu.main]]
+    parent = "concepts"
+    name = "The event log"
+    url = "/concepts/event-log/"
+    weight = 7
+  [[menu.main]]
+    parent = "concepts"
+    name = "Witnessing"
+    url = "/concepts/witness/"
+    weight = 8
+
+  # 3 ── CLI: every verb, grouped by the job it does.
+  [[menu.main]]
+    identifier = "cli"
+    name = "CLI"
+    url = "/cli/"
+    weight = 30
+  [[menu.main]]
+    parent = "cli"
+    name = "Recording work"
+    url = "/cli/recording-work/"
+    weight = 1
+  [[menu.main]]
+    parent = "cli"
+    name = "Reading a store"
+    url = "/cli/reading-a-store/"
+    weight = 2
+  [[menu.main]]
+    parent = "cli"
+    name = "Store administration"
+    url = "/cli/administration/"
+    weight = 3
+
+  # 4 ── Authoring: designing a process worth deriving.
+  [[menu.main]]
+    identifier = "authoring"
+    name = "Authoring processes"
+    url = "/authoring/"
+    weight = 40
+  [[menu.main]]
+    parent = "authoring"
+    name = "Writing a definition"
+    url = "/authoring/writing-a-definition/"
+    weight = 1
+  [[menu.main]]
+    parent = "authoring"
+    name = "Lint, simulate, test"
+    url = "/authoring/lint-simulate-test/"
+    weight = 2
+  [[menu.main]]
+    parent = "authoring"
+    name = "Roles and authority"
+    url = "/authoring/roles-and-authority/"
+    weight = 3
+
+  # 5 ── Integrations: agent surfaces over the same derivation.
+  [[menu.main]]
+    identifier = "integrations"
+    name = "Integrations"
+    url = "/integrations/"
+    weight = 45
+  [[menu.main]]
+    parent = "integrations"
+    name = "Claude Code skill"
+    url = "/integrations/claude-code/"
+    weight = 1
+  [[menu.main]]
+    parent = "integrations"
+    name = "MCP server"
+    url = "/integrations/mcp-server/"
+    weight = 2
+
+  # 6 ── Runbooks: the pages process :hint fields point at.
+  [[menu.main]]
+    identifier = "runbooks"
+    name = "Runbooks"
+    url = "/runbooks/"
+    weight = 50
+
+  # 7 ── Decisions: the ADR log.
+  [[menu.main]]
+    identifier = "decisions"
+    name = "Decisions"
+    url = "/decisions/"
+    weight = 60
+
+  # 8 ── Contributing.
+  [[menu.main]]
+    identifier = "contributing"
+    name = "Contributing"
+    url = "/contributing/"
+    weight = 70
+
+# The knowledge bundle under kb/ is a published artifact in its own right —
+# an OKF bundle that agents read from a checkout and that process `:hint`
+# fields address by path. Mounting it into the content tree puts the same
+# files on the web without relocating one of them, so the on-disk contract
+# and the site stay the same documents.
+[module]
+  [[module.mounts]]
+    source = "content"
+    target = "content"
+
+  # The guide is the file the test suite executes start to finish
+  # (test/tik/guide_test.clj), so publishing the file itself — rather than a
+  # copy of it — is what keeps the page and the software in step.
+  [[module.mounts]]
+    source = "getting-started.md"
+    target = "content/get-started/guide.md"
+
+  [[module.mounts]]
+    source = "../kb/runbooks"
+    target = "content/runbooks"
+
+  [[module.mounts]]
+    source = "../kb/decisions"
+    target = "content/decisions"
+
+  [[module.mounts]]
+    source = "../kb/concepts"
+    target = "content/concepts"
+
+  [[module.mounts]]
+    source = "static"
+    target = "static"

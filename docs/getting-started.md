@@ -1,9 +1,17 @@
+---
+title: Getting started
+description: A working ticket system in five minutes — no server, no database, no account, no YAML.
+type: guide
+---
+
 <!--
 SPDX-FileCopyrightText: The tik Authors
 SPDX-License-Identifier: 0BSD
--->
 
-# Getting started
+Front matter publishes this file on the website (mounted at
+/get-started/guide/) while it stays the file the test suite executes,
+so the page and the software cannot drift apart.
+-->
 
 A working ticket system in under five minutes: no server, no database,
 no account, no YAML. Tickets are plain files in a directory you own;
@@ -184,4 +192,4 @@ event set.
 
 Nothing is ever stored about a ticket's stage. If that sentence
 bothers you, you now understand tik; if it delights you, read
-[PLAN.md](PLAN.md) — the design in full.
+[the design plan](https://github.com/metio/tik/blob/main/docs/PLAN.md) — the design in full.

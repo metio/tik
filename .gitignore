@@ -7,3 +7,7 @@ board.html
 /target/
 /.derived-cache.json
 /.derived-cache.edn
+
+# the Hugo build output; the published site is always generated from source
+/docs/public/
+/docs/.hugo_build.lock

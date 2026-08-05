@@ -1,3 +1,8 @@
+---
+type: runbook
+title: identity-registry / :registry
+---
+
 <!--
 SPDX-FileCopyrightText: The tik Authors
 SPDX-License-Identifier: 0BSD
