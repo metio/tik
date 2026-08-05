@@ -1359,3 +1359,32 @@ derivation is the same pure function over a different definition.
 
 Trigger to revisit: a second report of a migration that lost facts, or
 a whatif redesign that generalizes its step vocabulary anyway.
+
+## tik as the ticket system for the metio cloud self-service portal (unjudged)
+
+A self-service portal is a stream of requests whose whole substance is
+evidence: who asked, which namespace or cluster, which quota, who
+approved, what the platform did about it. Today that shape gets a
+generic tracker plus glue; tik's claim is that the tracker is
+unnecessary because the portal's own signed facts already derive the
+stage. Every request in the portal — provision this, raise that limit,
+grant that access — is a process definition, and the portal UI is a
+lens over `explain`: the form asks for exactly the missing facts and
+the "who can act" line is the approval routing, unstated separately.
+
+What makes it a strong fit rather than merely a possible one: the
+portal has real identities from an IdP (H4's OIDC bridge), real
+separation-of-duties needs (`:different-person`), real freshness needs
+on evidence (`:attested-within`), and the platform side is already
+automation that would sign its own attestations rather than click a
+button. It exercises H3, H4, H9, H10 and H11 against a workload that
+exists, instead of a synthetic pilot.
+
+Open questions before this could graduate: whether portal requests
+want one store or one per tenant, how the platform's own controllers
+authenticate as actors, and whether the portal needs cross-ticket
+views that the kernel deliberately refuses to answer (a lens/index
+question, PLAN §19's external-query rejection stands either way).
+
+Trigger to revisit: the portal reaching the point of choosing a
+tracker, or H4 completing so the identity half is no longer a spike.
