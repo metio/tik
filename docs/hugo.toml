@@ -182,26 +182,12 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/integrations/mcp-server/"
     weight = 2
 
-  # 6 ── Runbooks: the pages process :hint fields point at.
-  [[menu.main]]
-    identifier = "runbooks"
-    name = "Runbooks"
-    url = "/runbooks/"
-    weight = 50
-
-  # 7 ── Decisions: the ADR log.
-  [[menu.main]]
-    identifier = "decisions"
-    name = "Decisions"
-    url = "/decisions/"
-    weight = 60
-
-  # 8 ── Contributing.
+  # 6 ── Contributing.
   [[menu.main]]
     identifier = "contributing"
     name = "Contributing"
     url = "/contributing/"
-    weight = 70
+    weight = 50
   [[menu.main]]
     parent = "contributing"
     name = "Logo"

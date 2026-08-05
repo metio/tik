@@ -20,7 +20,7 @@ To reach :resolved:
 Nothing in that block is speculation. The checkmarks are guards that
 already hold, the crosses are structured reasons produced by guard
 evaluation, `blocks` is the downstream closure, and the hint is the
-runbook the definition declares for that stage.
+[runbook](/runbooks/) the definition declares for that stage.
 
 ## Reasons are data
 

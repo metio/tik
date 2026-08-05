@@ -68,6 +68,13 @@ semantics extends the layer that would have caught its bug:
    is to fail well: structured rejection, never a raw exception, never a
    silent pass.
 
+## Why things are the way they are
+
+The [decision log](/decisions/) records every load-bearing choice with the
+context that forced it and the consequences that follow. Several entries exist
+to name something tik will not do, so it is the fastest way to find out whether
+an idea has already been settled.
+
 ## Smells
 
 A change carrying any of these is probably changing the model rather than
