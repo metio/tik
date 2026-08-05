@@ -193,7 +193,7 @@
         fired (atom 0)
         failed (atom 0)]
     (doseq [{:keys [id events state process roles]} (all-ticket-ctx s)
-            :let [timeline (:timeline (stage/evolve process events roles))
+            :let [timeline (:timeline (stage/evolve process events roles (now)))
                   transitions
                   (distinct
                    (for [[prev entry] (map vector (cons nil timeline) timeline)

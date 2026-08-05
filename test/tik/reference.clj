@@ -33,8 +33,9 @@
   (into #{} (mapcat #(set/intersection (:reached %) sticky)) timeline))
 
 (defn evolve
-  "Prefix replay, same shape of result as tik.stage/evolve."
-  [process events roles]
+  "Prefix replay, same shape of result as tik.stage/evolve — including
+  the clamp: no prefix is evaluated at a time later than the read's now."
+  [process events roles now]
   (let [ordered (vec (red/ordered events))
         sticky (stage/sticky-ids process)
         timeline
@@ -45,11 +46,13 @@
                   e (peek prefix)
                   state (red/ticket-state prefix)
                   carry (sticky-seen timeline sticky)
-                  reached (reached-fixpoint process state (:event/at e)
+                  at (:event/at e)
+                  reached (reached-fixpoint process state
+                                            (if (pos? (compare at now)) now at)
                                             roles carry)]
               (recur (inc k)
                      (conj timeline {:event-id (:event/id e)
-                                     :at (:event/at e)
+                                     :at at
                                      :reached reached})))))]
     {:state (red/ticket-state ordered)
      :reached (:reached (peek timeline) #{})
@@ -57,5 +60,5 @@
      :timeline timeline}))
 
 (defn effective-reached [process events now roles]
-  (let [{:keys [state sticky-ever]} (evolve process events roles)]
+  (let [{:keys [state sticky-ever]} (evolve process events roles now)]
     (reached-fixpoint process state now roles sticky-ever)))

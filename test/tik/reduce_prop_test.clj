@@ -26,10 +26,11 @@
 (defspec whole-derivation-is-permutation-and-duplication-proof 60
   ;; not just state: the full evolve result (timeline included) is a
   ;; function of the event SET
-  (prop/for-all [events ge/gen-events]
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
     (let [mangled (shuffle (concat events (take 3 (shuffle events))))]
-      (= (stage/evolve ge/process events ge/roles)
-         (stage/evolve ge/process mangled ge/roles)))))
+      (= (stage/evolve ge/process events ge/roles now)
+         (stage/evolve ge/process mangled ge/roles now)))))
 
 (defspec ordered-is-canonical 100
   ;; dedupe+order is a normal form: stable under its own re-application

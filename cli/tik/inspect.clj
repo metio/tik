@@ -199,7 +199,7 @@
   [{:keys [pos opts]}]
   (let [s (the-store)
         {:keys [events process roles]} (load-ticket s (first pos))
-        timeline (:timeline (stage/evolve process events roles))
+        timeline (:timeline (stage/evolve process events roles (now)))
         entries (for [[prev entry] (map vector (cons nil timeline) timeline)
                       :let [e (first (filter #(= (:event-id entry) (:event/id %))
                                              events))

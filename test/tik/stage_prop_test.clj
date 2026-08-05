@@ -12,9 +12,10 @@
             [tik.stage :as stage]))
 
 (defspec evolve-agrees-with-the-reference-kernel 60
-  (prop/for-all [events ge/gen-events]
-    (= (stage/evolve ge/process events ge/roles)
-       (ref/evolve ge/process events ge/roles))))
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
+    (= (stage/evolve ge/process events ge/roles now)
+       (ref/evolve ge/process events ge/roles now))))
 
 (defspec effective-reached-agrees-with-the-reference-kernel 60
   (prop/for-all [events ge/gen-events
@@ -25,18 +26,20 @@
 (defspec timeline-is-prefix-consistent 30
   ;; the fold is honestly incremental: evolving the first k events yields
   ;; exactly the first k entries of the full timeline
-  (prop/for-all [events ge/gen-events]
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
     (let [ordered (vec (red/ordered events))
-          full (:timeline (stage/evolve ge/process ordered ge/roles))]
+          full (:timeline (stage/evolve ge/process ordered ge/roles now))]
       (every? (fn [k]
                 (= (vec (take k full))
                    (:timeline (stage/evolve ge/process (take k ordered)
-                                            ge/roles))))
+                                            ge/roles now))))
               (range 1 (inc (count ordered)))))))
 
 (defspec sticky-stages-never-unreach 100
-  (prop/for-all [events ge/gen-events]
-    (let [tl (:timeline (stage/evolve ge/process events ge/roles))
+  (prop/for-all [events ge/gen-events
+                 now ge/gen-now]
+    (let [tl (:timeline (stage/evolve ge/process events ge/roles now))
           sticky (stage/sticky-ids ge/process)]
       (every? (fn [[a b]]
                 (set/subset? (set/intersection (:reached a) sticky)

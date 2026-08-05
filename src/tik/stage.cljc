@@ -67,6 +67,12 @@
                         (:stage/id s)))]
          (if (= r' reached) reached (recur r')))))))
 
+(defn- not-after
+  "The earlier of a claimed instant and the read's now. Instants are
+  Comparable on every host, so this stays free of platform interop."
+  [at now]
+  (if (pos? (compare at now)) now at))
+
 (defn evolve
   "THE fold. One pass over the deduped, ordered event set, producing
   {:state ticket-state
@@ -84,19 +90,35 @@
   same answer); what does not hold is that a reach observed before a sync
   survives it. Callers that act on a reach — notifiers, effect pipelines
   — must record having acted as their own fact rather than assume the
-  derivation keeps re-deriving it."
-  [process events roles]
+  derivation keeps re-deriving it.
+
+  Each step evaluates guards at the event's own claimed :at, CLAMPED to
+  the read's `now`: no step may act as though more time has passed than
+  actually has. An event dated in the future would otherwise satisfy
+  :elapsed-since at its claimed instant, and on a sticky stage the fold
+  would carry that reach forward permanently — a milestone reachable by
+  writing a date, unretractable by any later evidence, and unfixable at
+  our own write boundary because such an event can arrive already
+  postdated from another replica. Clamping keeps derivation a pure
+  function of (events, now) and merely refuses to read the future early:
+  as `now` advances past the claimed :at, the clamp lifts on its own and
+  the event is evaluated at the instant it claims. Logs whose events are
+  all dated at or before the read derive exactly as before."
+  [process events roles now]
   (let [sticky (sticky-ids process)]
     (reduce
      (fn [acc e]
        (let [state (red/apply-event (:state acc) e)
-             now (:event/at e)
-             reached (reached-set process state now roles (:sticky-ever acc))]
+             at (:event/at e)
+             reached (reached-set process state (not-after at now) roles
+                                  (:sticky-ever acc))]
          {:state state
           :reached reached
           :sticky-ever (into (:sticky-ever acc) (set/intersection reached sticky))
+          ;; :at is the event's own claim, unclamped — the timeline
+          ;; records what the log says, not what the read believed
           :timeline (conj (:timeline acc)
-                          {:event-id (:event/id e) :at now :reached reached})}))
+                          {:event-id (:event/id e) :at at :reached reached})}))
      {:state red/empty-state :reached #{} :sticky-ever #{} :timeline []}
      (red/ordered events))))
 
@@ -139,11 +161,11 @@
   "Reached set at `now` (which may be later than the last event — time alone
   can satisfy :elapsed-since), seeded with the sticky carry from the fold."
   [process events now roles]
-  (let [{:keys [state sticky-ever]} (evolve process events roles)]
+  (let [{:keys [state sticky-ever]} (evolve process events roles now)]
     (reached-set process state now roles sticky-ever)))
 
-(defn stage-timeline [process events roles]
-  (:timeline (evolve process events roles)))
+(defn stage-timeline [process events roles now]
+  (:timeline (evolve process events roles now)))
 
 (defn ancestor-closure
   "All stages strictly upstream of stage-id via :after."

@@ -162,8 +162,36 @@
                "re-derives every later prefix — a merge can take a sticky "
                "reach away")))))
 
+(def ^:private aging-proc
+  {:process/id :aging
+   :process/version 1
+   :process/guard-vocab 2
+   :process/roles {}
+   :process/stages [{:stage/id :open}
+                    {:stage/id :aged :after [:open] :stage/sticky? true
+                     :guards [[:elapsed-since :ticket/create "PT48H"]]}]})
+
+(deftest a-forward-dated-event-cannot-reach-a-time-gated-stage-early
+  (let [postdated (add base
+                       #(event/assert-fact {:ticket tid :actor "seb" :parents %
+                                            :at (at "2036-07-08T10:00:00Z")
+                                            :path [:note] :value "from the future"}))]
+    (is (not (contains? (stage/effective-reached aging-proc postdated now {})
+                        :aged))
+        (str "guards are evaluated at each event's :at clamped to the read's "
+             "now, so writing a date cannot buy the 48 hours — and a sticky "
+             "stage cannot be locked in by one"))
+    (testing "the clamp lifts by itself once the time really has passed"
+      (is (contains? (stage/effective-reached aging-proc postdated
+                                              (at "2026-07-11T12:00:00Z") {})
+                     :aged)))
+    (testing "and an honest log derives exactly as it did before"
+      (is (contains? (stage/effective-reached aging-proc base
+                                              (at "2026-07-11T12:00:00Z") {})
+                     :aged)))))
+
 (deftest timeline-is-a-view-of-the-same-fold
-  (let [{:keys [timeline reached]} (stage/evolve proc (closed-events) roles)]
+  (let [{:keys [timeline reached]} (stage/evolve proc (closed-events) roles now)]
     (is (= (count (closed-events)) (count timeline)))
     (is (= reached (:reached (last timeline))))
     (is (= #{:received} (:reached (first timeline))))))
