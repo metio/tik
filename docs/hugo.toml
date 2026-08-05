@@ -182,17 +182,27 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/integrations/mcp-server/"
     weight = 2
 
-  # 6 ── Contributing.
+  # 6 ── Runbooks: what each stage of a process asks for. No menu children —
+  # the index groups all nineteen by process, which beats a flat list here.
+  [[menu.main]]
+    identifier = "runbooks"
+    name = "Runbooks"
+    url = "/runbooks/"
+    weight = 50
+
+  # 7 ── Decisions: the ADR log, likewise presented by its own index.
+  [[menu.main]]
+    identifier = "decisions"
+    name = "Decisions"
+    url = "/decisions/"
+    weight = 60
+
+  # 8 ── Contributing.
   [[menu.main]]
     identifier = "contributing"
     name = "Contributing"
     url = "/contributing/"
-    weight = 50
-  [[menu.main]]
-    parent = "contributing"
-    name = "Logo"
-    url = "/contributing/logo/"
-    weight = 1
+    weight = 70
 
 # The knowledge bundle under kb/ is a published artifact in its own right —
 # an OKF bundle that agents read from a checkout and that process `:hint`

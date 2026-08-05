@@ -1,13 +1,9 @@
----
-title: Logo
-description: The mark, the files, and the rules for using them.
-tags: [brand, logo, design]
----
-
 <!--
 SPDX-FileCopyrightText: The tik Authors
 SPDX-License-Identifier: 0BSD
 -->
+
+# tik logo
 
 A checkmark inside a hexagonal seal, whose long arm crosses the boundary and
 terminates outside it. Every other verification badge encloses its proof; this
@@ -18,10 +14,10 @@ The bead at the lower vertex is the signature that closes the seal.
 
 | File | Use |
 | --- | --- |
-| [`tik-mark.svg`](/images/tik-mark.svg) | Master mark. Two-tone. Anything 32 px and up. |
-| [`tik-mark-mono.svg`](/images/tik-mark-mono.svg) | Single colour. Terminals, print, laser, embroidery, anywhere the accent can't survive. |
-| [`tik-mark-small.svg`](/images/tik-mark-small.svg) | Optical size variant for 24 px and below. Seal closed, tick heavier, bead removed. Also the favicon. |
-| [`tik-lockup.svg`](/images/tik-lockup.svg) | Horizontal mark + wordmark. Default for READMEs, docs headers, and slides. |
+| [`tik-mark.svg`](static/images/tik-mark.svg) | Master mark. Two-tone. Anything 32 px and up. |
+| [`tik-mark-mono.svg`](static/images/tik-mark-mono.svg) | Single colour. Terminals, print, laser, embroidery, anywhere the accent can't survive. |
+| [`tik-mark-small.svg`](static/images/tik-mark-small.svg) | Optical size variant for 24 px and below. Seal closed, tick heavier, bead removed. Also the favicon. |
+| [`tik-lockup.svg`](static/images/tik-lockup.svg) | Horizontal mark + wordmark. Default for READMEs, docs headers, and slides. |
 
 ## Colour
 
@@ -35,8 +31,8 @@ the system; if you add a second, the bead stops meaning "signature".
 
 ## Rules
 
-- **Minimum size**: 32 px for [`tik-mark.svg`](/images/tik-mark.svg). Below that the pierce gap closes
-  and the exiting arm reads as a nick, so switch to [`tik-mark-small.svg`](/images/tik-mark-small.svg).
+- **Minimum size**: 32 px for [`tik-mark.svg`](static/images/tik-mark.svg). Below that the pierce gap closes
+  and the exiting arm reads as a nick, so switch to [`tik-mark-small.svg`](static/images/tik-mark-small.svg).
 - **Clear space**: one hexagon radius (46 units on the 128 grid) on all sides.
   The exiting arm needs air or it reads as a collision with adjacent content.
 - **Don't** close the seal on the master mark, recolour the ink to the accent,
