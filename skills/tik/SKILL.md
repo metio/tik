@@ -226,6 +226,19 @@ in the tool (not transcribed here) is what stops it from rotting:
   and what the `tik-processes` README diagrams are rendered from. With a
   ticket id, overlays that ticket's derived progress (`✓` reached, `◆`
   actionable now, `·` blocked).
+- `tik sim <process.edn>` — a live scratch ticket that reloads on every save:
+  `set k=v`, `retract <k>`, `dispute <k> <why>`, `attach <name>`,
+  `attest <claim>`, `now +P2D`, `actor <name>`. The fastest way to find out a
+  guard means something other than what you read into it. Quote string values
+  (`set version="2026.8.1"`) — a bare word becomes a keyword and will fail a
+  `[:string …]` schema.
+- `tik test <tests.edn>` — scripted cases, evidence in and expected stages out,
+  deterministic and store-free; a failing case prints explain. Steps are
+  `[:actor "x"] [:now "+P2D"] [:set path v] [:retract path] [:dispute path why]
+  [:attach path] [:attest {:claim :x}]`. **Write the negative cases** — that a
+  role's signature is genuinely required, that a freshness window really does
+  expire, that a stage does NOT derive without its evidence. The positive path
+  is the easy half and proves the least.
 - `tik adopt <file>` — install a process from the shared library into this
   store. A plain `.edn` definition is copied verbatim; a `.tmpl.edn`
   **template** is expanded first — tik reads the template's own malli

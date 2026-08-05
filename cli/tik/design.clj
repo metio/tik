@@ -27,6 +27,7 @@
 (def sim-help
   "  set k=v [k=v ...]   assert facts        retract <k>      withdraw a fact
   dispute <k> <why>   dispute a fact      attach <name>    fake artifact
+  attest <claim>      record a claim (:attested-within reads it)
   now +PT48H | <inst> move evaluation time                 actor <name>
   reset               fresh scratch ticket                 quit
   (empty line re-renders; the process file reloads automatically on change)")
@@ -36,8 +37,13 @@
 (defn apply-step
   "One scripted step against sim/test state {:events :now :actor}. Steps:
   [:actor \"x\"] [:now \"+PT48H\"|\"<inst>\"] [:set path value]
-  [:retract path] [:dispute path reason] [:attach path]. Appended events
-  get strictly increasing claimed times so supersedes never lose ties."
+  [:retract path] [:dispute path reason] [:attach path]
+  [:attest {:claim :x, ...}]. Appended events get strictly increasing claimed
+  times so supersedes never lose ties.
+
+  :attest exists because a process using :attested-within is otherwise
+  untestable — the guard reads attestation events, and a scripted case that
+  cannot mint one can only assert that the stage stays unreached."
   [{:keys [events now actor] :as st} step]
   (when-not (sequential? step)
     (die (str "each step must be a list like [:set [:path] value], got "
@@ -59,8 +65,12 @@
                        (assoc arg :path (first args)
                               :hash (str "sha256-" (canonical/sha256-hex
                                                     (first args))))))
+      ;; the body is the claim map verbatim, exactly as `tik attest` writes
+      ;; it, so a case exercises the same shape a pipeline produces
+      :attest (append (event/add-attestation (assoc arg :claim (first args))))
       (die (str "unknown step op " (pr-str op)
-                " — use :actor :now :set :retract :dispute :attach")))))
+                " — use :actor :now :set :retract :dispute :attach"
+                " :attest")))))
 
 (defn sim-render [proc events sim-now]
   (let [roles (:process/roles proc {})
@@ -121,6 +131,12 @@
                           "dispute" [[:dispute (parse-key (second words))
                                       (str/join " " (drop 2 words))]]
                           "attach" [[:attach (second words)]]
+                          ;; `attest :sbom` mints the claim map an
+                          ;; :attested-within guard reads, so a freshness
+                          ;; window can be exercised here as well as in a
+                          ;; scripted case: attest, then `now +P2D`
+                          "attest" [[:attest {:claim (parse-value
+                                                      (second words))}]]
                           nil)]
               (cond
                 (= "quit" cmd) nil
