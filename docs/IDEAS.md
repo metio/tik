@@ -1388,3 +1388,47 @@ question, PLAN §19's external-query rejection stands either way).
 
 Trigger to revisit: the portal reaching the point of choosing a
 tracker, or H4 completing so the identity half is no longer a spike.
+
+## tik as supply-chain evidence for kurly and metio.cloud (unjudged)
+
+The supply-chain section above argues the market fit; this is the concrete
+first integration, and it starts at home. tik's own release already produces
+every artifact a chain of custody wants — cosign keyless signatures over the
+checksums, an SBOM and provenance attached to the container image, a
+reproducible nix toolchain — and throws away the derivation. Nothing answers
+"is this release compliant, and prove it" except by reading a workflow log.
+
+The shape: a `release` process per repository, one ticket per version, whose
+stages are what must be TRUE of that version rather than what CI did. The
+release workflow mints the attestations it already has evidence for, and the
+frontier answers compliance offline, forever, with reasons.
+
+**kurly is the better second case, not the first.** Its releases are Jsonnet
+catalogs rather than binaries, so the evidence is a rendered manifest set and
+an e2e run against a real cluster — which stresses the model differently from
+a signed blob and would surface whether `:attested-within` freshness windows
+mean anything for a library. metio.cloud is the third: a self-service portal
+whose requests are already the shape of a process, so the supply-chain
+tickets and the portal tickets would share a store and a vocabulary.
+
+Four things stand between the primitives and the integration, none of them
+research:
+
+- **A machine identity for CI.** `tik attest` needs a key, and a repository
+  secret is the answer nobody wants. The clean shape is the OIDC bridge
+  binding a workload identity to an actor — which is H4, still stated and
+  unstarted. This is the real blocker, and it is worth doing for its own sake.
+- **An in-toto / SLSA importer.** Nothing reads SLSA provenance JSON or an
+  in-toto attestation into `:attestation/add`. Mechanical, and it is what
+  makes the claim "we speak your format" rather than "port your chain to us".
+- **Cross-store gates.** A kurly release ticket that depends on a jaas or
+  stageset ticket crosses a store boundary, and guards deliberately never
+  query. Banked above; a real design, not a patch.
+- **Guards cannot inspect an SBOM.** They check that a trusted attester said
+  so. That is correct by construction — evaluation stays offline and pure —
+  but it means the derivation is exactly as good as the attester, and anyone
+  buying this should be told that in the first paragraph rather than the
+  appendix.
+
+Trigger to revisit: H4 landing (which unblocks the machine identity), or the
+first release where somebody actually asks tik to prove a compliance claim.

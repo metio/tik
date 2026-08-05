@@ -1,0 +1,139 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Process tests: scripted evidence in, expected derived stages out.
+;; Run with `tik test processes/release.tests.edn`.
+;;
+;; The negative cases carry the weight here. A supply-chain process that only
+;; proves the happy path proves nothing — the claims worth making are the ones
+;; about what does NOT derive: a stale scan, a pipeline approving itself, a
+;; version that never shipped.
+{:test/process "release.edn"
+ :test/cases
+ [{:case/name "artifacts and a CI-signed commit reach :built"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]]
+   :case/expect {:includes #{:built}}}
+
+  {:case/name "a maintainer cannot vouch for which commit CI built"
+   :case/steps [[:actor "seb"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]]
+   :case/expect {:excludes #{:built}}}
+
+  {:case/name "checksums must be on record, not just claimed"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]]
+   :case/expect {:excludes #{:built}}}
+
+  {:case/name "a clean scan attested today reaches :scanned"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:attest {:claim :vulnerability-scan}]
+                [:set [:scan :result] :clean]]
+   :case/expect {:includes #{:built :scanned}}}
+
+  {:case/name "yesterday's scan goes stale and the stage regresses"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:attest {:claim :vulnerability-scan}]
+                [:set [:scan :result] :clean]
+                [:now "+P2D"]]
+   :case/expect {:includes #{:built}
+                 :excludes #{:scanned}}}
+
+  {:case/name "findings do not reach :scanned"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:attest {:claim :vulnerability-scan}]
+                [:set [:scan :result] :findings]]
+   :case/expect {:excludes #{:scanned}}}
+
+  {:case/name "an SBOM and provenance reach :attested"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:set [:image] "ghcr.io/metio/tik@sha256"]
+                [:set [:signature :bundle] "sha256-bundle"]
+                [:attest {:claim :sbom}]
+                [:attest {:claim :provenance}]]
+   :case/expect {:includes #{:built :attested}}}
+
+  {:case/name "provenance alone is not an SBOM"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:set [:image] "ghcr.io/metio/tik@sha256"]
+                [:set [:signature :bundle] "sha256-bundle"]
+                [:attest {:claim :provenance}]]
+   :case/expect {:excludes #{:attested}}}
+
+  {:case/name "a maintainer shipping a scanned, attested build reaches :published"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:set [:image] "ghcr.io/metio/tik@sha256"]
+                [:set [:signature :bundle] "sha256-bundle"]
+                [:attest {:claim :vulnerability-scan}]
+                [:attest {:claim :sbom}]
+                [:attest {:claim :provenance}]
+                [:set [:scan :result] :clean]
+                [:actor "seb"]
+                [:set [:approval] :ship]]
+   :case/expect {:includes #{:built :scanned :attested :published}}}
+
+  {:case/name "the pipeline cannot approve its own release"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:set [:image] "ghcr.io/metio/tik@sha256"]
+                [:set [:signature :bundle] "sha256-bundle"]
+                [:attest {:claim :vulnerability-scan}]
+                [:attest {:claim :sbom}]
+                [:attest {:claim :provenance}]
+                [:set [:scan :result] :clean]
+                [:set [:approval] :ship]]
+   :case/expect {:includes #{:scanned :attested}
+                 :excludes #{:published}}}
+
+  {:case/name "shipping is sticky: a later scan finding does not un-publish it"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:set [:image] "ghcr.io/metio/tik@sha256"]
+                [:set [:signature :bundle] "sha256-bundle"]
+                [:attest {:claim :vulnerability-scan}]
+                [:attest {:claim :sbom}]
+                [:attest {:claim :provenance}]
+                [:set [:scan :result] :clean]
+                [:actor "seb"]
+                [:set [:approval] :ship]
+                [:actor "ci"]
+                [:set [:scan :result] :findings]]
+   :case/expect {:includes #{:published}
+                 :excludes #{:scanned}}}
+
+  {:case/name "a held version records the decision without shipping"
+   :case/steps [[:actor "ci"]
+                [:set [:version] "2026.8.5204821"]
+                [:set [:commit] "ed18af9c"]
+                [:attach "checksums/SHA256SUMS"]
+                [:actor "seb"]
+                [:set [:approval] :hold]]
+   :case/expect {:includes #{:built :withheld}
+                 :excludes #{:published}}}]}

@@ -1,0 +1,82 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Release supply chain as evidence. One ticket per version.
+;;
+;; Every stage says what must be TRUE of the version, never what a job did:
+;; "an SBOM was attested by CI within the last day" rather than "the SBOM
+;; step ran". The difference shows up months later, when somebody asks
+;; whether a release that is already in production was compliant — a job log
+;; answers "we ran a step", this answers "here is the evidence, here is the
+;; rule it satisfied, re-derive it yourself".
+;;
+;; The freshness windows are the point of :attested-within: a replayed scan
+;; from last month is cryptographically valid and fails the guard honestly,
+;; which is exactly the property a supply chain needs and a badge cannot give.
+{:process/id :release
+ :process/version 1
+ :process/guard-vocab 2
+
+ ;; :ci signs what the pipeline observed; :maintainer signs the decision to
+ ;; ship. Keeping them apart is what makes the :different-person guard on
+ ;; :published mean something — the pipeline cannot approve its own release.
+ :process/roles
+ {:ci {:members ["ci"]}
+  :maintainer {:members ["seb"]}}
+
+ :process/facts
+ {[:version]           [:string {:min 6}]
+  [:commit]            [:string {:min 7}]
+  [:image]             [:string {:min 8}]
+  [:scan :result]      [:enum :clean :findings]
+  [:signature :bundle] [:string {:min 8}]
+  [:approval]          [:enum :ship :hold]}
+
+ :process/stages
+ [{:stage/id :built
+   :hint "kb/runbooks/release-built.md"
+   :guards [[:fact [:version]]
+            [:fact [:commit]]
+            ;; the pipeline is the only thing that can honestly say which
+            ;; commit produced these bytes
+            [:signed-by :ci [:commit]]
+            ;; the checksums file itself, addressed by hash: the artifact
+            ;; hash is in the trust domain, the blob is not (ADR 0014)
+            [:artifact "checksums/"]]}
+
+  {:stage/id :scanned
+   :hint "kb/runbooks/release-scanned.md"
+   :after [:built]
+   :guards [[:fact= [:scan :result] :clean]
+            [:signed-by :ci [:scan :result]]
+            ;; a scan is a claim about the world at a moment; one older than
+            ;; the build tells you about a different set of advisories
+            [:attested-within :vulnerability-scan "P1D"]]}
+
+  {:stage/id :attested
+   :hint "kb/runbooks/release-attested.md"
+   :after [:built]
+   :guards [[:fact [:image]]
+            [:fact [:signature :bundle]]
+            [:signed-by :ci [:signature :bundle]]
+            [:attested-within :sbom "P1D"]
+            [:attested-within :provenance "P1D"]]}
+
+  {:stage/id :published
+   :hint "kb/runbooks/release-published.md"
+   :after [:scanned :attested]
+   ;; shipping is a historical fact: a vulnerability disclosed next week does
+   ;; not un-publish this version, it starts a new ticket
+   :stage/sticky? true
+   :guards [[:fact= [:approval] :ship]
+            [:signed-by :maintainer [:approval]]
+            ;; four eyes: whoever's pipeline built it is not who approved it
+            [:different-person [:commit] [:approval]]]}
+
+  {:stage/id :withheld
+   :hint "kb/runbooks/release-withheld.md"
+   :after [:built]
+   ;; a decision, on record, with the same weight as shipping — the reason a
+   ;; version never shipped is worth as much later as the reason one did
+   :guards [[:fact= [:approval] :hold]
+            [:signed-by :maintainer [:approval]]]}]}

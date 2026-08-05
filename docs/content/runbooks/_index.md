@@ -35,6 +35,19 @@ to acknowledgement.
 | [`:escalated`](/runbooks/support-request-escalated/) | Derives on its own: 48 hours with no category. |
 | [`:closed`](/runbooks/support-request-closed/) | Sticky milestone — only the customer's acknowledgement closes it. |
 
+## release
+
+A version's supply chain as evidence: one ticket per release, each stage
+saying what must be true of the artifacts rather than which job ran.
+
+| Stage | What it means |
+| --- | --- |
+| [`:built`](/runbooks/release-built/) | Artifacts exist and CI has signed which commit produced them. |
+| [`:scanned`](/runbooks/release-scanned/) | A vulnerability scan came back clean, attested within the last day. |
+| [`:attested`](/runbooks/release-attested/) | An SBOM, build provenance, and a signature are on record. |
+| [`:published`](/runbooks/release-published/) | Sticky — a maintainer shipped it, and not the one who built it. |
+| [`:withheld`](/runbooks/release-withheld/) | A maintainer decided it does not ship, with the reason. |
+
 ## tik-dev
 
 The process tik's own development runs in; this repository is a live store.
