@@ -1,4 +1,4 @@
-# tik
+<img src="docs/static/images/lockup.svg" alt="tik" width="285">
 
 A process system, not a ticket system.
 

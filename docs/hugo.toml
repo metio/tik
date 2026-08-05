@@ -37,6 +37,15 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
   editContentPath = "docs/content"
   editBranch = "main"
   work = "tik.projects.metio.wtf"
+  # Header mark (rendered left of the title) plus the favicon link set; the
+  # assets live under docs/static/. Both carry their ink inline because an SVG
+  # in an <img>/<link> renders in its own document and cannot inherit the
+  # page's colour, which is what the brand files' currentColor expects.
+  logo = "/images/logo.svg"
+  favicons = true
+  # 1200x630 link-preview card (Open Graph / Twitter image), read by Mastodon,
+  # Bluesky, LinkedIn, Facebook and X when a page URL is shared.
+  socialImage = "/og-image.png"
   description = "a process system, not a ticket system: stage is derived, never stored"
   relatedProjects = [
     { name = "jaas", url = "https://jaas.projects.metio.wtf/" },
@@ -193,6 +202,11 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     name = "Contributing"
     url = "/contributing/"
     weight = 70
+  [[menu.main]]
+    parent = "contributing"
+    name = "Logo"
+    url = "/contributing/logo/"
+    weight = 1
 
 # The knowledge bundle under kb/ is a published artifact in its own right —
 # an OKF bundle that agents read from a checkout and that process `:hint`

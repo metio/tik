@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="tik-mark-mono-title">
+  <title id="tik-mark-mono-title">tik</title>
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M91.9 34.1 L103.84 41 L103.84 87 L64 110 L24.16 87 L24.16 41 L64 18 L78 26.1" stroke-width="5.5"/>
+    <path d="M34 70 L50 86 L94.5 14.8" stroke-width="9"/>
+  </g>
+  <circle cx="64" cy="110" r="5.5" fill="currentColor"/>
+</svg>

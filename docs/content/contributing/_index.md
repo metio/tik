@@ -77,6 +77,11 @@ parents, a guard that queries anything, a leader or lock or quorum on a
 correctness path, a self-minted event with a non-deterministic field, or
 kernel code doing I/O.
 
+## The mark
+
+The logo files and the rules for using them are on the [Logo](/contributing/logo/)
+page. They live under `docs/static/images/`.
+
 ## Licensing
 
 Every file carries `SPDX-FileCopyrightText` and `SPDX-License-Identifier`
