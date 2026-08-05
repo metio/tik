@@ -64,5 +64,4 @@ contention resolves by derivation.
 - [Concepts](/concepts/) — the model behind the CLI.
 - [Authoring processes](/authoring/) — designing one worth deriving.
 
-Part of the [metio](https://metio.wtf) family. Licensed 0BSD and
-[REUSE](https://reuse.software)-compliant.
+Licensed 0BSD and [REUSE](https://reuse.software)-compliant.

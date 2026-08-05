@@ -13,8 +13,8 @@ who proved it, and can anyone reproduce the conclusion?"
 **Documentation: [tik.projects.metio.wtf](https://tik.projects.metio.wtf/)**
 
 The elevator version lives in [docs/PITCH.md](docs/PITCH.md).
-Part of the [metio](https://metio.wtf) family. Licensed 0BSD,
-[REUSE](https://reuse.software)-compliant. Full design: [docs/PLAN.md](docs/PLAN.md).
+Licensed 0BSD, [REUSE](https://reuse.software)-compliant.
+Full design: [docs/PLAN.md](docs/PLAN.md).
 Decisions and concepts live in the OKF bundle under [kb/](kb/index.md);
 unjudged ideas under [docs/IDEAS.md](docs/IDEAS.md).
 
