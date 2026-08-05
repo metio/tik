@@ -138,6 +138,30 @@
     (is (contains? (stage/effective-reached proc retracted now roles) :closed)
         "reached-once-stays-reached; the evolve fold carries sticky forward")))
 
+(defn- dispute-resolution [events instant]
+  (add events #(event/dispute-fact {:ticket tid :actor "auditor" :parents %
+                                    :at (at instant)
+                                    :path [:resolution :ref]
+                                    :reason "wrong commit"})))
+
+(deftest sticky-is-monotone-in-fold-position-not-in-the-event-set
+  (let [closed (closed-events)]
+    (is (contains? (stage/effective-reached proc closed now roles) :closed))
+    (testing "a dispute dated after the ack leaves the sticky reach standing"
+      (is (contains? (stage/effective-reached
+                      proc (dispute-resolution closed "2026-07-08T11:30:00Z")
+                      now roles)
+                     :closed)))
+    (testing "the same dispute dated before the ack removes it"
+      (is (not (contains? (stage/effective-reached
+                           proc (dispute-resolution closed "2026-07-08T10:59:00Z")
+                           now roles)
+                          :closed))
+          (str "sticky accumulates what the fixpoint yielded at each prefix, "
+               "so splicing an event into the middle of the trajectory "
+               "re-derives every later prefix — a merge can take a sticky "
+               "reach away")))))
+
 (deftest timeline-is-a-view-of-the-same-fold
   (let [{:keys [timeline reached]} (stage/evolve proc (closed-events) roles)]
     (is (= (count (closed-events)) (count timeline)))

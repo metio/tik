@@ -195,6 +195,22 @@ monotonically by the fold. `:closed` survives a later ack retraction; the
 log shows both truths ("was closed", "ack was withdrawn") without the
 derived present lying about either.
 
+**Sticky is monotone in fold position, not in the event set.** The
+shorthand `f(events, now)` is literally true, but the reached set is a
+function of the whole *trajectory*, not of the final state: `sticky-ever`
+accumulates whatever the fixpoint yielded at each prefix. Insert an
+event *between* two existing ones — which is exactly what a merge with a
+backdated event from another replica does — and the prefix at which a
+sticky stage was reached is re-derived under different facts. So a
+replica can hold a sticky reach, sync, and no longer derive it. Union
+merge still converges (every replica holding the same event set derives
+the same answer, which is the property `spec/Merge.tla` and the
+commutativity tests pin); what does *not* hold is that a reach observed
+before a sync survives it. ADR 0019's effects observe frontier
+transitions, so a reach can ring a bell a later sync unrings — an
+effect pipeline must therefore treat a fired transition as its own
+recorded fact, not as a promise the derivation will keep re-deriving.
+
 **Stratified negation (ADR 0005).** `[:not [:stage-reached …]]` is
 negation inside a fixpoint — non-monotone, the classic Datalog problem.
 (v6 removed the dedicated `:not-stage` keyword: it was a second spelling

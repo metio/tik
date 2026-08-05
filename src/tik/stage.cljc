@@ -72,7 +72,19 @@
   {:state ticket-state
    :reached #{...}          ; at the time of the last event
    :sticky-ever #{...}      ; sticky stages ever reached (monotone)
-   :timeline [{:event-id :at :reached} ...]}  ; the notifier's entire input"
+   :timeline [{:event-id :at :reached} ...]}  ; the notifier's entire input
+
+  :sticky-ever is monotone IN FOLD POSITION, not in the event set. It
+  accumulates what the fixpoint yielded at each prefix, so it is a
+  function of the trajectory rather than of the final state. A merge that
+  brings in a backdated event splices a new prefix into the middle of
+  that trajectory and every later prefix is re-derived under different
+  facts — which can REMOVE a sticky reach this replica derived a moment
+  ago. Convergence is unaffected (the same event set always derives the
+  same answer); what does not hold is that a reach observed before a sync
+  survives it. Callers that act on a reach — notifiers, effect pipelines
+  — must record having acted as their own fact rather than assume the
+  derivation keeps re-deriving it."
   [process events roles]
   (let [sticky (sticky-ids process)]
     (reduce
