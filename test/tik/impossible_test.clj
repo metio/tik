@@ -90,14 +90,14 @@
     (is (not (:impossible? b)))))
 
 (deftest a-choice-dies-when-every-branch-does
-  (let [dead-proc (update-in proc [:process/stages]
-                             (fn [stages]
-                               (mapv #(if (= :either (:stage/id %))
-                                        (assoc % :guards
-                                               [[:or [:signed-by :auditor [:report]]
-                                                 [:signed-by :auditor [:note]]]])
-                                        %)
-                                     stages)))
+  (let [dead-proc (update proc :process/stages
+                          (fn [stages]
+                            (mapv #(if (= :either (:stage/id %))
+                                     (assoc % :guards
+                                            [[:or [:signed-by :auditor [:report]]
+                                              [:signed-by :auditor [:note]]]])
+                                     %)
+                                  stages)))
         evs (events-with [[[:report] "written"] [[:note] "n"]])
         b (first (filter #(= :either (:stage %))
                          (explain/explain dead-proc evs now roles)))]
