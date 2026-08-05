@@ -166,6 +166,19 @@ means "should not exist, no replacement"; dispute is rejection with a
 reason and makes the fact unusable until superseded by a corrected value.
 Regression is always by derivation, never by command.
 
+**Corrected means different.** A dispute names the value that stood when
+it was raised, so the assertion that answers it must claim something
+else: re-asserting the rejected value verbatim leaves the path
+`:disputed`. Otherwise §18's accountability model — blocking on
+rejection — would be defeated in one command by the very party it holds.
+Retraction clears disputes too (the rejected claim is gone), and a
+dispute raised on a path holding nothing rejects no particular value, so
+the first assertion answers it — a dispute cannot make a path
+permanently unusable. Disputes accumulate: several people may reject the
+same claim, and each may **withdraw their own** (`tik dispute --withdraw`),
+which is the same speech act by the same speaker rather than an eighth
+event type. Nobody can withdraw somebody else's.
+
 ## 4. Stage derivation
 
 A process defines stages with `:after` prerequisites (graph edges),
@@ -210,6 +223,17 @@ before a sync survives it. ADR 0019's effects observe frontier
 transitions, so a reach can ring a bell a later sync unrings — an
 effect pipeline must therefore treat a fired transition as its own
 recorded fact, not as a promise the derivation will keep re-deriving.
+
+**No step reads the future (ADR 0022).** Each fold step evaluates guards
+at its event's claimed `:at`, clamped to the read's `now`. Without the
+clamp a single postdated event satisfies `:elapsed-since` at its claimed
+instant, and on a sticky stage the fold carries that reach forward
+forever — a milestone bought with a date and unretractable by any later
+evidence. Refusing postdated writes locally cannot close it, since such
+an event can arrive already postdated from another replica; the property
+has to live in the derivation every replica runs. The clamp lifts on its
+own as `now` passes the claimed instant, so nothing is discarded — the
+future is simply not read early.
 
 **Stratified negation (ADR 0005).** `[:not [:stage-reached …]]` is
 negation inside a fixpoint — non-monotone, the classic Datalog problem.
@@ -470,6 +494,27 @@ A ladder, each rung sufficient, each next rung strengthening:
    Merkle transparency log — the same shape as tik's own DAG, and the
    flavor of "decentralized trust" that has actually earned production
    keep (§11).
+
+**Role membership is store state, not a rule in the pinned definition.**
+A definition declares which roles a process has and who starts in them;
+the store's role register (`roles.edn`, `tik roles add/remove`)
+decides who is in one today, and `tik.process/resolve-roles` overrides
+the definition role by role at derivation time. Membership inside the
+hashed region would make every hire and departure a definition version
+bump — versions would stop meaning the rules changed — and would leave
+a departed member holding signing authority on every in-flight ticket
+until each was individually migrated, while a new member could approve
+nothing that already existed. The kernel already takes roles as its own
+argument, so this needs no new event type and no kernel change; it
+moves an input out of the pin, where it never belonged. A store with no
+register derives exactly as before.
+
+Resolution takes no `now`: time-aware validity ("was this actor a
+member on March 1", delegation with expiry, authority chains — ADR 0010)
+stays deferred in §19, so a re-derivation at a past instant reads
+today's membership. That is membership being present-tense trust input,
+the same class as the definition file itself (ADR 0015), and it is now
+an explicit input rather than one smuggled inside a content hash.
 
 The identity registry is designed as — naturally — a ticket: a
 well-known log whose facts are key bindings, evaluated by the same

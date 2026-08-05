@@ -18,7 +18,10 @@
 
   fact-status is the single choke point for 'why does this fact (not)
   satisfy guards': :present | :absent | :retracted | :disputed |
-  :conflicted. Guards consult nothing else about facts. :conflicted is
+  :conflicted. A dispute rejects the value that stood when it was
+  raised, so only a DIFFERENT value (or a retraction, or the disputer
+  withdrawing) answers it — see `surviving-disputes`. Guards consult
+  nothing else about facts. :conflicted is
   structural (ADR 0003/0004): causally concurrent writes that disagree,
   computed from the parents DAG — in a single linear history it cannot
   occur."
@@ -94,23 +97,63 @@
               {:to (:process/version body) :hash (:process/hash body)
                :by actor :at at :reason (:migrate/reason body)})))
 
+(defn- surviving-disputes
+  "Disputes a new assertion of `value` does NOT answer.
+
+  A dispute is rejection of a specific claim, and PLAN §3 says it holds
+  until the fact is 'superseded by a corrected value'. Corrected means
+  different: an assertion clears the disputes that rejected some other
+  value, and leaves standing any dispute that rejected exactly the value
+  now being claimed again. So the disputed party cannot clear a dispute
+  by re-typing the same fact — the only ways out are a genuinely
+  different value, a retraction, or the disputer withdrawing.
+
+  A dispute raised while the path held no value (:rejected absent)
+  rejects nothing in particular, so the first assertion answers it —
+  which is also what keeps a dispute on a never-asserted path from
+  blocking the path forever."
+  [prev value]
+  (filterv #(and (contains? % :rejected) (= value (:rejected %)))
+           (:disputes prev [])))
+
 (defn- h-assert [state {:keys [event/body event/at event/actor event/id]}]
-  (let [path (:fact/path body)]
+  (let [path (:fact/path body)
+        value (:fact/value body)
+        live (surviving-disputes (get-in state [:facts path]) value)]
     (update-in state [:facts path]
                push-history
-               {:value (:fact/value body) :asserted-by actor :at at :event id})))
+               (cond-> {:value value :asserted-by actor :at at :event id}
+                 (seq live) (assoc :disputes live)))))
 
-(defn- h-retract [state {:keys [event/body event/at event/actor event/id]}]
+(defn- h-retract
+  "Retraction withdraws the claim with no replacement, so every dispute
+  of that claim has lost its subject and does not carry over."
+  [state {:keys [event/body event/at event/actor event/id]}]
   (let [path (:fact/path body)]
     (update-in state [:facts path]
                push-history
                {:retracted {:by actor :at at :event id
                             :reason (:retract/reason body)}})))
 
-(defn- h-dispute [state {:keys [event/body event/at event/actor event/id]}]
-  (update-in state [:facts (:fact/path body)] assoc
-             :disputed {:by actor :at at :event id
-                        :reason (:dispute/reason body)}))
+(defn- h-dispute
+  "Raise a dispute, or withdraw this actor's own. Disputes accumulate:
+  several people may reject the same claim, and one of them withdrawing
+  says nothing about the others."
+  [state {:keys [event/body event/at event/actor event/id]}]
+  (let [path (:fact/path body)
+        entry (get-in state [:facts path])]
+    (cond
+      (:dispute/withdraw? body)
+      (if entry
+        (assoc-in state [:facts path :disputes]
+                  (filterv #(not= actor (:by %)) (:disputes entry [])))
+        state)
+
+      :else
+      (update-in state [:facts path :disputes] (fnil conj [])
+                 (cond-> {:by actor :at at :event id
+                          :reason (:dispute/reason body)}
+                   (contains? entry :value) (assoc :rejected (:value entry)))))))
 
 (defn- h-artifact [state {:keys [event/body event/at event/actor]}]
   (assoc-in state [:artifacts (:artifact/path body)]
@@ -272,14 +315,19 @@
   {:status :present|:absent|:retracted|:disputed|:conflicted, ...}
   with :by/:at/:note/:value as applicable. Guards consult only this."
   [state path]
-  (let [{:keys [disputed retracted] :as entry} (fact-entry state path)]
+  (let [{:keys [disputes retracted] :as entry} (fact-entry state path)
+        ;; the earliest live dispute is the one reported: it is the one
+        ;; that first made the claim unusable, and later ones do not
+        ;; change the answer, only who else agrees.
+        disputed (first disputes)]
     (cond
       (nil? entry)
       {:status :absent :path path}
 
       disputed
       {:status :disputed :path path
-       :by (:by disputed) :at (:at disputed) :note (:reason disputed)}
+       :by (:by disputed) :at (:at disputed) :note (:reason disputed)
+       :disputes disputes}
 
       :else
       (if-let [claims (conflicting-claims state path)]

@@ -12,8 +12,12 @@
 
   Single actor, strictly increasing timestamps: reduction order is
   insertion order and no concurrent claims arise, so each path's status
-  is decided by the LAST operation touching it — assert -> :present,
-  retract -> :retracted, dispute -> :disputed, untouched -> :absent."
+  is decided by the LAST operation touching it — retract -> :retracted,
+  dispute -> :disputed, untouched -> :absent — with one wrinkle the
+  model carries because the semantics do: a dispute rejects the VALUE
+  that stood when it was raised, so an assert answers it only by
+  claiming something else. Re-asserting the rejected value leaves the
+  path :disputed."
   (:require [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
@@ -32,15 +36,30 @@
     {:kind kind :path path :value v}))
 
 (defn- model-status
-  "The naive spec: fold the ops, last-op-per-path wins by kind."
+  "The naive spec: fold the ops, last-op-per-path wins by kind, carrying
+  the values disputes have rejected so an assert can be told apart from
+  a re-assert. Returns path -> status."
   [ops]
-  (reduce (fn [m {:keys [kind path]}]
-            (assoc m path (case kind
-                            :assert :present
-                            :retract :retracted
-                            :dispute :disputed)))
-          {}
-          ops))
+  (->> ops
+       (reduce
+        (fn [m {:keys [kind path value]}]
+          (let [{:keys [value* has-value? rejected] :or {rejected #{}}}
+                (get m path)]
+            (assoc m path
+                   (case kind
+                     :assert (if (contains? rejected value)
+                               {:status :disputed :value* value
+                                :has-value? true :rejected #{value}}
+                               {:status :present :value* value
+                                :has-value? true :rejected #{}})
+                     :retract {:status :retracted :has-value? false
+                               :rejected #{}}
+                     :dispute {:status :disputed :value* value*
+                               :has-value? has-value?
+                               :rejected (cond-> rejected
+                                           has-value? (conj value*))}))))
+        {})
+       (into {} (map (fn [[path e]] [path (:status e)])))))
 
 (defn- ops->events
   "Apply the op sequence through the real kernel, one event per op at a
@@ -78,6 +97,7 @@
   ;; that path — dedup/order picked the right winner
   (prop/for-all [ops (gen/vector gen-op 0 12)]
     (let [state (red/ticket-state (ops->events ops))
+          status (model-status ops)
           last-assert (reduce (fn [m {:keys [kind path value]}]
                                 (case kind
                                   :assert (assoc m path value)
@@ -85,5 +105,9 @@
                               {}
                               ops)]
       (every? (fn [[path v]]
-                (= v (red/fact-value state path)))
+                ;; a value only goes live when nothing stands against
+                ;; it: a re-assert of a rejected value leaves the path
+                ;; :disputed and therefore valueless
+                (= (when (= :present (get status path)) v)
+                   (red/fact-value state path)))
               last-assert))))

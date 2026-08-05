@@ -117,10 +117,20 @@
          :event/actor actor :event/at at :event/parents (set parents)
          :event/body {:fact/path path :fact/value value}}))
 
-(defn dispute-fact [{:keys [ticket actor at parents path reason]}]
+(defn dispute-fact
+  "Reject the claim currently standing on `path`, or — with `withdraw`
+  — take back the disputes this same actor raised on it. Withdrawal is
+  a body flag rather than an eighth event type: it is the same speech
+  act by the same speaker about the same path, and only the disputer's
+  own disputes are ever cleared."
+  [{:keys [ticket actor at parents path reason withdraw]}]
   (mint {:event/ticket ticket :event/type :fact/dispute
          :event/actor actor :event/at at :event/parents (set parents)
-         :event/body {:fact/path path :dispute/reason reason}}))
+         ;; :dispute/reason stays unconditional — dropping it when nil
+         ;; would change the canonical bytes, and therefore the id, of
+         ;; every reason-less dispute ever written.
+         :event/body (cond-> {:fact/path path :dispute/reason reason}
+                       withdraw (assoc :dispute/withdraw? true))}))
 
 (defn retract-fact [{:keys [ticket actor at parents path reason]}]
   (mint {:event/ticket ticket :event/type :fact/retract

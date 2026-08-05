@@ -62,6 +62,9 @@
   tik set <id> k=v [k=v ...] [--actor A]        assert facts (dotted keys nest)
   tik retract <id> <k> [--reason R]             withdraw a fact (no replacement)
   tik dispute <id> <k> [--reason R]             reject a fact; stage regresses by derivation
+                       [--withdraw]             (--withdraw: take back the disputes YOU
+                                                raised on <k>; a dispute otherwise stands
+                                                until a DIFFERENT value supersedes it)
   tik diff <id> [n]                             evidence gained over the last n events
   tik attach <id> <file>                        attach an artifact (stored by hash)
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
@@ -230,8 +233,16 @@
                                                 `author check <answers.edn>` lints it
                                                 without writing (schema + smells)
   tik roles [--edn]                             who gates what: every role on the open
-                                                board, its members, and the stages
-                                                waiting on its signature
+                                                board, its effective members, and the
+                                                stages waiting on its signature
+  tik roles add <role> <actor>                  the store's role register: who is in a
+  tik roles remove <role> <actor>               role, for every ticket at once. A
+                                                definition declares which roles exist
+                                                and who starts in them; the register
+                                                decides who is in one today, so a hire
+                                                or departure takes effect on in-flight
+                                                tickets with no version bump and no
+                                                per-ticket migration
   tik lint [<process.edn>]                      lint a process definition; with no
                                                 argument, lint the STORE — open tickets
                                                 missing descriptions/titles/signatures
@@ -262,7 +273,7 @@
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port"
     "reason" "registry" "role" "sqlite" "template" "threshold" "title"
-    "to" "user" "watch" "where" "witness"})
+    "to" "user" "watch" "where" "withdraw" "witness"})
 
 (defn- check-flags!
   "Refuse flags nothing reads, naming them, before any command runs."
@@ -325,10 +336,14 @@
       "verify"  (audit/cmd-verify parsed)
       "root"    (audit/cmd-root parsed)
       "author"  (authoring/cmd-author parsed)
-      "roles"   (query/cmd-roles parsed)
       "bundle"  (audit/cmd-bundle parsed)
       "lint"    (linting/cmd-lint parsed)
       "actor"   (admin/cmd-actor parsed)
+      ;; `tik roles` alone is the read-only view; a positional makes it
+      ;; the register's add/remove, so one noun owns one subject
+      "roles"   (if (seq (:pos parsed))
+                  (admin/cmd-role parsed)
+                  (query/cmd-roles parsed))
       "attest"  (admin/cmd-attest parsed)
       "work"    (workcmd/cmd-work parsed)
       "witness" (audit/cmd-witness parsed)

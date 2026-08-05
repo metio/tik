@@ -148,12 +148,14 @@
 (defn cmd-dispute [{:keys [pos opts]}]
   (let [[ticket k] pos
         s (the-store)
-        id (resolve-id s ticket)]
+        id (resolve-id s ticket)
+        withdraw (:withdraw opts)]
     (append!* s (event/dispute-fact
                  {:ticket id :actor (actor opts) :at (now)
                   :parents (dag/heads (store/events s id))
                   :path (parse-key k)
-                  :reason (or (:reason opts) "disputed")})
+                  :reason (or (:reason opts) (if withdraw "withdrawn" "disputed"))
+                  :withdraw withdraw})
               opts)
     (println "ok")))
 
