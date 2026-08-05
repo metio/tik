@@ -139,7 +139,13 @@
         _ (.mkdirs (io/file root "widget"))
         r (in root "probe" id "--command" "echo seen=$TIK_TICKET")]
     (is (zero? (:exit r)))
-    (is (re-find (re-pattern (str "seen = \"" id "\"")) (:out r)))))
+    ;; The rendered value may be a keyword or a string: a bare word parses as
+    ;; a keyword, and whether a uuid reads as one depends on its first
+    ;; character (a-f gives a symbol, 0-9 does not). What this case is about
+    ;; is WHICH ticket the probe saw, so match the id in either form.
+    (is (re-find (re-pattern (str "seen = :?\"?" id)) (:out r)))
+    (is (not (re-find #"seen = :?\"?impostor" (:out r)))
+        "a fact named `ticket` must not rewrite which ticket the probe is for")))
 
 (deftest a_probe_that_runs_derives_facts_and_reports_that_it_ran
   (let [{:keys [root id]} (store-with-ticket! "tik-probe-happy" "repo=widget")
