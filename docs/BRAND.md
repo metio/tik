@@ -44,4 +44,11 @@ the system; if you add a second, the bead stops meaning "signature".
 ## Licence
 
 The files carry `SPDX-License-Identifier: 0BSD`, matching the rest of the
-repository, so the mark may be used on your own software — including a fork.
+repository, so the mark may be used on your own software — including a fork or
+a competing implementation.
+
+That is a decision, not an inherited default. Projects commonly keep the code
+permissive and reserve the mark under a trademark notice; tik does not, because
+a licence that says "take this, all of it" reads badly with an asterisk. If the
+mark ever needs reserving, the change is a separate `LICENSE` for this
+directory plus an exclusion from the repo-wide REUSE check.
