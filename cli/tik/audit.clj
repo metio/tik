@@ -11,7 +11,8 @@
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
-                                  now put-signature! resolve-id root root-dir-roots
+                                  now put-signature! resolve-id role-register root
+                                  root-dir-roots
                                   signing-key sidecar-names-for store-root-doc
                                   the-store]]
             [tik.dag :as dag]
@@ -597,7 +598,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         ;; a FAIL line for THIS ticket, never an aborted audit
         (try
           (let [reached (stage/effective-reached proc evs (now)
-                                                 (:process/roles proc {}))]
+                                                 (process/resolve-roles
+                                                  (:process/roles proc {})
+                                                  (role-register)))]
             (println (str "  ok    derived: "
                           (str/join ", " (map str (sort-by str reached))))))
           (catch Exception e

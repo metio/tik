@@ -73,20 +73,67 @@
       :not (signing-roles (second guard))
       [])))
 
+#_{:splint/disable [naming/lisp-case]} ; schema names are PascalCase, as
+                                        ; ProcessDef/Stage/Guard above
+(def RoleBindings
+  "The store's role register: role -> members, the same shape a
+  definition declares."
+  [:map-of :keyword [:map [:members [:vector :string]]]])
+
+(def valid-role-bindings? (m/validator RoleBindings))
+
+(defn resolve-roles
+  "The role memberships a derivation runs against: the store's register
+  overriding the pinned definition, role by role.
+
+  A definition's `:process/roles` says which roles the process HAS and
+  supplies a starting membership; it cannot be the authority on who is
+  in one. Membership lives inside the hashed region, so with the
+  definition as the only source a hire or a departure is a definition
+  version bump — versions stop meaning the rules changed — and until
+  every in-flight ticket is individually migrated a departed member
+  still holds signing authority while a new one holds none. Who is in a
+  role is organisation state, not a rule of the process, and the kernel
+  already takes it as its own argument, so this resolves outside the
+  pin.
+
+  A role the register does not mention keeps the definition's members,
+  so a store with no register derives exactly as before, and a
+  definition's roles stay the default rather than a fiction to be
+  restated. Overriding is whole-role: the register's entry replaces the
+  definition's members for that role rather than merging with them, so
+  a departure is expressible.
+
+  Resolution takes no `now`. Time-aware validity — 'was this actor a
+  member on March 1' — is ADR 0010's deferred concretion (PLAN §19) and
+  wants signed bindings rather than a mutable file; until it lands, a
+  re-derivation at a past instant reads today's membership. That is the
+  honest consequence of membership being present-tense trust input, and
+  it is the same class of input as the definition file itself (ADR
+  0015) — the difference is that it is now an explicit input instead of
+  one smuggled inside a content hash."
+  [pinned register]
+  (merge (or pinned {}) (or register {})))
+
 (defn roles-gating
   "role -> {:members [...] :stages [stage-ids]} for one definition —
   who gates what: every role with the stages waiting on its signature.
   Roles declared but gating nothing still appear (they may satisfy
-  :role/unsatisfied facts without a :signed-by spelling)."
-  [{:process/keys [roles stages]}]
-  (let [gated (reduce (fn [acc {:stage/keys [id] :keys [guards]}]
-                        (reduce (fn [m role] (update m role (fnil conj []) id))
-                                acc
-                                (distinct (mapcat signing-roles guards))))
-                      {}
-                      stages)]
-    (into {}
-          (for [role (distinct (concat (keys roles) (keys gated)))]
-            [role {:members (get-in roles [role :members] [])
-                   :stages (get gated role [])}]))))
+  :role/unsatisfied facts without a :signed-by spelling).
+
+  The 2-arity takes the memberships derivation actually runs against
+  (`resolve-roles`), so an admin view reports who can sign TODAY rather
+  than who the definition was pinned with."
+  ([process] (roles-gating process (:process/roles process)))
+  ([{:process/keys [stages]} roles]
+   (let [gated (reduce (fn [acc {:stage/keys [id] :keys [guards]}]
+                         (reduce (fn [m role] (update m role (fnil conj []) id))
+                                 acc
+                                 (distinct (mapcat signing-roles guards))))
+                       {}
+                       stages)]
+     (into {}
+           (for [role (distinct (concat (keys roles) (keys gated)))]
+             [role {:members (get-in roles [role :members] [])
+                    :stages (get gated role [])}])))))
 

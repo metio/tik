@@ -58,10 +58,23 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   blocked until that upstream ticket is settled (`status` names the blocker).
 - `tik explain <id> [--actor A]` — what evidence is missing to advance,
   and who can act. This is the product surface; read it before asking a
-  human anything.
+  human anything. A step marked `⊘ … — nobody can ever do this` and a
+  stage headed `(unreachable)` mean waiting is pointless: an empty role,
+  a negation over a sticky stage already reached, or a prerequisite that
+  is itself dead. Fix the definition or the register — do not wait.
 - `tik status <id>` — derived stage, facts, links, what's next.
 - `tik retract <id> <k>` / `tik dispute <id> <k>` — withdraw or reject a
-  fact; the stage **regresses by derivation** (no manual rollback).
+  fact; the stage **regresses by derivation** (no manual rollback). A
+  dispute rejects the value that stood when it was raised, so only a
+  **different** value answers it — re-asserting the same one leaves the
+  path disputed. The disputer takes their own objection back with
+  `tik dispute <id> <k> --withdraw`; nobody can withdraw somebody else's.
+- `tik roles` / `tik roles add <role> <actor>` / `tik roles remove <role>
+  <actor>` — who gates what, and the store's role register behind it. A
+  definition declares which roles exist and who starts in them; the
+  register decides who is in one today, for every ticket at once. Use it
+  for a hire or a departure: it takes effect on in-flight tickets
+  immediately, with no definition version bump and no `reprocess`.
 - `tik whatif <id> k=v +PT48H retract:k` — counterfactual stage diff,
   nothing written. Use to check what a fact *would* unlock before setting it.
 - `tik plan [<file.html>]` — the dependency-link roadmap: ready / blocked /

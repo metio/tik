@@ -11,11 +11,13 @@
             [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
             [tik.cli-core :refer [all-ticket-ctx die exit! load-process-arg load-ticket
-                                  now resolve-file signed-event-ids the-store]]
+                                  now resolve-file role-register signed-event-ids
+                                  the-store]]
             [tik.draw :as draw]
             [tik.guard :as guard]
             [tik.lint :as lint]
             [tik.next :as next-lens]
+            [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [print-problems sid tint]]
             [tik.stage :as stage]
@@ -79,7 +81,9 @@
   ;; from the definition being drawn (`tik show ./other.edn <id>`).
   (let [{:keys [events]} (load-ticket s tid)
         reached (stage/effective-reached proc events (now)
-                                         (:process/roles proc {}))]
+                                         (process/resolve-roles
+                                          (:process/roles proc {})
+                                          (role-register)))]
     (into {} (for [st (:process/stages proc)
                    :let [id (:stage/id st)]]
                [id (cond (reached id) :reached

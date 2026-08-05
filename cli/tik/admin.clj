@@ -5,15 +5,17 @@
   ticket to a new definition, dry-run by default), process sign (publish a
   definition — archive + sign the canonical bytes), attest (a signed claim
   the kernel ignores), actor add (register a signer in the allowed-signers
-  registry), and sign (sign this actor's own events). Porcelain over
-  tik.cli-core and tik.sign."
+  registry), roles (the store's role register), and sign (sign this
+  actor's own events). Porcelain over tik.cli-core and tik.sign."
   (:require [clojure.java.io :as io]
+            [clojure.pprint :as pp]
             [clojure.string :as str]
             [tik.args :refer [actor read-edn-file slurp-existing]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! by-hash-file die load-process
-                                  now put-signature! resolve-id root signing-key
-                                  stage-delta the-store ticket-ctx]]
+                                  now put-signature! resolve-id role-register roles-file
+                                  root signing-key stage-delta the-store
+                                  ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.explain :as explain]
@@ -24,6 +26,7 @@
             [tik.stage :as stage]
             [tik.store.protocol :as store])
   (:import (java.io File)))
+
 (defn cmd-reprocess
   "reprocess <id> <new.edn> [--apply]: re-pin a ticket to a new process
   definition. Dry-run BY DEFAULT (ADR 0002): a re-pin is a consequence-
@@ -43,8 +46,9 @@
             (die "refusing to migrate to a definition with lint errors"))
         {:keys [events process]} (ticket-ctx s id)
         t (now)
-        old-roles (:process/roles process {})
-        new-roles (:process/roles new-proc {})
+        register (role-register)
+        old-roles (process/resolve-roles (:process/roles process {}) register)
+        new-roles (process/resolve-roles (:process/roles new-proc {}) register)
         before (stage/effective-reached process events t old-roles)
         after (stage/effective-reached new-proc events t new-roles)
         old-hash (process/process-hash process)
@@ -135,6 +139,55 @@
       (spit f (str line "
 ") :append true)
       (println "ok" (sign/fingerprint pubkey)))))
+
+(defn cmd-role
+  "roles add <role> <actor> | roles remove <role> <actor>: the store's
+  role register (`roles.edn`), which decides membership for every ticket
+  at once instead of per pinned definition. Bare `tik roles` renders the
+  view (tik.query/cmd-roles).
+
+  A definition declares which roles exist and who starts in them; who is
+  in one today is store state. Editing the register takes effect on
+  in-flight tickets immediately — no definition version bump, no
+  per-ticket migration — so a departure actually removes authority and a
+  hire actually confers it."
+  [{:keys [pos]}]
+  (let [usage "usage: tik roles [add|remove] <role> <actor>"
+        [sub role-name actor-name] pos
+        _ (when-not (and (#{"add" "remove"} sub) role-name actor-name)
+            (die usage))
+        f (roles-file)
+        register (or (role-register) {})
+        r (keyword role-name)
+        members (get-in register [r :members] [])
+        write! (fn [m]
+                 (spit f (with-out-str
+                           (pp/pprint (into (sorted-map)
+                                            (assoc-in register [r :members] m)))))
+                 (println "ok"))]
+    (case sub
+      "add"
+      (do
+        (when-not (contains? register r)
+          ;; the register owns a role wholly once it names it, so say so
+          ;; the first time rather than let a definition's members
+          ;; silently stop counting
+          (println (str "note: " (name r) " was not in the register;"
+                        " from now on the register decides its membership,"
+                        " not any process definition — members a definition"
+                        " declares stop counting. `tik roles` shows the"
+                        " effect.")))
+        (if (some #{actor-name} members)
+          (println (str actor-name " is already in " (name r)))
+          (write! (vec (sort (conj members actor-name))))))
+
+      "remove"
+      (do
+        (when-not (contains? register r)
+          (die (str "role " (name r) " is not in the register — "
+                    "`tik roles add " (name r) " <actor>` first, which is"
+                    " what moves it out of the pinned definitions")))
+        (write! (vec (remove #{actor-name} members)))))))
 
 (defn cmd-sign
   "Sign this actor's OWN events that this key has not signed yet. A

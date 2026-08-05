@@ -400,15 +400,18 @@
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
+        ;; pairs, not definitions: membership comes from the resolved
+        ;; roles the ticket actually derives under, so the view reports
+        ;; who can sign today rather than who the pin was minted with
         procs (distinct
                (for [{:keys [events process roles]} (all-ticket-ctx s)
                      :when (not (next-lens/settled? process events t roles))]
-                 process))
+                 [process roles]))
         ;; distinct on the RENDERED row: several archived versions of
         ;; one process may be pinned; identical gating collapses
         rows (distinct
-              (for [p procs
-                    [role {:keys [members stages]}] (process/roles-gating p)]
+              (for [[p roles] procs
+                    [role {:keys [members stages]}] (process/roles-gating p roles)]
                 {:role role :process (:process/id p)
                  :members members :stages stages}))
         by-role (group-by :role rows)]

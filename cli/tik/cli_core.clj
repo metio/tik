@@ -184,6 +184,24 @@
                   "none exist yet — `tik author` writes your first one"))))
     (read-edn-file f)))
 
+(defn roles-file ^File [] (io/file (root) "roles.edn"))
+
+(defn role-register
+  "The store's role register (`roles.edn`), or nil when the store keeps
+  none and every process's declared members stand as written.
+
+  A malformed register is refused rather than ignored: it decides who
+  may sign, so silently falling back to the pinned members would widen
+  authority exactly where a typo is most expensive."
+  []
+  (let [f (roles-file)]
+    (when (.exists f)
+      (let [register (read-edn-file f)]
+        (when-not (process/valid-role-bindings? register)
+          (die (str "malformed role register " f "\n"
+                    "  expected {:role {:members [\"actor\" ...]} ...}")))
+        register))))
+
 (defn process-name
   "The process name a ticket's state references, as a string. The event
   body is an unconstrained map (:map-of :any :any), so a hash-valid
@@ -322,7 +340,10 @@
                       " Facts may read :conflicted that a complete log"
                       " resolves; sync before trusting this view."))))
     (cond-> {:events evs :state state :process proc
-             :roles (:process/roles proc {})
+             ;; who is in a role is store state, not a rule of the
+             ;; pinned definition (tik.process/resolve-roles)
+             :roles (process/resolve-roles (:process/roles proc {})
+                                           (role-register))
              :heads (dag/heads evs)}
       (seq absent) (assoc :missing-parents (vec (sort absent))))))
 
