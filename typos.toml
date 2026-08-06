@@ -27,6 +27,9 @@ extend-exclude = [
   "corpus/*/tickets/**",
   "tickets/**",
   "roots/**",
+  # pinned issuer signing keys: base64url moduli and x5c certificate
+  # chains, where a run of letters is coincidence rather than prose
+  "jwks/**",
   "flake.lock",
   "docs/themes/",
 ]
