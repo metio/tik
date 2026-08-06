@@ -92,6 +92,60 @@ jobs:
         with:
           version: ${{ needs.prepare.outputs.version }}
           previous: ${{ needs.prepare.outputs.previous }}
+      - name: Record the release as evidence
+        # The store IS this repository, so a release records itself. The job
+        # generates a keypair, binds it to the workflow's own OIDC identity
+        # (rung 2, ADR 0023) and signs with it — no long-lived key exists
+        # anywhere, and the binding is what makes these signatures checkable
+        # afterwards. `processes/release.edn` decides what the evidence adds
+        # up to; nothing here sets a stage.
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          IMAGE: ${{ steps.image.outputs.digest }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tik() { nix develop --command bb tik "$@"; }
+
+          # the scan is evidence, not a gate: a finding does not stop the
+          # release, it stops the ticket reaching :scanned, so the record
+          # says whether this version met the bar either way
+          if nix develop --command bb vuln; then
+            SCAN=:clean
+          else
+            SCAN=:findings
+          fi
+
+          ssh-keygen -q -t ed25519 -N "" -C "ci@${GITHUB_RUN_ID}" \
+            -f "${RUNNER_TEMP}/ci_key"
+          export TIK_ACTOR=ci TIK_KEY="${RUNNER_TEMP}/ci_key"
+          trap 'rm -f "${RUNNER_TEMP}/ci_key" "${RUNNER_TEMP}/ci_key.pub"' EXIT
+
+          tik bridge workload --github --public-key "${TIK_KEY}.pub"
+
+          ID=$(tik new release --title "${VERSION}" | head -1)
+          tik set "$ID" version="\"${VERSION}\"" commit="\"${GITHUB_SHA}\""
+          tik attach "$ID" dist/SHA256SUMS --as checksums/SHA256SUMS
+          tik set "$ID" image="\"${IMAGE}\"" \
+                        signature.bundle="\"$(sha256sum dist/SHA256SUMS.bundle | cut -d" " -f1)\""
+          tik attest "$ID" :sbom --body "{:source \"container-release\" :image \"${IMAGE}\"}"
+          tik attest "$ID" :provenance --body "{:source \"container-release\" :image \"${IMAGE}\"}"
+          tik attest "$ID" :vulnerability-scan --body '{:tool "clj-watson" :db "github-advisory"}'
+          tik set "$ID" scan.result="$SCAN"
+
+          tik status "$ID"
+
+      - name: Commit the evidence
+        # tickets/ is outside the release gate's paths, so this push records
+        # the release without triggering another one.
+        run: |
+          set -euo pipefail
+          git add tickets/
+          git -c user.name="tik release" \
+              -c user.email="noreply@metio.wtf" \
+              commit -m "chore(tickets): record release ${{ needs.prepare.outputs.version }}"
+          git push origin HEAD:main
+
       - name: Publish the GitHub release
         # The release job needs the image pushed first, so a failed build never
         # leaves a published release pointing at a missing image.
