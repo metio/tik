@@ -28,6 +28,7 @@
             [tik.next]
             [tik.work :as work]
             [tik.gen-events :as ge]
+            [tik.identity :as identity]
             [tik.harness :as h]
             [tik.guard :as guard]
             [tik.lint]
@@ -313,6 +314,18 @@
     :gen (one gen/string)}
    {:sym 'tik.event/mint :f event/mint
     :gen (one gen-garbage)}
+   ;; rung 2 is a trust base, so its whole surface is swept: a binding
+   ;; arrives as an attestation body a stranger wrote, and anything but a
+   ;; clean answer there widens who may sign as whom
+   {:sym 'tik.identity/bindings :f identity/bindings
+    :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
+                   valid ge/gen-events]
+           [(into (vec valid) garbage)])}
+   {:sym 'tik.identity/verified :f identity/verified
+    :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)]
+           [bs (constantly true)])}
+   {:sym 'tik.identity/signing-keys :f identity/signing-keys
+    :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)] [bs])}
    {:sym 'tik.reduce/ticket-state :f red/ticket-state
     :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
                    valid ge/gen-events]
@@ -437,7 +450,8 @@
   totality-registry) or be listed in totality-exemptions with the
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
-     tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template})
+     tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template
+     tik.identity})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
