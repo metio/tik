@@ -382,6 +382,20 @@
                        (catch Exception _ nil))))
         (store/ticket-ids s)))
 
+(defn registry-ticket-ids
+  "Ticket ids pinned to the identity-registry process."
+  [s]
+  (into []
+        (filter (fn [id]
+                  (try (some (fn [e]
+                               (and (= :ticket/create (:event/type e))
+                                    (let [p (get-in e [:event/body :ticket/process])]
+                                      (and (or (keyword? p) (string? p))
+                                           (= "identity-registry" (name p))))))
+                             (store/events s id))
+                       (catch Exception _ false))))
+        (store/ticket-ids s)))
+
 (defn registry-events
   "This run's registry events, computed once when a caller has bound
   `*registry-events*`."

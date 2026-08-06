@@ -66,7 +66,9 @@
                                                 raised on <k>; a dispute otherwise stands
                                                 until a DIFFERENT value supersedes it)
   tik diff <id> [n]                             evidence gained over the last n events
-  tik attach <id> <file>                        attach an artifact (stored by hash)
+  tik attach <id> <file> [--as <path>]          attach an artifact (stored by hash);
+                                                --as sets the path a guard matches on
+                                                (default repro/<name>)
   tik comment <id> <text...>                    add a comment (a text blob, attached by hash)
   tik status <id> [--at <instant>]              derived stage, facts, what's next
                   [--links :stage]              (--at: the state at ANY moment;
@@ -283,7 +285,7 @@
   signed facts nobody asked for. A verb that can write to every ticket
   in the store has earned the stricter reading of its arguments."
   #{"actor" "all" "anchor" "apply" "at" "audience" "body" "changed"
-    "client-id" "command" "config" "credential" "dry-run" "edn" "force"
+    "as" "client-id" "command" "config" "credential" "dry-run" "edn" "force"
     "format" "from" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"

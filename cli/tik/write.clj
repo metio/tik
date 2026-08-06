@@ -175,7 +175,14 @@
     (append!* s (event/attach-artifact
                  (cond-> {:ticket id :actor (actor opts) :at (now)
                           :parents (dag/heads (store/events s id))
-                          :path (str "repro/" (.getName src)) :hash hash}
+                          ;; `repro/` is the default because a support
+                          ;; reproduction is the common case, but a guard
+                          ;; matches on the artifact's path prefix, so any
+                          ;; process needing a different one (`checksums/`,
+                          ;; `sbom/`) says so with --as
+                          :path (or (:as opts)
+                                    (str "repro/" (.getName src)))
+                          :hash hash}
                    ;; lineage is a CLAIM by the attacher (ADR 0014):
                    ;; carried in the event body, disputable like any claim
                    (:derived-from opts)
