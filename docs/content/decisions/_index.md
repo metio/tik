@@ -67,3 +67,4 @@ so a checkout and this site carry the same record.
 | [0014](/decisions/0014-artifact-semantics/) | The artifact hash is in the trust domain; the blob is not. |
 | [0015](/decisions/0015-process-definition-trust/) | Definition hash is identity; publication signatures are authority. |
 | [0002](/decisions/0002-pinned-process-versions/) | Tickets pin their definition hash; migration is an event. |
+| [0023](/decisions/0023-key-bindings-are-evidence/) | A verified key binding grants signing authority; pinned keys anchor it. |

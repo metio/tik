@@ -106,6 +106,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   agrees with `status`; `tik debug <process> <id>` asks about a different
   definition instead and warns on stderr that it is not the pin.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
+  L1 credits a signature when the key is in `actors` (rung 1) **or** a verified
+  binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
+  not a failure — it grants nothing, and events are never deleted, so failing
+  would trap a store forever. Evidence of forgery does fail.
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
   (versions every ticket has been moved off with `reprocess`). Dry-run by
   default; `verify` stays PASS, only historical `--at` degrades. Tidiness,
@@ -160,6 +164,26 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   `--password-command '<pass show …>'`, `--password-file`, or the
   `TIK_OIDC_PASSWORD` environment variable over a literal `--password`.
   Identity fetches require HTTPS (loopback excepted for a local test IdP).
+- `tik bridge jwks --issuer <url>` — pin an issuer's signing keys at
+  `<root>/jwks/<issuer>.json`. Rung 2's trust anchor: verification never calls
+  the IdP, so the keys must be in the store before a binding can count. Fetched
+  once and committed like `actors`; re-pinning MERGES by `kid`, so a rotated
+  key never retires the one that signed an older binding.
+- `tik bridge workload --github | --token-file F | --token-env VAR
+  [--public-key key.pub] [--registry ID]` — identity rung 2 for **machines**.
+  A pipeline generates a keypair per run, presents the OIDC token its platform
+  already issues, and binds the two, so no long-lived key is stored anywhere:
+
+  ```sh
+  ssh-keygen -t ed25519 -N "" -f ./ci_key
+  tik bridge workload --github --registry <id> --public-key ./ci_key.pub --actor ci
+  TIK_KEY=./ci_key tik set <ticket> commit=$GITHUB_SHA --actor ci
+  ```
+
+  A binding counts only when its token's signature is the issuer's, its `sub`
+  and `iss` match what the attestation claims, and it was LIVE when the binding
+  was written — so a leaked expired token cannot mint one (ADR 0023). The token
+  is checked before the binding is written, because a log never deletes.
 - `tik bridge oid4vci --credential vc.jwt --registry ID [--jwks-url U |
   --jwks FILE]` — ingest a **verifiable credential** (a VC is an attestation
   with an external issuer): verify the issuer signature against its JWKS
