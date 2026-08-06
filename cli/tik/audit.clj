@@ -11,7 +11,7 @@
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
-                                  now put-signature! registry-events
+                                  cache-flush! now put-signature! registry-events
                                   registry-ticket-ids resolve-id
                                   role-register root root-dir-roots
                                   with-registry-events
@@ -32,6 +32,101 @@
   (:import (java.io File)))
 
 (declare verify-ticket cmd-verify-store verify-one check-identity-bindings)
+
+(defn- bundle-events
+  "Every event file under `dir`, checked against its own name before it
+  is believed. An import reads material somebody else produced, so the
+  content address is verified HERE rather than trusted — a file whose
+  bytes do not hash to its filename is not an event, it is a claim about
+  one."
+  [^File dir]
+  (let [evdirs (filter #(and (.isDirectory ^File %)
+                             (= "events" (.getName ^File %)))
+                       (file-seq dir))]
+    (for [^File d evdirs
+          ^File f (.listFiles d)
+          :when (and (.isFile f) (str/ends-with? (.getName f) ".edn"))]
+      (let [bytes (java.nio.file.Files/readAllBytes (.toPath f))
+            named (str/replace (.getName f) #"\.edn$" "")
+            actual (str "sha256-" (canonical/sha256-hex-bytes bytes))]
+        (when-not (= named actual)
+          (die (str "refusing to import " (.getName f)
+                    ": its bytes hash to " actual)))
+        (let [e (canonical/parse (String. ^bytes bytes "UTF-8"))]
+          {:event (assoc e :event/id named) :file f :dir d})))))
+
+(defn cmd-import
+  "import <bundle.tgz|dir>: bring somebody else's events into this store.
+
+  The inverse of `export`, and the reason an evidence bundle is worth
+  more than an archive: a release records itself in a store CI cannot
+  push to, and this is how that record reaches the store that cares.
+
+  Merge is union by content address (ADR 0020): an event already present
+  is a no-op, so importing twice, or importing two overlapping bundles,
+  converges without anyone deciding a winner. Nothing is overwritten and
+  no history is rewritten — the reducer sorts the union by (at, id) and
+  derives whatever now follows.
+
+  Verification happens on the way IN. Every event's bytes must hash to
+  its own name before it is appended; `tik verify` afterwards re-checks
+  signatures and re-derives, and a binding imported alongside makes a
+  foreign signer's events verifiable here (ADR 0023)."
+  [{:keys [pos opts]}]
+  (let [src (or (first pos) (die "usage: tik import <bundle.tgz|dir>"))
+        f (io/file src)
+        _ (when-not (.exists f) (die (str "no such bundle: " src)))
+        tmp (when-not (.isDirectory f)
+              (let [d (.toFile (java.nio.file.Files/createTempDirectory
+                                "tik-import"
+                                (make-array java.nio.file.attribute.FileAttribute 0)))]
+                (let [r (sh/sh "tar" "xzf" (.getPath f) "-C" (.getPath d))]
+                  (when-not (zero? (:exit r))
+                    (die (str "cannot unpack " src ": " (:err r)))))
+                d))
+        root-dir (or tmp f)
+        s (the-store)
+        found (bundle-events root-dir)
+        present (into #{} (mapcat #(map :event/id (store/events s %)))
+                      (store/ticket-ids s))
+        new-events (remove #(contains? present (:event/id (:event %))) found)]
+    (when (empty? found)
+      (die (str "no events found under " src)))
+    (doseq [{:keys [event dir]} new-events
+            :let [tid (:event/ticket event)]]
+      (store/append! s event)
+      ;; sidecars ride along or the import lands unsigned: a signature is
+      ;; a separate file over the same bytes (ADR 0007)
+      (doseq [^File sc (.listFiles ^File dir)
+              :when (and (.isFile sc)
+                         (str/starts-with? (.getName sc)
+                                           (str (:event/id event) ".")) 
+                         (not (str/ends-with? (.getName sc) ".edn")))]
+        (store/put-sidecar! s tid (.getName sc)
+                            (java.nio.file.Files/readAllBytes (.toPath sc))))
+      (when (:verbose opts)
+        (println (str "  + " (shash (:event/id event)) "… " (:event/type event)))))
+    ;; blobs are addressed by hash like everything else, so a re-import
+    ;; writes the same bytes to the same name
+    (doseq [^File bd (filter #(and (.isDirectory ^File %)
+                                   (= "blobs" (.getName ^File %)))
+                             (file-seq root-dir))
+            ^File b (.listFiles bd)
+            :when (.isFile b)
+            :let [tid (.getName (.getParentFile bd))
+                  dest (io/file (root) "tickets" tid "blobs" (.getName b))]]
+      (io/make-parents dest)
+      (io/copy b dest))
+    (cache-flush!)
+    (println (str "imported " (count new-events) " event(s)"
+                  (when-let [dup (- (count found) (count new-events))]
+                    (when (pos? dup)
+                      (str "; " dup " already present")))))
+    (doseq [tid (distinct (map #(:event/ticket (:event %)) new-events))]
+      (println (str "  " (sid tid))))
+    (when (seq new-events)
+      (println "run `tik verify` to check signatures and re-derive"))
+    (exit! 0)))
 
 (defn cmd-export
   "Materialize the current store (whatever backend) as a file/git store

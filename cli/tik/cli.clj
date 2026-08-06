@@ -236,6 +236,13 @@
                                                 --apply
   tik export <dir>                              materialize any store as the file/git
                                                 format (the audit interchange)
+  tik import <bundle.tgz|dir> [--verbose]       bring somebody else's events in: the
+                                                inverse of export, and how a release
+                                                that CI could not push reaches the store
+                                                that cares. Union by content address, so
+                                                importing twice is a no-op; every event's
+                                                bytes are checked against its own name
+                                                before it is believed
   tik bundle <id> [--out file.tgz]              ONE ticket as a portable evidence
                                                 bundle: events, signatures, witness
                                                 marks, pinned ruleset, verify.sh —
@@ -290,7 +297,7 @@
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
     "reason" "registry" "role" "sqlite" "template" "threshold" "title"
-    "to" "token-env" "token-file" "user" "watch" "where" "withdraw"
+    "to" "token-env" "token-file" "user" "verbose" "watch" "where" "withdraw"
     "witness"})
 
 (defn- check-flags!
@@ -353,6 +360,7 @@
       "effects" (effects/cmd-effects parsed)
       "verify"  (audit/cmd-verify parsed)
       "root"    (audit/cmd-root parsed)
+      "import"  (audit/cmd-import parsed)
       "author"  (authoring/cmd-author parsed)
       "bundle"  (audit/cmd-bundle parsed)
       "lint"    (linting/cmd-lint parsed)
