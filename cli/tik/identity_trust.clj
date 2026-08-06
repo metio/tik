@@ -138,8 +138,9 @@
   (let [n (fn [v] (when (number? v) (long v)))
         exp (n exp) nbf (n nbf) iat (n iat)]
     (cond
-      (nil? when-secs) false
-      (and (nil? exp) (nil? iat)) false
+      ;; no instant to judge against, or no claim tying the token to one:
+      ;; either way it could be replayed into a binding at any time
+      (or (nil? when-secs) (and (nil? exp) (nil? iat))) false
       :else (and (or (nil? exp) (<= when-secs (+ exp leeway)))
                  (or (nil? nbf) (>= when-secs (- nbf leeway)))
                  (or (nil? iat) (>= when-secs (- iat leeway)))))))

@@ -27,7 +27,7 @@
                              (.initialize 2048)))))
 
 (defn- jwks-json [kid]
-  (let [^RSAPublicKey pub (.getPublic @pair)]
+  (let [^RSAPublicKey pub (.getPublic ^java.security.KeyPair @pair)]
     (str "{\"keys\":[{\"kty\":\"RSA\",\"alg\":\"RS256\",\"kid\":\"" kid "\","
          "\"n\":\"" (b64url (unsigned-bytes (.getModulus pub))) "\","
          "\"e\":\"" (b64url (unsigned-bytes (.getPublicExponent pub))) "\"}]}")))
@@ -38,7 +38,7 @@
         p (b64url (.getBytes ^String payload "UTF-8"))
         signing-input (str h "." p)
         s (doto (Signature/getInstance "SHA256withRSA")
-            (.initSign (.getPrivate @pair))
+            (.initSign (.getPrivate ^java.security.KeyPair @pair))
             (.update (.getBytes signing-input "US-ASCII")))]
     (str signing-input "." (b64url (.sign s)))))
 
@@ -67,7 +67,7 @@
   (let [jwt (sign-jwt "k1" "{\"sub\":\"repo:metio/tik\"}")
         other (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
                                   (.initialize 2048)))
-        ^RSAPublicKey pub (.getPublic other)
+        ^RSAPublicKey pub (.getPublic ^java.security.KeyPair other)
         foreign (str "{\"keys\":[{\"kty\":\"RSA\",\"alg\":\"RS256\",\"kid\":\"k1\","
                      "\"n\":\"" (b64url (unsigned-bytes (.getModulus pub))) "\","
                      "\"e\":\"" (b64url (unsigned-bytes (.getPublicExponent pub))) "\"}]}")]

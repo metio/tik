@@ -168,7 +168,8 @@
                   (die "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset"))
            aud (or (:audience opts) "tik")
            body (oidc/http-get-with-auth
-                 (str url "&audience=" (java.net.URLEncoder/encode aud "UTF-8"))
+                 (str url "&audience="
+                      (java.net.URLEncoder/encode (str aud) "UTF-8"))
                  (str "Bearer " rt))]
        (or (:value ((requiring-resolve 'cheshire.core/parse-string) body true))
            (die "the Actions token endpoint returned no value")))

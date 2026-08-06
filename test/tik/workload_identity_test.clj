@@ -35,7 +35,7 @@
                                               (.initialize 2048)))))
 
 (defn- idp-jwks []
-  (let [^RSAPublicKey pub (.getPublic @idp)]
+  (let [^RSAPublicKey pub (.getPublic ^java.security.KeyPair @idp)]
     (str "{\"keys\":[{\"kty\":\"RSA\",\"alg\":\"RS256\",\"kid\":\"k1\",\"n\":\""
          (b64url (unsigned (.getModulus pub))) "\",\"e\":\""
          (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
@@ -50,7 +50,7 @@
         p (b64url (.getBytes payload "UTF-8"))
         si (str h "." p)
         s (doto (Signature/getInstance "SHA256withRSA")
-            (.initSign (.getPrivate @idp))
+            (.initSign (.getPrivate ^java.security.KeyPair @idp))
             (.update (.getBytes si "US-ASCII")))]
     (str si "." (b64url (.sign s)))))
 
@@ -155,7 +155,7 @@
                   p (b64url (.getBytes payload "UTF-8"))
                   si (str h "." p)
                   s (doto (Signature/getInstance "SHA256withRSA")
-                      (.initSign (.getPrivate @idp))
+                      (.initSign (.getPrivate ^java.security.KeyPair @idp))
                       (.update (.getBytes si "US-ASCII")))]
               (str si "." (b64url (.sign s))))
         _ (spit token-file old)

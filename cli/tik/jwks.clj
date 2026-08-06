@@ -90,7 +90,7 @@
     (let [der (rsa-spki n e)
           b64 (.encodeToString (Base64/getEncoder) der)]
       (str "-----BEGIN PUBLIC KEY-----\n"
-           (str/join "\n" (map #(apply str %) (partition-all 64 b64)))
+           (str/join "\n" (map str/join (partition-all 64 b64)))
            "\n-----END PUBLIC KEY-----\n"))))
 
 (defn- rsa-key [n e]
