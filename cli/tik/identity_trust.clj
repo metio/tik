@@ -38,7 +38,8 @@
   than replaces, so a token signed by a retired key still verifies. A
   pinned set that loses a key stops verifying the bindings that key
   signed — a real consequence, and the reason re-pinning merges."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.identity :as identity]
             [tik.jwks :as jwks]
@@ -87,6 +88,40 @@
   (let [by-kid (fn [j] (into {} (map (juxt :kid identity)) (:keys j)))]
     {:keys (vec (vals (merge (by-kid old) (by-kid new*))))}))
 
+(defn token-claims
+  "A token's claims without checking anything — for reporting only.
+  Never a basis for trust; `binding-status` is."
+  [id-token]
+  (try (let [p (second (str/split (str id-token) #"\."))]
+         (when-not (str/blank? (str p))
+           (json-parse (String. (b64url p) "UTF-8"))))
+       (catch Exception _ nil)))
+
+(defn expected-audience
+  "The audience this store expects a binding's token to carry, from
+  `oidc.edn`, or nil when the store declares none.
+
+  Audience is the anti-replay control that keeps a token issued for
+  another service from becoming a binding here: same issuer, same
+  subject, different intended recipient. A store that declares one gets
+  the check; a store that does not is told so rather than silently
+  going without."
+  [root]
+  (let [f (io/file root "oidc.edn")]
+    (when (.exists f)
+      (try (:audience (edn/read-string (slurp f)))
+           (catch Exception _ nil)))))
+
+(defn- audience-holds?
+  "Does the token's `aud` name the expected audience? The claim is a
+  string or an array of them (RFC 7519), so both shapes count."
+  [aud expected]
+  (or (nil? expected)
+      (cond
+        (string? aud) (= aud expected)
+        (sequential? aud) (boolean (some #(= % expected) aud))
+        :else false)))
+
 (defn- epoch-seconds
   "The binding event's claimed instant as epoch seconds, or nil when the
   value is not a time at all (hostile or corrupt data)."
@@ -116,8 +151,13 @@
   A reason rather than a boolean because `verify` has to SAY why a
   binding was refused — 'signature does not verify' would be a lie when
   the truth is that nobody ever pinned the issuer's keys."
-  ([root binding] (binding-status root binding default-leeway-seconds))
-  ([root {:keys [issuer subject id-token at] :as binding} leeway]
+  ([root binding] (binding-status root binding nil))
+  ([root binding opts]
+   (binding-status root binding (or (:leeway opts) default-leeway-seconds)
+                   (if (contains? opts :audience)
+                     (:audience opts)
+                     (expected-audience root))))
+  ([root {:keys [issuer subject id-token at] :as binding} leeway audience]
    (let [jwks (try (pinned-jwks root issuer)
                    (catch Exception _ ::unreadable))]
      (cond
@@ -156,12 +196,33 @@
                {:reason :identity/token-not-live :issuer issuer :binding binding
                 :at at}
 
+               ;; a token minted for another service is a valid token being
+               ;; replayed here, which is misuse rather than an unknown
+               (not (audience-holds? (:aud (:claims parsed)) audience))
+               {:reason :identity/audience-mismatch :issuer issuer
+                :binding binding :expected audience
+                :token-audience (:aud (:claims parsed))}
+
                :else :trusted))))))))
 
 (defn binding-verifier
   "The `trusted?` predicate tik.identity injects, backed by pinned keys."
-  [root]
-  (fn [binding] (= :trusted (binding-status root binding))))
+  ([root] (binding-verifier root nil))
+  ([root opts]
+   (fn [binding] (= :trusted (binding-status root binding opts)))))
+
+(defn unchecked-audiences
+  "Bindings carrying an `aud` the store never declared an expectation
+  for. Not a refusal — the binding may be perfectly good — but worth
+  saying, because the anti-replay control is switched off until
+  `oidc.edn` names an :audience."
+  [root registry-events]
+  (when-not (expected-audience root)
+    (seq (into [] (keep (fn [b]
+                          (let [claims (token-claims (:id-token b))]
+                            (when (:aud claims)
+                              (assoc b :token-audience (:aud claims))))))
+                (identity/bindings registry-events)))))
 
 (defn verified-bindings
   "The bindings on `registry-events` whose tokens check out."

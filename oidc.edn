@@ -1,0 +1,10 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Rung 2 configuration for this store (ADR 0023).
+;;
+;; :audience is the anti-replay control. A token minted for another
+;; service is a valid token from the same issuer about the same subject,
+;; and without an expected audience it would bind here just as well —
+;; declaring one is what makes `verify` refuse it.
+{:audience "tik"}

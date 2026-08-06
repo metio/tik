@@ -50,9 +50,10 @@
      (str si "." (b64url (.sign s))))))
 
 (defn- claims-json
-  [{:keys [iss sub iat exp] :or {iss issuer sub subject
-                                 iat 1782000000 exp 1782000900}}]
-  (str "{\"iss\":\"" iss "\",\"sub\":\"" sub "\",\"iat\":" iat ",\"exp\":" exp "}"))
+  [{:keys [iss sub iat exp aud] :or {iss issuer sub subject aud "tik"
+                                     iat 1782000000 exp 1782000900}}]
+  (str "{\"iss\":\"" iss "\",\"sub\":\"" sub "\",\"aud\":\"" aud "\","
+       "\"iat\":" iat ",\"exp\":" exp "}"))
 
 ;; the binding is written inside the token's window by default
 (def ^:private live-at (Instant/ofEpochSecond 1782000300))
@@ -188,6 +189,55 @@
         "cannot judge")
     (is (= :identity/bad-signature (:reason (status pinned forged)))
         "judged, and it failed")))
+
+(deftest a-token-minted-for-another-service-cannot-bind-here
+  (let [root (store-with-pin! {})
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (testing "the store expects its own audience"
+      (is (= :identity/audience-mismatch
+             (:reason (trust/binding-status root (first (identity/bindings evs))
+                                            {:audience "some-other-service"})))))
+    (testing "and accepts the one the token names"
+      (is (= :trusted (trust/binding-status root (first (identity/bindings evs))
+                                            {:audience "tik"}))))))
+
+(deftest a-token-with-no-audience-fails-a-store-that-expects-one
+  (let [root (store-with-pin! {})
+        payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject "\","
+                     "\"iat\":1782000000,\"exp\":1782000900}")
+        evs (registry-events {:token (jwt payload)})]
+    (is (= :identity/audience-mismatch
+           (:reason (trust/binding-status root (first (identity/bindings evs))
+                                          {:audience "tik"})))
+        "expecting an audience means a token carrying none does not qualify")))
+
+(deftest an-audience-array-counts-when-it-names-us
+  (let [root (store-with-pin! {})
+        payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject "\","
+                     "\"aud\":[\"other\",\"tik\"],\"iat\":1782000000,"
+                     "\"exp\":1782000900}")
+        evs (registry-events {:token (jwt payload)})]
+    (is (= :trusted (trust/binding-status root (first (identity/bindings evs))
+                                          {:audience "tik"}))
+        "aud is a string OR an array of them (RFC 7519)")))
+
+(deftest a-store-declaring-an-audience-gets-the-check
+  (let [root (store-with-pin! {})
+        _ (spit (io/file root "oidc.edn") (pr-str {:audience "elsewhere"}))
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (is (= "elsewhere" (trust/expected-audience root)))
+    (is (= :identity/audience-mismatch
+           (:reason (trust/binding-status root (first (identity/bindings evs)))))
+        "the expectation is read from the store, not passed in")))
+
+(deftest a-store-declaring-none-says-so-rather-than-going-quiet
+  (let [root (store-with-pin! {})
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (is (nil? (trust/expected-audience root)))
+    (is (= :trusted (trust/binding-status root (first (identity/bindings evs))))
+        "no expectation means no check")
+    (is (seq (trust/unchecked-audiences root evs))
+        "but the operator is told the anti-replay control is off")))
 
 (deftest an-untrusted-binding-grants-nothing
   (let [root (store-with-pin! {:pin? false})

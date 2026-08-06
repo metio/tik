@@ -13,8 +13,8 @@
             [tik.args :refer [actor parse-key read-edn-file slurp-existing typed-value]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
-                                  die exit! load-process now resolve-id root
-                                  the-store ticket-ctx]]
+                                  die exit! load-process now registry-ticket-ids
+                                  resolve-id root the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
@@ -193,10 +193,20 @@
   (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
         cfg (if (.exists (io/file cfg-file))
               (read-edn-file (io/file cfg-file)) {})
+        s0 (the-store)
+        ;; the registry is DERIVED where it can be: a store with exactly one
+        ;; identity-registry ticket needs no --registry, so a pipeline holds
+        ;; one less piece of configuration that can drift
+        discovered (registry-ticket-ids s0)
         registry-ref (or (:registry opts) (:registry cfg)
-                         (die (str "no registry ticket — mint one with\n"
-                                   "  tik new identity-registry --title 'identity registry'\n"
-                                   "then pass --registry <its id>")))
+                         (when (= 1 (count discovered)) (first discovered))
+                         (die (if (seq discovered)
+                                (str "this store has " (count discovered)
+                                     " identity-registry tickets — name one"
+                                     " with --registry")
+                                (str "no registry ticket — mint one with\n"
+                                     "  tik new identity-registry --title 'identity registry'\n"
+                                     "then pass --registry <its id>"))))
         who (actor opts)
         key-file (or (:public-key opts) (:key opts)
                      (some-> (System/getenv "TIK_KEY") (str ".pub"))
@@ -208,7 +218,7 @@
                     (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
         issuer (or (:iss claims)
                    (die "the token carries no issuer (iss)"))
-        s (the-store)
+        s s0
         registry-id (resolve-id s registry-ref)
         at (now)
         claim (oidc/binding-claim {:claims claims :actor who
@@ -217,15 +227,22 @@
         ;; judged exactly as `verify` will judge it later, with this
         ;; event's own instant, so a refusal surfaces here and not in
         ;; somebody's audit months from now
+        ;; the audience we ASKED for is the audience we require: a token
+        ;; minted for another service must not become a binding here
+        audience (or (:audience opts) (:audience cfg) "tik")
         status (identity-trust/binding-status
                 (root) {:issuer issuer :subject (:sub claims)
-                        :id-token token :at at})]
+                        :id-token token :at at}
+                {:audience audience})]
     (when-not (= :trusted status)
       (die (str "refusing to write a binding `verify` would refuse ("
                 (name (:reason status)) ")"
                 (when (= :identity/no-pinned-jwks (:reason status))
                   (str " — pin the issuer's keys first:\n"
-                       "  tik bridge jwks --issuer " issuer)))))
+                       "  tik bridge jwks --issuer " issuer))
+                (when (= :identity/audience-mismatch (:reason status))
+                  (str " — the token names " (pr-str (:token-audience status))
+                       ", not " (pr-str audience))))))
     (let [heads (dag/heads (store/events s registry-id))
           e (event/add-attestation {:ticket registry-id :actor who :at at
                                     :parents heads :claim claim})]

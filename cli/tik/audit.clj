@@ -486,6 +486,11 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   that once recorded a binding for an IdP it can no longer reach could
   never verify again."
   [s check]
+  (when-let [unchecked (identity-trust/unchecked-audiences (root)
+                                                           (registry-events s))]
+    (println (str "  note  " (count unchecked) " binding(s) carry an audience"
+                  " this store does not check — declare :audience in oidc.edn"
+                  " so a token minted for another service cannot bind here")))
   (doseq [{:keys [reason issuer]} (identity-trust/refusals (root)
                                                            (registry-events s))]
     (if (uncheckable reason)
