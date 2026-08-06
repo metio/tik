@@ -11,7 +11,7 @@
         ;; GHSA-r7wm-3cxj-wff9 (HIGH); 2.21.4 patches it. Declared
         ;; directly so the newer version wins the resolution — drop this
         ;; pin once cheshire ships one at or above it.
-        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.21.4"}
+        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.22.1"}
         ;; the SQLite backend embeds the driver (bundled native lib,
         ;; version-pinned) so the shipped binary carries its own SQLite —
         ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
