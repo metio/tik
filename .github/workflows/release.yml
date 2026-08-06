@@ -141,10 +141,23 @@ jobs:
         run: |
           set -euo pipefail
           git add tickets/
+          if git diff --cached --quiet; then
+            echo "no events to record"
+            exit 0
+          fi
           git -c user.name="tik release" \
               -c user.email="noreply@metio.wtf" \
               commit -m "chore(tickets): record release ${{ needs.prepare.outputs.version }}"
-          git push origin HEAD:main
+          # the job checked out the release SHA, so main may have moved on;
+          # replay the one evidence commit onto it rather than force anything
+          for _ in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main && git push origin HEAD:main && exit 0
+            git rebase --abort || true
+            sleep 5
+          done
+          echo "could not record the evidence commit on main" >&2
+          exit 1
 
       - name: Publish the GitHub release
         # The release job needs the image pushed first, so a failed build never
