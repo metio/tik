@@ -11,12 +11,14 @@
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
-                                  now put-signature! resolve-id role-register root
-                                  root-dir-roots
+                                  now put-signature! registry-events resolve-id
+                                  role-register root root-dir-roots
+                                  with-registry-events
                                   signing-key sidecar-names-for store-root-doc
                                   the-store]]
             [tik.dag :as dag]
             [tik.event :as event]
+            [tik.identity-trust :as identity-trust]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
@@ -27,7 +29,7 @@
             [tik.store.sqlite :as sqlite])
   (:import (java.io File)))
 
-(declare verify-ticket)
+(declare verify-ticket cmd-verify-store verify-one check-identity-bindings)
 
 (defn cmd-export
   "Materialize the current store (whatever backend) as a file/git store
@@ -395,8 +397,18 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   publication signatures. One command, complete audit."
   [{:keys [pos] :as parsed}]
   (if (empty? pos)
-    (let [s (the-store)
-          ids (store/ticket-ids s)
+    ;; the ladder below runs per ticket; the rung-2 trust base is a
+    ;; property of the STORE, so it is computed once for the whole audit
+    (with-registry-events (the-store)
+      (fn []
+        (cmd-verify-store parsed)))
+    (verify-one parsed (first pos))))
+
+(defn- cmd-verify-store
+  "The whole-store audit: every ticket plus every archived definition."
+  [{:as parsed}]
+  (let [s (the-store)
+        ids (store/ticket-ids s)
           failures (atom 0)
           check (fn [ok? msg]
                   (when-not ok?
@@ -439,6 +451,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                            (str (count (store/events s id)) " event(s)")))))))
       (verify-definitions check)
       (verify-roots s check)
+      (check-identity-bindings s check)
       (when (pos? @skipped)
         (println (tint "2" (str "skipped " @skipped " ticket(s) with"
                                 " unchanged heads — drift check only;"
@@ -448,13 +461,50 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
             (println (tint "32" (str "verify: PASS (" (count ids)
                                      " tickets)"))))
         (do (println (tint "31" (str "verify: FAIL (" @failures ")")))
-            (exit! 1))))
-    (let [f (verify-ticket parsed (resolve-id (the-store) (first pos)))]
-      (verify-definitions
-       (fn [ok? msg]
-         (println (str (if ok? "  ok    " "  FAIL  ") msg))
-         (when-not ok? (exit! 1))))
-      (when (pos? f) (exit! 1)))))
+            (exit! 1)))))
+
+(def ^:private uncheckable
+  "Refusals that mean WE CANNOT JUDGE rather than THIS IS FORGED."
+  #{:identity/no-pinned-jwks :identity/unreadable-jwks})
+
+(defn check-identity-bindings
+  "Rung 2's own health, reported once per audit — a property of the
+  STORE, not of any one ticket, which is why it sits outside the
+  per-ticket ladder.
+
+  Evidence of forgery FAILS: a signature that does not verify, a token
+  about a different subject or issuer, a token that was not live when
+  the binding was written. Each means somebody wrote a binding the IdP
+  never supported.
+
+  Being UNABLE to judge is a note, not a failure — the same distinction
+  L1 already draws when it calls an unsigned event 'authenticity
+  unclaimed, not failed'. A binding whose issuer nobody pinned grants
+  nothing, because only verified bindings reach the signer set, so it
+  widens no trust and endangers nothing. Failing on it would also be a
+  trap with no exit: events are never deleted (ADR 0017), so a store
+  that once recorded a binding for an IdP it can no longer reach could
+  never verify again."
+  [s check]
+  (doseq [{:keys [reason issuer]} (identity-trust/refusals (root)
+                                                           (registry-events s))]
+    (if (uncheckable reason)
+      (println (str "  note  identity binding for issuer " issuer
+                    " is unverifiable (" (name reason) ") and grants nothing"
+                    " — pin its keys with `tik bridge jwks --issuer "
+                    issuer "` to make it count"))
+      (check false (str "identity binding refused (" (name reason) ")"
+                        (when issuer (str " for issuer " issuer)))))))
+
+(defn- verify-one
+  "One ticket, plus the definition checks a single-ticket audit runs."
+  [parsed ref]
+  (let [f (verify-ticket parsed (resolve-id (the-store) ref))]
+    (verify-definitions
+     (fn [ok? msg]
+       (println (str (if ok? "  ok    " "  FAIL  ") msg))
+       (when-not ok? (exit! 1))))
+    (when (pos? f) (exit! 1))))
 
 (defn verify-ticket
   "The per-ticket ladder; prints, exits nonzero on failure when run for
@@ -548,8 +598,15 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                         (:event/at (last (sort-by :event/at ahead)))
                         ") — these sort last and satisfy elapsed-since early"))))
       (println "L1 authenticity")
-      (let [signers (io/file (root) "actors")]
-        (if-not (.exists signers)
+      ;; Rung 1 (the curated actors registry) plus rung 2: keys a verified
+      ;; identity binding grants. A binding that does NOT verify is named
+      ;; with its reason and FAILS — a store whose trust base cannot be
+      ;; checked must not pass quietly, and "signature does not verify"
+      ;; would be a lie when the truth is that nobody pinned the issuer.
+      (let [signers (or (identity-trust/effective-signers (root)
+                                                          (registry-events s))
+                        (io/file (root) "actors"))]
+        (if-not (.exists ^File signers)
           (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
           (let [unsigned (atom 0)]
             (doseq [e (red/ordered evs)

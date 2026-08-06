@@ -347,6 +347,52 @@
              :heads (dag/heads evs)}
       (seq absent) (assoc :missing-parents (vec (sort absent))))))
 
+(def ^:dynamic *registry-events*
+  "A delay holding one run's registry events. The verify ladder runs
+  per ticket, so a whole-store audit binds this once and the rung-2
+  lookup costs one scan instead of one per ticket. Left unbound, every
+  call recomputes — which is what a single-ticket command wants, since
+  it must not read a trust base some earlier command cached."
+  nil)
+
+(defn- compute-registry-events
+  "Every event of every identity-registry ticket in the store.
+
+  The registry is DERIVED, not configured: a ticket pinned to the
+  :identity-registry process is one, so a store cannot have a trust base
+  that some config file forgot to mention, and adding a second registry
+  needs no setting. Reading a ticket that will not derive is skipped
+  rather than fatal — a corrupt unrelated ticket must not make every
+  signature unverifiable."
+  [s]
+  (into []
+        (mapcat (fn [id]
+                  (try (let [evs (store/events s id)]
+                         ;; the create event names the process, so this
+                         ;; costs a scan rather than a fold — verify is
+                         ;; already reading the whole store and must not
+                         ;; pay a full derivation per ticket on top
+                         (when (some (fn [e]
+                                       (and (= :ticket/create (:event/type e))
+                                            (let [p (get-in e [:event/body :ticket/process])]
+                                              (and (or (keyword? p) (string? p))
+                                                   (= "identity-registry" (name p))))))
+                                     evs)
+                           evs))
+                       (catch Exception _ nil))))
+        (store/ticket-ids s)))
+
+(defn registry-events
+  "This run's registry events, computed once when a caller has bound
+  `*registry-events*`."
+  [s]
+  (if *registry-events* @*registry-events* (compute-registry-events s)))
+
+(defn with-registry-events
+  "Run `f` with the store's registry events computed at most once."
+  [s f]
+  (binding [*registry-events* (delay (compute-registry-events s))] (f)))
+
 (defn display-title
   "The title a lens shows: a [:title] fact supersedes the created
   title — creation is immutable, names are corrections like any other
