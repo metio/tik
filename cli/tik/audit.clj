@@ -9,6 +9,7 @@
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [tik.bundle :as bundle]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
                                   cache-flush! now put-signature! registry-events
@@ -76,13 +77,16 @@
   (let [src (or (first pos) (die "usage: tik import <bundle.tgz|dir>"))
         f (io/file src)
         _ (when-not (.exists f) (die (str "no such bundle: " src)))
+        ;; unpacked by tik.bundle rather than by `tar`: an import reads an
+        ;; archive somebody else produced, and a path that climbs out of
+        ;; the temp directory would write wherever it liked
         tmp (when-not (.isDirectory f)
               (let [d (.toFile (java.nio.file.Files/createTempDirectory
                                 "tik-import"
                                 (make-array java.nio.file.attribute.FileAttribute 0)))]
-                (let [r (sh/sh "tar" "xzf" (.getPath f) "-C" (.getPath d))]
-                  (when-not (zero? (:exit r))
-                    (die (str "cannot unpack " src ": " (:err r)))))
+                (try (bundle/untar-gz! f d)
+                     (catch clojure.lang.ExceptionInfo e
+                       (die (str "cannot unpack " src ": " (ex-message e)))))
                 d))
         root-dir (or tmp f)
         s (the-store)
@@ -279,9 +283,30 @@
 # Verifies this tik evidence bundle. Requires coreutils and ssh-keygen
 # (OpenSSH 8.2+), plus openssl if the bundle carries identity bindings.
 # Run from anywhere: ./verify.sh
+#
+# This script is a COPY of the checks the format publishes, shipped for
+# convenience. The checks are what the bundle promises; the script is one
+# implementation of them, and it travels inside the very archive it
+# checks. Read it before running it, or run the published checklist
+# yourself — https://tik.projects.metio.wtf/evidence/bundle-format/
 set -u
 cd \"$(dirname \"$0\")\"
 fail=0
+
+# The packaging version. Everything else about this bundle is derived
+# from its files; the manifest declares only which contract they follow.
+if [ -f bundle.edn ]; then
+  echo \"note  $(cat bundle.edn)\"
+else
+  echo 'note  no bundle.edn — reading this as tik-evidence-bundle version 1'
+fi
+tickets=$(find tickets -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+if [ \"$tickets\" = 1 ]; then
+  echo 'ok    exactly one ticket, as version 1 requires'
+else
+  echo \"FAIL  a version-1 bundle carries exactly one ticket, found $tickets\"
+  fail=1
+fi
 
 # L0 integrity: every stored file's name IS the sha256 of its bytes.
 for f in tickets/*/events/*.edn processes/by-hash/*.edn; do
@@ -437,6 +462,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   (str "<!--\nSPDX-FileCopyrightText: The tik Authors\n"
        "SPDX-License-Identifier: 0BSD\n-->\n\n"
        "# Evidence bundle: " title "\n\n"
+       "Format `" bundle/format-name "` version " bundle/format-version
+       " — the contract these files\nfollow is published at\n"
+       "<https://tik.projects.metio.wtf/evidence/bundle-format/>.\n\n"
        "Ticket `" id "` as a self-contained, independently verifiable\n"
        "artifact. Nothing here requires tik or trusts its producer:\n\n"
        "- `tickets/…/events/*.edn` — the append-only log. Each file's\n"
@@ -449,15 +477,27 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "  the ticket pinned at creation, plus publication signatures.\n"
        "- `actors` — the allowed-signers registry the signatures check\n"
        "  against. Verify its keys out of band; it names who, the\n"
-       "  signatures prove that they, and the hashes prove what.\n\n"
+       "  signatures prove that they, and the hashes prove what.\n"
+       "- `identity/` — the key bindings behind any actor the registry\n"
+       "  lists on an issuer's say-so, with that issuer's public key, so\n"
+       "  the grant is re-earned here rather than taken on our word.\n"
+       "- `roles.edn` — who was in which role when this was bundled,\n"
+       "  where the store keeps a register. Absent means the definition's\n"
+       "  own declared members stand.\n"
+       "- `bundle.edn` — the packaging version, and nothing else.\n\n"
        "## Verify\n\n"
        "```sh\n./verify.sh\n```\n\n"
        "coreutils + ssh-keygen (openssl too, when this bundle\n"
-       "carries identity bindings). To additionally REPLAY the\n"
-       "derivation (what stage these facts imply), install tik and run\n"
-       "`tik export`/`tik verify` over this directory — derivation is a\n"
-       "pure function of these files, so any tik, anywhere, forever,\n"
-       "derives the same answer.\n"))
+       "carries identity bindings).\n\n"
+       "## Re-derive\n\n"
+       "Checking the bytes says these facts are genuine. Re-deriving says\n"
+       "what they add up to — which stages the pinned rules grant, and\n"
+       "which guards are still satisfied today:\n\n"
+       "```sh\ntik rederive <this bundle>\n```\n\n"
+       "Derivation is a pure function of these files and the instant you\n"
+       "ask, so any tik, anywhere, derives the same answer — and a guard\n"
+       "with a freshness window answers differently next month, on the\n"
+       "same evidence, which is the point.\n"))
 
 (defn cmd-bundle
   "The evidence bundle (PLAN §10): one ticket as a portable artifact a
@@ -543,6 +583,13 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       (doseq [^File f (.listFiles (io/file (root) "processes" "by-hash"))
               :when (str/starts-with? (.getName f) phash)]
         (copy! f (io/file bdir "processes" "by-hash" (.getName f)))))
+    ;; the role register travels because DERIVATION READS IT: `:signed-by`
+    ;; resolves a role to its members, and a store that keeps a register
+    ;; overrides what the definition declares. A bundle without it would
+    ;; re-derive under different membership than the store it came from,
+    ;; which is precisely the drift evidence exists to rule out.
+    (copy! (io/file (root) "roles.edn") (io/file bdir "roles.edn"))
+    (spit (io/file bdir bundle/manifest-name) (bundle/manifest-edn))
     (spit (io/file bdir "verify.sh") bundle-verify-sh)
     (.setExecutable (io/file bdir "verify.sh") true)
     (spit (io/file bdir "README.md")

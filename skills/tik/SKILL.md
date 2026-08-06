@@ -110,6 +110,20 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
   not a failure — it grants nothing, and events are never deleted, so failing
   would trap a store forever. Evidence of forgery does fail.
+- `tik bundle <id> --out ev.tgz` — one ticket as a portable evidence bundle
+  (`tik-evidence-bundle` version 1): events, signatures, witness marks, key
+  bindings and their issuer keys, the pinned definition, `roles.edn`, and a
+  `verify.sh` that checks the lot with coreutils + `ssh-keygen`.
+- `tik rederive <ev.tgz|dir|https url> [--edn]` — check a bundle and recompute
+  what its facts imply under the definition it pinned, **at the instant you
+  ask**: a guard with a freshness window (`:attested-within`,
+  `:elapsed-since`) grants a stage today and withholds it next month on the
+  same bytes. Exits 1 when the bundle fails to verify. It never runs the
+  bundle's own `verify.sh`, unpacks the archive itself (refusing traversal,
+  symlinks and unbounded expansion), and refuses a pinned definition that does
+  not lint. `--serve [--port N]` is the same over HTTP —
+  `POST /rederive`, `GET /derivation?bundle=<url>`, `GET /badge.svg?bundle=<url>`
+  — deriving per request and caching only on `[content-hash, minute]`.
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
   (versions every ticket has been moved off with `reprocess`). Dry-run by
   default; `verify` stays PASS, only historical `--at` degrades. Tidiness,
@@ -321,3 +335,9 @@ for it when a command's flags, a guard's exact semantics, or a runbook a
 - Do not invent a new event type or guard operator — both vocabularies are
   closed and versioned (see `CLAUDE.md` and `docs/PLAN.md` §19).
 - Do not cache a derived value as authoritative — that violates the one law.
+  A cache is legal when every input to the derivation is in its key: the
+  bundle service memoizes on `[content-hash, minute]` because derivation is a
+  function of `(events, now)`, and dropping the whole cache costs only time.
+- Do not write a `:malli` guard or fact schema that names `:fn` or `:multi` —
+  those compile a child through `m/eval`, so they are code rather than data.
+  Derivation refuses them (`:schema/unsupported`) and `tik lint` errors.

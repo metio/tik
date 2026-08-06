@@ -69,3 +69,4 @@ so a checkout and this site carry the same record.
 | [0002](/decisions/0002-pinned-process-versions/) | Tickets pin their definition hash; migration is an event. |
 | [0023](/decisions/0023-key-bindings-are-evidence/) | A verified key binding grants signing authority; pinned keys anchor it. |
 | [0024](/decisions/0024-link-values-name-foreign-tickets/) | A link's value names its referent; a foreign ticket carries the head observed. |
+| [0025](/decisions/0025-the-evidence-bundle-is-a-versioned-format/) | The evidence bundle is a named, versioned format; a badge names the derivation. |

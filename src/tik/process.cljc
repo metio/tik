@@ -12,6 +12,7 @@
   basis, facts over flags, graph sanity, stratified negation) lives in
   tik.lint, a leaf over this namespace's schema and guard vocabulary."
   (:require [malli.core :as m]
+            [malli.error :as me]
             [tik.canonical :as canonical]))
 
 (def Guard
@@ -43,6 +44,53 @@
 
 (def valid? (m/validator ProcessDef))
 (def explain-process (m/explainer ProcessDef))
+
+;; ---------------------------------------------- schemas inside a definition
+
+(def eval-capable-schemas
+  "The malli schemas that turn definition DATA into CODE. Both compile a
+  child through `m/eval`, which on a runtime carrying sci evaluates a
+  string or s-expression written in the definition — so `[:fn \"(fn [_]
+  …)\"]` would run whatever it says, inside derivation."
+  #{:fn :multi})
+
+(def schema-registry
+  "The registry every schema in a definition compiles under: malli's data
+  schemas, minus the ones that can call something.
+
+  A definition travels. It is pinned by hash, shipped in evidence
+  bundles, and re-derived by whoever holds one — so its schemas are read
+  from material a stranger produced. A schema that can invoke a function
+  is not data, it is a program, and evaluating one would make derivation
+  neither offline nor reproducible even where nobody meant harm. The
+  kernel therefore cannot compile one at all, rather than leaving every
+  reader to have linted first."
+  (apply dissoc (m/default-schemas) eval-capable-schemas))
+
+(def ^:private schema-opts {:registry schema-registry})
+
+(defn schema-compiles?
+  "Does `schema` compile as data? False for a schema naming something
+  outside the data-only registry — which is what `tik lint` reports and
+  what derivation refuses to evaluate."
+  [schema]
+  (try (m/schema schema schema-opts) true
+       (catch #?(:clj Exception :cljs :default) _ false)))
+
+(defn schema-holds?
+  "Does `value` satisfy `schema`, compiled as data? `::unsupported` when
+  the schema does not compile — a distinct answer from `false`, because
+  'this schema may not be evaluated' and 'this value does not match' are
+  different things to report."
+  [schema value]
+  (try (m/validate schema value schema-opts)
+       (catch #?(:clj Exception :cljs :default) _ ::unsupported)))
+
+(defn schema-errors
+  "Humanized errors for a schema that compiles, else nil."
+  [schema value]
+  (try (me/humanize (m/explain schema value schema-opts))
+       (catch #?(:clj Exception :cljs :default) _ nil)))
 
 (defn process-hash
   "Content address of the definition — the identity tickets pin."

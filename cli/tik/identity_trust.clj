@@ -97,6 +97,15 @@
            (json-parse (String. (b64url p) "UTF-8"))))
        (catch Exception _ nil)))
 
+(defn token-header
+  "A token's JOSE header without checking anything — where the `kid`
+  that selects the issuer key lives."
+  [id-token]
+  (try (let [h (first (str/split (str id-token) #"\."))]
+         (when-not (str/blank? (str h))
+           (json-parse (String. (b64url h) "UTF-8"))))
+       (catch Exception _ nil)))
+
 (defn expected-audience
   "The audience this store expects a binding's token to carry, from
   `oidc.edn`, or nil when the store declares none.
@@ -144,6 +153,12 @@
       :else (and (or (nil? exp) (<= when-secs (+ exp leeway)))
                  (or (nil? nbf) (>= when-secs (- nbf leeway)))
                  (or (nil? iat) (>= when-secs (- iat leeway)))))))
+
+(defn token-live-at?
+  "Was a token with these `claims` live at the instant `at`? Rule 3 of
+  ADR 0023, on its own, for a reader holding claims rather than a store."
+  ([claims at] (token-live-at? claims at default-leeway-seconds))
+  ([claims at leeway] (window-holds? claims (epoch-seconds at) leeway)))
 
 (defn binding-status
   "Why a binding does or does not count: `:trusted`, or a map carrying a

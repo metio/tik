@@ -15,7 +15,11 @@
   :errors/:options/:guard as applicable.
 
   All fact inspection goes through tik.reduce/fact-status — the single
-  choke point for why a fact does or does not satisfy guards.
+  choke point for why a fact does or does not satisfy guards. Every
+  schema a definition carries — a `:process/facts` entry, a `:malli`
+  guard — compiles under tik.process/schema-registry, which holds
+  malli's DATA schemas and none of the ones that can call a function;
+  `:schema/unsupported` is the reason a schema outside it earns.
 
   Vocabulary v2 — twelve operators: :fact :fact= :artifact :signed-by
   :stage-reached :elapsed-since :attested-within :different-person
@@ -34,8 +38,7 @@
   `reached` must be stratified; negation over facts is monotone-safe
   and unrestricted."
   (:require [clojure.string :as str]
-            [malli.core :as m]
-            [malli.error :as me]
+            [tik.process :as process]
             [tik.reduce :as red])
   #?(:clj (:import (java.time Duration Instant))))
 
@@ -85,11 +88,15 @@
       :conflicted (fail {:reason :fact/conflicted :path path
                          :claims (:claims fs)})
       :present
-      (if (and schema (not (m/validate schema (:value fs))))
-        (fail {:reason :fact/invalid :path path :value (:value fs)
-               :schema schema
-               :errors (me/humanize (m/explain schema (:value fs)))})
-        ok))))
+      (if-not schema
+        ok
+        (case (process/schema-holds? schema (:value fs))
+          true ok
+          ::process/unsupported (fail {:reason :schema/unsupported :path path
+                                       :schema schema})
+          (fail {:reason :fact/invalid :path path :value (:value fs)
+                 :schema schema
+                 :errors (process/schema-errors schema (:value fs))}))))))
 
 (defn- eval-artifact
   "A RAW STRING prefix, not a path prefix: \"review\" accepts
@@ -128,10 +135,11 @@
 
 (defn- eval-malli [[_ schema] {:keys [state]}]
   (let [facts (fact-map state)]
-    (if (m/validate schema facts)
-      ok
+    (case (process/schema-holds? schema facts)
+      true ok
+      ::process/unsupported (fail {:reason :schema/unsupported :schema schema})
       (fail {:reason :schema/unsatisfied :schema schema
-             :errors (me/humanize (m/explain schema facts))}))))
+             :errors (process/schema-errors schema facts)}))))
 
 (defn- eval-fact=
   "Present AND equal, with exactly one reason per failure mode: absent

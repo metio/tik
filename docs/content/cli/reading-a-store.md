@@ -80,6 +80,7 @@ waiting on its signature.
 tik board board.html
 tik serve --port 8080
 tik bundle 3184 --out ticket-3184.tgz
+tik rederive ticket-3184.tgz
 ```
 
 `board` renders the whole store into one dependency-free HTML file you can
@@ -87,4 +88,6 @@ mail or archive. `serve` publishes it live, read-only, with `/tickets.edn`
 and `/explain/<id>.edn` for tools. `bundle` packs one ticket — events,
 signatures, witness marks, the pinned ruleset, and a `verify.sh` — into a
 tarball a third party checks with coreutils and `ssh-keygen`, no tik
-required.
+required. `rederive` is the other half: it checks a bundle and recomputes
+what its facts imply under the rules the ticket pinned, at the instant you
+ask. See [Evidence](/evidence/).
