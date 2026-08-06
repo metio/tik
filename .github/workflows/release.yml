@@ -92,24 +92,12 @@ jobs:
         with:
           version: ${{ needs.prepare.outputs.version }}
           previous: ${{ needs.prepare.outputs.previous }}
-      - name: Publish the GitHub release
-        # The release job needs the image pushed first, so a failed build never
-        # leaves a published release pointing at a missing image.
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          NOTES: ${{ steps.notes.outputs.file }}
-        run: |
-          gh release create "$VERSION" \
-            --target "$GITHUB_SHA" \
-            --title "$VERSION" \
-            --notes-file "$NOTES" \
-            dist/tik.jar \
-            dist/tik-linux-amd64-glibc \
-            dist/SHA256SUMS \
-            dist/SHA256SUMS.bundle
-
       - name: Record the release as evidence
+        # continue-on-error keeps a recording fault off the release itself:
+        # the artifacts are built, signed and correct whether or not the
+        # evidence tarball was written, and a red step says so plainly. The
+        # publish step attaches the bundle only if it exists.
+        continue-on-error: true
         # The store IS this repository, so a release records itself. The job
         # generates a keypair, binds it to the workflow's own OIDC identity
         # (rung 2, ADR 0023) and signs with it — no long-lived key exists
@@ -158,6 +146,29 @@ jobs:
           # by commit. It ships WITH the release instead: one tarball a
           # third party checks using coreutils, ssh-keygen and openssl —
           # including re-earning this job's signing key from GitHub's own
-          # signature over the token that bound it.
+          # signature over the token that bound it. Releases here are
+          # immutable, so it has to be an asset at creation, not an upload.
           tik bundle "$ID" --out "dist/evidence-${VERSION}.tgz"
-          gh release upload "${VERSION}" "dist/evidence-${VERSION}.tgz"
+
+      - name: Publish the GitHub release
+        # The release job needs the image pushed first, so a failed build never
+        # leaves a published release pointing at a missing image.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          set -euo pipefail
+          assets="dist/tik.jar dist/tik-linux-amd64-glibc dist/SHA256SUMS dist/SHA256SUMS.bundle"
+          # attached at creation or not at all: a release here is immutable
+          if [ -f "dist/evidence-${VERSION}.tgz" ]; then
+            assets="$assets dist/evidence-${VERSION}.tgz"
+          else
+            echo "::warning::no evidence bundle for ${VERSION}; releasing without it"
+          fi
+          # shellcheck disable=SC2086
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file "$NOTES" \
+            $assets
