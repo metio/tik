@@ -1432,3 +1432,56 @@ research:
 
 Trigger to revisit: H4 landing (which unblocks the machine identity), or the
 first release where somebody actually asks tik to prove a compliance claim.
+
+## A published evidence-bundle format, and a service that re-derives it (unjudged)
+
+The bundle is already the artifact; what it lacks is a name, a version
+and a written contract. Do NOT invent a competing attestation envelope —
+in-toto exists, `tik bridge intoto` reads it, and a third format would be
+the standards joke. What the bundle carries that in-toto does not is a
+different KIND of thing: an in-toto statement attests facts about a
+build, while a bundle carries the facts, the hash-pinned rules that judge
+them, and the means to recompute the verdict offline. in-toto's nearest
+analogue is the layout, and a process definition already is one.
+
+So the pitch is not "another SLSA". It is: SLSA tells you a build
+followed a process; this tells you WHICH process, what it required, what
+was supplied, and lets you recompute the answer without us.
+
+**The badge is where our own law bites, and it must not be shipped
+carelessly.** A badge is a derived conclusion, cached and displayed as
+authoritative — the precise thing derived-beats-declared forbids.
+Someone will notice, and they will be right. Three rules make it honest:
+
+- **Derive per request.** The endpoint re-derives from the bundle every
+  time; the badge is a lens, not a stored status.
+- **Cache keyed by the bundle's content hash.** Legitimate under ADR
+  0013 — disposable, untrusted, and keyed by immutable input, so it
+  cannot go stale by construction. That is also where "quickly" comes
+  from: hashes, signatures and one fold are milliseconds, and identical
+  input cannot produce a different answer.
+- **The service is disposable.** If it disappears, verify.sh still
+  works, and the badge page must say so and print the command. A
+  verification service that becomes the authority has re-introduced
+  exactly the trust the bundle removed.
+
+**What the badge says matters as much as that it exists.** Not
+"compliant" — meaningless without naming the policy, and the badge-tool
+failure mode we are differentiating from. Name the derivation: the stage
+reached, the guards satisfied, and the definition hash that judged it.
+The badge is a doorway to an explain page showing what held, what did
+not, and how to re-derive it; that page is the product.
+
+Two difficulties to state before anyone builds it. **Adoption is the
+whole problem** — the format is easy, getting projects to publish
+bundles is not, and the only realistic wedge is one-line CI integration
+over evidence they already produce, which release.yml now demonstrates.
+And **the verdict is only as good as the attester**: the service checks
+signatures and re-derives, it does not read the SBOM. A badge implies
+more assurance than that to most readers, and that gap is exactly where
+badge schemes earn distrust, so it belongs in the first paragraph rather
+than the FAQ.
+
+Trigger to revisit: H5 or H8 getting a verdict — this is the most
+concrete test either has — or the first outside project asking how to
+consume a tik bundle.
