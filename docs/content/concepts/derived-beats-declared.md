@@ -37,7 +37,9 @@ sets and each derives the same answer independently. See
 **Auditability that survives the tool.** The conclusion is reproducible
 from the signed bytes by anyone, including someone who does not run tik.
 `tik bundle` packs one ticket into a tarball that verifies with coreutils
-and `ssh-keygen` alone.
+and `ssh-keygen` alone, and `tik rederive` recomputes the stages it
+implies from the rules travelling inside it. See
+[Evidence](/evidence/).
 
 ## What the law costs
 

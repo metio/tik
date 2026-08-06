@@ -387,6 +387,15 @@
     :gen (one gen-garbage-definition)}
    {:sym 'tik.process/signing-roles :f tik.process/signing-roles
     :gen (one gen-garbage-guard)}
+   ;; a schema is arbitrary EDN out of a definition somebody else wrote,
+   ;; and these three are what stands between one and the evaluator —
+   ;; so garbage in must be a value out, every time
+   {:sym 'tik.process/schema-compiles? :f tik.process/schema-compiles?
+    :gen (one gen/any-equatable)}
+   {:sym 'tik.process/schema-holds? :f tik.process/schema-holds?
+    :gen (gen/tuple gen/any-equatable gen/any-equatable)}
+   {:sym 'tik.process/schema-errors :f tik.process/schema-errors
+    :gen (gen/tuple gen/any-equatable gen/any-equatable)}
    {:sym 'tik.plan/summary :f tik.plan/summary
     :gen (gen/tuple gen-dep-graph gen-settled)}
    {:sym 'tik.plan/critical-path :f tik.plan/critical-path
@@ -624,6 +633,15 @@
                   ["dupes"] ["ls" "--where" "bogus=1"] ["search"]
                   ["whatif" "zzzz" "+NOT-A-DURATION"]
                   ["reprocess" "zzzz"] ["bundle"] ["witness" "zzzz"]
+                  ;; a bundle is the one input that arrives from a
+                  ;; stranger, so every way of handing over garbage —
+                  ;; nothing, a missing path, a directory that is not a
+                  ;; bundle, a file that is not gzip, a URL nobody may
+                  ;; fetch — must be a sentence rather than a stack
+                  ["rederive"] ["rederive" "/nonexistent.tgz"]
+                  ["rederive" "."] ["rederive" "deps.edn"]
+                  ["rederive" "https://localhost/b.tgz"]
+                  ["rederive" "https://"] ["rederive" "--serve" "--port" "abc"]
                   ["attest" "zzzz"] ["work" "??"]
                   ["author" "--from" "/nonexistent.edn"]
                   ["adopt"] ["adopt" "/nonexistent.tmpl.edn"]

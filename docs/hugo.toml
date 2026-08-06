@@ -27,7 +27,7 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
   term = ["HTML", "RSS", "ATOM"]
 
 [params]
-  mainSections = ["get-started", "concepts", "cli", "authoring", "integrations", "runbooks", "decisions", "contributing"]
+  mainSections = ["get-started", "concepts", "cli", "authoring", "evidence", "integrations", "runbooks", "decisions", "contributing"]
   author = "metio.wtf"
   github = "metio/tik"
   fediverseCreator = "@sebhoss@mastodon.online"
@@ -165,7 +165,24 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/authoring/roles-and-authority/"
     weight = 3
 
-  # 5 ── Integrations: agent surfaces over the same derivation.
+  # 5 ── Evidence: what leaves the store, and how a stranger checks it.
+  [[menu.main]]
+    identifier = "evidence"
+    name = "Evidence"
+    url = "/evidence/"
+    weight = 42
+  [[menu.main]]
+    parent = "evidence"
+    name = "Bundle format"
+    url = "/evidence/bundle-format/"
+    weight = 1
+  [[menu.main]]
+    parent = "evidence"
+    name = "Re-deriving a bundle"
+    url = "/evidence/re-deriving/"
+    weight = 2
+
+  # 6 ── Integrations: agent surfaces over the same derivation.
   [[menu.main]]
     identifier = "integrations"
     name = "Integrations"
@@ -182,7 +199,7 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/integrations/mcp-server/"
     weight = 2
 
-  # 6 ── Runbooks: what each stage of a process asks for. No menu children —
+  # 7 ── Runbooks: what each stage of a process asks for. No menu children —
   # the index groups all nineteen by process, which beats a flat list here.
   [[menu.main]]
     identifier = "runbooks"
@@ -190,14 +207,14 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/runbooks/"
     weight = 50
 
-  # 7 ── Decisions: the ADR log, likewise presented by its own index.
+  # 8 ── Decisions: the ADR log, likewise presented by its own index.
   [[menu.main]]
     identifier = "decisions"
     name = "Decisions"
     url = "/decisions/"
     weight = 60
 
-  # 8 ── Contributing.
+  # 9 ── Contributing.
   [[menu.main]]
     identifier = "contributing"
     name = "Contributing"

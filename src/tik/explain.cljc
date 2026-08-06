@@ -224,6 +224,10 @@
     :time/not-elapsed (str duration " since " since " has not elapsed"
                            (when due (str " (due " due ")")))
     :schema/unsatisfied (str "facts do not satisfy schema: " (pr-str errors))
+    :schema/unsupported (str "the definition's schema " (pr-str schema)
+                             (when path (str " for " path))
+                             " is not data — a schema that can call a"
+                             " function never evaluates")
     :alternatives (str "one of: "
                        (str/join " | " (map #(str/join " + "
                                                        (map reason->text %))

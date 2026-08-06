@@ -78,6 +78,20 @@ as the file format. `pack` consolidates settled tickets into one
 content-addressed pack each, and `gc` removes archived definitions no
 ticket pins any more.
 
+## Handing a ticket to someone else
+
+```sh
+tik bundle 3184 --out evidence.tgz
+tik import evidence.tgz
+tik rederive evidence.tgz
+```
+
+`bundle` packs one ticket as an [evidence bundle](/evidence/): the events,
+their signatures, the pinned definition and the registry, checkable with
+coreutils. `import` brings someone else's events into this store, merging
+by content address so importing twice is a no-op. `rederive` recomputes
+what a bundle's facts imply without importing anything.
+
 ## Alerts out, mail in
 
 ```sh

@@ -10,8 +10,9 @@
   schema and guard vocabulary), never the reverse."
   (:require [clojure.string :as str]
             [clojure.walk :as walk]
-            [tik.process :refer [explain-process guard-operators guard-operators-v1
-                                 valid?]]))
+            [tik.process :refer [eval-capable-schemas explain-process
+                                 guard-operators guard-operators-v1
+                                 schema-compiles? valid?]]))
 
 (defn- all-guards [stage]
   (vec (:guards stage [])))
@@ -83,6 +84,12 @@
 (defn- stage-refs [guard]
   (collect #(when (and (vector? %) (= :stage-reached (first %)))
               (second %))
+           guard))
+
+(defn- malli-schemas
+  "The schema argument of every `:malli` guard in a tree."
+  [guard]
+  (collect #(when (and (vector? %) (= :malli (first %))) [(nth % 1 nil)])
            guard))
 
 (defn- negated-stage-refs
@@ -171,6 +178,25 @@
                        " (v2 adds :attested-within and"
                        " :different-person — declare"
                        " :process/guard-vocab 2 to use them).")}))
+        ;; schemas are DATA. malli's :fn and :multi compile a child
+        ;; through m/eval, which on a runtime carrying sci runs a string
+        ;; or s-expression straight out of the definition — and a
+        ;; definition is read from evidence bundles a stranger produced.
+        ;; Derivation refuses to compile one (tik.process/schema-registry);
+        ;; saying so here is what turns that refusal into a diagnostic.
+        (for [[where schema] (concat (for [[path schema] (:process/facts process)]
+                                       [(str "fact " path) schema])
+                                     (for [s stages, g (all-guards s)
+                                           schema (apply concat (malli-schemas g))]
+                                       [(str "stage " (:stage/id s)
+                                             " :malli guard") schema]))
+              :when (not (schema-compiles? schema))]
+          {:level :error
+           :msg (str where " carries a schema that is not data: "
+                     (pr-str schema) ". Schemas naming "
+                     (str/join " or " (sort (map pr-str eval-capable-schemas)))
+                     " can call a function, so derivation never evaluates"
+                     " one — express the constraint as data.")})
         ;; undeclared facts
         (for [s stages, g (all-guards s)
               path (apply concat (fact-refs g)) :when (not (declared path))]

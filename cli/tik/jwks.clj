@@ -149,6 +149,42 @@
       (.verify v sig))
     (catch Exception _ false)))
 
+(defn b64url-bytes
+  "base64url text as raw bytes — a JWS signature, decoded."
+  ^bytes [^String s]
+  (b64url-decode s))
+
+(defn- pem->key
+  "A PEM SubjectPublicKeyInfo as a PublicKey for `alg`. The JWS header
+  names the algorithm and `jws-verify` pins the Signature to the same
+  one, so a header claiming an algorithm the key is not simply fails to
+  verify."
+  [alg ^String pem]
+  (let [der (.decode (Base64/getMimeDecoder)
+                     (-> pem
+                         (str/replace #"-----[A-Z ]+-----" "")
+                         (str/replace #"\s" "")))]
+    (.generatePublic (KeyFactory/getInstance
+                      (case alg "RS256" "RSA" "EdDSA" "Ed25519"
+                            (fail! (str "unsupported JWS alg: " alg)
+                                   :reason :oid4vci/unsupported-alg)))
+                     (X509EncodedKeySpec. der))))
+
+(defn pem-verifier
+  "The same verification an evidence bundle's `verify.sh` does with
+  openssl, in process: pick the issuer key by the JWT header's `kid` from
+  a {kid PEM} map and check the signature. A bundle carries PEMs rather
+  than a JWKS because openssl reads one and nothing of ours is needed."
+  [kid->pem]
+  (fn [signing-input sig header]
+    (let [kid (str (:kid header))
+          pem (or (get kid->pem kid)
+                  (when (= 1 (count kid->pem)) (val (first kid->pem)))
+                  (fail! (str "no pinned issuer key matches kid " kid)
+                         :reason :oid4vci/no-key))
+          alg (:alg header)]
+      (jws-verify alg (pem->key alg pem) signing-input sig))))
+
 (defn verifier
   "The verifier `tik.oid4vci/verify` injects, from a parsed JWKS map:
   pick the key by the JWT header's `kid` (or the sole key) and check the

@@ -23,6 +23,7 @@
             [tik.inspect :as inspect]
             [tik.linting :as linting]
             [tik.query :as query]
+            [tik.rederive :as rederive]
             [tik.serve :as serve]
             [tik.storeops :as storeops]
             [tik.workcmd :as workcmd]
@@ -270,6 +271,14 @@
                                                 marks, pinned ruleset, verify.sh —
                                                 checkable with coreutils + ssh-keygen,
                                                 no tik required
+  tik rederive <bundle.tgz|dir|url> [--edn]     the other half: check a bundle and
+              [--serve [--port N]]              recompute what its facts imply under
+                                                the rules it pinned. verify.sh proves
+                                                the bytes; this says what they add up
+                                                to, at the instant you ask. --serve
+                                                does the same over HTTP, per request,
+                                                including a badge that names the
+                                                derivation rather than grading it
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
              [--template bug|change-request|    definition + test skeleton; no EDN
               purchase-approval] [--name N]     knowledge needed; templates are
@@ -318,8 +327,8 @@
     "format" "from" "github" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "sqlite" "stage" "store" "template" "threshold"
-    "title"
+    "reason" "registry" "role" "serve" "sqlite" "stage" "store" "template"
+    "threshold" "title"
     "to" "token-env" "token-file" "user" "verbose" "watch" "where" "withdraw"
     "witness"})
 
@@ -386,6 +395,7 @@
       "import"  (audit/cmd-import parsed)
       "author"  (authoring/cmd-author parsed)
       "bundle"  (audit/cmd-bundle parsed)
+      "rederive" (rederive/cmd-rederive parsed)
       "lint"    (linting/cmd-lint parsed)
       "actor"   (admin/cmd-actor parsed)
       ;; `tik roles` alone is the read-only view; a positional makes it

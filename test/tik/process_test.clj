@@ -127,3 +127,37 @@
                                  :guards [[:signed-by :ghost [:x]]]}]}]
         (is (= {:members [] :stages [:a]}
                (:ghost (process/roles-gating p))))))))
+
+;; ---------------------------------------------------- schemas must be data
+
+(def ^:private sexp-schema
+  "A malli `:fn` whose child is an s-expression. On a runtime carrying
+  sci, compiling this schema EVALUATES the string — so a definition
+  could run whatever it liked inside derivation, and a definition
+  arrives from evidence bundles strangers produce."
+  [:fn "(fn [_] (throw (ex-info \"a schema called something\" {})))"])
+
+(deftest a_schema_that_can_call_a_function_never_compiles
+  (is (false? (process/schema-compiles? sexp-schema)))
+  (is (false? (process/schema-compiles? [:multi {:dispatch "(fn [_] :a)"}
+                                         [:a :any]])))
+  (testing "and every data schema still does"
+    (is (true? (process/schema-compiles? [:string {:min 6}])))
+    (is (true? (process/schema-compiles? [:enum :ship :hold])))
+    (is (true? (process/schema-compiles? [:map-of [:vector :keyword] :any])))
+    (is (true? (process/schema-compiles? [:and :int [:> 3]])))))
+
+(deftest evaluating_such_a_schema_refuses_rather_than_runs_it
+  ;; the s-expression throws if it is ever called, so reaching a plain
+  ;; ::unsupported is the whole assertion
+  (is (= :tik.process/unsupported (process/schema-holds? sexp-schema {})))
+  (is (nil? (process/schema-errors sexp-schema {}))))
+
+(deftest lint_names_a_schema_that_is_not_data
+  (let [p {:process/id :p :process/version 1 :lint {:runbooks :off}
+           :process/facts {[:a] sexp-schema}
+           :process/stages [{:stage/id :s :guards [[:malli sexp-schema]]}]}
+        msgs (map :msg (errors p))]
+    (is (some #(re-find #"fact \[:a\] carries a schema that is not data" %) msgs))
+    (is (some #(re-find #":malli guard carries a schema that is not data" %)
+              msgs))))
