@@ -93,11 +93,11 @@ jobs:
           version: ${{ needs.prepare.outputs.version }}
           previous: ${{ needs.prepare.outputs.previous }}
       - name: Record the release as evidence
-        # continue-on-error keeps a recording fault off the release itself:
-        # the artifacts are built, signed and correct whether or not the
-        # evidence tarball was written, and a red step says so plainly. The
-        # publish step attaches the bundle only if it exists.
-        continue-on-error: true
+        # This step GATES the release. An artifact nobody can verify is the
+        # thing this whole path exists to prevent, so a fault here stops
+        # publication rather than shipping something unprovable — the
+        # release is delayed, which is recoverable, instead of a version
+        # existing forever with no evidence behind it.
         # The store IS this repository, so a release records itself. The job
         # generates a keypair, binds it to the workflow's own OIDC identity
         # (rung 2, ADR 0023) and signs with it — no long-lived key exists
@@ -159,16 +159,20 @@ jobs:
           NOTES: ${{ steps.notes.outputs.file }}
         run: |
           set -euo pipefail
-          assets="dist/tik.jar dist/tik-linux-amd64-glibc dist/SHA256SUMS dist/SHA256SUMS.bundle"
-          # attached at creation or not at all: a release here is immutable
-          if [ -f "dist/evidence-${VERSION}.tgz" ]; then
-            assets="$assets dist/evidence-${VERSION}.tgz"
-          else
-            echo "::warning::no evidence bundle for ${VERSION}; releasing without it"
+          # No evidence, no release. The bundle is what lets anyone check
+          # what this version is and who built it; publishing without it
+          # would ship an artifact nobody can hold to account. A release
+          # here is immutable, so it is attached at creation or not at all.
+          if [ ! -f "dist/evidence-${VERSION}.tgz" ]; then
+            echo "no evidence bundle for ${VERSION} — refusing to publish" >&2
+            exit 1
           fi
-          # shellcheck disable=SC2086
           gh release create "$VERSION" \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes-file "$NOTES" \
-            $assets
+            dist/tik.jar \
+            dist/tik-linux-amd64-glibc \
+            dist/SHA256SUMS \
+            dist/SHA256SUMS.bundle \
+            "dist/evidence-${VERSION}.tgz"
