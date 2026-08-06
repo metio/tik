@@ -42,6 +42,21 @@
    "whatif" [:id "sev=high"] "roles" [] "causal" [:id]
    "work" ["week" "--actor" "seb"] "agent" ["actions" :id "--actor" "seb"]})
 
+(deftest every_documented_flag_is_accepted
+  ;; check-flags! refuses any flag nothing reads, and refusing one the
+  ;; usage text advertises is the worst of both: a documented invocation
+  ;; that dies before it runs. That shipped once — `tik bridge workload
+  ;; --github` was documented and unregistered, and the release pipeline
+  ;; found it. Derived from the usage text so a new flag cannot repeat it.
+  (let [usage @#'tik.cli/usage
+        documented (into #{} (map second)
+                         (re-seq #"--([a-z][a-z0-9-]*)" usage))
+        known (set @#'tik.cli/known-flags)
+        missing (sort (remove known documented))]
+    (is (empty? missing)
+        (str "these flags appear in `tik help` but check-flags! would"
+             " refuse them: " (str/join ", " (map #(str "--" %) missing))))))
+
 (deftest every_command_is_classified_for_output
   (let [derived (commands-from-usage)
         classified (set/union (set (keys machine-invocations)) human-only)]

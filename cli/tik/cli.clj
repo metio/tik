@@ -286,7 +286,7 @@
   in the store has earned the stricter reading of its arguments."
   #{"actor" "all" "anchor" "apply" "at" "audience" "body" "changed"
     "as" "client-id" "command" "config" "credential" "dry-run" "edn" "force"
-    "format" "from" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
+    "format" "from" "github" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
     "reason" "registry" "role" "sqlite" "template" "threshold" "title"
