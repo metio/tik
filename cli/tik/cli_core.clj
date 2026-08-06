@@ -69,7 +69,37 @@
   []
   (boolean (or (System/getenv "TIK_ROOT") @discovered-root)))
 
-(defn now [] (Instant/now))
+(def ^:private last-now
+  "The last instant `now` handed out, so the next one is never the same."
+  (atom Instant/EPOCH))
+
+(defn now
+  "Our clock, strictly increasing.
+
+  Reduction orders by (at, id), and a content-addressed id is effectively
+  random, so two writes sharing an instant order by coin flip — including
+  a retract and the assert it OBSERVED, which then loses and leaves the
+  fact present. Several writes inside one process are microseconds apart,
+  so on any host whose clock resolution is coarser than that (a CI runner
+  on a hypervisor timer, say) the tie is not hypothetical.
+
+  A claimed time that never repeats keeps (at, id) in causal order for
+  free, without the kernel's ordering rule knowing anything about
+  parents. The nudge is only ever forward — the direction `claimed-at`
+  already tolerates, and by a margin some millions of times smaller.
+
+  It steps by a MILLISECOND, and compares in canonical terms, because
+  that is the precision `mint` normalizes :at to before taking the id
+  (canonical/normalize-inst). A finer nudge is erased by that
+  normalization and the two writes tie after all — which is the whole
+  failure this exists to prevent."
+  []
+  (swap! last-now
+         (fn [prev]
+           (let [t (canonical/normalize-inst (Instant/now))]
+             (if (.isAfter ^Instant t ^Instant prev)
+               t
+               (.plusMillis ^Instant prev 1))))))
 
 (def ^Duration future-skew-tolerance
   "How far ahead of our own clock a foreign claimed time may sit before
