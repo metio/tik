@@ -61,11 +61,19 @@
 
 (defn- usable?
   "A binding missing any of the three fields a trust decision needs is
-  not a weak claim, it is not a claim: there is nothing to check."
-  [{:keys [actor public-key id-token]}]
-  (and (string? actor) (seq actor)
-       (string? public-key) (seq public-key)
-       (string? id-token) (seq id-token)))
+  not a weak claim, it is not a claim: there is nothing to check.
+
+  The `map?` guard is load-bearing rather than defensive noise. These
+  functions are public and take whatever a caller hands them, and map
+  destructuring of a SEQ routes through kwargs support — which throws on
+  an odd element count instead of returning nil. A trust base must not
+  raise on garbage it is asked to judge; it must decline it."
+  [b]
+  (and (map? b)
+       (let [{:keys [actor public-key id-token]} b]
+         (and (string? actor) (seq actor)
+              (string? public-key) (seq public-key)
+              (string? id-token) (seq id-token)))))
 
 (defn verified
   "The bindings `trusted?` accepts — the ones whose id-token really came
@@ -83,7 +91,7 @@
                           (try (boolean (trusted? b))
                                (catch #?(:clj Throwable :cljs :default) _
                                  false)))))
-        bindings))
+        (when (seqable? bindings) bindings)))
 
 (defn signing-keys
   "actor -> #{public-key} over verified bindings: who may sign as whom.
@@ -92,7 +100,11 @@
   absent rather than present-and-empty, so a caller cannot mistake
   \"nobody vouched for this actor\" for \"this actor has no keys\"."
   [verified-bindings]
-  (reduce (fn [acc {:keys [actor public-key]}]
-            (update acc actor (fnil conj #{}) public-key))
+  (reduce (fn [acc b]
+            ;; same reason as `usable?`: anything that is not a map is
+            ;; declined rather than destructured
+            (if-let [{:keys [actor public-key]} (when (map? b) b)]
+              (update acc actor (fnil conj #{}) public-key)
+              acc))
           {}
-          verified-bindings))
+          (when (seqable? verified-bindings) verified-bindings)))
