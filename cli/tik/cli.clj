@@ -134,6 +134,28 @@
                                                 secret manager / file / TIK_OIDC_PASSWORD,
                                                 not a literal --password (argv is public);
                                                 fetches require HTTPS (loopback excepted)
+  tik bridge intoto <id> <statement.json>       read an in-toto statement — a SLSA
+                                                provenance, an SPDX or CycloneDX SBOM,
+                                                a vuln report — as an attestation. Its
+                                                predicateType maps onto the claim a
+                                                guard already reads, so an
+                                                :attested-within guard takes a real one.
+                                                The
+                                                predicate is NOT parsed: tik checks that
+                                                a trusted attester said so, it does not
+                                                form its own opinion about an SBOM
+  tik bridge gate --from <id> --stage :s      a stage reached over there becomes a
+                  --to <id> [--as name]         fact over here. The downstream never
+                  [--store <name>]              reads the upstream: this bridge looks
+                                                once and mints into the downstream's own
+                                                log, so the guard evaluates locally and
+                                                still holds after the other store is gone.
+                                                A fact (what the guard reads) plus an
+                                                attestation (the signature and pinned
+                                                head). The upstream stage must be sticky,
+                                                or the gate rests on something that can
+                                                evaporate. Records the reverse link too:
+                                                which tickets a release gated
   tik bridge jwks --issuer <url>                pin an issuer's signing keys: rung 2's
                   [--jwks-url U | --jwks F]     trust anchor. Fetched ONCE and committed,
                                                 so a key binding stays checkable offline
@@ -296,7 +318,8 @@
     "format" "from" "github" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "sqlite" "template" "threshold" "title"
+    "reason" "registry" "role" "sqlite" "stage" "store" "template" "threshold"
+    "title"
     "to" "token-env" "token-file" "user" "verbose" "watch" "where" "withdraw"
     "witness"})
 

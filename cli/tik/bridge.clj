@@ -10,16 +10,19 @@
   tik.cli-core plus the pure parsers in tik.mail / tik.oidc / tik.oid4vci."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [tik.args :refer [actor parse-key read-edn-file slurp-existing typed-value]]
+            [tik.args :refer [actor parse-key parse-value read-edn-file
+                              slurp-existing typed-value]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
-                                  die exit! load-process now registry-ticket-ids
+                                  cache-flush! die exit! load-process now
+                                  registry-ticket-ids
                                   resolve-id root the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
             [tik.imap :as imap]
             [tik.jwks :as jwks]
+            [tik.link :as link]
             [tik.mail :refer [auto-generated? own-message? parse-date parse-rfc822
                               require-dkim! ticket-ref-of]]
             [tik.oid4vci :as oid4vci]
@@ -27,6 +30,7 @@
             [tik.pop3 :as pop3]
             [tik.render :refer [shash sid]]
             [tik.secret :as secret]
+            [tik.stage :as stage]
             [tik.store.protocol :as store]
             [tik.text :refer [safe-name]]))
 
@@ -102,6 +106,166 @@
                   (:identity/subject claim) " (" (:identity/username claim)
                   ") to actor '" who "' — attestation " (shash (:event/id e))
                   "… on " registry-id))
+    (exit! 0)))
+
+(defn- stage-reached-at
+  "The instant the upstream ticket first reached `stage`, from its own
+  timeline. Deterministic and semantically right: two replicas observing
+  the same upstream mint byte-identical events (ADR 0021), and the fact
+  lands in the downstream (at, id) order where the upstream event
+  actually happened, which the commutative reducer absorbs."
+  [process events roles stage now*]
+  (some (fn [{:keys [at reached]}] (when (contains? reached stage) at))
+        (stage/stage-timeline process events roles now*)))
+
+(def intoto-claims
+  "predicateType -> the claim a guard already knows. An in-toto
+  statement says what KIND of thing it attests in a URI; mapping the
+  common ones onto tik's existing claims means `[:attested-within :sbom
+  \"P1D\"]` reads a real CycloneDX or SPDX attestation without a new
+  guard operator or a vocabulary bump."
+  {"https://slsa.dev/provenance"        :provenance
+   "https://slsa.dev/verification_summary" :provenance
+   "https://spdx.dev/Document"          :sbom
+   "https://cyclonedx.org/bom"          :sbom
+   "https://in-toto.io/attestation/vulns" :vulnerability-scan
+   "https://in-toto.io/attestation/test-result" :test-result})
+
+(defn intoto-claim
+  "The claim for a predicateType, matching on prefix so a version suffix
+  (…/provenance/v1) does not need its own entry. Unrecognized types are
+  :attestation rather than a refusal: an unknown predicate is still
+  evidence, and ADR 0009 says the kernel does not interpret a claim's
+  semantics anyway."
+  [predicate-type]
+  (or (some (fn [[k v]] (when (str/starts-with? (str predicate-type) k) v))
+            intoto-claims)
+      :attestation))
+
+(defn cmd-bridge-intoto
+  "bridge intoto <id> <statement.json>: read an in-toto statement (a SLSA
+  provenance, an SPDX or CycloneDX SBOM, a vuln report) as a signed
+  attestation on a ticket.
+
+  The ecosystem already produces these, and a supply chain that asks
+  everyone to convert to our shape is asking for work nobody will do. An
+  in-toto Statement is an attestation with an external producer, exactly
+  as a verifiable credential is (ADR 0019) — so it arrives as one, with
+  the raw document carried along for re-audit and its predicateType
+  mapped onto the claim a guard already reads.
+
+  What this does NOT do is read the predicate. tik checks that a trusted
+  attester said so; it does not parse an SBOM and form its own opinion,
+  because a guard that queries stops being offline and reproducible. The
+  derivation is exactly as good as whoever signed the statement."
+  [{:keys [pos opts]}]
+  (let [[ticket file] pos
+        _ (when-not file (die "usage: tik bridge intoto <id> <statement.json>"))
+        raw (slurp-existing "statement" file)
+        doc (try ((requiring-resolve 'cheshire.core/parse-string) raw true)
+                 (catch Exception _ (die (str file " is not valid JSON"))))
+        _ (when-not (map? doc) (die "an in-toto statement must be a JSON object"))
+        ptype (or (:predicateType doc)
+                  (die (str file " has no predicateType — not an in-toto statement")))
+        subjects (:subject doc)
+        _ (when-not (sequential? subjects)
+            (die "an in-toto statement must carry a subject array"))
+        claim (intoto-claim ptype)
+        s (the-store)
+        id (resolve-id s ticket)
+        e (event/add-attestation
+           {:ticket id :actor (actor opts) :at (now)
+            :parents (dag/heads (store/events s id))
+            :claim {:claim claim
+                    :intoto/predicate-type ptype
+                    ;; name + digest per subject: what the statement is
+                    ;; ABOUT, which is how a reader ties it to an artifact
+                    :intoto/subject (mapv #(select-keys % [:name :digest]) subjects)
+                    :intoto/statement raw}})]
+    (append!* s e opts)
+    (println (str "attested " claim " from " ptype))
+    (doseq [sub subjects]
+      (println (str "  subject " (:name sub) " "
+                    (str/join " " (map (fn [[a d]] (str (name a) ":" d))
+                                       (:digest sub))))))
+    (exit! 0)))
+
+(defn cmd-bridge-gate
+  "bridge gate --from <ticket> --stage <:stage> --to <ticket> [--as name]:
+  a stage reached over there becomes a fact over here.
+
+  The downstream ticket never reads the upstream one. This bridge is an
+  actor like every other, it looks once, and it mints into the
+  downstream's OWN log — so the guard evaluates locally, offline, and
+  still correct after the upstream store is gone.
+
+  It writes TWO things, each for what it is good at. A FACT under
+  `[:link …]` is what a guard reads: facts persist until retracted and
+  carry fact-status for free — dispute, supersession, :conflicted when
+  two bridges disagree. An ATTESTATION carries the signature and the
+  pinned head as the audit trail, and one head commits to the whole
+  ancestry (ADR 0004). The guard deliberately does NOT read the
+  attestation: :attested-within's window is mandatory, so a gate built on
+  one would open when the upstream landed and CLOSE again when the window
+  lapsed — right for a condition, wrong for a milestone.
+
+  The upstream stage must be sticky. Stage is derived, so a non-sticky
+  one un-reaches when its evidence is retracted, and a gate on it is a
+  gate on something that can evaporate with no signal here.
+
+  The reverse link is recorded upstream in the same breath: which tickets
+  a release gated is exactly the artifact-to-work provenance an auditor
+  asks for, and it costs nothing to write while we know it."
+  [opts]
+  (let [s (the-store)
+        from-ref (or (:from opts) (die "which ticket gates? --from <id>"))
+        to-ref (or (:to opts) (die "which ticket waits? --to <id>"))
+        stage (or (some-> (:stage opts) parse-value)
+                  (die "which stage must be reached? --stage :published"))
+        stage (if (keyword? stage) stage (keyword (str stage)))
+        from-id (resolve-id s from-ref)
+        to-id (resolve-id s to-ref)
+        _ (when (= from-id to-id) (die "a ticket cannot gate on itself"))
+        {:keys [events process roles]} (ticket-ctx s from-id)
+        sticky (stage/sticky-ids process)
+        _ (when-not (contains? sticky stage)
+            (die (str "stage " stage " is not sticky in "
+                      (:process/id process) ", so it can un-reach with no"
+                      " signal here — gate on a milestone, or accept a"
+                      " freshness window and use an attestation")))
+        t (now)
+        reached (stage/effective-reached process events t roles)
+        _ (when-not (contains? reached stage)
+            (die (str (sid from-id) " has not reached " stage
+                      " — nothing to propagate yet")))
+        at (or (stage-reached-at process events roles stage t) t)
+        head (first (sort (dag/heads events)))
+        as (or (some-> (:as opts) parse-value) stage)
+        ref {:ticket from-id :head head}
+        ref (if-let [st (:store opts)] (assoc ref :store st) ref)
+        who (actor opts)
+        mint (fn [ticket path value at*]
+               (let [e (event/assert-fact
+                        {:ticket ticket :actor who :at at*
+                         :parents (dag/heads (store/events s ticket))
+                         :path path :value value})]
+                 (append!* s e opts)
+                 e))]
+    (mint to-id [:link as] (link/render ref) at)
+    (append!* s (event/add-attestation
+                 {:ticket to-id :actor who :at at
+                  :parents (dag/heads (store/events s to-id))
+                  :claim {:claim :gate
+                          :gate/ticket from-id
+                          :gate/stage stage
+                          :gate/head head}})
+             opts)
+    ;; the other direction, while we know it: what this release gated
+    (mint from-id [:link :gates] (link/render {:ticket to-id}) at)
+    (cache-flush!)
+    (println (str (sid from-id) " " stage " -> " (sid to-id)
+                  " [:link " as "]"))
+    (println (str "  pinned at " (shash head) "…"))
     (exit! 0)))
 
 (defn cmd-bridge-jwks
@@ -598,6 +762,8 @@
   [{:keys [pos opts]}]
   (when (= "oidc" (first pos)) (cmd-bridge-oidc opts))
   (when (= "jwks" (first pos)) (cmd-bridge-jwks opts))
+  (when (= "gate" (first pos)) (cmd-bridge-gate opts))
+  (when (= "intoto" (first pos)) (cmd-bridge-intoto {:pos (rest pos) :opts opts}))
   (when (= "workload" (first pos)) (cmd-bridge-workload opts))
   (when (= "oid4vci" (first pos)) (cmd-bridge-oid4vci opts))
   (when (= "imap" (first pos)) (cmd-bridge-imap {:opts opts}))
