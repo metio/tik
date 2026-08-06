@@ -48,11 +48,26 @@
                               (vc/verify jwt wrong)))))))
 
 (deftest verifier_declines_unsupported_alg
-  (testing "a non-Ed25519 kty (RS256/ES256 are a planned addition)"
+  (testing "a curve this build cannot verify (ES256 needs ECPublicKeySpec)"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"unsupported"
-         ((jwks/verifier {:keys [{:kid "k1" :kty "RSA" :n "x" :e "AQAB"}]})
-          "a.b" (byte-array 8) {:alg "RS256" :kid "k1"})))))
+         ((jwks/verifier {:keys [{:kid "k1" :kty "EC" :crv "P-256" :x "x" :y "y"}]})
+          "a.b" (byte-array 8) {:alg "ES256" :kid "k1"}))))
+  (testing "an alg this build does not verify, on a key that builds fine"
+    (let [{:keys [jwk]} (gen-ed25519-jwt)]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"unsupported JWS alg"
+           ((jwks/verifier {:keys [(assoc jwk :kid "k1")]})
+            "a.b" (byte-array 8) {:alg "HS256" :kid "k1"}))))))
+
+(deftest a_malformed_rsa_jwk_fails_well
+  ;; RS256 is supported now (GitHub Actions and Keycloak both sign with
+  ;; it), so a broken RSA key is a data-carrying rejection rather than a
+  ;; decline — the same treatment a broken Ed25519 key gets.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo #"base64url|malformed"
+       ((jwks/verifier {:keys [{:kid "k1" :kty "RSA" :n "!" :e "AQAB"}]})
+        "a.b" (byte-array 8) {:alg "RS256" :kid "k1"}))))
 
 (defspec verifier_is_total_over_hostile_signatures 200
   ;; the signature is untrusted input; garbage bytes are a verification
