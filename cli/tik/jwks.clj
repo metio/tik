@@ -4,15 +4,19 @@
   "JWS signature verification against a JWKS — the credential-verifying
   half of the oid4vci bridge.
 
-  Scope: EdDSA (Ed25519) only. Ed25519 is tik's native curve (its whole
-  ecosystem is ssh-ed25519), and — crucially — it reconstructs a public
-  key from raw bytes via `X509EncodedKeySpec`, the ONE key spec babashka
-  exposes, so this namespace loads identically on bb, the JVM, and the
-  GraalVM native binary with a plain static require. RS256/ES256 need
-  `RSAPublicKeySpec`/`ECPublicKeySpec`, which bb's class allowlist lacks
-  and which GraalVM would need reflect-config for — a deliberate
-  follow-up; until then they are declined with a clear message, never a
-  crash.
+  Scope: EdDSA (Ed25519) and RS256 (RSA). Both reconstruct their public
+  key through `X509EncodedKeySpec`, the ONE key spec babashka exposes, so
+  this namespace loads identically on bb, the JVM, and the GraalVM native
+  binary with a plain static require. Ed25519 wraps 32 raw bytes in a
+  fixed SubjectPublicKeyInfo prefix; RSA has no fixed prefix because the
+  modulus length varies, so `rsa-spki` encodes the DER by hand for the
+  same reason — `RSAPublicKeySpec` is not on bb's allowlist and would
+  need GraalVM reflect-config besides.
+
+  RS256 is not an optional extra: it is what GitHub Actions and a stock
+  Keycloak sign ID tokens with, so rung-2 bindings from either are
+  uncheckable without it. ES256 still needs `ECPublicKeySpec` and is
+  declined with a clear message, never a crash.
 
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
@@ -40,6 +44,45 @@
              :reason :oid4vci/bad-jwks))
     m))
 
+(defn- der-len
+  "DER length octets: short form below 128, else long form."
+  [n]
+  (if (< n 128)
+    [n]
+    (let [bs (loop [v n acc ()] (if (zero? v) acc (recur (quot v 256) (conj acc (mod v 256)))))]
+      (cons (bit-or 0x80 (count bs)) bs))))
+
+(defn- der-tlv [tag content]
+  (byte-array (map unchecked-byte (concat [tag] (der-len (count content)) content))))
+
+(defn- der-int
+  "An ASN.1 INTEGER from unsigned big-endian bytes. A leading zero is
+  prepended when the high bit is set, because DER integers are signed and
+  a modulus is not."
+  [bytes*]
+  (let [bs (seq bytes*)
+        bs (drop-while zero? bs)
+        bs (if (empty? bs) [0] bs)]
+    (der-tlv 0x02 (if (>= (bit-and (first bs) 0xff) 0x80) (cons 0 bs) bs))))
+
+(def ^:private rsa-oid
+  "SEQUENCE { OID 1.2.840.113549.1.1.1 (rsaEncryption), NULL }"
+  [0x30 0x0d 0x06 0x09 0x2a 0x86 0x48 0x86 0xf7 0x0d 0x01 0x01 0x01 0x05 0x00])
+
+(defn- rsa-spki
+  "A SubjectPublicKeyInfo for an RSA key from JWK `n`/`e`, encoded by
+  hand so the key still arrives through X509EncodedKeySpec."
+  [n-b64 e-b64]
+  (let [n (map #(bit-and % 0xff) (seq (b64url-decode n-b64)))
+        e (map #(bit-and % 0xff) (seq (b64url-decode e-b64)))
+        pkcs1 (der-tlv 0x30 (concat (seq (der-int n)) (seq (der-int e))))
+        bit-string (der-tlv 0x03 (cons 0 (map #(bit-and % 0xff) (seq pkcs1))))]
+    (der-tlv 0x30 (concat rsa-oid (map #(bit-and % 0xff) (seq bit-string))))))
+
+(defn- rsa-key [n e]
+  (.generatePublic (KeyFactory/getInstance "RSA")
+                   (X509EncodedKeySpec. (rsa-spki n e))))
+
 (defn- ed25519-key
   "An Ed25519 public key from a JWK `x` (32 raw bytes, base64url): wrap in
   the fixed X.509 SubjectPublicKeyInfo prefix and let KeyFactory decode."
@@ -55,16 +98,23 @@
 (defn- jwk->key
   "A JWK map -> a java.security.PublicKey, or a fail-well ex-info for an
   algorithm this build does not support."
-  [{:keys [kty crv x] :as jwk}]
+  [{:keys [kty crv x n e] :as jwk}]
   (cond
     (and (= "OKP" kty) (= "Ed25519" crv))
     (try (ed25519-key x)
          (catch clojure.lang.ExceptionInfo e (throw e))
          (catch Throwable t (fail! "JWK key material is malformed"
                                    :cause (.getMessage t))))
+
+    (and (= "RSA" kty) n e)
+    (try (rsa-key n e)
+         (catch clojure.lang.ExceptionInfo ex (throw ex))
+         (catch Throwable t (fail! "JWK key material is malformed"
+                                   :cause (.getMessage t))))
+
     :else (fail! (str "unsupported JWK (kty=" kty " crv=" crv
-                      "); this build verifies OKP/Ed25519 only (RS256/ES256"
-                      " are a planned addition)")
+                      "); this build verifies OKP/Ed25519 and RSA (ES256"
+                      " is a planned addition)")
                  :reason :oid4vci/unsupported-alg :jwk (dissoc jwk :d))))
 
 (defn- jws-verify
@@ -74,11 +124,12 @@
   untrusted input, so any failure processing it means it does not verify.
   An unsupported alg is a clean ex-info."
   [alg pubkey ^String signing-input ^bytes sig]
-  (when-not (= "EdDSA" alg)
-    (fail! (str "unsupported JWS alg: " alg " (this build verifies EdDSA)")
+  (when-not (#{"EdDSA" "RS256"} alg)
+    (fail! (str "unsupported JWS alg: " alg
+                " (this build verifies EdDSA and RS256)")
            :reason :oid4vci/unsupported-alg))
   (try
-    (let [v (Signature/getInstance "Ed25519")]
+    (let [v (Signature/getInstance (if (= "RS256" alg) "SHA256withRSA" "Ed25519"))]
       (.initVerify v ^java.security.PublicKey pubkey)
       (.update v (.getBytes signing-input "US-ASCII"))
       (.verify v sig))
