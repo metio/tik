@@ -17,6 +17,7 @@
                                   the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
+            [tik.identity-trust :as identity-trust]
             [tik.imap :as imap]
             [tik.jwks :as jwks]
             [tik.mail :refer [auto-generated? own-message? parse-date parse-rfc822
@@ -95,12 +96,147 @@
         heads (dag/heads (store/events s registry-id))
         e (event/add-attestation {:ticket registry-id :actor who :at (now)
                                   :parents heads :claim claim})]
-    (append!* s e opts)
+    ;; as in `workload`: --key is the key being bound, not the signer
+    (append!* s e (dissoc opts :key))
     (println (str "bound " (:identity/issuer claim) " subject "
                   (:identity/subject claim) " (" (:identity/username claim)
                   ") to actor '" who "' — attestation " (shash (:event/id e))
                   "… on " registry-id))
     (exit! 0)))
+
+(defn cmd-bridge-jwks
+  "bridge jwks --issuer <url>: pin an issuer's signing keys.
+
+  Rung 2's trust anchor. Verification never calls the IdP (ADR 0023), so
+  the keys have to be in the store before a binding can count — fetched
+  once by an operator, committed like the actors registry, and read
+  offline forever after.
+
+  Re-pinning MERGES by `kid` rather than replacing: an issuer that
+  rotates publishes the new key beside the old, and dropping the old one
+  would stop verifying every binding it signed."
+  [opts]
+  (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
+        cfg (if (.exists (io/file cfg-file))
+              (read-edn-file (io/file cfg-file)) {})
+        issuer (or (:issuer opts) (:issuer cfg)
+                   (die "no OIDC issuer — pass --issuer or put :issuer in oidc.edn"))
+        json (cond
+               (:jwks opts) (slurp-existing "jwks" (:jwks opts))
+               (:jwks-url opts) (oidc/http-get (:jwks-url opts))
+               :else (let [uri (:jwks (oidc/discover oidc/http-get issuer))]
+                       (when-not uri
+                         (die (str "the issuer's discovery document names no"
+                                   " jwks_uri; pass --jwks-url or --jwks")))
+                       (oidc/http-get uri)))
+        fetched (try (jwks/parse-jwks json)
+                     (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        f (identity-trust/jwks-file (root) issuer)
+        existing (identity-trust/pinned-jwks (root) issuer)
+        merged (if existing (identity-trust/merge-jwks existing fetched) fetched)]
+    (io/make-parents f)
+    (spit f ((requiring-resolve 'cheshire.core/generate-string) merged))
+    (println (str "pinned " (count (:keys merged)) " key(s) for " issuer
+                  (when existing
+                    (str " (" (count (:keys existing)) " already held)"))
+                  " -> " (.getPath f)))
+    (println "commit this file: it is what makes a binding checkable offline")
+    (exit! 0)))
+
+(defn- workload-token
+  "The pre-issued OIDC token a workload presents. No interactive flow:
+  a pipeline already holds a token, and the point of rung 2 for CI is
+  that no long-lived secret exists to steal."
+  [opts]
+  (str/trim
+   (cond
+     (:token-file opts) (slurp-existing "token" (:token-file opts))
+
+     (:token-env opts)
+     (or (System/getenv (:token-env opts))
+         (die (str "no token in $" (:token-env opts))))
+
+     (:github opts)
+     ;; GitHub Actions mints one on request, per workflow run, for the
+     ;; audience the job asks for; the request token is itself short-lived
+     ;; and never leaves the runner
+     (let [url (or (System/getenv "ACTIONS_ID_TOKEN_REQUEST_URL")
+                   (die (str "not in a GitHub Actions job with id-token"
+                             " permission — ACTIONS_ID_TOKEN_REQUEST_URL is"
+                             " unset (add `permissions: id-token: write`)")))
+           rt (or (System/getenv "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+                  (die "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset"))
+           aud (or (:audience opts) "tik")
+           body (oidc/http-get-with-auth
+                 (str url "&audience=" (java.net.URLEncoder/encode aud "UTF-8"))
+                 (str "Bearer " rt))]
+       (or (:value ((requiring-resolve 'cheshire.core/parse-string) body true))
+           (die "the Actions token endpoint returned no value")))
+
+     :else (die (str "how should the token arrive? --github, --token-file <f>,"
+                     " or --token-env <VAR>")))))
+
+(defn cmd-bridge-workload
+  "bridge workload: bind a key to a WORKLOAD identity (identity rung 2
+  for machines, PLAN §9).
+
+  A pipeline generates a keypair per run, presents the OIDC token its
+  platform already issues it, and binds the two — so nothing long-lived
+  is stored anywhere and a leaked key stops mattering when the job ends.
+  The binding is what makes the run's signatures verifiable afterwards.
+
+  The token is verified BEFORE the binding is written, against keys
+  already pinned in the store: minting a binding that `verify` would
+  refuse helps nobody, and it would put an unremovable record in a log
+  that never deletes."
+  [opts]
+  (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
+        cfg (if (.exists (io/file cfg-file))
+              (read-edn-file (io/file cfg-file)) {})
+        registry-ref (or (:registry opts) (:registry cfg)
+                         (die (str "no registry ticket — mint one with\n"
+                                   "  tik new identity-registry --title 'identity registry'\n"
+                                   "then pass --registry <its id>")))
+        who (actor opts)
+        key-file (or (:public-key opts) (:key opts)
+                     (some-> (System/getenv "TIK_KEY") (str ".pub"))
+                     (die (str "which key binds to this workload?"
+                               " --public-key <key.pub> or set TIK_KEY")))
+        public-key (str/trim (slurp-existing "key" key-file))
+        token (workload-token opts)
+        claims (try (oidc/decode-jwt-payload token)
+                    (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        issuer (or (:iss claims)
+                   (die "the token carries no issuer (iss)"))
+        s (the-store)
+        registry-id (resolve-id s registry-ref)
+        at (now)
+        claim (oidc/binding-claim {:claims claims :actor who
+                                   :public-key public-key
+                                   :id-token token :issuer issuer})
+        ;; judged exactly as `verify` will judge it later, with this
+        ;; event's own instant, so a refusal surfaces here and not in
+        ;; somebody's audit months from now
+        status (identity-trust/binding-status
+                (root) {:issuer issuer :subject (:sub claims)
+                        :id-token token :at at})]
+    (when-not (= :trusted status)
+      (die (str "refusing to write a binding `verify` would refuse ("
+                (name (:reason status)) ")"
+                (when (= :identity/no-pinned-jwks (:reason status))
+                  (str " — pin the issuer's keys first:\n"
+                       "  tik bridge jwks --issuer " issuer)))))
+    (let [heads (dag/heads (store/events s registry-id))
+          e (event/add-attestation {:ticket registry-id :actor who :at at
+                                    :parents heads :claim claim})]
+      ;; --key/--public-key names the key being BOUND; the attestation is
+      ;; signed by this actor's own signing key (TIK_KEY), so the bound
+      ;; public key must not be mistaken for it
+      (append!* s e (dissoc opts :key :public-key))
+      (println (str "bound " issuer " subject " (:sub claims)
+                    " to actor '" who "' — attestation " (shash (:event/id e))
+                    "… on " registry-id))
+      (exit! 0))))
 
 (defn cmd-bridge-oid4vci
   "bridge oid4vci: ingest a Verifiable Credential (an OID4VCI issuance
@@ -443,6 +579,8 @@
   so the bridge's claims are signed like anyone else's."
   [{:keys [pos opts]}]
   (when (= "oidc" (first pos)) (cmd-bridge-oidc opts))
+  (when (= "jwks" (first pos)) (cmd-bridge-jwks opts))
+  (when (= "workload" (first pos)) (cmd-bridge-workload opts))
   (when (= "oid4vci" (first pos)) (cmd-bridge-oid4vci opts))
   (when (= "imap" (first pos)) (cmd-bridge-imap {:opts opts}))
   (when (= "pop3" (first pos)) (cmd-bridge-pop3 {:opts opts}))
@@ -450,6 +588,8 @@
     (die (str "usage: tik bridge email [--config bridge.edn] < message\n"
               "       tik bridge imap [--config imap.edn]\n"
               "       tik bridge pop3 [--config pop3.edn]\n"
+              "       tik bridge jwks --issuer <url>\n"
+              "       tik bridge workload --github|--token-file F|--token-env VAR\n"
               "       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]\n"
               "       tik bridge oid4vci --credential vc.jwt --registry ID"
               " [--jwks-url URL | --jwks FILE]")))

@@ -46,6 +46,17 @@
                 (.build (HttpRequest/newBuilder (require-tls! url)))
                 (HttpResponse$BodyHandlers/ofString))))
 
+(defn http-get-with-auth
+  "GET with an Authorization header — what a platform's own token
+  endpoint wants (GitHub Actions hands the job a short-lived request
+  token to exchange for an ID token)."
+  [url auth]
+  (.body (.send ^HttpClient @client
+                (-> (HttpRequest/newBuilder (require-tls! url))
+                    (.header "Authorization" auth)
+                    (.build))
+                (HttpResponse$BodyHandlers/ofString))))
+
 (defn http-post
   "Form-encoded POST; returns the body string regardless of status —
   OIDC endpoints speak JSON errors and the flows read them."
@@ -112,7 +123,10 @@
 (defn discover [fetch issuer]
   (let [cfg (json-parse (fetch (discovery-url issuer)))]
     {:device (:device_authorization_endpoint cfg)
-     :token (:token_endpoint cfg)}))
+     :token (:token_endpoint cfg)
+     ;; where the issuer publishes its signing keys — fetched ONCE when
+     ;; an operator pins them, never at verification time (ADR 0023)
+     :jwks (:jwks_uri cfg)}))
 
 (defn device-flow
   "Start device authorization; returns {:prompt … :poll (fn [] …)}.

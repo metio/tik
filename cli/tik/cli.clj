@@ -132,6 +132,21 @@
                                                 secret manager / file / TIK_OIDC_PASSWORD,
                                                 not a literal --password (argv is public);
                                                 fetches require HTTPS (loopback excepted)
+  tik bridge jwks --issuer <url>                pin an issuer's signing keys: rung 2's
+                  [--jwks-url U | --jwks F]     trust anchor. Fetched ONCE and committed,
+                                                so a key binding stays checkable offline
+                                                after the IdP is gone; re-pinning MERGES
+                                                by kid, so a rotated key never retires
+                                                the one that signed an older binding
+  tik bridge workload --github                  identity rung 2 for MACHINES: a pipeline
+                 | --token-file F               generates a keypair per run, presents the
+                 | --token-env VAR              OIDC token its platform already issues,
+                 [--audience A] [--registry ID] and binds the two — so no long-lived key
+                 [--public-key <key.pub>]
+                                                is stored anywhere and a leaked one stops
+                                                mattering when the job ends. The token is
+                                                verified against the PINNED keys before
+                                                the binding is written
   tik bridge oid4vci --credential vc.jwt        ingest a verifiable credential: verify
                   --registry ID                 the issuer signature against its JWKS,
                   [--jwks-url U | --jwks FILE]   mint it as a bridge-signed attestation
@@ -271,9 +286,10 @@
     "client-id" "command" "config" "credential" "dry-run" "edn" "force"
     "format" "from" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
-    "password" "password-command" "password-file" "period" "port"
+    "password" "password-command" "password-file" "period" "port" "public-key"
     "reason" "registry" "role" "sqlite" "template" "threshold" "title"
-    "to" "user" "watch" "where" "withdraw" "witness"})
+    "to" "token-env" "token-file" "user" "watch" "where" "withdraw"
+    "witness"})
 
 (defn- check-flags!
   "Refuse flags nothing reads, naming them, before any command runs."
