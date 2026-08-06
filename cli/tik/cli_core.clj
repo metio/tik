@@ -19,6 +19,7 @@
             [tik.store.sqlite :as sqlite]
             [tik.templates :as templates]
             [tik.dag :as dag]
+            [tik.link :as link]
             [tik.explain :as explain]
             [tik.guard :as guard]
             [tik.next :as next-lens]
@@ -625,9 +626,12 @@
         :when (and (= 2 (count path)) (= :link (first path)))
         :let [{:keys [status value]} (red/fact-status state path)]
         :when (= :present status)]
-    ;; strip a leading ':' so a link stored as a keyword (an older set,
-    ;; a hand-edit) still resolves — targets are ids, never keywords
-    {:rel (second path) :target (str/replace (str value) #"^:" "")}))
+    ;; the value travels as it was asserted: since ADR 0024 it may be a
+    ;; map naming a foreign ticket and the head observed, and stringifying
+    ;; it here would leave nothing able to read it. A keyword loses its
+    ;; colon (an older set, a hand-edit) — targets are ids, never keywords
+    {:rel (second path)
+     :target (if (keyword? value) (name value) value)}))
 
 (defn error-row
   "A poisoned ticket (unreadable event, unevaluable guard) must not
@@ -729,7 +733,12 @@
   parallel branches tie and fall back to names. Unresolved links sink
   to the end instead of crashing a lens."
   [s t {:keys [rel target]}]
-  (if-let [target-id (resolve-id-soft s target)]
+  ;; a link value names its referent, and since ADR 0024 that may be a
+  ;; map carrying the head observed and the store to find it in — the
+  ;; bare uuid is still the short form for a link in this store
+  (let [ref (link/ref-of target)
+        target (or (:ticket ref) target)]
+    (if-let [target-id (resolve-id-soft s target)]
     (let [{:keys [current title depth settled?]} (ticket-row s t target-id)
           stages (str/join ", " (map name current))]
       {:sort [0 depth stages title]
@@ -744,10 +753,14 @@
                                 (str/includes? title (str/replace (safe-name rel)
                                                                   "." "/")))
                     (str "  [" (safe-name rel) "]")))})
-    {:sort [1 0 "" (str target)]
-     :stage "(unresolved)"
-     :stage-kws #{}
-     :rest (str target "  [" (safe-name rel) "]")}))
+      ;; a link into a store this one has not imported is WAITING on
+      ;; something elsewhere, which is a different answer from a link
+      ;; that points nowhere at all
+      {:sort [1 0 "" (str target)]
+       :stage (if (and ref (:store ref)) "(elsewhere)" "(unresolved)")
+       :stage-kws #{}
+       :rest (str (or (link/describe ref) target)
+                  "  [" (safe-name rel) "]")})))
 
 (defn link-lines
   "Every link of `state`, rendered and ordered for humans: least

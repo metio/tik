@@ -68,3 +68,4 @@ so a checkout and this site carry the same record.
 | [0015](/decisions/0015-process-definition-trust/) | Definition hash is identity; publication signatures are authority. |
 | [0002](/decisions/0002-pinned-process-versions/) | Tickets pin their definition hash; migration is an event. |
 | [0023](/decisions/0023-key-bindings-are-evidence/) | A verified key binding grants signing authority; pinned keys anchor it. |
+| [0024](/decisions/0024-link-values-name-foreign-tickets/) | A link's value names its referent; a foreign ticket carries the head observed. |

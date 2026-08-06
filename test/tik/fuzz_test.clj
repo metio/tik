@@ -29,6 +29,7 @@
             [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.identity :as identity]
+            [tik.link :as link]
             [tik.harness :as h]
             [tik.guard :as guard]
             [tik.lint]
@@ -317,6 +318,19 @@
    ;; rung 2 is a trust base, so its whole surface is swept: a binding
    ;; arrives as an attestation body a stranger wrote, and anything but a
    ;; clean answer there widens who may sign as whom
+   ;; a link's value is whatever somebody asserted, and a lens asking
+   ;; what it points at must decline nonsense rather than raise
+   {:sym 'tik.link/ref-of :f link/ref-of :gen (one gen/any-equatable)}
+   {:sym 'tik.link/render :f link/render :gen (one gen/any-equatable)}
+   {:sym 'tik.link/parse-cli :f link/parse-cli :gen (one gen/any-equatable)}
+   {:sym 'tik.link/describe :f link/describe :gen (one gen/any-equatable)}
+   {:sym 'tik.link/link-path? :f link/link-path? :gen (one gen/any-equatable)}
+   {:sym 'tik.link/link-name :f link/link-name :gen (one gen/any-equatable)}
+   {:sym 'tik.link/observed-head :f link/observed-head :gen (one gen/any-equatable)}
+   {:sym 'tik.link/same-target? :f link/same-target?
+    :gen (gen/tuple gen/any-equatable gen/any-equatable)}
+   {:sym 'tik.link/foreign? :f link/foreign?
+    :gen (gen/tuple gen/any-equatable gen/any-equatable)}
    {:sym 'tik.identity/bindings :f identity/bindings
     :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
                    valid ge/gen-events]
@@ -451,7 +465,7 @@
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
      tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template
-     tik.identity})
+     tik.identity tik.link})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with

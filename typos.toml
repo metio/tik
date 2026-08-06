@@ -16,6 +16,9 @@ typ = "typ"
 unparseable = "unparseable"
 # `nwe` is a deliberately misspelled command in a "not a command" test
 nwe = "nwe"
+# the in-toto attestation framework, spelled without the hyphen where it
+# names a command or a var (tik bridge intoto, intoto-claim)
+intoto = "intoto"
 
 [files]
 # content-addressed stores and sidecars: filenames and bodies are
