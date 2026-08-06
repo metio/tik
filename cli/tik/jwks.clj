@@ -20,6 +20,7 @@
 
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
+  (:require [clojure.string :as str])
   (:import (java.security KeyFactory Signature)
            (java.security.spec X509EncodedKeySpec)
            (java.util Base64)))
@@ -78,6 +79,19 @@
         pkcs1 (der-tlv 0x30 (concat (seq (der-int n)) (seq (der-int e))))
         bit-string (der-tlv 0x03 (cons 0 (map #(bit-and % 0xff) (seq pkcs1))))]
     (der-tlv 0x30 (concat rsa-oid (map #(bit-and % 0xff) (seq bit-string))))))
+
+(defn jwk->pem
+  "An RSA JWK as a PEM SubjectPublicKeyInfo — what an evidence bundle
+  carries so a recipient can check a binding's token with openssl and
+  nothing of ours. nil for a key type no shell verifier could use
+  anyway, which the bundle reports rather than hides."
+  [{:keys [kty n e]}]
+  (when (and (= "RSA" kty) n e)
+    (let [der (rsa-spki n e)
+          b64 (.encodeToString (Base64/getEncoder) der)]
+      (str "-----BEGIN PUBLIC KEY-----\n"
+           (str/join "\n" (map #(apply str %) (partition-all 64 b64)))
+           "\n-----END PUBLIC KEY-----\n"))))
 
 (defn- rsa-key [n e]
   (.generatePublic (KeyFactory/getInstance "RSA")

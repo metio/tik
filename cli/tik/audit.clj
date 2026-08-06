@@ -11,7 +11,8 @@
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
-                                  now put-signature! registry-events resolve-id
+                                  now put-signature! registry-events
+                                  registry-ticket-ids resolve-id
                                   role-register root root-dir-roots
                                   with-registry-events
                                   signing-key sidecar-names-for store-root-doc
@@ -19,6 +20,7 @@
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
+            [tik.jwks :as jwks]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
@@ -173,12 +175,15 @@
                           " grown since)"))))))))
 
 (def bundle-verify-sh
-  "POSIX shell + coreutils + ssh-keygen — no tik required. The bundle
-  is evidence precisely because the recipient needs nothing of ours to
-  check it."
+  "POSIX shell + coreutils + ssh-keygen, plus openssl when the bundle
+  carries identity bindings — no tik required. The bundle is evidence
+  precisely because the recipient needs nothing of ours to check it,
+  and that is why a rung-2 key is re-earned here from the issuer's own
+  signature rather than taken from a list we wrote."
   "#!/bin/sh
-# Verifies this tik evidence bundle. Requires only coreutils and
-# ssh-keygen (OpenSSH 8.2+). Run from anywhere: ./verify.sh
+# Verifies this tik evidence bundle. Requires coreutils and ssh-keygen
+# (OpenSSH 8.2+), plus openssl if the bundle carries identity bindings.
+# Run from anywhere: ./verify.sh
 set -u
 cd \"$(dirname \"$0\")\"
 fail=0
@@ -209,7 +214,7 @@ done
 check_sig() { # $1 sidecar, $2 target file, $3 namespace
   p=$(ssh-keygen -Y find-principals -f actors -n \"$3\" -s \"$1\" < \"$2\" 2>/dev/null)
   if [ -z \"$p\" ]; then
-    echo \"FAIL  $1 signed by a key absent from the actors registry\"; fail=1; return
+    echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1; return
   fi
   if ssh-keygen -Y verify -f actors -I \"$p\" -n \"$3\" -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$1\") verifies as $p\"
@@ -232,7 +237,7 @@ check_event_sig() { # $1 sidecar, $2 event .edn
   # the verification DECISION binds to the claimed actor below, never to
   # whoever happened to sign — that is the whole point.
   if ! ssh-keygen -Y find-principals -f actors -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
-    echo \"FAIL  $1 signed by a key absent from the actors registry\"; fail=1; return
+    echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1; return
   fi
   if ssh-keygen -Y verify -f actors -I \"$actor\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$1\") verifies as $actor\"
@@ -252,6 +257,52 @@ for sig in processes/by-hash/*.sig.*; do
   [ -e \"$sig\" ] || continue
   check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-process
 done
+
+# Rung 2: every key this bundle's signers file grants through an
+# identity BINDING must be earned, not asserted. A bundle that simply
+# listed those keys would be asking you to trust us — the point is the
+# opposite. So each binding travels with its id-token and the issuer's
+# public key, and the token is verified HERE: the IdP said this subject
+# holds this key, and the signers entry says no more than that.
+if [ -d identity ]; then
+  b64url() { # base64url -> raw bytes on stdout
+    v=$(printf %s \"$1\" | tr '_-' '/+')
+    case $(( ${#v} % 4 )) in 2) v=\"$v==\";; 3) v=\"$v=\";; esac
+    printf %s \"$v\" | base64 -d 2>/dev/null
+  }
+  for b in identity/*.edn; do
+    [ -e \"$b\" ] || continue
+    tok=$(sed -n 's/.*:identity\\/id-token \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
+    who=$(sed -n 's/.*:identity\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
+    pub=$(sed -n 's/.*:identity\\/public-key \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
+    if [ -z \"$tok\" ] || [ -z \"$who\" ] || [ -z \"$pub\" ]; then
+      echo \"FAIL  $b is not a readable key binding\"; fail=1; continue
+    fi
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo \"FAIL  openssl is needed to check the binding in $b\"; fail=1; continue
+    fi
+    hdr=${tok%%.*}; rest=${tok#*.}; pay=${rest%%.*}; sig=${rest#*.}
+    kid=$(b64url \"$hdr\" | sed -n 's/.*\"kid\":\"\\([^\"]*\\)\".*/\\1/p')
+    pem=identity/keys/$kid.pem
+    if [ ! -f \"$pem\" ]; then
+      echo \"FAIL  no issuer key for kid $kid — cannot check $b\"; fail=1; continue
+    fi
+    si=$(mktemp); sf=$(mktemp)
+    printf '%s.%s' \"$hdr\" \"$pay\" > \"$si\"
+    b64url \"$sig\" > \"$sf\"
+    if openssl dgst -sha256 -verify \"$pem\" -signature \"$sf\" \"$si\" >/dev/null 2>&1; then
+      sub=$(b64url \"$pay\" | sed -n 's/.*\"sub\":\"\\([^\"]*\\)\".*/\\1/p')
+      if grep -qF \"$pub\" actors; then
+        echo \"ok    $who is bound to its key by $sub, per the issuer\"
+      else
+        echo \"FAIL  $b binds a key the registry does not list\"; fail=1
+      fi
+    else
+      echo \"FAIL  the issuer did not sign the token in $b\"; fail=1
+    fi
+    rm -f \"$si\" \"$sf\"
+  done
+fi
 
 # DAG completeness: every referenced parent must be present, and there
 # must be exactly one root (empty :event/parents). A signature binds an
@@ -306,7 +357,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "  signatures prove that they, and the hashes prove what.\n\n"
        "## Verify\n\n"
        "```sh\n./verify.sh\n```\n\n"
-       "coreutils + ssh-keygen only. To additionally REPLAY the\n"
+       "coreutils + ssh-keygen (openssl too, when this bundle\n"
+       "carries identity bindings). To additionally REPLAY the\n"
        "derivation (what stage these facts imply), install tik and run\n"
        "`tik export`/`tik verify` over this directory — derivation is a\n"
        "pure function of these files, so any tik, anywhere, forever,\n"
@@ -314,8 +366,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
 
 (defn cmd-bundle
   "The evidence bundle (PLAN §10): one ticket as a portable artifact a
-  third party verifies with coreutils + ssh-keygen — no tik, no trust
-  in us. This is H5's deliverable and the thing H8 sells."
+  third party verifies with coreutils + ssh-keygen (and openssl, for a
+  bundle carrying identity bindings) — no tik, no trust in us. This is H5's deliverable and the thing H8 sells."
   [{:keys [pos opts]}]
   (let [ticket (or (first pos) (die "usage: tik bundle <id> [--out file.tgz]"))
         s (the-store)
@@ -346,7 +398,52 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         (io/copy (store/read-sidecar s id name) (io/file evdir name))))
     (copy! (io/file (root) "tickets" (str id) "blobs")
            (io/file bdir "tickets" (str id) "blobs"))
-    (copy! (io/file (root) "actors") (io/file bdir "actors"))
+    ;; the bundle's `actors` is what verify.sh checks against, and it
+    ;; carries BOTH rungs: the curated registry plus the keys a verified
+    ;; binding grants to actors who authored events here. The bindings
+    ;; travel too (below), so a recipient re-earns the rung-2 lines from
+    ;; the issuer's own signature rather than taking them on our word.
+    (let [authors (into #{} (map :event/actor) (store/events s id))
+          reg (registry-events s)
+          granting (filterv #(contains? authors (:actor %))
+                            (identity-trust/verified-bindings (root) reg))
+          actors-file (io/file (root) "actors")
+          base (if (.exists actors-file) (slurp actors-file) "")
+          ;; two bindings for one key (a re-run, a rotation back) are one
+          ;; signers line: ssh-keygen would not mind, but a duplicate
+          ;; reads as two grants where there is one
+          lines (distinct
+                 (map #(sign/allowed-signers-line (:actor %) (:public-key %))
+                      granting))]
+      (spit (io/file bdir "actors")
+            (str base (when (and (seq base) (seq lines)) "\n")
+                 (str/join "\n" lines) (when (seq lines) "\n")))
+      (when (seq granting)
+        (let [idir (io/file bdir "identity")
+              kdir (io/file idir "keys")]
+          (.mkdirs kdir)
+          ;; the binding events themselves, so L0 covers their bytes and
+          ;; nothing about them rests on this bundler being honest
+          (doseq [b granting
+                  :let [ev (:event b)
+                        rid (some (fn [rid]
+                                    (when (some #(= ev (:event/id %))
+                                                (store/events s rid))
+                                      rid))
+                                  (registry-ticket-ids s))]
+                  :when rid]
+            (io/copy (store/event-bytes s rid ev)
+                     (io/file idir (str ev ".edn")))
+            (doseq [nm (sidecar-names-for s rid ev "sig")]
+              (io/copy (store/read-sidecar s rid nm) (io/file idir nm))))
+          ;; and the issuer keys, as PEM, so openssl alone can check the
+          ;; tokens those bindings carry
+          (doseq [issuer (distinct (map :issuer granting))
+                  :let [jwks (identity-trust/pinned-jwks (root) issuer)]
+                  jwk (:keys jwks)
+                  :let [pem (jwks/jwk->pem jwk)]
+                  :when pem]
+            (spit (io/file kdir (str (:kid jwk) ".pem")) pem)))))
     (when phash
       (doseq [^File f (.listFiles (io/file (root) "processes" "by-hash"))
               :when (str/starts-with? (.getName f) phash)]
@@ -359,7 +456,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                    "-C" (str bdir) ".")]
       (when-not (zero? (:exit r)) (die (str "tar failed: " (:err r)))))
     (println (str "wrote " out))
-    (println "verify anywhere with: tar xzf, then ./verify.sh (coreutils + ssh-keygen only)")))
+    (println (str "verify anywhere with: tar xzf, then ./verify.sh"
+                  " (coreutils + ssh-keygen; openssl for bindings)"))))
 
 (defn verify-definitions
   "Audit processes/by-hash/: every archived definition's bytes hash to

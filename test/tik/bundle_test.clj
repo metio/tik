@@ -20,6 +20,33 @@
 (defn- tik! [root env & args]
   (:out (apply h/tik! {:root root :actor "seb" :env env} args)))
 
+(deftest a_bundle_re_earns_a_rung_two_key_rather_than_asserting_it
+  ;; A bundle that merely LISTED the keys a binding grants would be asking
+  ;; the recipient to trust us, which is the one thing it exists not to do.
+  ;; So the binding travels with its id-token and the issuer's public key,
+  ;; and verify.sh checks the issuer's signature itself.
+  (let [root (tmpdir "tik-bundle-rung2")
+        key (io/file root "id_test")
+        _ (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "k" "-f" (str key))
+        env {"TIK_KEY" (str key)}
+        _ (io/copy (io/file repo "processes/identity-registry.edn")
+                   (io/file (doto (io/file root "processes") (.mkdirs))
+                            "identity-registry.edn"))
+        _ (tik! root env "actor" "add" "seb" (str key ".pub"))
+        id (str/trim (tik! root env "new" "identity-registry"
+                           "--title" "registry"))
+        out (io/file root "evidence.tgz")
+        _ (tik! root env "bundle" id "--out" (str out))
+        dest (tmpdir "tik-bundle-rung2-dest")
+        _ (sh/sh "tar" "xzf" (str out) "-C" (str dest))
+        registry (io/file dest "actors")]
+    (testing "the bundle verifies against a registry carrying both rungs"
+      (is (.exists registry))
+      (is (str/includes? (slurp registry) "seb")
+          "rung 1 still travels")
+      (let [r (sh/sh "sh" "./verify.sh" :dir (str dest))]
+        (is (str/includes? (:out r) "PASS") (:out r))))))
+
 (deftest bundle_verifies_without_tik_and_catches_tampering
   (let [root (tmpdir "tik-bundle-store")
         key (io/file root "id_test")
@@ -61,7 +88,10 @@
       (spit (io/file dest "actors") "")               ; empty registry
       (let [r (verify)]
         (is (= 1 (:exit r)))
-        (is (re-find #"absent from the actors registry" (:out r)))))
+        ;; "the registry does not grant" rather than "is absent from":
+        ;; a key can now be granted by a verified binding as well as
+        ;; listed, and the message has to cover both
+        (is (re-find #"signed by a key the registry does not grant" (:out r)))))
     (testing "a registered actor cannot forge another actor's authorship"
       ;; the threat is INSIDE the trust boundary: mallory is a fully
       ;; registered principal, yet signs an event that names seb as its
