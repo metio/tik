@@ -287,13 +287,18 @@
                                                 that names the derivation rather than
                                                 grading it
   tik gallery <dir>... [--out dir]              a process library as pages to READ:
+              [--assets dir] [--intro f.md]
                                                 every definition's shape, roles, facts
                                                 and guards in prose, derived from the
                                                 definition itself so a catalog cannot
                                                 drift from what it describes. Templates
                                                 render too — expanded with the answer
                                                 sheet beside them, listing what you
-                                                choose and which stages depend on it
+                                                choose and which stages depend on it.
+                                                --assets serves what those pages cite
+                                                (archived bytes, signatures, actors) so
+                                                a reader fetches one by its address and
+                                                adopts it without cloning anything
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
              [--template bug|change-request|    definition + test skeleton; no EDN
               purchase-approval] [--name N]     knowledge needed; templates are
@@ -337,10 +342,11 @@
   `tik probe --help` therefore read as \"probe every ticket\" and wrote
   signed facts nobody asked for. A verb that can write to every ticket
   in the store has earned the stricter reading of its arguments."
-  #{"actor" "all" "anchor" "apply" "at" "audience" "body" "changed"
+  #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "changed"
     "as" "client-id" "command" "config" "credential" "dry-run" "edn"
     "expect-definition" "expect-stage" "force"
-    "format" "from" "github" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
+    "format" "from" "github" "help" "hidden" "intro" "issuer" "jwks" "jwks-url"
+    "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
     "reason" "registry" "role" "serve" "sqlite" "stage" "store" "template"

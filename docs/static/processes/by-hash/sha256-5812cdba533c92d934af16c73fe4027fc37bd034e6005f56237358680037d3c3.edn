@@ -1,0 +1,1 @@
+{:process/facts {[:outcome] [:string {:min 4}]} :process/guard-vocab 1 :process/id :track :process/stages [{:guards [] :hint "kb/runbooks/track-open.md" :stage/id :open} {:after [:open] :guards [[:fact [:outcome]]] :hint "kb/runbooks/track-done.md" :stage/id :done :stage/sticky? true}] :process/version 1}

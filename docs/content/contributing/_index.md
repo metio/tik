@@ -91,9 +91,18 @@ in [metio/tik-processes](https://github.com/metio/tik-processes), not written
 by hand:
 
 ```sh
-tik gallery ../tik-processes/processes ../tik-processes/templates \\
-  --out docs/content/processes
+tik gallery ../tik-processes/processes ../tik-processes/templates \
+  --out docs/content/processes \
+  --assets docs/static/processes \
+  --intro docs/processes-intro.md
 ```
+
+One command writes all three parts, because they have to agree. `--out` is
+the pages a person reads. `--assets` publishes what those pages cite — each
+definition's archived bytes, its publication signature, and the `actors` file
+that signature checks against — so a page naming an address and the file at
+that address ship together. `--intro` splices in the library-specific prose,
+kept in a file precisely so regenerating cannot discard it.
 
 Each page carries the content address it was generated from, so a page that
 has fallen behind the library names a hash the library no longer publishes.

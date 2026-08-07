@@ -288,7 +288,16 @@ in the tool (not transcribed here) is what stops it from rotting:
   is expanded with the `<name>.params.edn` beside it, and its page lists the
   questions it asks and marks which stages depend on which answer — a template
   has no single address, because the answers decide it, and the page says so
-  rather than publishing a hash most adopters never get.
+  rather than publishing a hash most adopters never get. `--assets <dir>` publishes
+  what those pages CITE — archived bytes, publication signature, the `actors`
+  behind it — so a reader fetches a definition by its address, checks the hash
+  and adopts it without cloning anything. `--intro <file.md>` keeps library
+  prose out of the generated index so regenerating never discards it. `--assets <dir>`
+  publishes what those pages CITE — the archived bytes, the publication
+  signature, the `actors` behind it — so a reader fetches a definition by its
+  address, checks the hash, and adopts it without cloning anything;
+  `--intro <file.md>` keeps library prose out of the generated index so
+  regenerating never discards it.
 - `tik adopt <file>` — install a process from the shared library into this
   store. A plain `.edn` definition is copied verbatim; a `.tmpl.edn`
   **template** is expanded first — tik reads the template's own malli

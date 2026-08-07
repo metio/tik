@@ -254,9 +254,12 @@
            "\nwhich is a decision about your organisation.\n")))))
 
 (defn index-page
-  "The catalog: every definition in the library, with the shape of each."
-  [entries]
-  (str (front-matter "Processes"
+  "The catalog: every definition in the library, with the shape of each.
+  `intro` is library-specific prose the caller keeps in a file — where the
+  definitions live, how to fetch one — so regenerating never discards it."
+  ([entries] (index-page entries nil))
+  ([entries intro]
+   (str (front-matter "Processes"
                      (str "A library of " (count entries)
                           " tik process definitions, each derived from the"
                           " definition itself."))
@@ -266,6 +269,7 @@
        "A process is worth reading before it is taken: it says who must sign"
        " what,\nand the roles ship empty so adoption never inherits somebody"
        " else's org\nchart.\n\n"
+       (when intro (str intro "\n\n"))
        "| Process | Stages | Roles |\n| --- | --- | --- |\n"
        (str/join "\n"
                  (for [{:keys [proc slug template]} (sort-by :slug entries)]
@@ -280,7 +284,7 @@
                                      seq (str/join ", "))
                             "—")
                         " |")))
-       "\n"))
+       "\n")))
 
 (defn- definition-files
   "The library files worth a page. A `<name>.params.edn` is an ANSWER
@@ -360,8 +364,57 @@
                                       ".params.edn")
                     :expanded? (boolean expanded)}}))))
 
+(defn publish-assets!
+  "Copy what a machine needs beside the pages a person reads: each
+  definition's archived canonical bytes, its publication signatures, and
+  the allowed-signers file those signatures check against.
+
+  Emitted by the same command that writes the pages, because a page
+  citing an address and the file at that address must ship together —
+  produce one without the other and the citation is a broken link.
+
+  A template contributes nothing here: its expansion is the adopter's,
+  not the library's, and is not published. Returns how many files landed."
+  [entries ^File dest]
+  (.mkdirs dest)
+  (let [by-hash (doto (io/file dest "by-hash") .mkdirs)
+        libraries (into (sorted-set)
+                        (keep (fn [{:keys [file template]}]
+                                (when-not template
+                                  (.getParentFile
+                                   (.getParentFile (.getCanonicalFile ^File file))))))
+                        entries)
+        copied (atom 0)
+        copy! (fn [^File src ^File dst]
+                (when (and (.isFile src) (not (.exists dst)))
+                  (io/copy src dst)
+                  (swap! copied inc)))]
+    (doseq [{:keys [proc file template]} entries
+            :when (not template)
+            :let [dir (io/file (.getParentFile (.getCanonicalFile ^File file))
+                               "by-hash")
+                  hash (process/process-hash proc)]
+            ^File f (or (.listFiles dir) [])
+            :when (str/starts-with? (.getName f) hash)]
+      (copy! f (io/file by-hash (.getName f))))
+    ;; the registry the publication signatures check against — without it
+    ;; a reader can confirm the bytes and nothing about who stands behind
+    ;; them. Several libraries merge line-wise, which is what an
+    ;; allowed-signers file already is.
+    (let [lines (into (sorted-set)
+                      (comp (map (fn [^File d] (io/file d "actors")))
+                            (filter (fn [^File f] (.isFile f)))
+                            (mapcat (comp str/split-lines slurp))
+                            (remove str/blank?))
+                      libraries)]
+      (when (seq lines)
+        (spit (io/file dest "actors") (str (str/join "\n" lines) "\n"))
+        (swap! copied inc)))
+    @copied))
+
 (defn cmd-gallery
-  "gallery <dir> [--out dir]: render a process library as pages to read.
+  "gallery <dir>... [--out dir] [--assets dir] [--intro file.md]: render a
+  process library as pages to read.
 
   Every page is derived from what it describes, so a catalog cannot drift
   into describing a process nobody publishes any more. A definition
@@ -383,7 +436,11 @@
         files (mapcat definition-files dirs)
         _ (when (empty? files)
             (die (str "no .edn definitions in " (str/join ", " srcs))))
-        entries (vec (keep read-entry files))]
+        entries (vec (keep read-entry files))
+        intro (when-let [f (:intro opts)]
+                (let [^File i (io/file f)]
+                  (when-not (.isFile i) (die (str "no such intro file: " f)))
+                  (str/trim (slurp i))))]
     (.mkdirs out)
     (doseq [{:keys [proc file slug template]} entries
             :let [hash (if (and template (not (:expanded? template)))
@@ -401,7 +458,11 @@
                   (str (.getName (.getParentFile (.getCanonicalFile ^File file)))
                        "/" (.getName ^File file))
                   {:template template})))
-    (spit (io/file out "_index.md") (index-page entries))
+    (spit (io/file out "_index.md") (index-page entries intro))
     (println (str "wrote " (inc (count entries)) " page(s) to " out))
+    (when-let [assets (:assets opts)]
+      (let [n (publish-assets! entries (io/file assets))]
+        (println (str "published " n " file(s) to " assets
+                      " — the addresses those pages cite"))))
     (doseq [{:keys [slug template]} entries]
       (println (str "  " slug (when template " (template)"))))))

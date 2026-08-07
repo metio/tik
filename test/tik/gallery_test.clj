@@ -9,6 +9,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.args :refer [read-edn-file]]
+            [tik.canonical :as canonical]
             [tik.cli]
             [tik.gallery :as gallery]
             [tik.harness :as h]
@@ -155,3 +156,50 @@
       (testing "and an answer sheet is not mistaken for a process"
         (is (not (.exists (io/file out "sample.params.md"))))
         (is (not (.exists (io/file out "sample-params.md"))))))))
+
+;; --------------------------------------------------- publishing the assets
+
+(deftest publishing_serves_what_the_pages_cite
+  (let [lib (h/temp-dir! "tik-pub-lib")
+        procs (doto (io/file lib "processes") .mkdirs)
+        by-hash (doto (io/file procs "by-hash") .mkdirs)
+        tmpls (doto (io/file lib "templates") .mkdirs)
+        proc (read-edn-file (io/file repo "processes/track.edn"))
+        hash (process/process-hash proc)
+        out (h/temp-dir! "tik-pub-out")
+        assets (h/temp-dir! "tik-pub-assets")]
+    (io/copy (io/file repo "processes/track.edn") (io/file procs "track.edn"))
+    (spit (io/file by-hash (str hash ".edn")) (canonical/emit proc))
+    (spit (io/file by-hash (str hash ".sig.abcd")) "a signature")
+    (spit (io/file lib "actors") "seb namespaces=\"tik-*\" ssh-ed25519 AAAA seb\n")
+    (spit (io/file tmpls "sample.tmpl.edn") (pr-str tmpl))
+    (spit (io/file tmpls "sample.params.edn") (pr-str {:window "P1D"}))
+    (let [r (tik.cli/run-argv ["gallery" (str procs) (str tmpls)
+                               "--out" (str out) "--assets" (str assets)])]
+      (is (zero? (:exit r)) (:err r))
+      (testing "the archived bytes and their signature are served"
+        (is (.isFile (io/file assets "by-hash" (str hash ".edn"))))
+        (is (.isFile (io/file assets "by-hash" (str hash ".sig.abcd")))))
+      (testing "served bytes still hash to the address the page cites"
+        (is (= hash (str "sha256-"
+                         (canonical/sha256-hex
+                          (slurp (io/file assets "by-hash" (str hash ".edn"))))))))
+      (testing "with the registry those signatures check against"
+        (is (str/includes? (slurp (io/file assets "actors")) "seb")))
+      (testing "and a template publishes nothing — its expansion is the
+                adopter's, not the library's"
+        (is (= 2 (count (.listFiles (io/file assets "by-hash")))))))))
+
+(deftest the_intro_survives_regeneration
+  (let [lib (h/temp-dir! "tik-intro-lib")
+        procs (doto (io/file lib "processes") .mkdirs)
+        out (h/temp-dir! "tik-intro-out")
+        intro (io/file lib "intro.md")]
+    (io/copy (io/file repo "processes/track.edn") (io/file procs "track.edn"))
+    (spit intro "Fetch one with `curl`, and check its hash.")
+    (dotimes [_ 2]
+      (tik.cli/run-argv ["gallery" (str procs) "--out" (str out)
+                         "--intro" (str intro)]))
+    (is (str/includes? (slurp (io/file out "_index.md"))
+                       "Fetch one with `curl`")
+        "library prose lives in a file, so regenerating cannot discard it")))
