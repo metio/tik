@@ -6,6 +6,13 @@
 ;; record. When tickets here start growing informal conventions
 ;; (severity in titles, approval in comments), that is the signal to
 ;; run `tik author` and give the workflow a real definition.
+;;
+;; This copy and the one metio/tik-processes publishes for adopters are
+;; the SAME process — identical content, hence the identical address
+;; sha256-5812cdba533c92d934af16c73fe4027fc37bd034e6005f56237358680037d3c3.
+;; Nothing keeps them that way, and nothing needs to: a ticket pins the
+;; hash, so if either side ever changes they simply become two processes
+;; and every existing ticket goes on deriving under the one it pinned.
 {:process/id :track
  :process/version 1
  :process/guard-vocab 1
