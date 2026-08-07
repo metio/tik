@@ -13,7 +13,9 @@
             [tik.canonical :as canonical]
             [tik.cli-core :refer [die root]]
             [tik.lint :as lint]
+            [tik.process :as process]
             [tik.render :refer [print-problems]]
+            [tik.sign :as sign]
             [tik.template :as template]
             [malli.core :as m])
   (:import (java.io File)))
@@ -100,6 +102,55 @@
       (swap! n inc))
     @n))
 
+(defn adopt-publication!
+  "Bring the library's ARCHIVED definition and its publication signature
+  across, so a ticket pinning this definition carries the publisher's
+  word for the rules that judged it — into evidence bundles, where a
+  recipient checks it with ssh-keygen and nothing of ours (ADR 0015).
+
+  Copying the definition itself is free of consequence: it is
+  content-addressed, so bytes that do not hash to the name are refused by
+  every reader.
+
+  A SIGNATURE is different, and travels only when this store can already
+  verify it. `verify` fails a definition whose signature checks against
+  no registered principal, so copying one for an unregistered publisher
+  would hand back a store that fails its own audit — and a bundle whose
+  recipient's verify.sh fails on a sidecar we chose to include. The same
+  rule the workload bridge follows: do not write what `verify` would
+  refuse. Returns what happened, for the caller to report."
+  [definition ^File src-root dest-root]
+  (let [hash (try (process/process-hash definition) (catch Exception _ nil))
+        src-dir (io/file src-root "processes" "by-hash")
+        archived (when hash (io/file src-dir (str hash ".edn")))]
+    (if-not (and archived (.isFile archived))
+      {:archived? false}
+      (let [dest-dir (io/file dest-root "processes" "by-hash")
+            dest (io/file dest-dir (str hash ".edn"))
+            signers (io/file dest-root "actors")
+            sigs (filter (fn [^File f]
+                           (str/starts-with? (.getName f) (str hash ".sig.")))
+                         (or (.listFiles src-dir) []))
+            grants? (fn [^File sig]
+                      (boolean
+                       (when (.isFile signers)
+                         (when-let [who (first (sign/find-principals
+                                                signers archived sig
+                                                sign/namespace-process))]
+                           (sign/verify signers archived sig who
+                                        sign/namespace-process)))))
+            [ok skipped] [(filterv grants? sigs) (remove grants? sigs)]]
+        (io/make-parents dest)
+        (when-not (.exists dest) (io/copy archived dest))
+        (doseq [^File sig ok
+                :let [df (io/file dest-dir (.getName sig))]
+                :when (not (.exists df))]
+          (io/copy sig df))
+        {:archived? true :hash hash
+         :signatures (count ok)
+         :unverifiable (count skipped)
+         :library (io/file src-root "actors")}))))
+
 (defn cmd-adopt
   "adopt <process-or-template.edn> [--params <p.edn>]: bring a process
   from a library into this store. A plain definition is copied; a
@@ -136,10 +187,23 @@
         dest (io/file (root) "processes" (str pname ".edn"))]
     (io/make-parents dest)
     (spit dest (with-out-str (pp/pprint definition)))
-    (let [copied (adopt-runbooks! definition (source-root srcf) (root))]
+    (let [copied (adopt-runbooks! definition (source-root srcf) (root))
+          pub (adopt-publication! definition (source-root srcf) (root))]
       (println (str "✓ " (if tmpl? "expanded" "adopted") " · lint clean → processes/"
                     pname ".edn"
                     (when (pos? copied) (str "  (+ " copied " runbook(s))"))))
+      (when (:archived? pub)
+        (println (str "  " (:hash pub)))
+        (if (pos? (:signatures pub))
+          (println (str "  publication signature travels ("
+                        (:signatures pub) ") — your evidence bundles will"
+                        " carry the publisher's word for these rules"))
+          (when (pos? (:unverifiable pub))
+            (println (str "  the library signs this definition, but no key in"
+                          " your `actors` verifies it, so the signature stays"
+                          " behind"))
+            (println (str "    register the publisher (its key is in "
+                          (:library pub) "), then adopt again")))))
       (when (some #(empty? (:members (val %) [])) (:process/roles definition))
         (println "  fill in the empty roles (tik actor add …), then:"))
       (println (str "  tik new " pname)))))

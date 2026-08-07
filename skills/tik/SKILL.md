@@ -287,7 +287,14 @@ in the tool (not transcribed here) is what stops it from rotting:
   `:tik/params` spec and asks for each input at the prompt (typed and
   validated), so you never hand-write EDN. Templates are inert DATA (two
   markers, `[:tik/param k]` / `[:tik/when flag elem]`), never code — the
-  expanded, linted, hash-pinned definition is what's authoritative.
+  expanded, linted, hash-pinned definition is what's authoritative. The
+  library's `:hint` runbooks travel too, and so does the ARCHIVED definition
+  under `processes/by-hash/` when the library publishes one — with its
+  publication signature (ADR 0015) **only if a key in this store's `actors`
+  already verifies it**, because `verify` fails a definition signed by nobody
+  it recognizes and adopting must not hand back a store that fails its own
+  audit. When it does travel, your evidence bundles carry the publisher's word
+  for the rules that judged your ticket, checkable downstream with ssh-keygen.
 
 ### The design law, in one screen
 
