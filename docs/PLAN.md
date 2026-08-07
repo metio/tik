@@ -1137,6 +1137,25 @@ merely waiting.
 - **Rekor as an additional public anchor** for witness heads, beside
   OTS: fine as another detached-sidecar rung; never the primary store
   (below).
+- **Emitting a derivation as a Verifiable Credential** (VC-DM 2.0, a
+  W3C Recommendation since May 2025). Ingest is settled and built — a
+  VC is an attestation with an external issuer, `tik bridge oid4vci`
+  reads JWT-VC and SD-JWT — so this is the other direction: signing
+  "ticket X reached `:published`" as a credential. The honest form
+  exists in the spec. `validUntil`, set to the earliest instant a
+  time-dependent guard could change the answer, makes the credential a
+  cached derivation that states its own expiry — legal under ADR 0013
+  for the reason the badge cache is, since every input to the answer is
+  named in the artifact. What it needs first is that validity interval,
+  which nothing computes today (the badge service keys its cache on the
+  minute precisely because deriving the interval is real work). Trigger:
+  a counterparty whose verifier ecosystem consumes VCs and will not run
+  `tik rederive`. The cost to weigh when it arrives is not technical —
+  a bundle says *do not trust me, re-derive*, a credential says *trust
+  my signature*, and shipping both invites every reader to take the
+  easy one. Neither direction reopens §11's identity verdict: VC-DM 2.0
+  states plainly that DIDs are not necessary, so an issuer stays an
+  https URL and nothing resolves at verification time.
 
 **Rejected on principle, with the reason written down — not
 provisional:**
@@ -1186,6 +1205,39 @@ provisional:**
   exists to replace. The namespace seam already exists in the code;
   packaging follows users, not the other way around. Revisit after
   H1/H3 pass.
+- **Data Integrity proofs on the credential ingest path** (JSON-LD
+  `DataIntegrityProof`, the embedded half of VC-DM 2.0's two securing
+  mechanisms). The enveloping half already works — `tik bridge oid4vci`
+  verifies a JOSE-secured VC against a pinned JWKS, offline, forever.
+  Reading the embedded half means JSON-LD `@context` processing and
+  URDNA2015 canonicalization *deciding whether a signature verifies*,
+  and it fails two laws at once. Context resolution reaches the network
+  unless every context is pinned — the same rule that keeps Rekor from
+  being the primary home of a countersignature: verifying must never
+  require reaching a service. And it stands a second canonicalization
+  beside `canonical.cljc`, the un-migratable layer every event id and
+  signature already depends on; an algorithm whose output decides
+  signature validity is the last place to want two of them. The
+  ecosystems tik actually meets — OID4VCI issuance, wallet
+  presentation — are JOSE/SD-JWT centric, so the concession costs a
+  format, not a market.
+- **Open Badges 3.0 as what tik emits about a ticket.** OB 3.0 is
+  VC-DM 2.0 plus `AchievementCredential`, and it fails on both sides.
+  It is "storing derived values as state" wearing a badge: an
+  issuer-signed assertion that a stage was reached is a materialized
+  derivation, and this one is *designed* to be carried away from the
+  log that produced it — where it outlives its own premises, because a
+  guard with a freshness window makes the same bytes derive less next
+  month. And its readers are the wrong readers: LMSs, wallets and
+  skills frameworks consume achievements about learners, so a release
+  ticket rendered as one is conformant and unusable, which is adopting
+  a specification for the shape of its name rather than the shape of
+  its problem. The carve-out is real and worth building someday: a
+  certification or training PROCESS run in tik — "completed the
+  incident-response drill", two assessors, `:different-person` — is an
+  achievement about a learner in the sense OB means, and OB 3.0 is the
+  right rendering for it. That is a process definition plus a porcelain
+  lens, not a change to what tik says about tickets in general.
 
 **Proven by implementation — verdicts that graduated to evidence:**
 structured reasons made explain a product surface instead of an error

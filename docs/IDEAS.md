@@ -211,8 +211,17 @@ abstractions generalize.
     event still gets a proper content-signature kept domain-separated
     from DPoP proofs (tik's sign.clj already namespaces tik-event /
     tik-process / tik-witness for exactly this non-replay reason).
-  - **OID4VCI / OID4VP — a verifiable credential IS an attestation with
-    an external issuer.** DPoP hardens the live write transport; OID4VCI
+  - ~~**OID4VCI / OID4VP — a verifiable credential IS an attestation
+    with an external issuer.**~~ The issuance half SHIPPED as
+    `tik bridge oid4vci`: JWT-VC and SD-JWT, both the IETF (`vct`) and
+    W3C (`vc.credentialSubject`) shapes, disclosures accepted only when
+    the issuer committed their digests, issuer signature checked against
+    a pinned JWKS. PLAN §19 carries the two verdicts that followed —
+    JSON-LD Data Integrity proofs refused, emitting a derivation AS a
+    credential deferred with a trigger. The presentation half (OID4VP)
+    is still open, and the gating question below is still the one to
+    read first. Original entry, for the reasoning:
+    DPoP hardens the live write transport; OID4VCI
     (OpenID for Verifiable Credential Issuance) is a different shape and
     a cleaner fit, because it maps onto machinery tik already has. The
     mapping: an issuer signing a credential over subject claims ≡ an
