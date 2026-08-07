@@ -272,13 +272,19 @@
                                                 checkable with coreutils + ssh-keygen,
                                                 no tik required
   tik rederive <bundle.tgz|dir|url> [--edn]     the other half: check a bundle and
-              [--serve [--port N]]              recompute what its facts imply under
-                                                the rules it pinned. verify.sh proves
-                                                the bytes; this says what they add up
-                                                to, at the instant you ask. --serve
-                                                does the same over HTTP, per request,
-                                                including a badge that names the
-                                                derivation rather than grading it
+              [--expect-stage :a,:b]            recompute what its facts imply under
+              [--expect-definition sha256-…]    the rules it pinned. verify.sh proves
+              [--serve [--port N]]              the bytes; this says what they add up
+                                                to, at the instant you ask. The two
+                                                expectations make it a gate for a
+                                                consumer's CI, and belong together:
+                                                a supplier picks the rules judging
+                                                their own ticket, so a stage means
+                                                something only once you pin WHICH
+                                                definition. --serve does the same over
+                                                HTTP, per request, including a badge
+                                                that names the derivation rather than
+                                                grading it
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
              [--template bug|change-request|    definition + test skeleton; no EDN
               purchase-approval] [--name N]     knowledge needed; templates are
@@ -323,7 +329,8 @@
   signed facts nobody asked for. A verb that can write to every ticket
   in the store has earned the stricter reading of its arguments."
   #{"actor" "all" "anchor" "apply" "at" "audience" "body" "changed"
-    "as" "client-id" "command" "config" "credential" "dry-run" "edn" "force"
+    "as" "client-id" "command" "config" "credential" "dry-run" "edn"
+    "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "issuer" "jwks" "jwks-url" "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"

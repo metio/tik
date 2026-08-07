@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name: Verify a tik evidence bundle
+description: >
+  Re-derive an evidence bundle and fail unless it reaches the stages you
+  expect, under the definition you pinned. Needs tik on PATH — compose it
+  with the install action, or bring your own.
+
+inputs:
+  bundle:
+    description: The bundle to check — a path, or an https URL to fetch.
+    required: true
+  expect-stage:
+    description: >
+      Comma-separated stages that must be reached (e.g. ":published" or
+      ":scanned,:attested"). Empty checks only that the bundle verifies.
+    required: false
+    default: ""
+  expect-definition:
+    description: >
+      The full definition hash (sha256- and 64 hex characters) you expect to
+      have judged this ticket. Pin it. A bundle carries the rules that judged
+      it, so whoever writes those rules can reach any stage they like —
+      "reached :published" is a claim about a process only once you name
+      WHICH process.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        BUNDLE: ${{ inputs.bundle }}
+        EXPECT_STAGE: ${{ inputs.expect-stage }}
+        EXPECT_DEFINITION: ${{ inputs.expect-definition }}
+      run: |
+        set -euo pipefail
+        if ! command -v tik > /dev/null 2>&1; then
+          echo "::error::no tik on PATH — add the install action before this one"
+          exit 1
+        fi
+        if [ -n "${EXPECT_STAGE}" ] && [ -z "${EXPECT_DEFINITION}" ]; then
+          echo "::warning::expecting a stage without pinning a definition asserts very little — the bundle brings its own rules"
+        fi
+        # `[ … ] && args+=(…)` would exit the script under `set -e` whenever
+        # the test is false, which is the common case for an optional input
+        args=()
+        if [ -n "${EXPECT_STAGE}" ]; then
+          args+=(--expect-stage "${EXPECT_STAGE}")
+        fi
+        if [ -n "${EXPECT_DEFINITION}" ]; then
+          args+=(--expect-definition "${EXPECT_DEFINITION}")
+        fi
+        tik rederive "${BUNDLE}" ${args[@]+"${args[@]}"}

@@ -53,6 +53,56 @@ rule that reads it.
 That is the reason to re-derive rather than record. A stored "passed"
 survives its own evidence; a derivation ages with it.
 
+## Gating on a bundle
+
+Two flags turn re-derivation into a check a consumer's own CI can stand on:
+
+```sh
+tik rederive https://example.com/evidence.tgz \
+  --expect-stage :published \
+  --expect-definition sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+```
+
+Exit 0 when every named stage is reached under that exact definition, 1
+otherwise, with a line saying which expectation failed and what was
+derived instead.
+
+**Pin the definition.** A bundle carries the rules that judged it, so a
+supplier who writes those rules can reach any stage they choose —
+`:published` becomes a claim about a process only once the reader names
+*which* process. That is why `--expect-definition` takes the full hash
+and refuses an abbreviation: eight hex characters is thirty-two bits for
+somebody to collide with deliberately, and the value is pasted into a
+workflow file once.
+
+## In GitHub Actions
+
+```yaml
+permissions:
+  contents: read
+steps:
+  - uses: metio/tik/.github/actions/install@2026.8.7062815
+  - uses: metio/tik/.github/actions/verify@2026.8.7062815
+    with:
+      bundle: https://github.com/you/proj/releases/download/v1/evidence.tgz
+      expect-stage: ":published"
+      expect-definition: "sha256-3c577f36…"
+```
+
+The ref you pin *is* the tik you get: with no `version` input, the
+installer resolves the release matching its own ref, so a pinned action
+and a pinned tool are one decision rather than two.
+
+The installer verifies before it trusts. It fetches the release's
+`SHA256SUMS`, checks the cosign keyless signature naming the release
+workflow that produced it, and only then checks the binary against those
+checksums — an installer for a verification tool has no business asking
+you to trust an unverified download. Linux/amd64 gets the native binary;
+other platforms get the portable jar and need a JDK already on PATH.
+
+`verify` needs `tik` on PATH and does one thing with it, so bring your
+own build if you have one.
+
 ## The service
 
 ```sh

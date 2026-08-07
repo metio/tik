@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name: Install tik
+description: >
+  Download a released tik and put it on PATH, verifying the download against
+  the release's cosign signature and checksums before trusting a byte of it.
+  With no `version`, installs the tik matching the ref this action was pinned
+  at — so the ref you write IS the version you get.
+
+inputs:
+  version:
+    description: >
+      Release tag to install (e.g. 2026.8.7062815). Defaults to the ref this
+      action was used at when that looks like a release tag, else the latest
+      release.
+    required: false
+    default: ""
+  verify:
+    description: >
+      Check the release checksums against their cosign keyless signature.
+      Leaving this on is the point: an installer for a verification tool that
+      trusts an unverified download proves nothing.
+    required: false
+    default: "true"
+
+outputs:
+  version:
+    description: The release tag that was installed.
+    value: ${{ steps.install.outputs.version }}
+  path:
+    description: Path to the installed tik executable.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.verify == 'true'
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+    - id: install
+      shell: bash
+      env:
+        # The repository this action came from, so a fork installs its own
+        # releases and checks them against its own workflow identity. Empty
+        # for a local `uses: ./.github/actions/install`, where the repository
+        # running the job is the same one.
+        TIK_REPO: ${{ github.action_repository || github.repository }}
+        TIK_REF: ${{ github.action_ref }}
+        TIK_VERSION: ${{ inputs.version }}
+        TIK_VERIFY: ${{ inputs.verify }}
+        TIK_DEST: ${{ runner.temp }}/tik-bin
+      run: bash "${GITHUB_ACTION_PATH}/install.sh"

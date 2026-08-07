@@ -14,6 +14,7 @@
             [tik.badge :as badge]
             [tik.bundle :as bundle]
             [tik.canonical :as canonical]
+            [tik.cli]
             [tik.harness :as h]
             [tik.rederive :as rederive])
   (:import (java.io File)
@@ -37,7 +38,15 @@
         _ (run "actor" "add" "seb" (str key ".pub"))
         id (str/trim (:out (run "new" (name process) "--title" "bundled")))]
     (when (seq sets) (apply run "set" id sets))
-    {:root root :id id :run run}))
+    {:root root :id id :run run :key key :env env}))
+
+(defn- as-actor
+  "A runner for a second actor in the same store, signing with the same
+  key — so a test can vary WHO asserted a fact without the signature
+  failing to verify as its event's author."
+  [{:keys [root env key]} actor]
+  (h/tik! {:root root :actor "seb" :env env} "actor" "add" actor (str key ".pub"))
+  (fn [& args] (apply h/tik! {:root root :actor actor :env env} args)))
 
 (defn- bundle! [{:keys [root id run]}]
   (let [out (io/file root "evidence.tgz")]
@@ -119,6 +128,88 @@
       (is (= "unverified" (badge/headline r))
           "the badge says so rather than showing a stage")
       (is (str/includes? (badge/page r {}) "does not verify")))))
+
+(deftest the_role_register_travels_because_derivation_reads_it
+  ;; `:signed-by` resolves a role through the store's register, which
+  ;; overrides the members a definition declares. A bundle without it
+  ;; re-derives under different membership than the store it came from —
+  ;; exactly the drift evidence exists to rule out.
+  (let [store (signed-store! :support-request)
+        ;; the definition declares seb as the only triager, so a fact from
+        ;; ci gates :triaged on the REGISTER and nothing else
+        ci (as-actor store "ci")
+        _ (ci "set" (:id store) "category=:billing" "severity=:low")
+        _ ((:run store) "roles" "add" "triager" "ci")
+        tgz (bundle! store)
+        dest (h/temp-dir! "tik-rederive-roles")]
+    (bundle/untar-gz! tgz dest)
+    (is (.isFile (io/file dest "roles.edn"))
+        "the register travels with the bundle")
+    (is (contains? (:reached (bundle/read-bundle dest)) ":triaged"))
+    (testing "and without it the stage its signature gates is not reached"
+      (.delete (io/file dest "roles.edn"))
+      (is (not (contains? (:reached (bundle/read-bundle dest)) ":triaged"))
+          "so shipping it is what keeps the two derivations equal"))))
+
+;; ------------------------------------------------ what a consumer asserts
+
+(deftest expectations_gate_on_stages_under_a_pinned_definition
+  (let [store (signed-store! :support-request "category=:billing" "severity=:low")
+        tgz (bundle! store)
+        r (bundle/read-bundle tgz)
+        hash (:process-hash r)]
+    (testing "a stage that is reached, under the definition that judged it"
+      (is (every? :ok? (bundle/expectations r {:stages [":triaged" "received"]
+                                               :definition hash}))
+          "a bare name and a leading colon name the same stage"))
+    (testing "a stage that is not reached fails, and says what is"
+      (let [[c] (bundle/expectations r {:stages [":closed"]})]
+        (is (not (:ok? c)))
+        (is (str/includes? (:msg c) ":triaged"))))
+    (testing "another definition fails even when the stage is reached"
+      (let [other (str "sha256-" (str/join (repeat 64 "0")))
+            [c] (bundle/expectations r {:definition other})]
+        (is (not (:ok? c)))
+        (is (str/includes? (:msg c) hash))))
+    (testing "no expectation is no check, so the flags stay optional"
+      (is (empty? (bundle/expectations r {}))))))
+
+(deftest an_abbreviated_definition_hash_is_refused
+  ;; the flag exists to PIN. Eight hex characters is thirty-two bits for
+  ;; whoever writes the definition to collide with on purpose, and the
+  ;; value is pasted into a workflow file once.
+  (doseq [bad ["3c577f36" "sha256-3c577f36" "" "not-a-hash"
+               (str "sha256-" (str/join (repeat 63 "a")))]]
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"full definition hash"
+                          (bundle/parse-expected-definition bad))
+        (pr-str bad)))
+  (testing "with or without the sha256- prefix, the full form is accepted"
+    (let [hex (str/join (repeat 64 "a"))]
+      (is (= (str "sha256-" hex) (bundle/parse-expected-definition hex)))
+      (is (= (str "sha256-" hex)
+             (bundle/parse-expected-definition (str "sha256-" hex)))))))
+
+(deftest the_cli_exits_nonzero_when_an_expectation_is_unmet
+  (let [store (signed-store! :support-request "category=:billing" "severity=:low")
+        tgz (str (bundle! store))
+        hash (:process-hash (bundle/read-bundle tgz))
+        run (fn [& args] (tik.cli/run-argv (into ["rederive" tgz] args)))]
+    (testing "met"
+      (let [r (run "--expect-stage" ":triaged" "--expect-definition" hash)]
+        (is (zero? (:exit r)) (:out r))
+        (is (str/includes? (:out r) "what you asked for"))))
+    (testing "a stage that is not reached"
+      (is (= 1 (:exit (run "--expect-stage" ":closed")))))
+    (testing "a definition nobody pinned"
+      (is (= 1 (:exit (run "--expect-definition"
+                           (str "sha256-" (str/join (repeat 64 "b"))))))))
+    (testing "several stages at once, comma-separated"
+      (is (zero? (:exit (run "--expect-stage" ":received,:triaged"))))
+      (is (= 1 (:exit (run "--expect-stage" ":received,:closed")))))
+    (testing "and the assertions travel in --edn for a caller that reads data"
+      (let [r (run "--edn" "--expect-stage" ":triaged")]
+        (is (zero? (:exit r)))
+        (is (every? :ok? (:expectations (canonical/parse (:out r)))))))))
 
 ;; ------------------------------------------------- the archive is hostile
 

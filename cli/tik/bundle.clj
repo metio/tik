@@ -559,6 +559,54 @@
                (binding-checks layout*)
                (witness-checks layout* events))))
 
+;; --------------------------------------------------- what a consumer expects
+
+(defn- normalize-stage [s]
+  (let [t (str/trim (str s))]
+    (if (str/starts-with? t ":") t (str ":" t))))
+
+(defn parse-expected-definition
+  "The definition hash a consumer pins, as the full `sha256-…` form.
+
+  A PREFIX is refused. Everywhere else in tik an abbreviated hash is a
+  convenient way to LOOK something up; here it is the whole assertion,
+  and eight hex characters is thirty-two bits for whoever writes the
+  definition to collide with deliberately. It is pasted into a workflow
+  file once, so the full form costs nothing worth having."
+  [s]
+  (let [hex (str/replace (str/trim (str s)) #"^sha256-" "")]
+    (when-not (re-matches #"[0-9a-f]{64}" hex)
+      (refuse! (str "--expect-definition takes a full definition hash"
+                    " (sha256- followed by 64 hex characters), not "
+                    (pr-str s)
+                    " — a prefix is short enough to collide with on purpose,"
+                    " and pinning is this flag's whole job")))
+    (str "sha256-" hex)))
+
+(defn expectations
+  "What a consumer asserted about a bundle, checked against what was
+  derived — in the same shape as every other check, so one renderer
+  prints them all.
+
+  Pinning the definition is what makes a stage assertion mean anything.
+  A bundle carries the rules that judged it, so a supplier who chooses
+  those rules can reach any stage they like; `:published` is a claim
+  about a process only once the reader says WHICH process."
+  [{:keys [reached process-hash]} {:keys [stages definition]}]
+  (vec (concat
+        (when definition
+          (let [want (parse-expected-definition definition)]
+            [(if (= want process-hash)
+               (ok (str "judged by the definition you pinned (" want ")"))
+               (bad (str "judged by " process-hash
+                         ", and you pinned " want)))]))
+        (for [s stages
+              :let [want (normalize-stage s)]]
+          (if (contains? reached want)
+            (ok (str "stage " want " is reached"))
+            (bad (str "stage " want " is NOT reached — this bundle reaches "
+                      (if (seq reached) (str/join ", " reached) "nothing"))))))))
+
 (defn re-derive
   "Read a bundle directory, check it, and re-derive what its facts imply
   at `now`.

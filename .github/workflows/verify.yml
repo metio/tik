@@ -37,6 +37,72 @@ jobs:
       - run: nix develop --command bb tik lint processes/support-request.edn
       - run: nix develop --command bb tik lint processes/sweep-order.edn
       - run: nix develop --command bb tik test processes/support-request.tests.edn
+  evidence:
+    # The evidence path end to end, on every pull request, in the two halves
+    # that can actually go wrong independently.
+    #
+    # First: the RELEASED tik, installed through our own action — signature
+    # and checksums checked — re-derives the RELEASED evidence bundle. That
+    # catches a release whose own binary cannot read its own evidence, which
+    # no unit test can see because both sides are published artifacts.
+    #
+    # Then: the tik in THIS commit bundles a ticket and the verify action
+    # gates on it, so the action and the --expect flags are exercised by the
+    # code under review rather than by whatever shipped last.
+    name: Evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/install
+        id: tik
+      - name: The released binary re-derives the released bundle
+        env:
+          VERSION: ${{ steps.tik.outputs.version }}
+        run: |
+          set -euo pipefail
+          tik rederive \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/evidence-${VERSION}.tgz"
+      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - name: Bundle a ticket with the tik in this commit
+        id: bundle
+        run: |
+          set -euo pipefail
+          # a scratch store, so the check never depends on this repo's own
+          # tickets and needs no signing key
+          root=$(mktemp -d)
+          mkdir -p "${root}/processes"
+          cp processes/support-request.edn "${root}/processes/"
+          tik() { TIK_ROOT="${root}" TIK_ACTOR=ci nix develop --command bb tik "$@"; }
+          # :triaged demands a triager's signature over [:category], and the
+          # definition declares somebody else. Putting ci in the role through
+          # the store's REGISTER is what makes the expectation below a test of
+          # roles.edn travelling: a bundle without it re-derives under the
+          # definition's own members, :triaged is not reached, and the gate
+          # fails.
+          tik roles add triager ci
+          id=$(tik new support-request --title "evidence gate" | head -1)
+          tik set "$id" category=:billing severity=:low
+          tik bundle "$id" --out "${RUNNER_TEMP}/evidence.tgz"
+          # the hash comes from the archived definition's own filename, not
+          # from a lens — the expectation must be pinned by something the
+          # thing under test does not get to choose
+          archived=$(find "${root}/processes/by-hash" -name '*.edn' -printf '%f\n' \
+            | head -1)
+          echo "hash=${archived%.edn}" >> "${GITHUB_OUTPUT}"
+      - name: Put this commit's tik on PATH ahead of the released one
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/tik-head"
+          mkdir -p "${dir}"
+          printf '#!/bin/sh\nexec nix develop --command bb tik "$@"\n' > "${dir}/tik"
+          chmod 0755 "${dir}/tik"
+          echo "${dir}" >> "${GITHUB_PATH}"
+      - uses: ./.github/actions/verify
+        with:
+          bundle: ${{ runner.temp }}/evidence.tgz
+          expect-stage: ":received,:triaged"
+          expect-definition: ${{ steps.bundle.outputs.hash }}
   reuse:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -76,7 +142,7 @@ jobs:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.
     name: Verify
-    needs: [clojure, tla, process-tests, reuse, typos, yaml, github-actions, markdown]
+    needs: [clojure, tla, process-tests, evidence, reuse, typos, yaml, github-actions, markdown]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -111,7 +111,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tik() { nix develop --command bb tik "$@"; }
+          # the NATIVE binary this job just built, not the babashka harness:
+          # the product is what should be recording the release, and a fault
+          # that only shows up in the shipped artifact gates publication here
+          # rather than reaching whoever installs it
+          tik() { ./target/tik "$@"; }
 
           # the scan is evidence, not a gate: a finding does not stop the
           # release, it stops the ticket reaching :scanned, so the record

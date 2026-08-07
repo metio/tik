@@ -252,24 +252,42 @@
   proves the bytes are genuine with coreutils alone; deciding what they
   ADD UP TO means running the pinned definition, which is what tik is.
   Exit 1 when the bundle does not verify — a derivation over bytes that
-  are not what they claim to be is worth nothing."
+  are not what they claim to be is worth nothing.
+
+  `--expect-stage` and `--expect-definition` turn it into a gate a
+  consumer's own CI can stand on: fail unless this bundle reaches these
+  stages under the definition I pinned. The two belong together — a
+  supplier chooses the rules that judge their own ticket, so a stage
+  assertion is a claim about a process only once the reader names WHICH
+  process."
   [{:keys [pos opts]}]
   (if (:serve opts)
     (serve! opts)
     (let [src (or (first pos)
                   (die "usage: tik rederive <bundle.tgz|dir|https url>"))
+          expected {:definition (:expect-definition opts)
+                    :stages (when-let [s (:expect-stage opts)]
+                              (remove str/blank? (str/split (str s) #",")))}
           fetched (when (str/starts-with? src "https://")
                     (try (fetch! src)
                          (catch clojure.lang.ExceptionInfo e
                            (die (ex-message e)))))
-          t (now)
-          result (try (bundle/read-bundle (or fetched src) t)
+          result (try (bundle/read-bundle (or fetched src) (now))
                       (catch clojure.lang.ExceptionInfo e
                         (die (str "not a readable evidence bundle: "
                                   (ex-message e))))
-                      (finally (some-> ^File fetched .delete)))]
+                      (finally (some-> ^File fetched .delete)))
+          asserted (try (bundle/expectations result expected)
+                        (catch clojure.lang.ExceptionInfo e
+                          (die (ex-message e))))]
       (if (:edn opts)
-        (prn result)
-        (print (badge/text result)))
+        (prn (cond-> result (seq asserted) (assoc :expectations asserted)))
+        (do (print (badge/text result))
+            (when (seq asserted)
+              (println)
+              (println "what you asked for")
+              (doseq [{:keys [ok? msg]} asserted]
+                (println (str "  " (if ok? "ok   " "FAIL ") msg))))))
       (flush)
-      (when-not (:verified? result) (exit! 1)))))
+      (when-not (and (:verified? result) (every? :ok? asserted))
+        (exit! 1)))))
