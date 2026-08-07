@@ -23,6 +23,24 @@
             [tik.stage :as stage]
             [tik.text :refer [safe-name]]))
 
+(defn definition-identity
+  "A definition's content address — the value a ticket pins, a bundle
+  files under `processes/by-hash/`, and `tik rederive
+  --expect-definition` compares against.
+
+  Worth asking for by name because it is NOT the file's checksum: the
+  address is taken over the PARSED definition, so comments, whitespace
+  and key order do not count, and two files that read the same are the
+  same definition. A publisher who runs `sha256sum` over the source file
+  publishes a value that matches nothing.
+
+  Total: a definition carrying a value with no byte-stable written form
+  has no address, and says so rather than raising in a lens."
+  [proc]
+  (try (process/process-hash proc)
+       (catch clojure.lang.ExceptionInfo e
+         (str "<no content address: " (ex-message e) ">"))))
+
 (defn lint-store
   "Hygiene over every open ticket — the things verify (integrity) and
   explain (derivation) don't check because they're not wrong, just
@@ -107,6 +125,9 @@
         lines (draw/process proc status)]
     (println (tint "1" (str (safe-name (:process/id proc))
                             (when-let [v (:process/version proc)] (str "  (v" v ")")))))
+    ;; the identity, under the label: the version number is what people
+    ;; call it, the content address is what a ticket actually pins
+    (println (tint "2" (str "  " (definition-identity proc))))
     (when-let [p (:process/purpose proc)] (println (tint "2" (str "  " p))))
     (when (seq roles)
       (println (tint "2" (str "  roles: " (str/join ", " (map safe-name roles))))))
@@ -133,6 +154,9 @@
                                         h " does not exist on disk")})
           problems (concat (lint/lint proc) missing-runbooks)]
       (when (print-problems problems) (exit! 1))
-      (when (empty? problems) (println "clean")))))
+      (when (empty? problems) (println "clean"))
+      ;; what a publisher needs beside a definition, and what a consumer
+      ;; pins with `tik rederive --expect-definition`
+      (println (str "identity " (definition-identity proc))))))
 
 

@@ -276,7 +276,7 @@
 (defn- bad [msg] {:ok? false :msg msg})
 (defn- note [msg] {:note? true :msg msg})
 
-(defn- hashes-to-name?
+(defn- hashes-as-named?
   "sha256(bytes) = filename, the property the whole format rests on."
   [^File f strip-edn?]
   (let [bytes (java.nio.file.Files/readAllBytes (.toPath f))
@@ -292,7 +292,7 @@
     (vec
      (concat
       (for [^File f event-files]
-        (if-not (hashes-to-name? f true)
+        (if-not (hashes-as-named? f true)
           (bad (str (.getName f) " does not hash to its name"))
           (let [stem (str/replace (.getName f) #"\.edn$" "")
                 e (try (fstore/read-event f) (catch Exception ex ex))]
@@ -309,11 +309,11 @@
 
               :else (ok (str stem " hashes to its name and is schema-valid"))))))
       (for [^File f (files-under definitions-dir edn?)]
-        (if (hashes-to-name? f true)
+        (if (hashes-as-named? f true)
           (ok (str (.getName f) " definition bytes hash to their name"))
           (bad (str (.getName f) " definition does not hash to its name"))))
       (for [^File f (files-under blobs-dir (fn [^File f] (.isFile f)))]
-        (if (hashes-to-name? f false)
+        (if (hashes-as-named? f false)
           (ok (str (.getName f) " blob bytes hash to their name"))
           (bad (str (.getName f) " blob does not hash to its name"))))))))
 

@@ -5,7 +5,8 @@
   between verify (integrity) and explain (derivation): unkempt, not
   wrong. Findings must name the fixing command; settled tickets are
   left in peace."
-  (:require [tik.harness :as h]
+  (:require [tik.canonical :as canonical]
+            [tik.harness :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
@@ -102,3 +103,31 @@
     (testing "new prints a stage hint on stderr"
       (let [r (tik* root "new" "tik-dev" "--title" "hinted")]
         (is (re-find #"stage: captured — next: tik explain" (:err r)))))))
+
+(deftest lint_and_show_report_the_identity_a_ticket_pins
+  ;; The value a publisher puts beside a definition and a consumer pins
+  ;; with `tik rederive --expect-definition`. It is deliberately NOT the
+  ;; file's checksum — the address is taken over the parsed definition,
+  ;; so two files that read the same are the same definition.
+  (let [root (h/temp-dir! "tik-identity")
+        src (io/file repo "processes/support-request.edn")
+        _ (io/copy src (io/file (doto (io/file root "processes") (.mkdirs))
+                                "support-request.edn"))
+        hash-of (fn [out]
+                  (second (re-find #"(sha256-[0-9a-f]{64})" out)))
+        lint-out (:out (tik* root "lint" (str src)))
+        show-out (:out (tik* root "show" (str src)))]
+    (is (some? (hash-of lint-out)) lint-out)
+    (is (= (hash-of lint-out) (hash-of show-out))
+        "both lenses report the same identity")
+    (testing "and it is the address of the DEFINITION, not of the file"
+      (is (not= (hash-of lint-out)
+                (str "sha256-" (canonical/sha256-hex (slurp src))))))
+    (testing "so a reformatted file keeps its identity"
+      (let [reformatted (io/file root "reformatted.edn")]
+        ;; same data, different bytes: a trailing comment and no final
+        ;; newline change every byte-level checksum and nothing else
+        (spit reformatted (str ";; a comment the address does not see\n"
+                               (str/trim (slurp src))))
+        (is (= (hash-of lint-out)
+               (hash-of (:out (tik* root "lint" (str reformatted))))))))))
