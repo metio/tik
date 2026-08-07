@@ -27,7 +27,7 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
   term = ["HTML", "RSS", "ATOM"]
 
 [params]
-  mainSections = ["get-started", "concepts", "cli", "authoring", "evidence", "integrations", "runbooks", "decisions", "contributing"]
+  mainSections = ["get-started", "concepts", "cli", "authoring", "processes", "evidence", "integrations", "runbooks", "decisions", "contributing"]
   author = "metio.wtf"
   github = "metio/tik"
   fediverseCreator = "@sebhoss@mastodon.online"
@@ -165,7 +165,14 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/authoring/roles-and-authority/"
     weight = 3
 
-  # 5 ── Evidence: what leaves the store, and how a stranger checks it.
+  # 5 ── Processes: the library, rendered from the definitions themselves.
+  [[menu.main]]
+    identifier = "processes"
+    name = "Processes"
+    url = "/processes/"
+    weight = 41
+
+  # 6 ── Evidence: what leaves the store, and how a stranger checks it.
   [[menu.main]]
     identifier = "evidence"
     name = "Evidence"
@@ -182,7 +189,7 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/evidence/re-deriving/"
     weight = 2
 
-  # 6 ── Integrations: agent surfaces over the same derivation.
+  # 7 ── Integrations: agent surfaces over the same derivation.
   [[menu.main]]
     identifier = "integrations"
     name = "Integrations"
@@ -199,7 +206,7 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/integrations/mcp-server/"
     weight = 2
 
-  # 7 ── Runbooks: what each stage of a process asks for. No menu children —
+  # 8 ── Runbooks: what each stage of a process asks for. No menu children —
   # the index groups all nineteen by process, which beats a flat list here.
   [[menu.main]]
     identifier = "runbooks"
@@ -207,14 +214,14 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     url = "/runbooks/"
     weight = 50
 
-  # 8 ── Decisions: the ADR log, likewise presented by its own index.
+  # 9 ── Decisions: the ADR log, likewise presented by its own index.
   [[menu.main]]
     identifier = "decisions"
     name = "Decisions"
     url = "/decisions/"
     weight = 60
 
-  # 9 ── Contributing.
+  # 10 ── Contributing.
   [[menu.main]]
     identifier = "contributing"
     name = "Contributing"

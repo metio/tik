@@ -84,6 +84,21 @@ parents, a guard that queries anything, a leader or lock or quorum on a
 correctness path, a self-minted event with a non-deterministic field, or
 kernel code doing I/O.
 
+## Regenerating the process gallery
+
+The pages under [/processes/](/processes/) are generated from the definitions
+in [metio/tik-processes](https://github.com/metio/tik-processes), not written
+by hand:
+
+```sh
+tik gallery ../tik-processes/processes --out docs/content/processes
+```
+
+Each page carries the content address it was generated from, so a page that
+has fallen behind the library names a hash the library no longer publishes.
+Regenerate after the library changes; the site build does not do it, because
+the definitions live in a different repository.
+
 ## Licensing
 
 Every file carries `SPDX-FileCopyrightText` and `SPDX-License-Identifier`
