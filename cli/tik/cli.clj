@@ -286,11 +286,14 @@
                                                 HTTP, per request, including a badge
                                                 that names the derivation rather than
                                                 grading it
-  tik gallery <processes-dir> [--out dir]        a process library as pages to READ:
+  tik gallery <dir>... [--out dir]              a process library as pages to READ:
                                                 every definition's shape, roles, facts
                                                 and guards in prose, derived from the
                                                 definition itself so a catalog cannot
-                                                drift from what it describes
+                                                drift from what it describes. Templates
+                                                render too — expanded with the answer
+                                                sheet beside them, listing what you
+                                                choose and which stages depend on it
   tik author [--from answers.edn] [--force]     guided interview -> a linted process
              [--template bug|change-request|    definition + test skeleton; no EDN
               purchase-approval] [--name N]     knowledge needed; templates are

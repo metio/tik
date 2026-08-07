@@ -91,7 +91,8 @@ in [metio/tik-processes](https://github.com/metio/tik-processes), not written
 by hand:
 
 ```sh
-tik gallery ../tik-processes/processes --out docs/content/processes
+tik gallery ../tik-processes/processes ../tik-processes/templates \\
+  --out docs/content/processes
 ```
 
 Each page carries the content address it was generated from, so a page that

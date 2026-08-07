@@ -27,7 +27,9 @@
             [tik.draw :as draw]
             [tik.lint :as lint]
             [tik.process :as process]
-            [tik.text :refer [safe-name]])
+            [tik.template :as template]
+            [tik.text :refer [safe-name]]
+            [malli.core :as m])
   (:import (java.io File)))
 
 (defn- path-str [p]
@@ -116,61 +118,140 @@
   [s]
   (str/replace s #"\n{3,}" "\n\n"))
 
-(defn- stages-section [proc]
-  (str "## Stages\n\n"
-       (str/join "\n"
-                 (for [s (:process/stages proc)]
-                   (str "### `" (safe-name (:stage/id s)) "`"
-                        (when (:stage/sticky? s) " · sticky") "\n\n"
-                        (when (seq (:after s))
+(defn template-questions
+  "The questions a template asks, read from its own `:tik/params` schema —
+  so the page lists what an adopter chooses without anybody writing it
+  down twice."
+  [tmpl]
+  (when-let [schema (:tik/params tmpl)]
+    (try
+      (vec (for [[k props child] (m/children (m/schema schema))]
+             {:key k
+              :required? (not (:optional props))
+              :description (:description props)
+              :type (m/type child)}))
+      (catch Exception _ nil))))
+
+(defn optional-stages
+  "stage-id -> the flag that includes it, for every stage a template wraps
+  in `[:tik/when flag …]`. Rendering the fullest shape without saying
+  which parts are optional would read as though all of it were required —
+  the one way this page could mislead."
+  [tmpl]
+  (into {}
+        (keep (fn [node]
+                (when (and (vector? node) (= :tik/when (first node))
+                           (= 3 (count node))
+                           (map? (nth node 2))
+                           (:stage/id (nth node 2)))
+                  [(:stage/id (nth node 2)) (second node)])))
+        (get-in tmpl [:tik/template :process/stages])))
+
+(defn- questions-section [questions]
+  (when (seq questions)
+    (str "## What you choose\n\n"
+         "`tik adopt` reads these from the template itself and asks for each"
+         " one,\ntyped and validated — no EDN to hand-write.\n\n"
+         "| Question | Answer | |\n| --- | --- | --- |\n"
+         (str/join "\n"
+                   (for [{:keys [key required? description type]} questions]
+                     (str "| `" (safe-name key) "` | `" (pr-str type) "` | "
+                          (or description "")
+                          (when-not required? " *(optional)*") " |")))
+         "\n\n")))
+
+(defn- stages-section
+  ([proc] (stages-section proc {}))
+  ([proc optional]
+   (str "## Stages\n\n"
+        (str/join "\n"
+                  (for [s (:process/stages proc)]
+                    (str "### `" (safe-name (:stage/id s)) "`"
+                         (when (:stage/sticky? s) " · sticky") "\n\n"
+                         (when-let [flag (get optional (:stage/id s))]
+                           (str "Included when you answer yes to `"
+                                (safe-name flag) "`.\n\n"))
+                         (when (seq (:after s))
                           (str "Follows "
                                (str/join ", " (map #(str "`" (safe-name %) "`")
                                                    (:after s)))
                                ".\n\n"))
-                        (when (:stage/sticky? s)
-                          (str "Once reached it stays reached: the fold carries"
-                               " it forward, so later\nevidence cannot take it"
-                               " away.\n\n"))
-                        (if (seq (:guards s))
-                          (str "Reached when:\n\n"
-                               (str/join "\n" (for [g (:guards s)]
-                                                (str "- " (guard-prose g))))
-                               "\n\n")
-                          "Reached immediately — it carries no guards.\n\n")
-                        (when-let [h (:hint s)]
-                          (str "Runbook: `" h "`\n\n")))))))
+                         (when (:stage/sticky? s)
+                           (str "Once reached it stays reached: the fold carries"
+                                " it forward, so later\nevidence cannot take it"
+                                " away.\n\n"))
+                         (if (seq (:guards s))
+                           (str "Reached when:\n\n"
+                                (str/join "\n" (for [g (:guards s)]
+                                                 (str "- " (guard-prose g))))
+                                "\n\n")
+                           "Reached immediately — it carries no guards.\n\n")
+                         (when-let [h (:hint s)]
+                           (str "Runbook: `" h "`\n\n"))))))))
 
 (defn page
-  "One definition as a page: what it is, what it demands, and how to take
-  it. `hash` is passed in rather than recomputed so a caller can render
-  the ARCHIVED address when a library publishes one."
-  [proc hash file-name]
-  (let [id (safe-name (:process/id proc))
-        stages (count (:process/stages proc))
-        drawn (draw/process proc nil)]
-    (tidy
-     (str (front-matter id
-                       (str "A tik process with " stages " stage"
-                            (when-not (= 1 stages) "s")
-                            (when-let [p (:process/purpose proc)]
-                              (str ": " p))))
-         (when-let [p (:process/purpose proc)] (str p "\n\n"))
-         "## Identity\n\n"
-         "A definition is named by its content, so this address is what a\n"
-         "ticket pins and what a consumer checks against:\n\n"
-         "```text\n" hash "\n```\n\n"
-         (when (seq drawn)
-           (str "## Shape\n\n```text\n" (str/join "\n" drawn) "\n```\n\n"))
-         (roles-section proc)
-         (facts-table proc)
-         (stages-section proc)
-         "## Take it\n\n"
-         "```sh\ntik adopt " file-name "\n```\n\n"
-         "The definition and its runbooks are copied into your store, and"
-         " the\npublisher's signature travels with them when a key in your"
-         " `actors`\nverifies it. Read the stages before you adopt: they say"
-         " who has to\nsign what, which is a decision about your"
-         " organisation.\n"))))
+  "One process as a page: what it is, what it demands, and how to take it.
+
+  `opts` may carry `:template` — the questions it asks, the flag that
+  includes each optional stage, and the params file the shape was
+  expanded with. A template has no single content address, because the
+  ANSWERS decide it; saying otherwise would publish a hash most adopters
+  never get, so the identity section says what is true instead."
+  ([proc hash file-name] (page proc hash file-name {}))
+  ([proc hash file-name {:keys [template]}]
+   (let [id (safe-name (:process/id proc))
+         stages (count (:process/stages proc))
+         drawn (draw/process proc nil)
+         {:keys [questions optional params-file expanded?]} template]
+     (tidy
+      (str (front-matter id
+                         (str (if template "A tik process template"
+                                  "A tik process")
+                              (when (or (not template) expanded?)
+                                (str " with " stages " stage"
+                                     (when-not (= 1 stages) "s")))
+                              (when-let [p (:process/purpose proc)]
+                                (str ": " p))))
+           (when-let [p (:process/purpose proc)] (str p "\n\n"))
+           (questions-section questions)
+           "## Identity\n\n"
+           (cond
+             (and template (not (:expanded? template)))
+             (str "Your answers decide this one, and this template ships no"
+                  " reference\nanswers — so there is a shape to see only once"
+                  " you have chosen:\n\n")
+             template
+             (str "Your answers decide this one: turn a stage off and the"
+                  " process is a\ndifferent process with a different address."
+                  " The shape below is what\n`" params-file "` produces, with"
+                  " every option on:\n\n")
+             :else
+             (str "A definition is named by its content, so this address is"
+                  " what a\nticket pins and what a consumer checks against:"
+                  "\n\n"))
+           "```text\n" hash "\n```\n\n"
+           (when (seq drawn)
+             (str "## Shape\n\n"
+                  (when template
+                    (str "Every option on. Stages that depend on an answer say"
+                         " so below.\n\n"))
+                  "```text\n" (str/join "\n" drawn) "\n```\n\n"))
+           (roles-section proc)
+           (facts-table proc)
+           (stages-section proc (or optional {}))
+           "## Take it\n\n"
+           "```sh\ntik adopt " file-name
+           (when template "\n") "```\n\n"
+           (if template
+             (str "`tik adopt` asks each question above at the prompt, then"
+                  " expands and\nlints the answers into a plain definition —"
+                  " the template never runs as\ncode, and the expanded EDN is"
+                  " what your tickets pin.\n\n")
+             (str "The definition and its runbooks are copied into your store,"
+                  " and the\npublisher's signature travels with them when a key"
+                  " in your `actors`\nverifies it.\n\n"))
+           "Read the stages before you adopt: they say who has to sign what,"
+           "\nwhich is a decision about your organisation.\n")))))
 
 (defn index-page
   "The catalog: every definition in the library, with the shape of each."
@@ -187,9 +268,10 @@
        " else's org\nchart.\n\n"
        "| Process | Stages | Roles |\n| --- | --- | --- |\n"
        (str/join "\n"
-                 (for [{:keys [proc slug]} (sort-by :slug entries)]
+                 (for [{:keys [proc slug template]} (sort-by :slug entries)]
                    (str "| [`" (safe-name (:process/id proc)) "`](/processes/"
-                        slug "/) | "
+                        slug "/)"
+                        (when template " *(template)*") " | "
                         (str/join ", " (map #(str "`" (safe-name (:stage/id %)) "`")
                                             (:process/stages proc)))
                         " | "
@@ -200,63 +282,126 @@
                         " |")))
        "\n"))
 
-(defn- definition-files [^File dir]
+(defn- definition-files
+  "The library files worth a page. A `<name>.params.edn` is an ANSWER
+  SHEET for the template beside it, not a process — rendering one would
+  produce a page with no stages and a blank name."
+  [^File dir]
   (->> (or (.listFiles dir) [])
        (filter (fn [^File f]
-                 (and (.isFile f) (str/ends-with? (.getName f) ".edn"))))
+                 (and (.isFile f)
+                      (str/ends-with? (.getName f) ".edn")
+                      (not (str/ends-with? (.getName f) ".params.edn")))))
        (sort-by (fn [^File f] (.getName f)))))
 
 (defn- archived-hash
   "The address the library PUBLISHES for this definition when it archives
   one, else the address computed from the file. They agree — the archive
   is the canonical form of the same data — but preferring the published
-  file keeps a page citing exactly what the library serves."
-  [^File dir proc]
+  file keeps a page citing exactly what the library serves.
+
+  A template's expansion is not published and is not expected to be, so
+  only a plain definition earns the note."
+  [^File dir proc note?]
   (let [computed (process/process-hash proc)
         archived (io/file dir "by-hash" (str computed ".edn"))]
-    (when-not (.isFile archived)
+    (when (and note? (not (.isFile archived)))
       (binding [*out* *err*]
         (println (str "note: " (safe-name (:process/id proc))
                       " is not archived under by-hash/ — the page cites the"
                       " address computed from the source"))))
     computed))
 
-(defn cmd-gallery
-  "gallery <processes-dir> [--out dir]: render a process library as pages
-  to read.
+(defn- read-entry
+  "One library file as something renderable. A plain definition renders
+  itself; a TEMPLATE is expanded first, with the sibling `<name>.params.edn`
+  the library ships — the same file the drift check uses, doing double
+  duty. A template with no params, or params it rejects, still gets a page
+  listing its questions: what it asks is worth reading even when the shape
+  needs answers."
+  [^File f]
+  (let [slug (str/replace (.getName f) #"\.(tmpl\.)?edn$" "")
+        raw (try (read-edn-file f)
+                 (catch Exception e
+                   (die (str "cannot read " (.getName f) ": " (ex-message e)))))]
+    (cond
+      (not (map? raw)) nil
 
-  Every page is derived from the definition, so a catalog cannot drift
-  into describing a process nobody publishes any more, and each carries
-  the content address a ticket would pin. Definitions that do not lint
-  are rendered with their problems named rather than skipped — a library
-  hiding a broken definition helps nobody."
+      (not (template/template? raw))
+      {:proc raw :file f :slug slug}
+
+      :else
+      ;; a template and the definition it generalizes share a process id,
+      ;; so they would share a page and one would overwrite the other. The
+      ;; worked example and the form are both worth reading.
+      (let [pf (io/file (.getParentFile f) (str slug ".params.edn"))
+            slug (str slug "-template")
+            params (when (.isFile pf)
+                     (try (read-edn-file pf) (catch Exception _ nil)))
+            expanded (when params
+                       (try (template/expand raw params)
+                            (catch Exception e
+                              (binding [*out* *err*]
+                                (println (str "warning: " slug
+                                              " does not expand with "
+                                              (.getName pf) " — "
+                                              (ex-message e))))
+                              nil)))]
+        (when-not expanded
+          (binding [*out* *err*]
+            (println (str "note: " slug
+                          " has no usable " slug ".params.edn — its page"
+                          " lists the questions without a shape"))))
+        {:proc (or expanded (assoc (:tik/template raw) :process/stages []))
+         :file f :slug slug
+         :template {:questions (template-questions raw)
+                    :optional (optional-stages raw)
+                    :params-file (str (str/replace slug #"-template$" "")
+                                      ".params.edn")
+                    :expanded? (boolean expanded)}}))))
+
+(defn cmd-gallery
+  "gallery <dir> [--out dir]: render a process library as pages to read.
+
+  Every page is derived from what it describes, so a catalog cannot drift
+  into describing a process nobody publishes any more. A definition
+  carries the content address a ticket would pin; a template carries the
+  one its reference answers produce, because a template has no single
+  address — the answers decide it.
+
+  Definitions that do not lint are rendered with their problems named
+  rather than skipped: a library hiding a broken one helps nobody."
   [{:keys [pos opts]}]
-  (let [src (or (first pos) (die "usage: tik gallery <processes-dir> [--out dir]"))
-        dir (io/file src)
-        _ (when-not (.isDirectory dir)
-            (die (str "not a directory of process definitions: " src)))
+  (let [srcs (seq pos)
+        _ (when-not srcs (die "usage: tik gallery <dir>... [--out dir]"))
+        dirs (for [src srcs
+                   :let [d (io/file src)]]
+               (if (.isDirectory d)
+                 d
+                 (die (str "not a directory of process definitions: " src))))
         out (io/file (or (:out opts) "gallery"))
-        files (definition-files dir)
+        files (mapcat definition-files dirs)
         _ (when (empty? files)
-            (die (str "no .edn definitions in " src)))
-        entries (vec (for [^File f files
-                           :let [proc (try (read-edn-file f)
-                                           (catch Exception e
-                                             (die (str "cannot read " (.getName f)
-                                                       ": " (ex-message e)))))]
-                           :when (map? proc)]
-                       {:proc proc :file f
-                        :slug (str/replace (.getName f) #"\.edn$" "")}))]
+            (die (str "no .edn definitions in " (str/join ", " srcs))))
+        entries (vec (keep read-entry files))]
     (.mkdirs out)
-    (doseq [{:keys [proc file slug]} entries
-            :let [hash (archived-hash dir proc)
-                  problems (filter #(= :error (:level %)) (lint/lint proc))]]
+    (doseq [{:keys [proc file slug template]} entries
+            :let [hash (if (and template (not (:expanded? template)))
+                         "(your answers decide it)"
+                         (archived-hash (.getParentFile (.getCanonicalFile ^File file))
+                                        proc (nil? template)))
+                  problems (when (seq (:process/stages proc))
+                             (filter #(= :error (:level %)) (lint/lint proc)))]]
       (when (seq problems)
         (binding [*out* *err*]
           (println (str "warning: " slug " does not lint — "
                         (str/join "; " (map :msg problems))))))
       (spit (io/file out (str slug ".md"))
-            (page proc hash (str "processes/" (.getName ^File file)))))
+            (page proc hash
+                  (str (.getName (.getParentFile (.getCanonicalFile ^File file)))
+                       "/" (.getName ^File file))
+                  {:template template})))
     (spit (io/file out "_index.md") (index-page entries))
     (println (str "wrote " (inc (count entries)) " page(s) to " out))
-    (doseq [{:keys [slug]} entries] (println (str "  " slug)))))
+    (doseq [{:keys [slug template]} entries]
+      (println (str "  " slug (when template " (template)"))))))

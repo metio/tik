@@ -12,7 +12,8 @@
             [tik.cli]
             [tik.gallery :as gallery]
             [tik.harness :as h]
-            [tik.process :as process]))
+            [tik.process :as process]
+            [tik.template :as tmpl]))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -82,3 +83,75 @@
     (testing "and every page it wrote is real markdown with front matter"
       (doseq [^java.io.File f (.listFiles out)]
         (is (str/starts-with? (slurp f) "---\ntitle: ") (.getName f))))))
+
+;; --------------------------------------------------------------- templates
+
+(def ^:private tmpl
+  {:tik/params [:map
+                [:window {:description "how long?"} :string]
+                [:with-review {:optional true :description "second pair of eyes?"}
+                 :boolean]]
+   :tik/template
+   {:process/id :sample
+    :process/version 1
+    :lint {:runbooks :off}
+    :process/facts {[:note] [:string {:min 2}]}
+    :process/stages
+    [{:stage/id :opened :guards [[:fact [:note]]]}
+     [:tik/when :with-review
+      {:stage/id :reviewed :after [:opened]
+       :guards [[:elapsed-since :ticket/create [:tik/param :window]]]}]]}})
+
+(deftest a_template_page_says_what_you_choose_and_what_it_costs
+  (let [proc (tmpl/expand tmpl {:window "P1D" :with-review true})
+        md (gallery/page proc "sha256-ref" "templates/sample.tmpl.edn"
+                         {:template {:questions (gallery/template-questions tmpl)
+                                     :optional (gallery/optional-stages tmpl)
+                                     :params-file "sample.params.edn"
+                                     :expanded? true}})]
+    (testing "the questions come from the template's own spec"
+      (is (str/includes? md "What you choose"))
+      (is (str/includes? md "how long?"))
+      (is (str/includes? md "second pair of eyes?"))
+      (is (str/includes? md "*(optional)*")))
+    (testing "the identity says the answers decide it, not that this is THE hash"
+      (is (str/includes? md "Your answers decide this one"))
+      (is (str/includes? md "sample.params.edn")))
+    (testing "and an optional stage says which answer includes it"
+      (is (str/includes? md "Included when you answer yes to `with-review`")))))
+
+(deftest a_template_without_reference_answers_still_lists_its_questions
+  (let [md (gallery/page (assoc (:tik/template tmpl) :process/stages [])
+                         "(your answers decide it)" "templates/sample.tmpl.edn"
+                         {:template {:questions (gallery/template-questions tmpl)
+                                     :optional {}
+                                     :params-file "sample.params.edn"
+                                     :expanded? false}})]
+    (is (str/includes? md "how long?"))
+    (is (str/includes? md "ships no reference"))
+    (is (not (str/includes? md "with every option on"))
+        "it must not promise a shape it does not show")))
+
+(deftest optional_stages_are_read_from_the_when_markers
+  (is (= {:reviewed :with-review} (gallery/optional-stages tmpl)))
+  (testing "a template with no conditional stages has none"
+    (is (empty? (gallery/optional-stages
+                 {:tik/template {:process/stages [{:stage/id :a}]}})))))
+
+(deftest the_command_renders_definitions_and_templates_side_by_side
+  (let [lib (h/temp-dir! "tik-lib")
+        procs (doto (io/file lib "processes") .mkdirs)
+        tmpls (doto (io/file lib "templates") .mkdirs)
+        out (h/temp-dir! "tik-lib-out")]
+    (io/copy (io/file repo "processes/track.edn") (io/file procs "track.edn"))
+    (spit (io/file tmpls "sample.tmpl.edn") (pr-str tmpl))
+    (spit (io/file tmpls "sample.params.edn") (pr-str {:window "P1D"}))
+    (let [r (tik.cli/run-argv ["gallery" (str procs) (str tmpls)
+                               "--out" (str out)])]
+      (is (zero? (:exit r)) (:err r))
+      (testing "both are rendered, under slugs that cannot collide"
+        (is (.isFile (io/file out "track.md")))
+        (is (.isFile (io/file out "sample-template.md"))))
+      (testing "and an answer sheet is not mistaken for a process"
+        (is (not (.exists (io/file out "sample.params.md"))))
+        (is (not (.exists (io/file out "sample-params.md"))))))))

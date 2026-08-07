@@ -281,11 +281,14 @@ in the tool (not transcribed here) is what stops it from rotting:
   role's signature is genuinely required, that a freshness window really does
   expire, that a stage does NOT derive without its evidence. The positive path
   is the easy half and proves the least.
-- `tik gallery <processes-dir> [--out dir]` — a process library rendered as
-  pages to READ: each definition's shape, roles, facts and every guard as a
-  sentence, plus the content address a ticket would pin. Derived from the
-  definitions, so a catalog cannot drift from what it describes. Publishing a
-  library of your own? This is how it becomes browsable.
+- `tik gallery <dir>... [--out dir]` — a process library rendered as pages to
+  READ: each definition's shape, roles, facts and every guard as a sentence,
+  plus the content address a ticket would pin. Derived from the definitions, so
+  a catalog cannot drift from what it describes. **Templates render too**: each
+  is expanded with the `<name>.params.edn` beside it, and its page lists the
+  questions it asks and marks which stages depend on which answer — a template
+  has no single address, because the answers decide it, and the page says so
+  rather than publishing a hash most adopters never get.
 - `tik adopt <file>` — install a process from the shared library into this
   store. A plain `.edn` definition is copied verbatim; a `.tmpl.edn`
   **template** is expanded first — tik reads the template's own malli

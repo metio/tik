@@ -112,10 +112,11 @@ Runbook: `kb/runbooks/supply-chain-release-withheld.md`
 ## Take it
 
 ```sh
-tik adopt processes/supply-chain-release.edn
-```
+tik adopt processes/supply-chain-release.edn```
 
 The definition and its runbooks are copied into your store, and the
 publisher's signature travels with them when a key in your `actors`
-verifies it. Read the stages before you adopt: they say who has to
-sign what, which is a decision about your organisation.
+verifies it.
+
+Read the stages before you adopt: they say who has to sign what,
+which is a decision about your organisation.
