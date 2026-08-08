@@ -344,8 +344,18 @@
   never merely as some registered principal — otherwise a registered
   actor forges another's authorship and the audit still passes."
   [{:keys [events-dir actors]} events]
-  (if-not (.isFile ^File actors)
+  (cond
+    ;; being UNABLE to check is a note, never a failure. Every verification
+    ;; path shells out to ssh-keygen, and reporting a good signature as
+    ;; forged because the tool is absent is the one direction this must
+    ;; never fail in (the distroless image ships without it).
+    (not @sign/verifier-available?)
+    [(note (str "no ssh-keygen here, so authorship is unchecked — install"
+                " OpenSSH to judge these signatures"))]
+
+    (not (.isFile ^File actors))
     [(note "no actors registry travels with this bundle — authorship is unclaimed")]
+    :else
     (let [unsigned (atom 0)
           checks (vec (for [e (red/ordered events)
                             :let [id (:event/id e)
@@ -378,7 +388,9 @@
   "L3: countersignatures over a head. One signature timestamps the whole
   ancestry that head commits to."
   [{:keys [events-dir actors]} events]
-  (let [heads (dag/heads events)
+  (if-not @sign/verifier-available?
+    [(note "no ssh-keygen here, so countersignatures are unchecked")]
+    (let [heads (dag/heads events)
         pairs (for [h heads, ^File sc (sidecar-files events-dir h "witness")]
                 [h sc])]
     (if (empty? pairs)
@@ -394,7 +406,7 @@
                (ok (str (subs h 0 15) "… witnessed by " who
                         " (whole ancestry)"))
                (bad (str (subs h 0 15) "… carries a countersignature that"
-                         " does not verify"))))))))
+                         " does not verify")))))))))
 
 ;; ------------------------------------------------------------ rung 2
 

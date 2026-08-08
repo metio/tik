@@ -63,6 +63,27 @@
                       ^String (second (str/split pubkey-line #"\s+")))]
     (subs (canonical/sha256-hex-bytes blob) 0 16)))
 
+(def verifier-available?
+  "Is `ssh-keygen` here to check a signature with?
+
+  It has to be asked, because the alternative is worse than not knowing.
+  Every verification path shells out, and a missing binary raises the
+  same way a bad signature returns false — so a caller that catches
+  broadly reports a GOOD signature as forged. That is the one direction a
+  verification tool must never fail in, and it is not hypothetical: the
+  published container image is distroless and carries no ssh-keygen.
+
+  Memoized: the answer cannot change inside a run, and a service checking
+  many bundles should not fork a process per question."
+  (delay
+    (try
+     ;; the EXIT CODE is irrelevant — refusing bogus arguments still proves
+     ;; it ran. Only a failure to start the process means it is not here.
+      (sh/sh "ssh-keygen" "-Y" "check-novalidate" "-n" "x"
+             "-s" "/nonexistent" :in "")
+      true
+      (catch java.io.IOException _ false))))
+
 (defn sig-file
   "The sidecar path for an event signed by the key with `fpr`."
   ^java.io.File [events-dir event-id fpr]

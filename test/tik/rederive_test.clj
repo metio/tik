@@ -16,7 +16,8 @@
             [tik.canonical :as canonical]
             [tik.cli]
             [tik.harness :as h]
-            [tik.rederive :as rederive])
+            [tik.rederive :as rederive]
+            [tik.sign])
   (:import (java.io File)
            (java.nio.file Files)
            (java.time Instant)
@@ -361,3 +362,24 @@
     (is (= 200 (:status r)))
     (is (:verified? parsed))
     (is (= (bundle/digest tgz) (:digest parsed)))))
+
+(deftest an_absent_verifier_is_reported_as_unchecked_not_as_forged
+  ;; Every verification path shells out to ssh-keygen. When it is missing —
+  ;; the published container is distroless and carries none — catching
+  ;; broadly would turn "cannot judge" into "does not verify", and report a
+  ;; good bundle as forged. That is the one direction a verification tool
+  ;; must never fail in.
+  (let [store (signed-store! :support-request "category=:billing" "severity=:low")
+        tgz (bundle! store)
+        dest (h/temp-dir! "tik-no-verifier")]
+    (bundle/untar-gz! tgz dest)
+    (with-redefs [tik.sign/verifier-available? (delay false)]
+      (let [r (bundle/re-derive dest (Instant/now))
+            msgs (map :msg (:checks r))]
+        (is (:verified? r)
+            "an unjudgeable signature is a note, so the bundle still stands")
+        (is (some #(str/includes? % "no ssh-keygen here") msgs))
+        (is (not-any? #(str/includes? % "does not verify") msgs))))
+    (testing "and with a verifier the signatures are actually checked"
+      (let [r (bundle/re-derive dest (Instant/now))]
+        (is (some #(str/includes? (:msg %) "verifies as seb") (:checks r)))))))
