@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Corrections on tik</title><link>https://tik.projects.metio.wtf/tags/corrections/</link><description>Recent content in Corrections on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/corrections/index.xml" rel="self" type="application/rss+xml"/><item><title>Recording work</title><link>https://tik.projects.metio.wtf/cli/recording-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/recording-work/</guid><description>&lt;p&gt;You record evidence. Stages follow.&lt;/p&gt;
+&lt;h2 id="create-a-ticket"&gt;Create a ticket&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik new support-request --title &lt;span class="s2"&gt;&amp;#34;login fails on Firefox&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The ticket pins the process definition&amp;rsquo;s content hash at creation, so it is
+judged by the rules it was minted under until somebody deliberately moves
+it with &lt;code&gt;tik reprocess&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Created beneath a store, a ticket inherits its context as signed facts:
+&lt;code&gt;repo=&amp;lt;name&amp;gt;&lt;/code&gt; from the enclosing git repository, plus any &lt;code&gt;.tik-facts.edn&lt;/code&gt;
+maps on the way down, nearest winning, with anything explicit beating both.&lt;/p&gt;</description></item></channel></rss>

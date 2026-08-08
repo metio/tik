@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Next on tik</title><link href="https://tik.projects.metio.wtf/tags/next/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/next/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/next/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/next/</id><entry><title type="html">Explain</title><link href="https://tik.projects.metio.wtf/concepts/explain/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><id>https://tik.projects.metio.wtf/concepts/explain/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T23:28:02+02:00</updated><content type="html"><![CDATA[<blockquote>The product surface — what evidence is missing, who may supply it, and when waiting is pointless.</blockquote><p>A traditional tracker exposes state. tik exposes <strong>justification</strong>: what is
+true, why it is true, and what evidence is missing next. <code>tik explain</code> is
+where that surfaces, and every other view is a rendering of it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✓ [:fact [:resolution :ref]]
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  blocks: :closed
+</span></span></span><span class="line"><span class="cl"><span class="go">  (see: kb/runbooks/support-request-resolved.md)
+</span></span></span></code></pre></div><p>Nothing in that block is speculation. The checkmarks are guards that
+already hold, the crosses are structured reasons produced by guard
+evaluation, <code>blocks</code> is the downstream closure, and the hint is the
+<a href="/runbooks/">runbook</a>
+ the definition declares for that stage.</p>
+<h2 id="reasons-are-data">Reasons are data</h2>
+<p>The prose lives in this lens only. Underneath, each missing step is a
+structured reason carrying the path, the schema, the role, the actor whose
+signature already counted — whatever the guard knows:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --edn
+</span></span></code></pre></div><p>That data contract is stable plumbing; the English is not. It renders as
+CLI text, as web forms built from the schemas in the reasons, and as agent
+task specifications whose acceptance criteria <em>are</em> the guards.</p>
+<p>Reasons are sorted by <strong>who can act on them right now</strong>: values anyone can
+supply first, then corrections, artifacts, specific people, attestations,
+other stages, and finally time, which is nobody&rsquo;s to act on.</p>
+<h2 id="who-can-act">Who can act</h2>
+<p><code>--actor</code> filters a block to what one person can do, and counts the rest
+rather than hiding it:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span> --actor alice
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  … 1 step(s) waiting on others or time
+</span></span></span></code></pre></div><p><code>tik next</code> rotates the same derivation into an inbox — for a person, or for
+a whole role:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik next --actor alice
+</span></span><span class="line"><span class="cl">tik next --role :triager
+</span></span></code></pre></div><p>The inbox ranks by unlock impact, so the step that frees the most
+downstream work comes first, and it holds back tickets whose dependency
+links point at unsettled upstream work.</p>
+<h2 id="waiting-versus-impossible">Waiting versus impossible</h2>
+<p>Some blocked tickets are waiting for a colleague. Others can never move at
+all — a role with no members, a negation over a sticky stage already
+reached, a prerequisite that is itself dead. Those look identical until you
+say so, and telling somebody to wait for something that will never arrive
+is the failure that matters most for a tool whose whole claim is answering
+what is blocking.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain 9c21
+</span></span><span class="line"><span class="cl"><span class="go">To reach :approved (unreachable):
+</span></span></span><span class="line"><span class="cl"><span class="go">  ⊘ fact [:sign-off] must be asserted by a member of role :auditor
+</span></span></span><span class="line"><span class="cl"><span class="go">      (currently by &#34;seb&#34;) — nobody can ever do this
+</span></span></span></code></pre></div><p>The derivation stays conservative: a step is only called impossible when it
+is provably undischargeable from the definition and the log. A choice dies
+only when every one of its branches does. Anything merely waiting keeps its
+<code>✗</code>.</p>
+<h2 id="proving-it">Proving it</h2>
+<p><code>tik causal</code> answers the auditor&rsquo;s question — which signed events made each
+reached stage true, with negations and time saying so honestly:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik causal <span class="m">3184</span>
+</span></span></code></pre></div><p>And <code>tik whatif</code> asks the counterfactual without writing anything:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik whatif <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:low +P2D retract:category
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/explain" term="explain" label="explain"/><category scheme="https://tik.projects.metio.wtf/tags/next" term="next" label="next"/><category scheme="https://tik.projects.metio.wtf/tags/inbox" term="inbox" label="inbox"/><category scheme="https://tik.projects.metio.wtf/tags/reasons" term="reasons" label="reasons"/></entry><entry><title type="html">Reading a store</title><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/explain/?utm_source=atom_feed" rel="related" type="text/html" title="Explain"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/cli/reading-a-store/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>The inbox, the board, explain, selectors, history, and counterfactuals.</blockquote><p>Every view here is computed when you ask, so none of them can be stale.</p>
+<h2 id="what-should-i-do">What should I do?</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik next --actor alice
+</span></span><span class="line"><span class="cl">tik next --role :triager
+</span></span><span class="line"><span class="cl">tik explain <span class="m">3184</span> --actor alice
+</span></span></code></pre></div><p><code>next</code> ranks by how much downstream work each step unlocks, with quiet
+tickets rising. <code>explain</code> is the per-ticket answer: what is missing, whose
+signature it needs, and which stages it blocks. See
+<a href="/concepts/explain/">Explain</a>
+ for the model behind them.</p>
+<h2 id="the-board">The board</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls
+</span></span><span class="line"><span class="cl">tik ls --all --long
+</span></span><span class="line"><span class="cl">tik ls --where <span class="s1">&#39;stage=:blocked and fact:severity=:high and not disputed&#39;</span>
+</span></span><span class="line"><span class="cl">tik search firefox login
+</span></span></code></pre></div><p>A selector is space-separated terms, all ANDed, each optionally negated:
+<code>stage=:blocked</code>, <code>fact:severity</code>, <code>fact:severity=:high</code>, <code>actor=seb</code>,
+<code>disputed</code>, <code>conflicted</code>, <code>unsigned</code>, <code>derived-from=&lt;hash&gt;</code>, <code>~text</code>. The
+same grammar drives <code>search</code>, and <code>tik dupes</code> reports near-title
+lookalikes.</p>
+<h2 id="one-ticket">One ticket</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik status <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik status <span class="m">3184</span> --at 2026-03-01T00:00:00Z
+</span></span><span class="line"><span class="cl">tik log <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik diff <span class="m">3184</span> <span class="m">5</span>
+</span></span></code></pre></div><p><code>status</code> reports the derived stage, the facts behind it, links, and what is
+next. <code>--at</code> answers the same question about any past moment by evaluating
+that moment. <code>diff</code> shows the evidence gained over the last few events.</p>
+<h2 id="why-and-what-if">Why, and what if</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik causal <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik whatif <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:low +P2D retract:category
+</span></span><span class="line"><span class="cl">tik debug <span class="m">3184</span>
+</span></span></code></pre></div><p><code>causal</code> names the signed events that made each reached stage true —
+including negations and time saying so honestly. <code>whatif</code> shows the stage
+diff a change would produce and writes nothing. <code>debug</code> shows the fixpoint
+with its working: every sweep, every guard verdict.</p>
+<h2 id="the-roadmap-and-the-wider-picture">The roadmap and the wider picture</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik plan
+</span></span><span class="line"><span class="cl">tik plan roadmap.html
+</span></span><span class="line"><span class="cl">tik roles
+</span></span><span class="line"><span class="cl">tik work week --actor alice
+</span></span></code></pre></div><p><code>plan</code> derives the dependency-link roadmap — ready, blocked, done, cyclic,
+the critical path, and each item&rsquo;s unlock impact. <code>roles</code> shows who gates
+what: every role on the open board, its effective members, and the stages
+waiting on its signature.</p>
+<h2 id="sharing-what-you-see">Sharing what you see</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik board board.html
+</span></span><span class="line"><span class="cl">tik serve --port <span class="m">8080</span>
+</span></span><span class="line"><span class="cl">tik bundle <span class="m">3184</span> --out ticket-3184.tgz
+</span></span><span class="line"><span class="cl">tik rederive ticket-3184.tgz
+</span></span></code></pre></div><p><code>board</code> renders the whole store into one dependency-free HTML file you can
+mail or archive. <code>serve</code> publishes it live, read-only, with <code>/tickets.edn</code>
+and <code>/explain/&lt;id&gt;.edn</code> for tools. <code>bundle</code> packs one ticket — events,
+signatures, witness marks, the pinned ruleset, and a <code>verify.sh</code> — into a
+tarball a third party checks with coreutils and <code>ssh-keygen</code>, no tik
+required. <code>rederive</code> is the other half: it checks a bundle and recomputes
+what its facts imply under the rules the ticket pinned, at the instant you
+ask. See <a href="/evidence/">Evidence</a>
+.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/><category scheme="https://tik.projects.metio.wtf/tags/explain" term="explain" label="explain"/><category scheme="https://tik.projects.metio.wtf/tags/next" term="next" label="next"/><category scheme="https://tik.projects.metio.wtf/tags/board" term="board" label="board"/><category scheme="https://tik.projects.metio.wtf/tags/selectors" term="selectors" label="selectors"/></entry></feed>

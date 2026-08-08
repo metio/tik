@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Runbooks on tik</title><link>https://tik.projects.metio.wtf/runbooks/</link><description>Recent content in Runbooks on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/runbooks/index.xml" rel="self" type="application/rss+xml"/><item><title>automated-release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-attested/</guid><description>&lt;h1 id="automated-release--attested"&gt;automated-release · attested&lt;/h1&gt;
+&lt;p&gt;What the artifact is made of, and how it came to be — each said by a
+party the registry trusts, each recent enough to be about this build.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the artifact&amp;rsquo;s digest and have &lt;code&gt;ci&lt;/code&gt; sign it:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; artifact.digest=&amp;quot;\&amp;quot;sha256:…\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Bring the SBOM and the provenance in as attestations. Where the
+pipeline already emits in-toto or SLSA documents, &lt;code&gt;tik bridge intoto &amp;lt;file&amp;gt;&lt;/code&gt; maps their &lt;code&gt;predicateType&lt;/code&gt; onto the claim these guards read, so
+nothing is invented and nothing is transcribed by hand.&lt;/li&gt;
+&lt;li&gt;Both windows are one day, and they are measured against the moment the
+attestation was written. Produce them in the release job; an older
+document describes an older build.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;tik checks that a trusted attester said these things. It never reads the
+SBOM and forms no opinion about its contents, so this stage is worth
+exactly what the attester is worth — choose who may sign accordingly, and
+say so to whoever reads the badge.&lt;/p&gt;</description></item><item><title>automated-release / :built</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-built/</guid><description>&lt;h1 id="automated-release--built"&gt;automated-release · built&lt;/h1&gt;
+&lt;p&gt;The pipeline says which commit produced these bytes, and hands over the
+checksums that name them.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the version and the commit from the pipeline&amp;rsquo;s own context:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; version=&amp;quot;\&amp;quot;1.4.0\&amp;quot;&amp;quot; commit=&amp;quot;\&amp;quot;$GITHUB_SHA\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;commit&lt;/code&gt; fact must be signed by a member of the &lt;code&gt;ci&lt;/code&gt; role. Name
+yours first with &lt;code&gt;tik roles add ci &amp;lt;actor&amp;gt;&lt;/code&gt; — the definition ships with
+the role empty so adoption inherits nobody else&amp;rsquo;s org chart.&lt;/li&gt;
+&lt;li&gt;Attach the checksums under a &lt;code&gt;checksums/&lt;/code&gt; prefix:
+&lt;code&gt;tik attach &amp;lt;id&amp;gt; dist/SHA256SUMS --as checksums/SHA256SUMS&lt;/code&gt;. The hash
+goes on the log and the blob is stored beside it, so a reader compares
+their own download against a value the signature covers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Give &lt;code&gt;ci&lt;/code&gt; a keypair generated per run and bound to the pipeline&amp;rsquo;s own
+workload identity — &lt;code&gt;tik bridge workload --github&lt;/code&gt; binds it to the token
+the platform already issues — so nothing long-lived exists to leak and
+the binding is what makes the signatures checkable afterwards.&lt;/p&gt;</description></item><item><title>automated-release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-scanned/</guid><description>&lt;h1 id="automated-release--scanned"&gt;automated-release · scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this build and came back clean.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attest the scan, naming the tool and the advisory database it read:
+&lt;code&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body '{:tool &amp;quot;…&amp;quot; :db &amp;quot;…&amp;quot;}'&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record the outcome as a fact &lt;code&gt;ci&lt;/code&gt; signs:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; scan.result=:clean&lt;/code&gt; — or &lt;code&gt;:findings&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;code&gt;:findings&lt;/code&gt; is a legitimate outcome and belongs on the record. Let the
+scanner write what it found, let the ticket carry it, and let the release
+ship anyway if that is the call — the stage stays unreached and the badge
+says so, which is the whole reason this stage is worth deriving. A stage
+nothing could ever fail would be decoration.&lt;/p&gt;</description></item><item><title>employee-onboarding / :accounts</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-accounts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-accounts/</guid><description>&lt;h1 id="employee-onboarding-accounts"&gt;employee-onboarding: accounts&lt;/h1&gt;
+&lt;p&gt;IT stands behind the account creation:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; accounts.email=&amp;lt;address&amp;gt;&lt;/code&gt; signed by IT.
+Runs in parallel with equipment — neither waits for the other.&lt;/p&gt;</description></item><item><title>employee-onboarding / :equipped</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-equipped/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-equipped/</guid><description>&lt;h1 id="employee-onboarding-equipped"&gt;employee-onboarding: equipped&lt;/h1&gt;
+&lt;p&gt;IT stands behind the hardware handover:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; equipment.ref=&amp;lt;asset tag&amp;gt;&lt;/code&gt; signed by IT.&lt;/p&gt;</description></item><item><title>employee-onboarding / :hired</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-hired/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-hired/</guid><description>&lt;h1 id="employee-onboarding-hired"&gt;employee-onboarding: hired&lt;/h1&gt;
+&lt;p&gt;The paperwork is real: a start date, the contract file, and HR&amp;rsquo;s
+signed reference to it.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; start-date=2026-09-01&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik attach &amp;lt;id&amp;gt; contract/&amp;lt;name&amp;gt;.pdf&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;HR records &lt;code&gt;tik set &amp;lt;id&amp;gt; contract.ref=&amp;lt;reference&amp;gt;&lt;/code&gt; with their key.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>employee-onboarding / :ready</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-ready/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-ready/</guid><description>&lt;h1 id="employee-onboarding-ready"&gt;employee-onboarding: ready&lt;/h1&gt;
+&lt;p&gt;Both branches landed and a buddy is named:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; buddy=&amp;lt;name&amp;gt;&lt;/code&gt;. Day one can happen.&lt;/p&gt;</description></item><item><title>hypothesis / :captured</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-captured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-captured/</guid><description>&lt;h1 id="runbook-hypothesis--captured"&gt;Runbook: hypothesis / :captured&lt;/h1&gt;
+&lt;p&gt;A belief worth testing exists. Capture it even half-formed — but do
+not state it until you can also state what would kill it. A hypothesis
+you cannot lose is marketing.&lt;/p&gt;</description></item><item><title>hypothesis / :killed</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-killed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-killed/</guid><description>&lt;h1 id="runbook-hypothesis--killed"&gt;Runbook: hypothesis / :killed&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;verdict=:killed&lt;/code&gt; and &lt;code&gt;evidence&lt;/code&gt; of the kill: which criterion
+fired, observed how. A kill is a RESULT — it retires a belief and
+usually implies design work (the roadmap says what dies with it: kill
+H1 and the core loop is wrong, not under-featured). Write the evidence
+so the next design argument can cite it. Judgment stage, same rules as
+:validated: sign reasoning a stranger could dispute.&lt;/p&gt;</description></item><item><title>hypothesis / :running</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-running/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-running/</guid><description>&lt;h1 id="runbook-hypothesis--running"&gt;Runbook: hypothesis / :running&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;experiment&lt;/code&gt;: what is actually being run, on what, measured
+how. If the full experiment cannot start yet, name the leg that can
+and the leg that waits (H3 is the template). While running, record
+datapoints as comments — negative ones ESPECIALLY; an experiment that
+only logs good news is not running, it is performing.&lt;/p&gt;</description></item><item><title>hypothesis / :stated</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-stated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-stated/</guid><description>&lt;h1 id="runbook-hypothesis--stated"&gt;Runbook: hypothesis / :stated&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;statement&lt;/code&gt; (the falsifiable claim) and &lt;code&gt;kill&lt;/code&gt; (what counts as
+losing, decided NOW, before any work). Write the kill criterion as an
+observable event, not a feeling: &amp;lsquo;abandoned within a month&amp;rsquo;, &amp;lsquo;requires
+prompt-side enforcement&amp;rsquo;. The process will not let a verdict through
+without this — that is the point.&lt;/p&gt;</description></item><item><title>hypothesis / :validated</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-validated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-validated/</guid><description>&lt;h1 id="runbook-hypothesis--validated"&gt;Runbook: hypothesis / :validated&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;verdict=:validated&lt;/code&gt; and &lt;code&gt;evidence&lt;/code&gt; that a stranger could
+check: what ran, what was observed, why the kill criterion never
+fired, and any scoping decisions that bound the claim. Sticky — later
+doubts are a NEW hypothesis, not an edit. This stage is judgment:
+the process cannot verify your evidence is sufficient, only that you
+signed it. Leave enough that someone can dispute you specifically.&lt;/p&gt;</description></item><item><title>identity-registry / :registry</title><link>https://tik.projects.metio.wtf/runbooks/identity-registry-registry/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/identity-registry-registry/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="identity-registry-registry"&gt;identity-registry: registry&lt;/h1&gt;
+&lt;p&gt;The registry ticket accumulates signed &lt;code&gt;:identity&lt;/code&gt; attestations, each
+binding an IdP subject to an actor&amp;rsquo;s public key. The ticket is always
+in this stage — bindings are evidence, not workflow.&lt;/p&gt;
+&lt;h2 id="recording-a-binding"&gt;Recording a binding&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik bridge oidc --registry &amp;lt;id&amp;gt; --actor &amp;lt;name&amp;gt;&lt;/code&gt; runs the device-flow
+login and appends the binding, signed by the bridge&amp;rsquo;s &lt;code&gt;TIK_KEY&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Rotation and re-attestation are newer attestations by the same
+bridge; readers take the latest binding per (issuer, subject).&lt;/li&gt;
+&lt;li&gt;Revocation is a dispute of nothing — attestations are claims by the
+bridge; a binding the bridge no longer stands behind simply stops
+being re-attested, and lenses can require freshness via
+&lt;code&gt;:attested-within&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="reading-bindings"&gt;Reading bindings&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik log &amp;lt;registry-id&amp;gt;&lt;/code&gt; shows every binding with its signature;
+&lt;code&gt;tik verify &amp;lt;registry-id&amp;gt;&lt;/code&gt; checks them offline — no IdP call, ever.&lt;/p&gt;</description></item><item><title>incident-response / :analyzed</title><link>https://tik.projects.metio.wtf/runbooks/incident-analyzed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-analyzed/</guid><description>&lt;h1 id="incident-response-analyzed"&gt;incident-response: analyzed&lt;/h1&gt;
+&lt;p&gt;The learning is written down.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; root-cause=the actual cause, not the trigger&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; postmortem.summary=a paragraph a stranger can learn from&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>incident-response / :declared</title><link>https://tik.projects.metio.wtf/runbooks/incident-declared/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-declared/</guid><description>&lt;h1 id="incident-response-declared"&gt;incident-response: declared&lt;/h1&gt;
+&lt;p&gt;An incident exists once its severity and impact are on record.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; severity=:sev1|:sev2|:sev3&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; impact=who is affected and how&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Declare early and cheap — severity can be corrected later, and the
+correction (like everything) is part of the record.&lt;/p&gt;</description></item><item><title>incident-response / :mitigated</title><link>https://tik.projects.metio.wtf/runbooks/incident-mitigated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-mitigated/</guid><description>&lt;h1 id="incident-response-mitigated"&gt;incident-response: mitigated&lt;/h1&gt;
+&lt;p&gt;The bleeding has stopped, on the commander&amp;rsquo;s word.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The commander confirms severity by asserting it themselves —
+&lt;code&gt;tik set &amp;lt;id&amp;gt; severity=:sev1&lt;/code&gt; signed with their key.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; mitigation.note=what stopped the bleeding&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>incident-response / :postmortem-due</title><link>https://tik.projects.metio.wtf/runbooks/incident-postmortem-due/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-postmortem-due/</guid><description>&lt;h1 id="incident-response-postmortem-due"&gt;incident-response: postmortem-due&lt;/h1&gt;
+&lt;p&gt;Five days have passed and no postmortem summary exists. Nobody set
+this stage — time and absence derived it, and delivering the summary
+(see analyzed) retracts it the same way.&lt;/p&gt;</description></item><item><title>incident-response / :reviewed</title><link>https://tik.projects.metio.wtf/runbooks/incident-reviewed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-reviewed/</guid><description>&lt;h1 id="incident-response-reviewed"&gt;incident-response: reviewed&lt;/h1&gt;
+&lt;p&gt;A second pair of eyes accepted the analysis.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Someone OTHER than the summary&amp;rsquo;s author records
+&lt;code&gt;tik set &amp;lt;id&amp;gt; review.verdict=:accepted&lt;/code&gt; — the commander signs it,
+and the definition enforces the different-person rule.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :approved</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-approved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-approved/</guid><description>&lt;h1 id="okf-publish--approved"&gt;okf-publish · approved&lt;/h1&gt;
+&lt;p&gt;An owner authorizes public release.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of the &lt;code&gt;approver&lt;/code&gt; role signs over &lt;code&gt;[:bundle]&lt;/code&gt; — ideally a
+different person than the reviewer (separation of duties).&lt;/li&gt;
+&lt;li&gt;Approval binds to the exact hash; revise the bundle and approval
+regresses, forcing re-approval before it can be published again.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :drafted</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-drafted/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-drafted/</guid><description>&lt;h1 id="okf-publish--drafted"&gt;okf-publish · drafted&lt;/h1&gt;
+&lt;p&gt;The bundle exists and is identified.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attach the OKF bundle files under &lt;code&gt;okf/&lt;/code&gt; (&lt;code&gt;tik attach &amp;lt;id&amp;gt; okf/...&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Record the bundle&amp;rsquo;s content hash: &lt;code&gt;tik set &amp;lt;id&amp;gt; bundle=&amp;lt;sha256&amp;gt;&lt;/code&gt;.
+This hash is what review and approval will sign over, so a later
+revision (new hash) automatically un-reviews the bundle.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :published</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-published/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-published/</guid><description>&lt;h1 id="okf-publish--published"&gt;okf-publish · published&lt;/h1&gt;
+&lt;p&gt;The bundle is public.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record where it went live: &lt;code&gt;tik set &amp;lt;id&amp;gt; published.url=&amp;lt;url&amp;gt;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;This stage is NOT sticky: if the bundle is later revised, approval
+regresses and the ticket drops back out of &lt;code&gt;published&lt;/code&gt; until the new
+version is re-reviewed and re-approved. Stale public knowledge
+un-publishes itself by derivation.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :reviewed</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-reviewed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-reviewed/</guid><description>&lt;h1 id="okf-publish--reviewed"&gt;okf-publish · reviewed&lt;/h1&gt;
+&lt;p&gt;A reviewer vouches the bundle is accurate.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of the &lt;code&gt;reviewer&lt;/code&gt; role signs over the &lt;code&gt;[:bundle]&lt;/code&gt; fact
+(&lt;code&gt;tik sign &amp;lt;id&amp;gt; --over bundle&lt;/code&gt;, or the review attestation flow).&lt;/li&gt;
+&lt;li&gt;Reviewing a &lt;em&gt;different&lt;/em&gt; hash than the current one does not count —
+the signature must cover the bundle as it stands now.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-attested/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-attested"&gt;release: attested&lt;/h1&gt;
+&lt;p&gt;The container image exists, an SBOM and build provenance were produced for it,
+and the checksums carry a signature.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;image&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;ghcr.io/metio/tik@sha256:... --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; signature.bundle&lt;span class="o"&gt;=&lt;/span&gt;&amp;lt;sha256 of SHA256SUMS.bundle&amp;gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :sbom --body &lt;span class="s1"&gt;&amp;#39;{:format &amp;#34;spdx-json&amp;#34; :digest &amp;#34;sha256:...&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :provenance --body &lt;span class="s1"&gt;&amp;#39;{:format &amp;#34;slsa-v1&amp;#34; :digest &amp;#34;sha256:...&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The guard checks that a trusted attester said an SBOM exists. It does not read
+the SBOM — guards never query anything, which is what keeps evaluation offline
+and reproducible forever. The derivation is therefore exactly as trustworthy as
+&lt;code&gt;:ci&lt;/code&gt;, and that is a property to state plainly rather than bury.&lt;/p&gt;</description></item><item><title>release / :built</title><link>https://tik.projects.metio.wtf/runbooks/release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-built/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-built"&gt;release: built&lt;/h1&gt;
+&lt;p&gt;The artifacts for this version exist and the pipeline has said which commit
+produced them.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;version&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;2026.8.5204821 &lt;span class="nv"&gt;commit&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&amp;lt;sha&amp;gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attach &amp;lt;id&amp;gt; checksums/SHA256SUMS
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;commit&lt;/code&gt; must be signed by a member of &lt;code&gt;:ci&lt;/code&gt;: the pipeline is the only party
+that can honestly say which source produced these bytes, and a human asserting
+it is a claim about something they did not observe.&lt;/p&gt;</description></item><item><title>release / :published</title><link>https://tik.projects.metio.wtf/runbooks/release-published/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-published/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-published"&gt;release: published&lt;/h1&gt;
+&lt;p&gt;A maintainer decided to ship, and that maintainer is not the party that built
+it.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;approval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;:ship --actor seb
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The &lt;code&gt;:different-person&lt;/code&gt; guard compares who asserted &lt;code&gt;commit&lt;/code&gt; with who asserted
+&lt;code&gt;approval&lt;/code&gt;. The pipeline cannot approve its own release — not because a rule
+forbids it, but because the two facts would carry the same signature and the
+guard would not hold.&lt;/p&gt;</description></item><item><title>release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-scanned/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-scanned"&gt;release: scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this version&amp;rsquo;s dependencies, found nothing,
+and said so recently enough to be about today&amp;rsquo;s advisories.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body &lt;span class="s1"&gt;&amp;#39;{:tool &amp;#34;clj-watson&amp;#34; :db &amp;#34;github-advisory&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; scan.result&lt;span class="o"&gt;=&lt;/span&gt;:clean --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Both halves are needed and they say different things. The fact records the
+verdict; the attestation records that a scan happened and when. The one-day
+freshness window is what makes replay useless — a scan from last month is
+cryptographically valid and fails this guard honestly, because the advisory
+database it consulted no longer exists.&lt;/p&gt;</description></item><item><title>release / :withheld</title><link>https://tik.projects.metio.wtf/runbooks/release-withheld/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-withheld/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-withheld"&gt;release: withheld&lt;/h1&gt;
+&lt;p&gt;A maintainer decided this version does not ship.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;approval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;:hold --actor seb
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik comment &amp;lt;id&amp;gt; &lt;span class="s2"&gt;&amp;#34;held: the scan is clean but the advisory for the transitive dep is unresolved upstream&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Recorded with the same weight as shipping, because the reason a version never
+shipped is worth as much a year later as the reason one did — and it is the
+question nobody can answer from a green pipeline.&lt;/p&gt;</description></item><item><title>renovate-migration / :configured</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-configured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-configured/</guid><description>&lt;h1 id="renovate-migration-configured"&gt;renovate-migration: configured&lt;/h1&gt;
+&lt;p&gt;Renovate is in, Dependabot is out — the commits are the proof&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.config.ref&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record &lt;code&gt;removal.commit&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>renovate-migration / :planned</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-planned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-planned/</guid><description>&lt;h1 id="renovate-migration-planned"&gt;renovate-migration: planned&lt;/h1&gt;
+&lt;p&gt;the approach is decided and on record&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;approach&lt;/code&gt; — one of org-wide-config, repo-local-config.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>renovate-migration / :verified</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-verified/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-verified/</guid><description>&lt;h1 id="renovate-migration-verified"&gt;renovate-migration: verified&lt;/h1&gt;
+&lt;p&gt;Renovate demonstrably runs, and a maintainer stands behind the migration&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.dashboard&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.first-pr&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;A member of the &lt;code&gt;maintainer&lt;/code&gt; role records and signs their approval.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>supply-chain-release / :approved</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-approved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-approved/</guid><description>&lt;h1 id="supply-chain-release--approved"&gt;supply-chain-release · approved&lt;/h1&gt;
+&lt;p&gt;Somebody who is not the pipeline looked at the evidence and decided to
+ship.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of &lt;code&gt;release-manager&lt;/code&gt; records the decision:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; approval=:ship&lt;/code&gt;, signed with their own key.&lt;/li&gt;
+&lt;li&gt;Four eyes is derived, not promised: &lt;code&gt;[:different-person [:commit] [:approval]]&lt;/code&gt; compares who asserted each fact, so the actor that
+signed the commit cannot also sign the approval. A single-person
+project never reaches this stage, and the honest reading of that is
+&amp;ldquo;nobody independent looked&amp;rdquo;, which is worth knowing.&lt;/li&gt;
+&lt;li&gt;The stage is sticky. An advisory published next week does not
+un-approve a version that already shipped; it starts a new ticket
+against the next one.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Approve after &lt;code&gt;:attested&lt;/code&gt; and &lt;code&gt;:scanned&lt;/code&gt; hold, since both are the
+material the decision is supposed to rest on. If you find yourself
+approving first, the process is telling you something true about how
+releases actually happen here.&lt;/p&gt;</description></item><item><title>supply-chain-release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-attested/</guid><description>&lt;h1 id="supply-chain-release--attested"&gt;supply-chain-release · attested&lt;/h1&gt;
+&lt;p&gt;What the artifact is made of, and how it came to be — each said by a
+party the registry trusts, each recent enough to be about this build.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the artifact&amp;rsquo;s digest and have &lt;code&gt;ci&lt;/code&gt; sign it:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; artifact.digest=&amp;quot;\&amp;quot;sha256:…\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Bring the SBOM and the provenance in as attestations. If your pipeline
+already emits in-toto or SLSA documents, &lt;code&gt;tik bridge intoto &amp;lt;file&amp;gt;&lt;/code&gt;
+maps their &lt;code&gt;predicateType&lt;/code&gt; onto the claim these guards read, so no
+format is invented and nothing is transcribed by hand.&lt;/li&gt;
+&lt;li&gt;Both windows are one day. An attestation older than that describes a
+different build, and the stage will not hold — re-attest as part of
+the release rather than replaying an older document.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;tik checks that a trusted attester said these things. It does not read
+the SBOM and forms no opinion about its contents, so this stage is worth
+exactly what the attester is worth. Choose who may sign accordingly, and
+say so to whoever reads the badge.&lt;/p&gt;</description></item><item><title>supply-chain-release / :built</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-built/</guid><description>&lt;h1 id="supply-chain-release--built"&gt;supply-chain-release · built&lt;/h1&gt;
+&lt;p&gt;The pipeline says which commit produced these bytes, and hands over the
+checksums that name them.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the version and the commit from the pipeline&amp;rsquo;s own context:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; version=&amp;quot;\&amp;quot;1.4.0\&amp;quot;&amp;quot; commit=&amp;quot;\&amp;quot;$GITHUB_SHA\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;commit&lt;/code&gt; fact must be signed by a member of the &lt;code&gt;ci&lt;/code&gt; role. A build
+is the one party that can honestly say which source produced which
+artifact, so a human asserting it proves nothing.&lt;/li&gt;
+&lt;li&gt;Attach the checksums file under a &lt;code&gt;checksums/&lt;/code&gt; prefix:
+&lt;code&gt;tik attach &amp;lt;id&amp;gt; dist/SHA256SUMS --as checksums/SHA256SUMS&lt;/code&gt;. The
+artifact&amp;rsquo;s hash is on the log; the blob is stored beside it, so a
+reader compares their download against a value the signature covers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Give &lt;code&gt;ci&lt;/code&gt; an ephemeral key bound to the pipeline&amp;rsquo;s own workload identity
+rather than a long-lived secret — &lt;code&gt;tik bridge workload --github&lt;/code&gt; binds a
+per-run keypair to the token the platform already issues, and nothing
+long-lived exists to leak.&lt;/p&gt;</description></item><item><title>supply-chain-release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-scanned/</guid><description>&lt;h1 id="supply-chain-release--scanned"&gt;supply-chain-release · scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this build and came back clean.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attest the scan, naming the tool and the advisory database it read:
+&lt;code&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body '{:tool &amp;quot;…&amp;quot; :db &amp;quot;…&amp;quot;}'&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record the outcome as a fact &lt;code&gt;ci&lt;/code&gt; signs:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; scan.result=:clean&lt;/code&gt; — or &lt;code&gt;:findings&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;:findings&lt;/code&gt; is a legitimate answer and belongs on the record. Let the
+scan write what it found and let the ticket carry it; the stage stays
+unreached, and the release is a decision somebody makes with that in
+front of them.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Run the scan inside the release job rather than reusing an earlier
+result. The one-day window exists because a scan is a claim about the
+advisory database at a moment: last week&amp;rsquo;s clean result is
+cryptographically valid, honestly stale, and says nothing about the
+advisories published since.&lt;/p&gt;</description></item><item><title>supply-chain-release / :withheld</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-withheld/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-withheld/</guid><description>&lt;h1 id="supply-chain-release--withheld"&gt;supply-chain-release · withheld&lt;/h1&gt;
+&lt;p&gt;A version that was built and then deliberately not shipped, with the
+decision and its author on the record.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of &lt;code&gt;release-manager&lt;/code&gt; records the hold:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; approval=:hold&lt;/code&gt;, signed.&lt;/li&gt;
+&lt;li&gt;Say why in the same breath: &lt;code&gt;tik comment &amp;lt;id&amp;gt; &amp;quot;held: the scan found CVE-… in a transitive dependency&amp;quot;&lt;/code&gt;. The comment is an artifact
+addressed by hash, so the reason travels in the evidence bundle
+alongside the decision.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This stage earns its keep months later. A version that quietly never
+shipped looks identical to one nobody got around to, and the difference
+matters when somebody asks what happened to 1.4.0. Reaching &lt;code&gt;:withheld&lt;/code&gt;
+answers that from the log rather than from memory.&lt;/p&gt;</description></item><item><title>support-request / :closed</title><link>https://tik.projects.metio.wtf/runbooks/support-request-closed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-closed/</guid><description>&lt;h1 id="runbook-support-request--closed"&gt;Runbook: support-request / :closed&lt;/h1&gt;
+&lt;p&gt;Sticky milestone: only the customer&amp;rsquo;s acknowledgement closes, and a
+later retraction will NOT reopen (the log shows both truths). Ask for
+the ack explicitly — the customer information-request pattern. If the
+customer goes silent, the ticket honestly stays at :resolved; do not
+assert the ack on their behalf, ever (authorship is the whole point,
+ADR 0010).&lt;/p&gt;</description></item><item><title>support-request / :escalated</title><link>https://tik.projects.metio.wtf/runbooks/support-request-escalated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-escalated/</guid><description>&lt;h1 id="runbook-support-request--escalated"&gt;Runbook: support-request / :escalated&lt;/h1&gt;
+&lt;p&gt;This stage derives on its own: 48 hours without a category. There is
+no action that produces it — the runbook is for reacting to it. An
+escalated ticket means triage is the bottleneck: find why (nobody on
+rotation? report unintelligible?) and either triage it now or record
+what blocks triage. Escalation clears itself the moment a category
+lands (fact-level negation).&lt;/p&gt;</description></item><item><title>support-request / :received</title><link>https://tik.projects.metio.wtf/runbooks/support-request-received/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-received/</guid><description>&lt;h1 id="runbook-support-request--received"&gt;Runbook: support-request / :received&lt;/h1&gt;
+&lt;p&gt;A new report exists; nothing is known yet. Read the title and any
+attached artifacts. Your job is to move it toward triage: get a
+category and a severity asserted by a triager. If the report is
+unintelligible, ask the reporter (a comment or an information-request
+effect) rather than guessing a category — a wrong category asserted
+confidently is worse than an honest gap.&lt;/p&gt;</description></item><item><title>support-request / :reproducible</title><link>https://tik.projects.metio.wtf/runbooks/support-request-reproducible/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-reproducible/</guid><description>&lt;h1 id="runbook-support-request--reproducible"&gt;Runbook: support-request / :reproducible&lt;/h1&gt;
+&lt;p&gt;Attach a reproduction under &lt;code&gt;repro/&lt;/code&gt; — a script, a request trace, a
+recording; the smallest artifact that makes the failure happen again.
+If you cannot reproduce it, say so in a comment with what you tried;
+do not attach a placeholder to satisfy the guard (evidence theater,
+PLAN §18). A technical ticket without a repro simply is not resolvable
+yet — that is the process being honest, not slow.&lt;/p&gt;</description></item><item><title>support-request / :resolved</title><link>https://tik.projects.metio.wtf/runbooks/support-request-resolved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-resolved/</guid><description>&lt;h1 id="runbook-support-request--resolved"&gt;Runbook: support-request / :resolved&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;resolution.ref&lt;/code&gt; pointing at the fix (commit, config change,
+knowledge-base answer). For technical tickets the reproduction must
+exist first — &amp;lsquo;fixed it but can&amp;rsquo;t show the bug&amp;rsquo; does not resolve.
+Resolution is a claim the customer has not yet accepted; do not
+consider the work done here.&lt;/p&gt;</description></item><item><title>support-request / :triaged</title><link>https://tik.projects.metio.wtf/runbooks/support-request-triaged/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-triaged/</guid><description>&lt;h1 id="runbook-support-request--triaged"&gt;Runbook: support-request / :triaged&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;category&lt;/code&gt; and &lt;code&gt;severity&lt;/code&gt; — both must come from a triager
+(the &lt;code&gt;:signed-by&lt;/code&gt; guard checks the role, not the values). Category is
+a claim about what KIND of problem this is; when genuinely unsure,
+pick the closest and say why in a comment — a later dispute is cheap
+and leaves better history than stalling. Severity reflects impact on
+the customer, not effort to fix.&lt;/p&gt;</description></item><item><title>tik-dev / :captured</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-captured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-captured/</guid><description>&lt;h1 id="runbook-tik-dev--captured"&gt;Runbook: tik-dev / :captured&lt;/h1&gt;
+&lt;p&gt;A thought exists; the ticket preserves it. Give it a title that will
+mean something in six months. Nothing else is required — capture must
+stay cheap or ideas stop being written down. Move to triage when you
+can honestly write one summary sentence and name the kind.&lt;/p&gt;</description></item><item><title>tik-dev / :implemented</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-implemented/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-implemented/</guid><description>&lt;h1 id="runbook-tik-dev--implemented"&gt;Runbook: tik-dev / :implemented&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;commit&lt;/code&gt; naming the commit that does the work. The commit must
+exist before the fact does — the fact is a claim about evidence, and
+the evidence is the git history. One feature, one commit, stacked on
+main (this repo&amp;rsquo;s workflow).&lt;/p&gt;</description></item><item><title>tik-dev / :landed</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-landed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-landed/</guid><description>&lt;h1 id="runbook-tik-dev--landed"&gt;Runbook: tik-dev / :landed&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;gate=:green&lt;/code&gt; only after the FULL local gate: kaocha, kondo
+(0/0), eastwood, splint, cljfmt, tla, process tests, reuse, typos,
+markdown. Not the one check your change touched — all of them.
+Sticky: a later gate dispute does not un-land; file a new bug ticket
+instead. If the gate is red, assert &lt;code&gt;gate=:red&lt;/code&gt; honestly and fix
+forward.&lt;/p&gt;</description></item><item><title>tik-dev / :parked</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-parked/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-parked/</guid><description>&lt;h1 id="runbook-tik-dev--parked"&gt;Runbook: tik-dev / :parked&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;parked.reason&lt;/code&gt; — the reason is the deliverable. Cite the
+verdict that parks it (a PLAN §19 entry, a trigger condition not yet
+met). Parked is not closed: the ticket stays visible on the board and
+can resume by simply asserting the missing facts. Parking without a
+real reason is deferral theater.&lt;/p&gt;</description></item><item><title>tik-dev / :triaged</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-triaged/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-triaged/</guid><description>&lt;h1 id="runbook-tik-dev--triaged"&gt;Runbook: tik-dev / :triaged&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;summary&lt;/code&gt; (what and why, one breath) and &lt;code&gt;kind&lt;/code&gt;
+(feature/bug/docs/spike) as a maintainer. If it duplicates existing
+work, link it (&lt;code&gt;link.duplicate-of=&amp;lt;uuid&amp;gt;&lt;/code&gt;) instead of triaging twice.
+If it should wait, this is also where you park it — with the reason,
+not silently.&lt;/p&gt;</description></item><item><title>track / :done</title><link>https://tik.projects.metio.wtf/runbooks/track-done/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/track-done/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="track-done"&gt;track: done&lt;/h1&gt;
+&lt;p&gt;The thing ended — say how:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;outcome&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;shipped in v2; see order #1234&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A few honest words beat a closed flag: the outcome is the only thing
+anyone will want from this ticket in a year.&lt;/p&gt;</description></item><item><title>track / :open</title><link>https://tik.projects.metio.wtf/runbooks/track-open/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/track-open/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="track-open"&gt;track: open&lt;/h1&gt;
+&lt;p&gt;The ticket exists. There is no workflow to satisfy — record what is
+true as it happens:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; key=value&lt;/code&gt; for facts worth keeping.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik comment &amp;lt;id&amp;gt; &amp;lt;text&amp;gt;&lt;/code&gt; for anything else.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik attach &amp;lt;id&amp;gt; &amp;lt;file&amp;gt;&lt;/code&gt; for evidence.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When several track tickets start following the same informal shape,
+run &lt;code&gt;tik author&lt;/code&gt; and give that shape a real definition.&lt;/p&gt;</description></item></channel></rss>

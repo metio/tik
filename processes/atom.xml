@@ -1,0 +1,1531 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Processes on tik</title><link href="https://tik.projects.metio.wtf/processes/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/processes/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/processes/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/processes/</id><entry><title type="html">automated-release</title><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="related" type="text/html" title="identity-registry"/><id>https://tik.projects.metio.wtf/processes/automated-release/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 3 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-c1cffcb2e879ff82ad36bf8e67c993aa8ddb0c5caacbdd484ec8440cb549c8bb
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● built ★        ⊢ version · commit · ✎ci · ⧉checksums/
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ attested ★   ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+</span></span><span class="line"><span class="cl">└─▶ scanned ★    ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>ci</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>artifact.digest</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>commit</code></td>
+					<td><code>[:string {:min 7}]</code></td>
+			</tr>
+			<tr>
+					<td><code>scan.result</code></td>
+					<td><code>[:enum :clean :findings]</code></td>
+			</tr>
+			<tr>
+					<td><code>version</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="built--sticky"><code>built</code> · sticky</h3>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>version</code> stands</li>
+<li>the fact <code>commit</code> stands</li>
+<li><code>commit</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an artifact is attached whose path starts with <code>checksums/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/automated-release-built.md</code></p>
+<h3 id="attested--sticky"><code>attested</code> · sticky</h3>
+<p>Follows <code>built</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>artifact.digest</code> stands</li>
+<li><code>artifact.digest</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:sbom</code> exists, no older than <code>P1D</code></li>
+<li>an attestation of <code>:provenance</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/automated-release-attested.md</code></p>
+<h3 id="scanned--sticky"><code>scanned</code> · sticky</h3>
+<p>Follows <code>built</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>scan.result</code> equals <code>:clean</code></li>
+<li><code>scan.result</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:vulnerability-scan</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/automated-release-scanned.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/automated-release.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">employee-onboarding</title><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="related" type="text/html" title="identity-registry"/><id>https://tik.projects.metio.wtf/processes/employee-onboarding-template/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process template with 4 stages</blockquote><h2 id="what-you-choose">What you choose</h2>
+<p><code>tik adopt</code> reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Question</th>
+					<th>Answer</th>
+					<th></th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>with-equipment</code></td>
+					<td><code>:boolean</code></td>
+					<td>does someone hand over equipment? <em>(optional)</em></td>
+			</tr>
+			<tr>
+					<td><code>with-accounts</code></td>
+					<td><code>:boolean</code></td>
+					<td>does someone provision accounts? <em>(optional)</em></td>
+			</tr>
+			<tr>
+					<td><code>with-buddy</code></td>
+					<td><code>:boolean</code></td>
+					<td>is a named buddy required before day one counts? <em>(optional)</em></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity">Identity</h2>
+<p>Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+<code>employee-onboarding.params.edn</code> produces, with every option on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-95c7eadc7481ddec6ed5db85ac555e9302d6d7e2c9bc82505e767c8628de0f23
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<p>Every option on. Stages that depend on an answer say so below.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● hired             ⊢ start-date · ⧉contract/ · ✎hr
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ equipped        ⊢ ✎it
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ┈▶ ready
+</span></span><span class="line"><span class="cl">└─▶ accounts-live   ⊢ ✎it
+</span></span><span class="line"><span class="cl">    │
+</span></span><span class="line"><span class="cl">    ▼ ready ★       ⊢ ⋈ after equipped, accounts-live   buddy
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>hr</code> — empty</li>
+<li><code>it</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>accounts.email</code></td>
+					<td><code>[:string {:min 5}]</code></td>
+			</tr>
+			<tr>
+					<td><code>buddy</code></td>
+					<td><code>[:string {:min 2}]</code></td>
+			</tr>
+			<tr>
+					<td><code>contract.ref</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+			<tr>
+					<td><code>equipment.ref</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+			<tr>
+					<td><code>start-date</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="hired"><code>hired</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>start-date</code> stands</li>
+<li>an artifact is attached whose path starts with <code>contract/</code></li>
+<li><code>contract.ref</code> was asserted by a member of the <code>hr</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-hired.md</code></p>
+<h3 id="equipped"><code>equipped</code></h3>
+<p>Included when you answer yes to <code>with-equipment</code>.</p>
+<p>Follows <code>hired</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>equipment.ref</code> was asserted by a member of the <code>it</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-equipped.md</code></p>
+<h3 id="accounts-live"><code>accounts-live</code></h3>
+<p>Included when you answer yes to <code>with-accounts</code>.</p>
+<p>Follows <code>hired</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>accounts.email</code> was asserted by a member of the <code>it</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-accounts.md</code></p>
+<h3 id="ready--sticky"><code>ready</code> · sticky</h3>
+<p>Follows <code>equipped</code>, <code>accounts-live</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>buddy</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-ready.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt templates/employee-onboarding.tmpl.edn
+</span></span></code></pre></div><p><code>tik adopt</code> asks each question above at the prompt, then expands and
+lints the answers into a plain definition — the template never runs as
+code, and the expanded EDN is what your tickets pin.</p>
+<p>Read the stages before you adopt: they say who has to sign what,
+which is a decision about your organisation.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">employee-onboarding</title><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="related" type="text/html" title="identity-registry"/><id>https://tik.projects.metio.wtf/processes/employee-onboarding/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 4 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-95c7eadc7481ddec6ed5db85ac555e9302d6d7e2c9bc82505e767c8628de0f23
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● hired             ⊢ start-date · ⧉contract/ · ✎hr
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ equipped        ⊢ ✎it
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ┈▶ ready
+</span></span><span class="line"><span class="cl">└─▶ accounts-live   ⊢ ✎it
+</span></span><span class="line"><span class="cl">    │
+</span></span><span class="line"><span class="cl">    ▼ ready ★       ⊢ ⋈ after equipped, accounts-live   buddy
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>hr</code> — empty</li>
+<li><code>it</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>accounts.email</code></td>
+					<td><code>[:string {:min 5}]</code></td>
+			</tr>
+			<tr>
+					<td><code>buddy</code></td>
+					<td><code>[:string {:min 2}]</code></td>
+			</tr>
+			<tr>
+					<td><code>contract.ref</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+			<tr>
+					<td><code>equipment.ref</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+			<tr>
+					<td><code>start-date</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="hired"><code>hired</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>start-date</code> stands</li>
+<li>an artifact is attached whose path starts with <code>contract/</code></li>
+<li><code>contract.ref</code> was asserted by a member of the <code>hr</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-hired.md</code></p>
+<h3 id="equipped"><code>equipped</code></h3>
+<p>Follows <code>hired</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>equipment.ref</code> was asserted by a member of the <code>it</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-equipped.md</code></p>
+<h3 id="accounts-live"><code>accounts-live</code></h3>
+<p>Follows <code>hired</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>accounts.email</code> was asserted by a member of the <code>it</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-accounts.md</code></p>
+<h3 id="ready--sticky"><code>ready</code> · sticky</h3>
+<p>Follows <code>equipped</code>, <code>accounts-live</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>buddy</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/onboarding-ready.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/employee-onboarding.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">expense-approval</title><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="related" type="text/html" title="identity-registry"/><id>https://tik.projects.metio.wtf/processes/expense-approval-template/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process template</blockquote><h2 id="what-you-choose">What you choose</h2>
+<p><code>tik adopt</code> reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Question</th>
+					<th>Answer</th>
+					<th></th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>approvers</code></td>
+					<td><code>:vector</code></td>
+					<td>who can approve?</td>
+			</tr>
+			<tr>
+					<td><code>with-legal</code></td>
+					<td><code>:boolean</code></td>
+					<td>require legal sign-off? <em>(optional)</em></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity">Identity</h2>
+<p>Your answers decide this one, and this template ships no reference
+answers — so there is a shape to see only once you have chosen:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">(your answers decide it)
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>approver</code> — declared members: <code>:tik/param</code>, <code>:approvers</code></li>
+<li><code>legal</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>amount</code></td>
+					<td><code>[:int]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt templates/expense-approval.tmpl.edn
+</span></span></code></pre></div><p><code>tik adopt</code> asks each question above at the prompt, then expands and
+lints the answers into a plain definition — the template never runs as
+code, and the expanded EDN is what your tickets pin.</p>
+<p>Read the stages before you adopt: they say who has to sign what,
+which is a decision about your organisation.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">hypothesis</title><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="related" type="text/html" title="identity-registry"/><id>https://tik.projects.metio.wtf/processes/hypothesis/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 5 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-2c85c9e54182541ec2243ac82b2d466fd286b511f4f113e4dd139328bea44e47
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● captured
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ stated          ⊢ statement · kill · ✎maintainer
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ running         ⊢ experiment
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ validated ★   ⊢ verdict = validated · evidence
+</span></span><span class="line"><span class="cl">└─▶ killed ★      ⊢ verdict = killed · evidence
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>maintainer</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>evidence</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>experiment</code></td>
+					<td><code>[:string {:min 12}]</code></td>
+			</tr>
+			<tr>
+					<td><code>kill</code></td>
+					<td><code>[:string {:min 12}]</code></td>
+			</tr>
+			<tr>
+					<td><code>statement</code></td>
+					<td><code>[:string {:min 12}]</code></td>
+			</tr>
+			<tr>
+					<td><code>verdict</code></td>
+					<td><code>[:enum :validated :killed]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="captured"><code>captured</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/hypothesis-captured.md</code></p>
+<h3 id="stated"><code>stated</code></h3>
+<p>Follows <code>captured</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>statement</code> stands</li>
+<li>the fact <code>kill</code> stands</li>
+<li><code>statement</code> was asserted by a member of the <code>maintainer</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/hypothesis-stated.md</code></p>
+<h3 id="running"><code>running</code></h3>
+<p>Follows <code>stated</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>experiment</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/hypothesis-running.md</code></p>
+<h3 id="validated--sticky"><code>validated</code> · sticky</h3>
+<p>Follows <code>running</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>verdict</code> equals <code>:validated</code></li>
+<li>the fact <code>evidence</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/hypothesis-validated.md</code></p>
+<h3 id="killed--sticky"><code>killed</code> · sticky</h3>
+<p>Follows <code>running</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>verdict</code> equals <code>:killed</code></li>
+<li>the fact <code>evidence</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/hypothesis-killed.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/hypothesis.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">identity-registry</title><link href="https://tik.projects.metio.wtf/processes/identity-registry/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/identity-registry/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 1 stage</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-e3d4a4cd66b79971817e05d25afa5a7bb3e0a2c1db673b4e56a72308a3af3bb0
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● registry
+</span></span></code></pre></div><h2 id="stages">Stages</h2>
+<h3 id="registry"><code>registry</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/identity-registry-registry.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/identity-registry.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">incident-response</title><link href="https://tik.projects.metio.wtf/processes/incident-response-template/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/incident-response-template/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process template with 5 stages</blockquote><h2 id="what-you-choose">What you choose</h2>
+<p><code>tik adopt</code> reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Question</th>
+					<th>Answer</th>
+					<th></th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>postmortem-after</code></td>
+					<td><code>:string</code></td>
+					<td>flag a missing postmortem after (ISO-8601, e.g. P5D)</td>
+			</tr>
+			<tr>
+					<td><code>with-deadline</code></td>
+					<td><code>:boolean</code></td>
+					<td>let the ticket flag its own overdue postmortem? <em>(optional)</em></td>
+			</tr>
+			<tr>
+					<td><code>with-review</code></td>
+					<td><code>:boolean</code></td>
+					<td>require a second person to accept the postmortem? <em>(optional)</em></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity">Identity</h2>
+<p>Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+<code>incident-response.params.edn</code> produces, with every option on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-79744dfcb0177c97ecb00d676f64a8e7cc9f8e630f9e76988e805a5258e4f533
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<p>Every option on. Stages that depend on an answer say so below.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● declared           ⊢ severity · impact
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ mitigated          ⊢ ✎commander · mitigation.note
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ postmortem-due   ⊢ ⏱P5D · ¬postmortem.summary
+</span></span><span class="line"><span class="cl">└─▶ analyzed         ⊢ root-cause · postmortem.summary
+</span></span><span class="line"><span class="cl">    │
+</span></span><span class="line"><span class="cl">    ▼ reviewed ★     ⊢ review.verdict = accepted · ✎commander · ⚖ postmortem.summary ≠ review.verdict
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>commander</code> — empty</li>
+<li><code>responder</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>impact</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>mitigation.note</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>postmortem.summary</code></td>
+					<td><code>[:string {:min 40}]</code></td>
+			</tr>
+			<tr>
+					<td><code>review.verdict</code></td>
+					<td><code>[:enum :accepted :needs-work]</code></td>
+			</tr>
+			<tr>
+					<td><code>root-cause</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>severity</code></td>
+					<td><code>[:enum :sev1 :sev2 :sev3]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="declared"><code>declared</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>severity</code> stands</li>
+<li>the fact <code>impact</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-declared.md</code></p>
+<h3 id="mitigated"><code>mitigated</code></h3>
+<p>Follows <code>declared</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>severity</code> was asserted by a member of the <code>commander</code> role</li>
+<li>the fact <code>mitigation.note</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-mitigated.md</code></p>
+<h3 id="postmortem-due"><code>postmortem-due</code></h3>
+<p>Included when you answer yes to <code>with-deadline</code>.</p>
+<p>Follows <code>mitigated</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>P5D</code> has passed since <code>create</code></li>
+<li>it is NOT the case that the fact <code>postmortem.summary</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-postmortem-due.md</code></p>
+<h3 id="analyzed"><code>analyzed</code></h3>
+<p>Follows <code>mitigated</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>root-cause</code> stands</li>
+<li>the fact <code>postmortem.summary</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-analyzed.md</code></p>
+<h3 id="reviewed--sticky"><code>reviewed</code> · sticky</h3>
+<p>Included when you answer yes to <code>with-review</code>.</p>
+<p>Follows <code>analyzed</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>review.verdict</code> equals <code>:accepted</code></li>
+<li><code>review.verdict</code> was asserted by a member of the <code>commander</code> role</li>
+<li>the facts <code>postmortem.summary</code> and <code>review.verdict</code> came from different people</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-reviewed.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt templates/incident-response.tmpl.edn
+</span></span></code></pre></div><p><code>tik adopt</code> asks each question above at the prompt, then expands and
+lints the answers into a plain definition — the template never runs as
+code, and the expanded EDN is what your tickets pin.</p>
+<p>Read the stages before you adopt: they say who has to sign what,
+which is a decision about your organisation.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">incident-response</title><link href="https://tik.projects.metio.wtf/processes/incident-response/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/incident-response/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 5 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-79744dfcb0177c97ecb00d676f64a8e7cc9f8e630f9e76988e805a5258e4f533
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● declared           ⊢ severity · impact
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ mitigated          ⊢ ✎commander · mitigation.note
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ postmortem-due   ⊢ ⏱P5D · ¬postmortem.summary
+</span></span><span class="line"><span class="cl">└─▶ analyzed         ⊢ root-cause · postmortem.summary
+</span></span><span class="line"><span class="cl">    │
+</span></span><span class="line"><span class="cl">    ▼ reviewed ★     ⊢ review.verdict = accepted · ✎commander · ⚖ postmortem.summary ≠ review.verdict
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>commander</code> — empty</li>
+<li><code>responder</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>impact</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>mitigation.note</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>postmortem.summary</code></td>
+					<td><code>[:string {:min 40}]</code></td>
+			</tr>
+			<tr>
+					<td><code>review.verdict</code></td>
+					<td><code>[:enum :accepted :needs-work]</code></td>
+			</tr>
+			<tr>
+					<td><code>root-cause</code></td>
+					<td><code>[:string {:min 10}]</code></td>
+			</tr>
+			<tr>
+					<td><code>severity</code></td>
+					<td><code>[:enum :sev1 :sev2 :sev3]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="declared"><code>declared</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>severity</code> stands</li>
+<li>the fact <code>impact</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-declared.md</code></p>
+<h3 id="mitigated"><code>mitigated</code></h3>
+<p>Follows <code>declared</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>severity</code> was asserted by a member of the <code>commander</code> role</li>
+<li>the fact <code>mitigation.note</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-mitigated.md</code></p>
+<h3 id="postmortem-due"><code>postmortem-due</code></h3>
+<p>Follows <code>mitigated</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>P5D</code> has passed since <code>create</code></li>
+<li>it is NOT the case that the fact <code>postmortem.summary</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-postmortem-due.md</code></p>
+<h3 id="analyzed"><code>analyzed</code></h3>
+<p>Follows <code>mitigated</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>root-cause</code> stands</li>
+<li>the fact <code>postmortem.summary</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-analyzed.md</code></p>
+<h3 id="reviewed--sticky"><code>reviewed</code> · sticky</h3>
+<p>Follows <code>analyzed</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>review.verdict</code> equals <code>:accepted</code></li>
+<li><code>review.verdict</code> was asserted by a member of the <code>commander</code> role</li>
+<li>the facts <code>postmortem.summary</code> and <code>review.verdict</code> came from different people</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/incident-reviewed.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/incident-response.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">okf-publish</title><link href="https://tik.projects.metio.wtf/processes/okf-publish/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/okf-publish/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 4 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-be995ad80e6eb4f0a3873b17c3f3a984d18a9671ba4e408fa31c75a1580e991c
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● drafted     ⊢ bundle · ⧉okf/
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ reviewed    ⊢ ✎reviewer
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ approved    ⊢ ✎approver
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ published   ⊢ published.url
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>approver</code> — empty</li>
+<li><code>author</code> — empty</li>
+<li><code>reviewer</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>bundle</code></td>
+					<td><code>[:string {:min 16}]</code></td>
+			</tr>
+			<tr>
+					<td><code>published.url</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="drafted"><code>drafted</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>bundle</code> stands</li>
+<li>an artifact is attached whose path starts with <code>okf/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/okf-publish-drafted.md</code></p>
+<h3 id="reviewed"><code>reviewed</code></h3>
+<p>Follows <code>drafted</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>bundle</code> was asserted by a member of the <code>reviewer</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/okf-publish-reviewed.md</code></p>
+<h3 id="approved"><code>approved</code></h3>
+<p>Follows <code>reviewed</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>bundle</code> was asserted by a member of the <code>approver</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/okf-publish-approved.md</code></p>
+<h3 id="published"><code>published</code></h3>
+<p>Follows <code>approved</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>published.url</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/okf-publish-published.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/okf-publish.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">release</title><link href="https://tik.projects.metio.wtf/processes/release/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/release/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 5 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● built             ⊢ version · commit · ✎ci · ⧉checksums/
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ scanned         ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ┈▶ published
+</span></span><span class="line"><span class="cl">├─▶ attested        ⊢ image · signature.bundle · ✎ci · ⊙sbom · ⊙provenance
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ▼ published ★   ⊢ ⋈ after scanned, attested   approval = ship · ✎maintainer · ⚖ commit ≠ approval
+</span></span><span class="line"><span class="cl">└─▶ withheld        ⊢ approval = hold · ✎maintainer
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>ci</code> — declared members: <code>ci</code></li>
+<li><code>maintainer</code> — declared members: <code>seb</code></li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>approval</code></td>
+					<td><code>[:enum :ship :hold]</code></td>
+			</tr>
+			<tr>
+					<td><code>commit</code></td>
+					<td><code>[:string {:min 7}]</code></td>
+			</tr>
+			<tr>
+					<td><code>image</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>scan.result</code></td>
+					<td><code>[:enum :clean :findings]</code></td>
+			</tr>
+			<tr>
+					<td><code>signature.bundle</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>version</code></td>
+					<td><code>[:string {:min 6}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="built"><code>built</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>version</code> stands</li>
+<li>the fact <code>commit</code> stands</li>
+<li><code>commit</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an artifact is attached whose path starts with <code>checksums/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/release-built.md</code></p>
+<h3 id="scanned"><code>scanned</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>scan.result</code> equals <code>:clean</code></li>
+<li><code>scan.result</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:vulnerability-scan</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/release-scanned.md</code></p>
+<h3 id="attested"><code>attested</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>image</code> stands</li>
+<li>the fact <code>signature.bundle</code> stands</li>
+<li><code>signature.bundle</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:sbom</code> exists, no older than <code>P1D</code></li>
+<li>an attestation of <code>:provenance</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/release-attested.md</code></p>
+<h3 id="published--sticky"><code>published</code> · sticky</h3>
+<p>Follows <code>scanned</code>, <code>attested</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>approval</code> equals <code>:ship</code></li>
+<li><code>approval</code> was asserted by a member of the <code>maintainer</code> role</li>
+<li>the facts <code>commit</code> and <code>approval</code> came from different people</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/release-published.md</code></p>
+<h3 id="withheld"><code>withheld</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>approval</code> equals <code>:hold</code></li>
+<li><code>approval</code> was asserted by a member of the <code>maintainer</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/release-withheld.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/release.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">renovate-migration</title><link href="https://tik.projects.metio.wtf/processes/renovate-migration/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/renovate-migration/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 3 stages: move a repository from Dependabot to Renovate, with evidence</blockquote><p>move a repository from Dependabot to Renovate, with evidence</p>
+<h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-fc1d1067f6e89f52537828296ef3e78e01ed0a552da105d8770aa399131bc0e1
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● planned      ⊢ approach
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ configured   ⊢ renovate.config.ref · removal.commit · dependabot.status = absent
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ verified     ⊢ renovate.dashboard · renovate.first-pr · approval.maintainer = approved · ✎maintainer
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>maintainer</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>approach</code></td>
+					<td><code>[:enum :org-wide-config :repo-local-config]</code></td>
+			</tr>
+			<tr>
+					<td><code>approval.maintainer</code></td>
+					<td><code>[:enum :approved :rejected]</code></td>
+			</tr>
+			<tr>
+					<td><code>dependabot.status</code></td>
+					<td><code>[:enum :present :absent]</code></td>
+			</tr>
+			<tr>
+					<td><code>removal.commit</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+			<tr>
+					<td><code>renovate.config.ref</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+			<tr>
+					<td><code>renovate.dashboard</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+			<tr>
+					<td><code>renovate.first-pr</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="planned"><code>planned</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>approach</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/renovate-migration-planned.md</code></p>
+<h3 id="configured"><code>configured</code></h3>
+<p>Follows <code>planned</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>renovate.config.ref</code> stands</li>
+<li>the fact <code>removal.commit</code> stands</li>
+<li>the fact <code>dependabot.status</code> equals <code>:absent</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/renovate-migration-configured.md</code></p>
+<h3 id="verified"><code>verified</code></h3>
+<p>Follows <code>configured</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>renovate.dashboard</code> stands</li>
+<li>the fact <code>renovate.first-pr</code> stands</li>
+<li>the fact <code>approval.maintainer</code> equals <code>:approved</code></li>
+<li><code>approval.maintainer</code> was asserted by a member of the <code>maintainer</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/renovate-migration-verified.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/renovate-migration.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">supply-chain-release</title><link href="https://tik.projects.metio.wtf/processes/supply-chain-release/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/supply-chain-release/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 5 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-f2aa808ac68e7f6a7e79b347d3006b8bfdadd6b01d279547b5646603f6212b27
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● built            ⊢ version · commit · ✎ci · ⧉checksums/
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ attested       ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ┈▶ approved
+</span></span><span class="line"><span class="cl">├─▶ scanned        ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ▼ approved ★   ⊢ ⋈ after attested, scanned   approval = ship · ✎release-manager · ⚖ commit ≠ approval
+</span></span><span class="line"><span class="cl">└─▶ withheld       ⊢ approval = hold · ✎release-manager
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>ci</code> — empty</li>
+<li><code>release-manager</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>approval</code></td>
+					<td><code>[:enum :ship :hold]</code></td>
+			</tr>
+			<tr>
+					<td><code>artifact.digest</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>commit</code></td>
+					<td><code>[:string {:min 7}]</code></td>
+			</tr>
+			<tr>
+					<td><code>scan.result</code></td>
+					<td><code>[:enum :clean :findings]</code></td>
+			</tr>
+			<tr>
+					<td><code>version</code></td>
+					<td><code>[:string {:min 1}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="built"><code>built</code></h3>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>version</code> stands</li>
+<li>the fact <code>commit</code> stands</li>
+<li><code>commit</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an artifact is attached whose path starts with <code>checksums/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/supply-chain-release-built.md</code></p>
+<h3 id="attested"><code>attested</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>artifact.digest</code> stands</li>
+<li><code>artifact.digest</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:sbom</code> exists, no older than <code>P1D</code></li>
+<li>an attestation of <code>:provenance</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/supply-chain-release-attested.md</code></p>
+<h3 id="scanned"><code>scanned</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>scan.result</code> equals <code>:clean</code></li>
+<li><code>scan.result</code> was asserted by a member of the <code>ci</code> role</li>
+<li>an attestation of <code>:vulnerability-scan</code> exists, no older than <code>P1D</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/supply-chain-release-scanned.md</code></p>
+<h3 id="approved--sticky"><code>approved</code> · sticky</h3>
+<p>Follows <code>attested</code>, <code>scanned</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>approval</code> equals <code>:ship</code></li>
+<li><code>approval</code> was asserted by a member of the <code>release-manager</code> role</li>
+<li>the facts <code>commit</code> and <code>approval</code> came from different people</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/supply-chain-release-approved.md</code></p>
+<h3 id="withheld"><code>withheld</code></h3>
+<p>Follows <code>built</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>approval</code> equals <code>:hold</code></li>
+<li><code>approval</code> was asserted by a member of the <code>release-manager</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/supply-chain-release-withheld.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/supply-chain-release.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">support-request</title><link href="https://tik.projects.metio.wtf/processes/support-request-template/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/support-request-template/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process template with 6 stages</blockquote><h2 id="what-you-choose">What you choose</h2>
+<p><code>tik adopt</code> reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Question</th>
+					<th>Answer</th>
+					<th></th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>escalate-after</code></td>
+					<td><code>:string</code></td>
+					<td>escalate an untriaged request after (ISO-8601, e.g. PT48H)</td>
+			</tr>
+			<tr>
+					<td><code>with-escalation</code></td>
+					<td><code>:boolean</code></td>
+					<td>flag requests nobody triaged in that window? <em>(optional)</em></td>
+			</tr>
+			<tr>
+					<td><code>with-repro</code></td>
+					<td><code>:boolean</code></td>
+					<td>require a reproduction before a technical fix counts? <em>(optional)</em></td>
+			</tr>
+			<tr>
+					<td><code>with-ack</code></td>
+					<td><code>:boolean</code></td>
+					<td>close only once the customer confirms? <em>(optional)</em></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity">Identity</h2>
+<p>Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+<code>support-request.params.edn</code> produces, with every option on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-92c2e66b1706e37f5036fd5c3365a8c773bb1fdadb6c39286cf37aae78741bfb
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<p>Every option on. Stages that depend on an answer say so below.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● received
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ triaged            ⊢ category · severity · ✎triager
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ├─▶ reproducible   ⊢ category = technical · ⧉repro/
+</span></span><span class="line"><span class="cl">│   └─▶ resolved       ⊢ resolution.ref · (¬category = technical | ⤳reproducible)
+</span></span><span class="line"><span class="cl">│       │
+</span></span><span class="line"><span class="cl">│       ▼ closed ★     ⊢ customer.ack
+</span></span><span class="line"><span class="cl">└─▶ escalated          ⊢ ⏱PT48H · ¬category
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>triager</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>category</code></td>
+					<td><code>[:enum :billing :technical :account :abuse]</code></td>
+			</tr>
+			<tr>
+					<td><code>customer.ack</code></td>
+					<td><code>[:string {:min 2}]</code></td>
+			</tr>
+			<tr>
+					<td><code>resolution.ref</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>severity</code></td>
+					<td><code>[:enum :low :normal :high :critical]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="received"><code>received</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/support-request-received.md</code></p>
+<h3 id="triaged"><code>triaged</code></h3>
+<p>Follows <code>received</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>category</code> stands</li>
+<li>the fact <code>severity</code> stands</li>
+<li><code>category</code> was asserted by a member of the <code>triager</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-triaged.md</code></p>
+<h3 id="escalated"><code>escalated</code></h3>
+<p>Included when you answer yes to <code>with-escalation</code>.</p>
+<p>Follows <code>received</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>PT48H</code> has passed since <code>create</code></li>
+<li>it is NOT the case that the fact <code>category</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-escalated.md</code></p>
+<h3 id="reproducible"><code>reproducible</code></h3>
+<p>Included when you answer yes to <code>with-repro</code>.</p>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>category</code> equals <code>:technical</code></li>
+<li>an artifact is attached whose path starts with <code>repro/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-reproducible.md</code></p>
+<h3 id="resolved"><code>resolved</code></h3>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>resolution.ref</code> stands</li>
+<li>either it is NOT the case that the fact <code>category</code> equals <code>:technical</code>, or stage <code>reproducible</code> is reached</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-resolved.md</code></p>
+<h3 id="closed--sticky"><code>closed</code> · sticky</h3>
+<p>Included when you answer yes to <code>with-ack</code>.</p>
+<p>Follows <code>resolved</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>customer.ack</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-closed.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt templates/support-request.tmpl.edn
+</span></span></code></pre></div><p><code>tik adopt</code> asks each question above at the prompt, then expands and
+lints the answers into a plain definition — the template never runs as
+code, and the expanded EDN is what your tickets pin.</p>
+<p>Read the stages before you adopt: they say who has to sign what,
+which is a decision about your organisation.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">support-request</title><link href="https://tik.projects.metio.wtf/processes/support-request/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/support-request/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 6 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-84c7f6140fc8cf90ee3a33efde68238cb3eba603b216dfb08aeafcbafc28aa20
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● received
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ triaged            ⊢ category · severity · ✎triager
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ├─▶ reproducible   ⊢ category = technical · ⧉repro/
+</span></span><span class="line"><span class="cl">│   └─▶ resolved       ⊢ resolution.ref · (¬category = technical | ⤳reproducible)
+</span></span><span class="line"><span class="cl">│       │
+</span></span><span class="line"><span class="cl">│       ▼ closed ★     ⊢ customer.ack
+</span></span><span class="line"><span class="cl">└─▶ escalated          ⊢ ⏱PT48H · ¬category
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>billing</code> — empty</li>
+<li><code>triager</code> — empty</li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>category</code></td>
+					<td><code>[:enum :billing :technical :account :abuse]</code></td>
+			</tr>
+			<tr>
+					<td><code>customer.ack</code></td>
+					<td><code>:boolean</code></td>
+			</tr>
+			<tr>
+					<td><code>resolution.ref</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+			<tr>
+					<td><code>severity</code></td>
+					<td><code>[:enum :low :normal :high :critical]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="received"><code>received</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/support-request-received.md</code></p>
+<h3 id="triaged"><code>triaged</code></h3>
+<p>Follows <code>received</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>category</code> stands</li>
+<li>the fact <code>severity</code> stands</li>
+<li><code>category</code> was asserted by a member of the <code>triager</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-triaged.md</code></p>
+<h3 id="escalated"><code>escalated</code></h3>
+<p>Follows <code>received</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li><code>PT48H</code> has passed since <code>create</code></li>
+<li>it is NOT the case that the fact <code>category</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-escalated.md</code></p>
+<h3 id="reproducible"><code>reproducible</code></h3>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>category</code> equals <code>:technical</code></li>
+<li>an artifact is attached whose path starts with <code>repro/</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-reproducible.md</code></p>
+<h3 id="resolved"><code>resolved</code></h3>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>resolution.ref</code> stands</li>
+<li>either it is NOT the case that the fact <code>category</code> equals <code>:technical</code>, or stage <code>reproducible</code> is reached</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-resolved.md</code></p>
+<h3 id="closed--sticky"><code>closed</code> · sticky</h3>
+<p>Follows <code>resolved</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>customer.ack</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/support-request-closed.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/support-request.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">sweep-order</title><link href="https://tik.projects.metio.wtf/processes/sweep-order/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/sweep-order/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 4 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-6fed34008ad5e2d4d44b057ec365a8075e591f1de6c85c613e3c53a6dec8bcae
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● a
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ b
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ▼ d   ⊢ ¬⤳c
+</span></span><span class="line"><span class="cl">└─▶ c
+</span></span></code></pre></div><h2 id="stages">Stages</h2>
+<h3 id="a"><code>a</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<h3 id="b"><code>b</code></h3>
+<p>Follows <code>a</code>.</p>
+<p>Reached immediately — it carries no guards.</p>
+<h3 id="c"><code>c</code></h3>
+<p>Follows <code>a</code>.</p>
+<p>Reached immediately — it carries no guards.</p>
+<h3 id="d"><code>d</code></h3>
+<p>Follows <code>b</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>it is NOT the case that stage <code>c</code> is reached</li>
+</ul>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/sweep-order.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">tik-dev</title><link href="https://tik.projects.metio.wtf/processes/tik-dev/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/tik-dev/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 5 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● captured
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ triaged         ⊢ summary · kind · ✎maintainer
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">├─▶ implemented   ⊢ commit
+</span></span><span class="line"><span class="cl">│   │
+</span></span><span class="line"><span class="cl">│   ▼ landed ★    ⊢ gate = green
+</span></span><span class="line"><span class="cl">└─▶ parked        ⊢ parked.reason
+</span></span></code></pre></div><h2 id="roles-to-fill">Roles to fill</h2>
+<p>Every role ships empty, so adopting a process never inherits
+somebody else&rsquo;s org chart. Name yours with <code>tik roles add &lt;role&gt; &lt;actor&gt;</code>.</p>
+<ul>
+<li><code>maintainer</code> — declared members: <code>seb</code></li>
+</ul>
+<h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>commit</code></td>
+					<td><code>[:string {:min 7}]</code></td>
+			</tr>
+			<tr>
+					<td><code>gate</code></td>
+					<td><code>[:enum :green :red]</code></td>
+			</tr>
+			<tr>
+					<td><code>kind</code></td>
+					<td><code>[:enum :feature :bug :docs :spike]</code></td>
+			</tr>
+			<tr>
+					<td><code>parked.reason</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+			<tr>
+					<td><code>summary</code></td>
+					<td><code>[:string {:min 8}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="captured"><code>captured</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/tik-dev-captured.md</code></p>
+<h3 id="triaged"><code>triaged</code></h3>
+<p>Follows <code>captured</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>summary</code> stands</li>
+<li>the fact <code>kind</code> stands</li>
+<li><code>kind</code> was asserted by a member of the <code>maintainer</code> role</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/tik-dev-triaged.md</code></p>
+<h3 id="implemented"><code>implemented</code></h3>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>commit</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/tik-dev-implemented.md</code></p>
+<h3 id="landed--sticky"><code>landed</code> · sticky</h3>
+<p>Follows <code>implemented</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>gate</code> equals <code>:green</code></li>
+</ul>
+<p>Runbook: <code>kb/runbooks/tik-dev-landed.md</code></p>
+<h3 id="parked"><code>parked</code></h3>
+<p>Follows <code>triaged</code>.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>parked.reason</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/tik-dev-parked.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/tik-dev.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry><entry><title type="html">track</title><link href="https://tik.projects.metio.wtf/processes/track/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><link href="https://tik.projects.metio.wtf/processes/expense-approval-template/?utm_source=atom_feed" rel="related" type="text/html" title="expense-approval"/><link href="https://tik.projects.metio.wtf/processes/hypothesis/?utm_source=atom_feed" rel="related" type="text/html" title="hypothesis"/><id>https://tik.projects.metio.wtf/processes/track/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T00:18:42+02:00</updated><content type="html"><![CDATA[<blockquote>A tik process with 2 stages</blockquote><h2 id="identity">Identity</h2>
+<p>A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">sha256-5812cdba533c92d934af16c73fe4027fc37bd034e6005f56237358680037d3c3
+</span></span></code></pre></div><h2 id="shape">Shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">● open
+</span></span><span class="line"><span class="cl">│
+</span></span><span class="line"><span class="cl">▼ done ★   ⊢ outcome
+</span></span></code></pre></div><h2 id="facts-it-records">Facts it records</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Path</th>
+					<th>Shape</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>outcome</code></td>
+					<td><code>[:string {:min 4}]</code></td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="stages">Stages</h2>
+<h3 id="open"><code>open</code></h3>
+<p>Reached immediately — it carries no guards.</p>
+<p>Runbook: <code>kb/runbooks/track-open.md</code></p>
+<h3 id="done--sticky"><code>done</code> · sticky</h3>
+<p>Follows <code>open</code>.</p>
+<p>Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.</p>
+<p>Reached when:</p>
+<ul>
+<li>the fact <code>outcome</code> stands</li>
+</ul>
+<p>Runbook: <code>kb/runbooks/track-done.md</code></p>
+<h2 id="take-it">Take it</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik adopt processes/track.edn<span class="sb">```</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">The definition and its runbooks are copied into your store, and the
+</span></span><span class="line"><span class="cl">publisher<span class="err">&#39;</span>s signature travels with them when a key in your <span class="sb">`</span>actors<span class="sb">`</span>
+</span></span><span class="line"><span class="cl">verifies it.
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">Read the stages before you adopt: they say who has to sign what,
+</span></span><span class="line"><span class="cl">which is a decision about your organisation.
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/process" term="process" label="process"/><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/></entry></feed>

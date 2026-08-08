@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Specification on tik</title><link href="https://tik.projects.metio.wtf/tags/specification/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/specification/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/specification/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/specification/</id><entry><title type="html">Bundle format</title><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/evidence/bundle-format/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>tik-evidence-bundle version 1 — the on-disk contract, the checks a reader runs, and the rules that govern change.</blockquote><p><code>tik-evidence-bundle</code>, version 1. A gzipped tar holding one ticket and
+everything its derivation needs.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle &lt;id&gt; --out evidence.tgz
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">bundle.edn                          the format name and version
+</span></span><span class="line"><span class="cl">actors                              the allowed-signers registry
+</span></span><span class="line"><span class="cl">roles.edn                           role membership, where the store keeps a register
+</span></span><span class="line"><span class="cl">identity/&lt;event-id&gt;.edn             key bindings, as signed registry events
+</span></span><span class="line"><span class="cl">identity/&lt;event-id&gt;.sig.&lt;fpr&gt;       their authorship signatures
+</span></span><span class="line"><span class="cl">identity/keys/&lt;kid&gt;.pem             the issuer keys those bindings rest on
+</span></span><span class="line"><span class="cl">processes/by-hash/&lt;hash&gt;.edn        the definition the ticket pinned
+</span></span><span class="line"><span class="cl">processes/by-hash/&lt;hash&gt;.sig.&lt;fpr&gt;  its publication signatures
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.edn      the append-only log
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.sig.&lt;fpr&gt;      authorship signatures
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.witness.&lt;fpr&gt;  countersignatures over a head
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/blobs/&lt;hash&gt;         attached artifacts, addressed by content
+</span></span><span class="line"><span class="cl">verify.sh                           a coreutils implementation of the checks
+</span></span><span class="line"><span class="cl">README.md                           what the recipient is holding
+</span></span></code></pre></div><h2 id="what-a-reader-may-assume">What a reader may assume</h2>
+<p><strong>Every stored file&rsquo;s name is the SHA-256 of its bytes</strong>, prefixed
+<code>sha256-</code>. Event and definition files carry a <code>.edn</code> suffix after the
+address; blobs are named by the bare address. <code>sha256sum</code> alone audits
+the archive.</p>
+<p><strong>Event bytes are exactly the hashed region.</strong> An event file holds the
+canonical serialization <em>without</em> its <code>:event/id</code>, because the filename
+is the id. Re-emitting a parsed event reproduces the file byte for byte.</p>
+<p><strong>Signatures are detached siblings.</strong> <code>&lt;id&gt;.sig.&lt;fingerprint&gt;</code> covers the
+event&rsquo;s stored bytes under the <code>tik-event</code> namespace; <code>&lt;id&gt;.witness.&lt;fpr&gt;</code>
+covers a head under <code>tik-witness</code>; a definition&rsquo;s <code>.sig.&lt;fpr&gt;</code> uses
+<code>tik-process</code>. Each verifies with <code>ssh-keygen -Y verify</code> against
+<code>actors</code>.</p>
+<p><strong>Exactly one ticket directory, with exactly one root event.</strong> Every
+parent an event names is present in the same directory, so the Merkle DAG
+the log commits to is complete.</p>
+<p><strong>The pinned definition travels.</strong> The create event carries
+<code>:ticket/process-hash</code>, and <code>processes/by-hash/&lt;that hash&gt;.edn</code> holds the
+definition whose content address equals it.</p>
+<p><strong><code>identity/</code> holds excerpts.</strong> A key binding travels as the single
+registry event that made it, with its own authorship signature and the
+issuer&rsquo;s public key. Its parents live in a registry ticket that stays
+behind, so its standing rests on its content address plus the issuer&rsquo;s
+signature over the id-token it carries.</p>
+<p><strong><code>bundle.edn</code> declares the packaging version and nothing else.</strong> The
+ticket, the head, the definition and the stage are derivable from the
+files, so the manifest names none of them and nothing in it is trusted.
+A bundle without a manifest is version 1.</p>
+<h2 id="the-checks">The checks</h2>
+<p>These are what the format promises. <code>verify.sh</code> implements them with
+coreutils, <code>ssh-keygen</code> and — for key bindings — <code>openssl</code>;
+<a href="/evidence/re-deriving/"><code>tik rederive</code></a>
+ implements them in process. The
+script travels inside the archive it checks, so read it before you run
+it, or run this list yourself.</p>
+<ol>
+<li><strong>Integrity.</strong> Every <code>tickets/*/events/*.edn</code>,
+<code>processes/by-hash/*.edn</code> and <code>tickets/*/blobs/*</code> hashes to its own
+name.</li>
+<li><strong>Shape.</strong> Exactly one ticket directory.</li>
+<li><strong>Completeness.</strong> Every parent referenced by an event is present, and
+exactly one event has empty <code>:event/parents</code>.</li>
+<li><strong>Authorship.</strong> Every <code>.sig.</code> sidecar verifies <em>as the actor its own
+event names</em> — binding <code>-I</code> to <code>:event/actor</code> rather than accepting
+whoever happened to sign, so a registered actor cannot sign another&rsquo;s
+authorship.</li>
+<li><strong>Countersignature.</strong> Every <code>.witness.</code> sidecar verifies as a
+registered principal under <code>tik-witness</code>.</li>
+<li><strong>Key bindings.</strong> For each binding in <code>identity/</code>: the issuer signed
+the id-token, using the key at <code>identity/keys/&lt;kid&gt;.pem</code>; the token&rsquo;s
+<code>sub</code> and <code>iss</code> equal the binding&rsquo;s; the token was live at the
+binding&rsquo;s <code>:event/at</code>; and the key it binds appears in <code>actors</code>.</li>
+</ol>
+<p>Check 6 is checkable offline because the issuer&rsquo;s key travels in the
+archive, and it says exactly this much: <em>whoever built this bundle holds
+a token that this key signed, for this subject, at that moment.</em>
+Recognizing the key as the issuer&rsquo;s is the reader&rsquo;s job, the same way
+recognizing an <code>actors</code> line is — a subject like
+<code>repo:metio/tik:ref:refs/heads/main</code> is worth what the reader knows about
+that repository and that IdP.</p>
+<p>An unsigned event is authenticity unclaimed rather than a failure, and a
+binding whose issuer key is absent grants nothing and is reported as
+such. Everything else in the list is a failure.</p>
+<p>Deriving the ticket&rsquo;s stages needs the definition as well, which is where
+<code>tik rederive</code> goes on and <code>verify.sh</code> stops.</p>
+<h2 id="compatibility">Compatibility</h2>
+<p>Version 1 is the layout above. The rules below are what a reader written
+against it may rely on.</p>
+<p><strong>A reader ignores what it does not recognize.</strong> Unknown files,
+directories and manifest keys are passed over. That is what makes the
+additions in the next paragraph safe.</p>
+<p><strong>These may appear without a version bump:</strong></p>
+<ul>
+<li>new top-level files and directories;</li>
+<li>new files inside existing directories, including new sidecar kinds
+(<code>&lt;id&gt;.&lt;kind&gt;.&lt;fingerprint&gt;</code>);</li>
+<li>new keys in <code>bundle.edn</code>;</li>
+<li>new event types, fact paths, guard operators and process keys inside
+the files, which are versioned by the kernel&rsquo;s own vocabularies rather
+than by this format;</li>
+<li>any change to <code>verify.sh</code> and <code>README.md</code>, which carry no contract of
+their own.</li>
+</ul>
+<p><strong>These force a version bump:</strong></p>
+<ul>
+<li>moving, renaming or removing anything the layout names;</li>
+<li>changing what a name means — a different hash function, a different
+suffix convention, a signature namespace;</li>
+<li>changing the canonical serialization, which changes every event id and
+is versioned separately by <code>tik.canonical/format-version</code>;</li>
+<li>carrying more than one ticket;</li>
+<li>anything else that makes a conforming version-1 reader compute a
+different answer or fail.</li>
+</ul>
+<p>A reader holding a bundle whose major version it does not know declines
+it and says so.</p>
+<h2 id="reading-a-bundle-yourself">Reading a bundle yourself</h2>
+<p>The archive unpacks to plain files, so an implementation in any language
+is a hash, a signature check and an EDN reader.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">mkdir bundle <span class="o">&amp;&amp;</span> tar xzf evidence.tgz -C bundle <span class="o">&amp;&amp;</span> <span class="nb">cd</span> bundle
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># 1. integrity, without any tool of ours</span>
+</span></span><span class="line"><span class="cl">sha256sum tickets/*/events/*.edn <span class="p">|</span> <span class="k">while</span> <span class="nb">read</span> sum f<span class="p">;</span> <span class="k">do</span>
+</span></span><span class="line"><span class="cl">  <span class="o">[</span> <span class="s2">&#34;sha256-</span><span class="nv">$sum</span><span class="s2">&#34;</span> <span class="o">=</span> <span class="s2">&#34;</span><span class="k">$(</span>basename <span class="s2">&#34;</span><span class="nv">$f</span><span class="s2">&#34;</span> .edn<span class="k">)</span><span class="s2">&#34;</span> <span class="o">]</span> <span class="o">||</span> <span class="nb">echo</span> <span class="s2">&#34;MISMATCH </span><span class="nv">$f</span><span class="s2">&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="k">done</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># 2. authorship, as the actor each event names</span>
+</span></span><span class="line"><span class="cl"><span class="k">for</span> sig in tickets/*/events/*.sig.*<span class="p">;</span> <span class="k">do</span>
+</span></span><span class="line"><span class="cl">  <span class="nv">ev</span><span class="o">=</span><span class="s2">&#34;</span><span class="si">${</span><span class="nv">sig</span><span class="p">%%.sig.*</span><span class="si">}</span><span class="s2">.edn&#34;</span>
+</span></span><span class="line"><span class="cl">  <span class="nv">actor</span><span class="o">=</span><span class="k">$(</span>sed -n <span class="s1">&#39;s/^{:event\/actor &#34;\([^&#34;]*\)&#34;.*/\1/p&#39;</span> <span class="s2">&#34;</span><span class="nv">$ev</span><span class="s2">&#34;</span><span class="k">)</span>
+</span></span><span class="line"><span class="cl">  ssh-keygen -Y verify -f actors -I <span class="s2">&#34;</span><span class="nv">$actor</span><span class="s2">&#34;</span> -n tik-event -s <span class="s2">&#34;</span><span class="nv">$sig</span><span class="s2">&#34;</span> &lt; <span class="s2">&#34;</span><span class="nv">$ev</span><span class="s2">&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="k">done</span>
+</span></span></code></pre></div><p>Canonical bytes sort map keys, so <code>:event/actor</code> always leads an event
+file — which is why one <code>sed</code> finds it.</p>
+<h2 id="relationship-to-in-toto">Relationship to in-toto</h2>
+<p><a href="https://in-toto.io/">in-toto</a>
+ attestations describe a build: this
+subject, this predicate, signed by this functionary. A bundle carries a
+different kind of thing — the facts, the rules that judge them, and the
+means to recompute the verdict offline. in-toto&rsquo;s nearest analogue is the
+layout, and a tik process definition already is one.</p>
+<p>The two compose. <code>tik bridge intoto</code> reads a SLSA provenance, an SPDX or
+CycloneDX SBOM, or a vulnerability report into an attestation event, so
+an <code>:attested-within</code> guard is satisfied by the format your pipeline
+already emits, and the result travels in a bundle.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/format" term="format" label="format"/><category scheme="https://tik.projects.metio.wtf/tags/specification" term="specification" label="specification"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry></feed>

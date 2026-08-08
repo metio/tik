@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Badge on tik</title><link href="https://tik.projects.metio.wtf/tags/badge/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/badge/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/badge/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/badge/</id><entry><title type="html">Re-deriving a bundle</title><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/evidence/re-deriving/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-07T12:26:39+02:00</updated><content type="html"><![CDATA[<blockquote>tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation.</blockquote><p><code>verify.sh</code> answers one question: are these bytes what they claim to be?
+<code>tik rederive</code> answers the other one: what do they add up to?</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive evidence.tgz
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">bundle sha256-04a0bf413895fefb1c20e9231632fbc0d0a0d768275b42c097581ed19365973a
+</span></span><span class="line"><span class="cl">  format    tik-evidence-bundle version 1
+</span></span><span class="line"><span class="cl">  ticket    e26a1d57-6643-4564-99fa-8968ced7afa5  &#34;2026.8.6132954&#34;
+</span></span><span class="line"><span class="cl">  events    10
+</span></span><span class="line"><span class="cl">  judged by release sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">verification
+</span></span><span class="line"><span class="cl">  ok   … hashes to its name and is schema-valid
+</span></span><span class="line"><span class="cl">  ok   every referenced parent is present
+</span></span><span class="line"><span class="cl">  ok   exactly one root event
+</span></span><span class="line"><span class="cl">  ok   … verifies as ci
+</span></span><span class="line"><span class="cl">  ok   ci is bound to its key by repo:metio/tik:ref:refs/heads/main, per …
+</span></span><span class="line"><span class="cl">  =&gt; the bytes are what they claim to be
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">derivation at 2026-08-06T20:29:26.198Z
+</span></span><span class="line"><span class="cl">  reached   :attested, :built, :scanned
+</span></span><span class="line"><span class="cl">  current   :attested, :scanned
+</span></span><span class="line"><span class="cl">  :built
+</span></span><span class="line"><span class="cl">      ✓ [:fact [:version]]
+</span></span><span class="line"><span class="cl">      ✓ [:signed-by :ci [:commit]]
+</span></span><span class="line"><span class="cl">      ✓ [:artifact &#34;checksums/&#34;]
+</span></span><span class="line"><span class="cl">  :scanned
+</span></span><span class="line"><span class="cl">      ✓ [:attested-within :vulnerability-scan &#34;P1D&#34;]
+</span></span></code></pre></div><p>It takes a <code>.tgz</code>, an unpacked directory, or an <code>https</code> URL, and exits 1
+when the bundle fails to verify — a derivation over bytes that are not
+what they claim to be is worth nothing. <code>--edn</code> prints the same result as
+data.</p>
+<h2 id="derivation-names-its-instant">Derivation names its instant</h2>
+<p><code>reached</code> above is what the pinned rules grant <strong>at the instant printed
+under it</strong>. The release process demands a vulnerability scan attested
+within a day; a month from now the same archive, byte for byte, derives
+<code>:built</code> alone — the scan it carries is real, signed, and too old for the
+rule that reads it.</p>
+<p>That is the reason to re-derive rather than record. A stored &ldquo;passed&rdquo;
+survives its own evidence; a derivation ages with it.</p>
+<h2 id="gating-on-a-bundle">Gating on a bundle</h2>
+<p>Two flags turn re-derivation into a check a consumer&rsquo;s own CI can stand on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive https://example.com/evidence.tgz <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --expect-stage :published <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --expect-definition sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span></code></pre></div><p>Exit 0 when every named stage is reached under that exact definition, 1
+otherwise, with a line saying which expectation failed and what was
+derived instead.</p>
+<p><strong>Pin the definition.</strong> A bundle carries the rules that judged it, so a
+supplier who writes those rules can reach any stage they choose —
+<code>:published</code> becomes a claim about a process only once the reader names
+<em>which</em> process. That is why <code>--expect-definition</code> takes the full hash
+and refuses an abbreviation: eight hex characters is thirty-two bits for
+somebody to collide with deliberately, and the value is pasted into a
+workflow file once.</p>
+<h2 id="in-github-actions">In GitHub Actions</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-yaml" data-lang="yaml"><span class="line"><span class="cl"><span class="nt">permissions</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l">read</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">steps</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l">metio/tik/.github/actions/install@2026.8.7062815</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l">metio/tik/.github/actions/verify@2026.8.7062815</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">with</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">bundle</span><span class="p">:</span><span class="w"> </span><span class="l">https://github.com/you/proj/releases/download/v1/evidence.tgz</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">expect-stage</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;:published&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">expect-definition</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;sha256-3c577f36…&#34;</span><span class="w">
+</span></span></span></code></pre></div><p>The ref you pin <em>is</em> the tik you get: with no <code>version</code> input, the
+installer resolves the release matching its own ref, so a pinned action
+and a pinned tool are one decision rather than two.</p>
+<p>The installer verifies before it trusts. It fetches the release&rsquo;s
+<code>SHA256SUMS</code>, checks the cosign keyless signature naming the release
+workflow that produced it, and only then checks the binary against those
+checksums — an installer for a verification tool has no business asking
+you to trust an unverified download. Linux/amd64 gets the native binary;
+other platforms get the portable jar and need a JDK already on PATH.</p>
+<p><code>verify</code> needs <code>tik</code> on PATH and does one thing with it, so bring your
+own build if you have one.</p>
+<h2 id="the-service">The service</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive --serve --port <span class="m">7788</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">POST /rederive                     the bundle as the request body -&gt; EDN
+</span></span><span class="line"><span class="cl">GET  /derivation?bundle=&lt;url&gt;      fetch it, re-derive, render the page
+</span></span><span class="line"><span class="cl">GET  /badge.svg?bundle=&lt;url&gt;       the same, as a badge
+</span></span></code></pre></div><p>Every request re-derives. The one thing held between requests is a cache
+keyed by the bundle&rsquo;s content address <em>and</em> the minute the answer was
+computed for — both inputs to the derivation, both immutable, so an entry
+is either exactly right or absent and the whole cache is disposable.</p>
+<p>The service fetches <code>https</code> URLs whose every resolved address is public,
+follows at most four redirects, checking each hop, and caps what it will
+download. It runs nothing from inside a bundle: the <code>verify.sh</code> that
+travels in an archive is a convenience for whoever chooses to run it, and
+the service implements the checks itself.</p>
+<p>Point a README badge at a release artifact:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-markdown" data-lang="markdown"><span class="line"><span class="cl">[<span class="nt">![evidence</span>](<span class="na">https://your-host/badge.svg?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz</span>)](https://your-host/derivation?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz)
+</span></span></code></pre></div><h2 id="what-a-badge-says">What a badge says</h2>
+<p>The stages the pinned definition grants, and which definition granted
+them: <code>release@3c577f36 · :attested · :scanned</code>. The badge links to a
+page carrying the guards that held, the ones that did not, who may sign
+in this bundle and on whose say-so, and the two commands that reach the
+same answer with the service switched off.</p>
+<p>A badge is a derived conclusion displayed as though it were a fact, which
+is the one thing <a href="/concepts/derived-beats-declared/">derived beats
+declared</a>
+ forbids storing. Three
+properties keep it honest:</p>
+<ul>
+<li><strong>it is derived per request</strong>, so it is a lens rather than a status;</li>
+<li><strong>it names the derivation</strong> — stages, definition hash, instant — where
+a word like <em>compliant</em> would name a policy it cannot see;</li>
+<li><strong>the service is disposable.</strong> Delete it and the bundle still checks
+out with coreutils. A verification service that becomes the authority
+has re-introduced exactly the trust the bundle removes.</li>
+</ul>
+<p>The colour follows the same rule: one shade for a bundle that verifies,
+red for one that does not. Green would read as approval, and the badge
+reports a derivation, which is a different kind of claim.</p>
+<h2 id="publishing-bundles-from-ci">Publishing bundles from CI</h2>
+<p>The wedge is one line over evidence a pipeline already produces. tik&rsquo;s own
+release workflow records the version, the commit, the image digest and
+the checksums file as signed facts, imports the SBOM, provenance and scan
+as attestations through <code>tik bridge intoto</code>, and ships the result:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle <span class="s2">&#34;</span><span class="nv">$TICKET</span><span class="s2">&#34;</span> --out <span class="s2">&#34;evidence-</span><span class="nv">$VERSION</span><span class="s2">.tgz&#34;</span>
+</span></span></code></pre></div><p>CI signs with an ephemeral key bound to its workload identity (<a href="/decisions/0023-key-bindings-are-evidence/">ADR
+0023</a>
+), so the bundle carries
+the binding and its issuer&rsquo;s key, and a recipient re-earns that trust from
+the issuer&rsquo;s own signature.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/badge" term="badge" label="badge"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/></entry></feed>

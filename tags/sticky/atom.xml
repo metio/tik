@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Sticky on tik</title><link href="https://tik.projects.metio.wtf/tags/sticky/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/sticky/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/sticky/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/sticky/</id><entry><title type="html">Stages</title><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/derived-beats-declared/?utm_source=atom_feed" rel="related" type="text/html" title="Derived beats declared"/><id>https://tik.projects.metio.wtf/concepts/stages/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Position in a process as a fixpoint over the reached set — synchronous sweeps, sticky milestones, and regression by derivation.</blockquote><p>A process defines stages. Each stage names its prerequisites (<code>:after</code>) and
+the conditions that must hold to reach it (<code>:guards</code>). Reaching a stage is
+never an action somebody takes; it is a conclusion.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:resolved</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:triaged</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:resolution</span> <span class="ss">:ref</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">          <span class="p">[</span><span class="ss">:or</span> <span class="p">[</span><span class="ss">:not</span> <span class="p">[</span><span class="ss">:fact=</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">           <span class="p">[</span><span class="ss">:stage-reached</span> <span class="ss">:reproducible</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>That second guard reads &ldquo;technical implies reproduced&rdquo; — material
+implication written out, because the vocabulary has <code>:or</code> and <code>:not</code> and
+needs no separate conditional.</p>
+<h2 id="the-reached-set-is-a-fixpoint">The reached set is a fixpoint</h2>
+<p>Derivation computes the set of reached stages by iterating to closure:
+every stage whose prerequisites are reached and whose guards hold joins the
+set, which may in turn enable further stages, until nothing changes.</p>
+<p>Each iteration is a <strong>synchronous sweep</strong>: every stage is evaluated against
+the snapshot taken at the start of the sweep, and all newly enabled stages
+are added at once. Firing one stage at a time gives order-dependent answers
+even on definitions the linter accepts, because a later stratum negating an
+earlier one can jump the queue. The synchronous sweep is normative — a TLA+
+model exhibits the counterexample, and a conformance corpus case pins the
+correct answer.</p>
+<p>Because <code>[:not [:stage-reached …]]</code> is negation inside a fixpoint, the
+linter enforces <strong>stratified negation</strong>: a definition may only negate
+stages in a strictly earlier stratum. That is what makes determinism
+provable rather than incidental.</p>
+<h2 id="regression-is-by-derivation">Regression is by derivation</h2>
+<p>Nothing rolls a ticket back. Withdraw the evidence and the conclusion stops
+following:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik retract <span class="m">3184</span> resolution.ref --reason <span class="s2">&#34;wrong commit&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="gp">$</span> tik status <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">stage:   triaged (reached: received, triaged)
+</span></span></span></code></pre></div><p>The same holds for a dispute, and for a fact that a schema no longer
+accepts. The board cannot show a stage the evidence does not support,
+because there is no stored stage to go stale.</p>
+<h2 id="sticky-milestones">Sticky milestones</h2>
+<p>Some stages are milestones: reaching them once is a historical fact that
+later evidence does not undo. <code>:stage/sticky? true</code> says so, and the fold
+carries such a stage forward once any prefix of the log reached it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:closed</span> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:resolved</span><span class="p">]</span> <span class="ss">:stage/sticky?</span> <span class="nv">true</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:customer</span> <span class="ss">:ack</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>A customer who withdraws their acknowledgement does not un-close the
+ticket. The log shows both truths — it was closed, and the ack was
+withdrawn — and the derived present misrepresents neither.</p>
+<p>Sticky is monotone <strong>in fold position</strong>, not in the event set. The reached
+set is a function of the whole trajectory, so an event that arrives by
+merge carrying an earlier timestamp splices a new prefix into that
+trajectory and every later prefix is re-derived. A replica can therefore
+hold a sticky reach, sync, and no longer derive it. Convergence is
+unaffected — the same event set always derives the same answer — but a
+reach observed before a sync is not promised to survive it, which is why an
+effect pipeline records that it fired as its own fact.</p>
+<h2 id="time">Time</h2>
+<p>Time enters derivation as an explicit <code>now</code> argument. The kernel reads no
+clock of its own, which is what makes a re-derivation years from now
+reproducible.</p>
+<p>Guards read the claimed clock — the <code>:at</code> an actor asserted — by default,
+and each fold step evaluates at its event&rsquo;s <code>:at</code> <strong>clamped to the read&rsquo;s
+<code>now</code></strong>. No step acts as though more time has passed than actually has, so
+a postdated event cannot buy the 48 hours an <code>:elapsed-since</code> guard is
+waiting for. The clamp lifts by itself once that time really passes.</p>
+<h2 id="several-stages-at-once">Several stages at once</h2>
+<p>A process is a graph, not a line, so a ticket can sit at several current
+stages at the same time — two branch tips, both maximal. <code>tik status</code>
+reports the reached set and the current tips; <code>tik debug</code> shows every
+sweep and every guard verdict that produced them.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/><category scheme="https://tik.projects.metio.wtf/tags/fixpoint" term="fixpoint" label="fixpoint"/><category scheme="https://tik.projects.metio.wtf/tags/sticky" term="sticky" label="sticky"/><category scheme="https://tik.projects.metio.wtf/tags/derivation" term="derivation" label="derivation"/></entry></feed>

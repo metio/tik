@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Decisions on tik</title><link href="https://tik.projects.metio.wtf/tags/decisions/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/decisions/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/decisions/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/decisions/</id><entry><title type="html">Decisions</title><link href="https://tik.projects.metio.wtf/decisions/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/derived-beats-declared/?utm_source=atom_feed" rel="related" type="text/html" title="Derived beats declared"/><id>https://tik.projects.metio.wtf/decisions/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>The architecture decision record — what was chosen, why, and what it rules out.</blockquote><p>Every load-bearing choice in tik has a record: the decision, the context that
+forced it, and the consequences that follow. Several exist to name something
+tik will <em>not</em> do, which is the part that keeps the model small.</p>
+<p>New here, read these four: <a href="/decisions/0013-derived-state-never-authoritative/">derived state is never
+authoritative</a>
+ is the one
+law written as a constraint on every future feature;
+<a href="/decisions/0021-coordination-free-horizontal-scaling/">coordination-free</a>
+ is
+its companion; <a href="/decisions/0007-stored-bytes-are-the-hashed-region/">stored bytes are the hashed
+region</a>
+ is why
+<code>sha256sum</code> alone audits a store; and <a href="/decisions/0012-time-semantics/">three
+clocks</a>
+ is why a guard&rsquo;s meaning includes
+which clock it reads.</p>
+<p>These files live in the repository&rsquo;s knowledge bundle under <code>kb/decisions/</code>,
+so a checkout and this site carry the same record.</p>
+<h2 id="the-laws">The laws</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Decision</th>
+					<th>What it settles</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/decisions/0013-derived-state-never-authoritative/">0013</a>
+</td>
+					<td>Derived material may be cached only if disposable and untrusted.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0021-coordination-free-horizontal-scaling/">0021</a>
+</td>
+					<td>No leader, no lock, no consensus — on any correctness path.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0001-event-log-acceptance-test/">0001</a>
+</td>
+					<td>The event-log acceptance test every feature must pass.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="derivation">Derivation</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Decision</th>
+					<th>What it settles</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/decisions/0005-stratified-negation/">0005</a>
+</td>
+					<td>Negation inside the fixpoint must be stratified to stay deterministic.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0003-conflicts-block/">0003</a>
+</td>
+					<td>Concurrent conflicting assertions block guards; people resolve them.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0016-explain-stability-contract/">0016</a>
+</td>
+					<td>Explain&rsquo;s structured reasons are the stable API; the prose is not.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0018-conformance/">0018</a>
+</td>
+					<td>Conformance is the corpus, the laws, and the normative sweep semantics.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0019-effects-observe-derivation/">0019</a>
+</td>
+					<td>Effects observe derivation; transport is not a domain concept.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="time">Time</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Decision</th>
+					<th>What it settles</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/decisions/0012-time-semantics/">0012</a>
+</td>
+					<td>Three clocks, never conflated; the clock is part of the guard.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0022-no-step-reads-the-future/">0022</a>
+</td>
+					<td>The claimed clock is clamped to the evaluated clock.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="the-log-and-its-bytes">The log and its bytes</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Decision</th>
+					<th>What it settles</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/decisions/0004-mandatory-parents/">0004</a>
+</td>
+					<td>Parents are mandatory; the log is a Merkle DAG.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0006-hash-policy/">0006</a>
+</td>
+					<td>SHA-256, self-describing ids, one algorithm per store.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0007-stored-bytes-are-the-hashed-region/">0007</a>
+</td>
+					<td>Stored bytes are exactly the hashed region; signatures are detached.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0008-canonical-serialization-protocol/">0008</a>
+</td>
+					<td>Canonical serialization is a versioned wire protocol.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0017-deletion-and-compaction/">0017</a>
+</td>
+					<td>Events are never deleted; blobs may be; nothing compacts into authority.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0020-eventstore-contract/">0020</a>
+</td>
+					<td>The contract every storage backend must honour.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="trust-and-authority">Trust and authority</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Decision</th>
+					<th>What it settles</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/decisions/0010-authority-model/">0010</a>
+</td>
+					<td>Signatures establish authorship; authorization is derived.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0011-log-admission-vs-trust/">0011</a>
+</td>
+					<td>The log admits all well-formed claims; trust is evaluated, not filtered.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0009-unknown-data-policy/">0009</a>
+</td>
+					<td>Unknown data is handled differently per layer, on purpose.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0014-artifact-semantics/">0014</a>
+</td>
+					<td>The artifact hash is in the trust domain; the blob is not.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0015-process-definition-trust/">0015</a>
+</td>
+					<td>Definition hash is identity; publication signatures are authority.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0002-pinned-process-versions/">0002</a>
+</td>
+					<td>Tickets pin their definition hash; migration is an event.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0023-key-bindings-are-evidence/">0023</a>
+</td>
+					<td>A verified key binding grants signing authority; pinned keys anchor it.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0024-link-values-name-foreign-tickets/">0024</a>
+</td>
+					<td>A link&rsquo;s value names its referent; a foreign ticket carries the head observed.</td>
+			</tr>
+			<tr>
+					<td><a href="/decisions/0025-the-evidence-bundle-is-a-versioned-format/">0025</a>
+</td>
+					<td>The evidence bundle is a named, versioned format; a badge names the derivation.</td>
+			</tr>
+	</tbody>
+</table>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/decisions" term="decisions" label="decisions"/><category scheme="https://tik.projects.metio.wtf/tags/adr" term="adr" label="adr"/><category scheme="https://tik.projects.metio.wtf/tags/design" term="design" label="design"/></entry></feed>

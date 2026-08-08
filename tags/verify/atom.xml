@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Verify on tik</title><link href="https://tik.projects.metio.wtf/tags/verify/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/verify/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/verify/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/verify/</id><entry><title type="html">Store administration</title><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/authoring/roles-and-authority/?utm_source=atom_feed" rel="related" type="text/html" title="Roles and authority"/><id>https://tik.projects.metio.wtf/cli/administration/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>Identity, roles, verification, migration, storage backends, and alerts.</blockquote><h2 id="identity">Identity</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik actor add alice ~/.config/tik/id_ed25519.pub
+</span></span><span class="line"><span class="cl">tik sign <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik witness <span class="m">3184</span>
+</span></span></code></pre></div><p><code>actor add</code> registers a signer in the store&rsquo;s allowed-signers registry.
+Exporting <code>TIK_KEY</code> signs every write as it happens; <code>sign</code> catches up on
+your own earlier events, and only your own — signing somebody else&rsquo;s would
+assert something false. <code>witness</code> countersigns a ticket&rsquo;s head, and one
+signature timestamps the entire ancestry beneath it.</p>
+<h2 id="roles">Roles</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik roles
+</span></span><span class="line"><span class="cl">tik roles add triager alice
+</span></span><span class="line"><span class="cl">tik roles remove triager bob
+</span></span></code></pre></div><p>A process definition declares which roles exist and who starts in them; the
+store&rsquo;s register decides who is in one today, for every ticket at once. Use
+it for a hire or a departure — it takes effect on in-flight tickets
+immediately, with no definition version bump and no per-ticket migration.
+See <a href="/authoring/roles-and-authority/">Roles and authority</a>
+.</p>
+<h2 id="verification">Verification</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik verify
+</span></span><span class="line"><span class="cl">tik verify --changed
+</span></span><span class="line"><span class="cl">tik root --witness
+</span></span></code></pre></div><p><code>verify</code> runs the ladder: content addressing, schema, signatures, and
+re-derivation. <code>--changed</code> skips unchanged heads for a fast drift check
+rather than the full audit. <code>root</code> prints one hash committing to the entire
+store, optionally countersigned, optionally anchored to a third-party
+timestamp.</p>
+<h2 id="moving-tickets-to-newer-rules">Moving tickets to newer rules</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik reprocess <span class="m">3184</span> processes/support-request.edn
+</span></span><span class="line"><span class="cl">tik reprocess <span class="m">3184</span> processes/support-request.edn --apply
+</span></span></code></pre></div><p>A ticket is judged by the rules it was minted under, so a definition that
+grows leaves existing tickets deriving under the old one until you move
+them — deliberately, because an implicit upgrade would re-judge a whole
+store on an edit. The dry run prints the pinned-versus-proposed hashes,
+which stages would be gained or would regress, and the new blockers.
+<code>--apply</code> records the re-pin as a signed event, so the log keeps which
+rules judged the ticket when.</p>
+<h2 id="storage">Storage</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik init --sqlite
+</span></span><span class="line"><span class="cl">tik store migrate --to file
+</span></span><span class="line"><span class="cl">tik <span class="nb">export</span> ./audit-copy
+</span></span><span class="line"><span class="cl">tik pack
+</span></span><span class="line"><span class="cl">tik gc --apply
+</span></span></code></pre></div><p>The file store is the signed interchange format; SQLite keeps the same
+events in one file. Migration is lossless in both directions — events and
+their detached signatures travel together. <code>export</code> materializes any store
+as the file format. <code>pack</code> consolidates settled tickets into one
+content-addressed pack each, and <code>gc</code> removes archived definitions no
+ticket pins any more.</p>
+<h2 id="handing-a-ticket-to-someone-else">Handing a ticket to someone else</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle <span class="m">3184</span> --out evidence.tgz
+</span></span><span class="line"><span class="cl">tik import evidence.tgz
+</span></span><span class="line"><span class="cl">tik rederive evidence.tgz
+</span></span></code></pre></div><p><code>bundle</code> packs one ticket as an <a href="/evidence/">evidence bundle</a>
+: the events,
+their signatures, the pinned definition and the registry, checkable with
+coreutils. <code>import</code> brings someone else&rsquo;s events into this store, merging
+by content address so importing twice is a no-op. <code>rederive</code> recomputes
+what a bundle&rsquo;s facts imply without importing anything.</p>
+<h2 id="alerts-out-mail-in">Alerts out, mail in</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik effects run --config effects.edn --dry-run
+</span></span><span class="line"><span class="cl">tik bridge email &lt; message.eml
+</span></span></code></pre></div><p><code>effects run</code> pushes derived stage transitions to Slack, Discord, Matrix,
+Teams, ntfy, PagerDuty, plain webhooks, email, or any program through the
+command sink. Any sink field may be a secret resolved at send time — from
+an environment variable, a file, a command, or a systemd credential — so
+no secret sits in the config file.</p>
+<p>The email bridge turns messages into tickets and comments, and replies
+carrying <code>tik&gt; key=value</code> lines become facts, which closes the loop for
+people who never leave their inbox.</p>
+<h2 id="the-gated-agent-surface">The gated agent surface</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik agent actions <span class="m">3184</span> --actor bot
+</span></span><span class="line"><span class="cl">tik agent <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:high --actor bot
+</span></span></code></pre></div><p>An agent sees only what the frontier admits for its role, and anything else
+is refused with the derived reason. The boundary is the same derivation
+everyone else reads, so it cannot be talked around.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/><category scheme="https://tik.projects.metio.wtf/tags/verify" term="verify" label="verify"/><category scheme="https://tik.projects.metio.wtf/tags/roles" term="roles" label="roles"/><category scheme="https://tik.projects.metio.wtf/tags/migration" term="migration" label="migration"/><category scheme="https://tik.projects.metio.wtf/tags/effects" term="effects" label="effects"/></entry></feed>

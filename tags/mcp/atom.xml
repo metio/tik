@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Mcp on tik</title><link href="https://tik.projects.metio.wtf/tags/mcp/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/mcp/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/mcp/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/mcp/</id><entry><title type="html">MCP server</title><link href="https://tik.projects.metio.wtf/integrations/mcp-server/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/claude-code/?utm_source=atom_feed" rel="related" type="text/html" title="Claude Code skill"/><id>https://tik.projects.metio.wtf/integrations/mcp-server/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>The frontier as an agent&rsquo;s gated tool surface, over stdio.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nv">TIK_ACTOR</span><span class="o">=</span>bot <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/bot_ed25519 tik mcp
+</span></span></code></pre></div><p><code>tik mcp</code> speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+<em>is</em> the authorization boundary.</p>
+<h2 id="why-the-boundary-holds">Why the boundary holds</h2>
+<p>An agent&rsquo;s permission to act is derived from the same guards a person&rsquo;s
+is. A step whose <code>:signed-by</code> names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.</p>
+<p>That matters because the alternative — telling a model in its prompt what
+it may not do — is enforcement by cooperation. Here the check happens
+where the answer is computed, and it produces the same reason string a
+person would see.</p>
+<h2 id="accountability">Accountability</h2>
+<p>Every write the agent makes is an ordinary signed event with the agent&rsquo;s
+own actor identity. The log therefore distinguishes what a person claimed
+from what an agent claimed, permanently and without a separate audit
+trail. <code>tik causal</code> names the events behind each reached stage, so a
+conclusion an agent contributed to can be traced to the evidence it
+supplied and the key that signed it.</p>
+<h2 id="task-specifications-from-guards">Task specifications from guards</h2>
+<p>An agent asking &ldquo;what should I do?&rdquo; gets the same structured answer every
+other lens renders:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --actor bot --edn
+</span></span></code></pre></div><p>Each missing step carries its path, its schema, and who may satisfy it —
+which makes an acceptance criterion out of a guard, rather than out of a
+sentence somebody wrote in a ticket description.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/mcp" term="mcp" label="mcp"/><category scheme="https://tik.projects.metio.wtf/tags/agents" term="agents" label="agents"/><category scheme="https://tik.projects.metio.wtf/tags/authorization" term="authorization" label="authorization"/></entry></feed>

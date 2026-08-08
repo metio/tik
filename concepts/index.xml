@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Concepts on tik</title><link>https://tik.projects.metio.wtf/concepts/</link><description>Recent content in Concepts on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/concepts/index.xml" rel="self" type="application/rss+xml"/><item><title>Derived beats declared</title><link>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</guid><description>&lt;p&gt;&lt;strong&gt;If something can be derived, storing it as authoritative state is a
+bug.&lt;/strong&gt; That is the whole law, and every design question in tik resolves
+against it.&lt;/p&gt;
+&lt;p&gt;A ticket&amp;rsquo;s stage is the obvious case. It is never written down anywhere. It
+is &lt;code&gt;f(events, now)&lt;/code&gt; — a pure function of the ticket&amp;rsquo;s own event log, the
+process definition that ticket pinned, and the instant you are asking
+about. Ask twice with the same inputs and you get the same answer, forever.&lt;/p&gt;</description></item><item><title>Events and facts</title><link>https://tik.projects.metio.wtf/concepts/events-and-facts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/events-and-facts/</guid><description>&lt;p&gt;A ticket is an append-only set of events. Everything else about it is
+computed.&lt;/p&gt;
+&lt;h2 id="seven-event-types"&gt;Seven event types&lt;/h2&gt;
+&lt;p&gt;The vocabulary is closed and versioned, because the semantics of a
+verifiable kernel have to be enumerable:&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Event&lt;/th&gt;
+					&lt;th&gt;Meaning&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:ticket/create&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;the ticket exists, pinned to a process definition by hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/assert&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a claim about a path: &lt;code&gt;[:severity] = :high&lt;/code&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/retract&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;withdraw a claim, with no replacement&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/dispute&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;reject a claim, with a reason&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:artifact/attach&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a file, stored and addressed by its hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:attestation/add&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a signed claim the kernel does not interpret&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:process/migrate&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;re-pin this ticket to a newer definition&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Things that look like they need their own type turn out not to. Comments
+are artifacts — text blobs attached by hash. Links are facts under a
+&lt;code&gt;[:link …]&lt;/code&gt; path. Work records are &lt;code&gt;:work&lt;/code&gt; attestation claims. Witness
+countersignatures are detached sidecars over a head rather than events,
+because an event would move the very head it witnesses.&lt;/p&gt;</description></item><item><title>Explain</title><link>https://tik.projects.metio.wtf/concepts/explain/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/explain/</guid><description>&lt;p&gt;A traditional tracker exposes state. tik exposes &lt;strong&gt;justification&lt;/strong&gt;: what is
+true, why it is true, and what evidence is missing next. &lt;code&gt;tik explain&lt;/code&gt; is
+where that surfaces, and every other view is a rendering of it.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-console" data-lang="console"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="gp"&gt;$&lt;/span&gt; tik explain &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt;To reach :resolved:
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; ✓ [:fact [:resolution :ref]]
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; ✗ attach an artifact whose path starts with &amp;#34;repro/&amp;#34;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; blocks: :closed
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; (see: kb/runbooks/support-request-resolved.md)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Nothing in that block is speculation. The checkmarks are guards that
+already hold, the crosses are structured reasons produced by guard
+evaluation, &lt;code&gt;blocks&lt;/code&gt; is the downstream closure, and the hint is the
+&lt;a href="https://tik.projects.metio.wtf/runbooks/"&gt;runbook&lt;/a&gt;
+ the definition declares for that stage.&lt;/p&gt;</description></item><item><title>Guards</title><link>https://tik.projects.metio.wtf/concepts/guards/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/guards/</guid><description>&lt;h1 id="guards"&gt;Guards&lt;/h1&gt;
+&lt;p&gt;Deterministic pure functions of &lt;code&gt;(events, now)&lt;/code&gt; from a closed, versioned
+vocabulary (&lt;code&gt;tik.guard&lt;/code&gt;). Never effectful: &lt;code&gt;verify&lt;/code&gt; must re-evaluate them
+identically, offline, years later. Effectful validation lives only in edge
+admission checks (CLI porcelain, server ingest), before events are minted.&lt;/p&gt;
+&lt;p&gt;Design law: &lt;strong&gt;facts over flags.&lt;/strong&gt; A bare boolean guard is a checkbox with
+extra steps; &lt;code&gt;tik lint&lt;/code&gt; warns. Prefer facts useful downstream — categories
+that route branches, artifacts, signed approvals.&lt;/p&gt;</description></item><item><title>Replication</title><link>https://tik.projects.metio.wtf/concepts/replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/replication/</guid><description>&lt;p&gt;A tik store replicates by copying files. Two clones append independently,
+merge by set union, and derive the same answer — because derivation is a
+pure function of the event set and events are addressed by their content.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;git pull &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; git push &lt;span class="c1"&gt;# this is the replication protocol&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="why-the-merge-is-trivial"&gt;Why the merge is trivial&lt;/h2&gt;
+&lt;p&gt;Every event lives in its own file whose name is the SHA-256 of its bytes.
+Two people adding evidence to the same ticket create different files, so
+the merge is a union of directories and git never sees a conflicting hunk.
+Two people making the &lt;em&gt;identical&lt;/em&gt; claim produce byte-identical files with
+the same name, and the union keeps one — deduplication for free.&lt;/p&gt;</description></item><item><title>Stages</title><link>https://tik.projects.metio.wtf/concepts/stages/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/stages/</guid><description>&lt;p&gt;A process defines stages. Each stage names its prerequisites (&lt;code&gt;:after&lt;/code&gt;) and
+the conditions that must hold to reach it (&lt;code&gt;:guards&lt;/code&gt;). Reaching a stage is
+never an action somebody takes; it is a conclusion.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-clojure" data-lang="clojure"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:stage/id&lt;/span&gt; &lt;span class="ss"&gt;:resolved&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:after&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:triaged&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:guards&lt;/span&gt; &lt;span class="p"&gt;[[&lt;/span&gt;&lt;span class="ss"&gt;:fact&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:resolution&lt;/span&gt; &lt;span class="ss"&gt;:ref&lt;/span&gt;&lt;span class="p"&gt;]]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:or&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:not&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:fact=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:category&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="ss"&gt;:technical&lt;/span&gt;&lt;span class="p"&gt;]]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:stage-reached&lt;/span&gt; &lt;span class="ss"&gt;:reproducible&lt;/span&gt;&lt;span class="p"&gt;]]]}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;That second guard reads &amp;ldquo;technical implies reproduced&amp;rdquo; — material
+implication written out, because the vocabulary has &lt;code&gt;:or&lt;/code&gt; and &lt;code&gt;:not&lt;/code&gt; and
+needs no separate conditional.&lt;/p&gt;
+&lt;h2 id="the-reached-set-is-a-fixpoint"&gt;The reached set is a fixpoint&lt;/h2&gt;
+&lt;p&gt;Derivation computes the set of reached stages by iterating to closure:
+every stage whose prerequisites are reached and whose guards hold joins the
+set, which may in turn enable further stages, until nothing changes.&lt;/p&gt;</description></item><item><title>The event log</title><link>https://tik.projects.metio.wtf/concepts/event-log/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/event-log/</guid><description>&lt;h1 id="the-event-log"&gt;The event log&lt;/h1&gt;
+&lt;p&gt;A ticket is an append-only set of immutable, content-addressed events
+(canonical-EDN SHA-256). Replica merge is set union: replicas converge
+without coordination — &lt;em&gt;merge&lt;/em&gt; is conflict-free by construction, &lt;em&gt;truth&lt;/em&gt;
+is deliberately not. Conflicting claims are never hidden or resolved by
+merge; they remain in the log and surface as derived fact states
+(&lt;a href="https://tik.projects.metio.wtf/decisions/0003-conflicts-block/"&gt;decisions/0003&lt;/a&gt;
+). Ticket state
+and stage are pure functions of the log; any materialized view is a
+rebuildable cache
+(&lt;a href="https://tik.projects.metio.wtf/decisions/0001-event-log-acceptance-test/"&gt;decisions/0001&lt;/a&gt;
+,
+&lt;a href="https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/"&gt;decisions/0013&lt;/a&gt;
+).&lt;/p&gt;</description></item><item><title>The witness</title><link>https://tik.projects.metio.wtf/concepts/witness/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/witness/</guid><description>&lt;h1 id="the-witness"&gt;The witness&lt;/h1&gt;
+&lt;p&gt;Servers countersign events at ingest: &amp;ldquo;I saw hash H at time T.&amp;rdquo; Trusted
+signing time is the load-bearing input for &amp;ldquo;actor held role R at signing
+time&amp;rdquo; and the moment a stage&amp;rsquo;s social meaning solidifies.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;witnessed.dev&lt;/strong&gt; productizes this as a neutral third-party witness:
+countersigning event &lt;em&gt;hashes only&lt;/em&gt; (no content leaves the organization),
+giving self-hosted instances independent timestamping evidence for audits.&lt;/p&gt;</description></item></channel></rss>

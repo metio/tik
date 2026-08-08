@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Get started on tik</title><link>https://tik.projects.metio.wtf/get-started/</link><description>Recent content in Get started on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/get-started/index.xml" rel="self" type="application/rss+xml"/><item><title>Getting started</title><link>https://tik.projects.metio.wtf/get-started/guide/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/get-started/guide/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+Front matter publishes this file on the website (mounted at
+/get-started/guide/) while it stays the file the test suite executes,
+so the page and the software cannot drift apart.
+--&gt;
+&lt;p&gt;A working ticket system in under five minutes: no server, no database,
+no account, no YAML. Tickets are plain files in a directory you own;
+everything else — stages, boards, inboxes — is computed from them when
+you ask.&lt;/p&gt;</description></item><item><title>Install</title><link>https://tik.projects.metio.wtf/get-started/install/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/get-started/install/</guid><description>&lt;p&gt;Each release publishes two downloads, a &lt;code&gt;SHA256SUMS&lt;/code&gt; file covering both,
+and a cosign keyless signature over those checksums.&lt;/p&gt;
+&lt;h2 id="download-a-release"&gt;Download a release&lt;/h2&gt;
+&lt;p&gt;From the &lt;a href="https://github.com/metio/tik/releases"&gt;releases page&lt;/a&gt;
+:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;tik-linux-amd64-glibc&lt;/code&gt;&lt;/strong&gt; — the native binary, no runtime needed. It is
+labelled for exactly what it is: linux/amd64 against glibc.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;tik.jar&lt;/code&gt;&lt;/strong&gt; — the uberjar, for macOS, Windows, and arm. Runs on any
+JDK 21: &lt;code&gt;java -jar tik.jar --help&lt;/code&gt;. The container image is the universal
+deployment path.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;chmod +x tik-linux-amd64-glibc
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;./tik-linux-amd64-glibc --help
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Verify before trusting. The checksums cover the downloads, and the cosign
+bundle covers the checksums:&lt;/p&gt;</description></item></channel></rss>

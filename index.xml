@@ -1,0 +1,1567 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>tik</title><link>https://tik.projects.metio.wtf/</link><description>Recent content on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/index.xml" rel="self" type="application/rss+xml"/><item><title>A link's value names its referent; a foreign ticket is a map carrying the head observed</title><link>https://tik.projects.metio.wtf/decisions/0024-link-values-name-foreign-tickets/</link><pubDate>Thu, 06 Aug 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0024-link-values-name-foreign-tickets/</guid><description>&lt;h1 id="adr-0024-link-values-name-foreign-tickets"&gt;ADR 0024: Link values name foreign tickets&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;A link is an ordinary fact under a &lt;code&gt;[:link …]&lt;/code&gt; path, and the referent
+lives in the VALUE, never in the path.&lt;/strong&gt; A value is either a bare uuid —
+a ticket in this store — or a map:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-clojure" data-lang="clojure"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:ticket&lt;/span&gt; &lt;span class="o"&gt;#&lt;/span&gt;&lt;span class="nv"&gt;uuid&lt;/span&gt; &lt;span class="s"&gt;&amp;#34;…&amp;#34;&lt;/span&gt; &lt;span class="c1"&gt;; identity&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:head&lt;/span&gt; &lt;span class="s"&gt;&amp;#34;sha256-…&amp;#34;&lt;/span&gt; &lt;span class="c1"&gt;; the head observed when the claim was made&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:store&lt;/span&gt; &lt;span class="s"&gt;&amp;#34;…&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="c1"&gt;; advisory: where to fetch it&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;A ticket uuid is the identity on its own.&lt;/strong&gt; Uuids are globally unique
+by construction, so &lt;code&gt;(store, ticket)&lt;/code&gt; over-specifies: naming a store
+tells a reader where to &lt;em&gt;find&lt;/em&gt; the ticket, never which ticket it is.
+&lt;code&gt;:store&lt;/code&gt; therefore carries no authority and no comparison depends on it.&lt;/p&gt;</description></item><item><title>Key bindings are evidence — rung 2 grants signing authority, pinned keys anchor it</title><link>https://tik.projects.metio.wtf/decisions/0023-key-bindings-are-evidence/</link><pubDate>Thu, 06 Aug 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0023-key-bindings-are-evidence/</guid><description>&lt;h1 id="adr-0023-key-bindings-are-evidence"&gt;ADR 0023: Key bindings are evidence&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;A key binding on an identity-registry ticket grants signing authority
+for the actor it names, once three things hold.&lt;/strong&gt; Verification consults
+rung 1 (the curated &lt;code&gt;actors&lt;/code&gt; allowed-signers registry) AND rung 2 (keys a
+verified binding grants); a binding that fails any rule grants nothing.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;The id-token&amp;rsquo;s signature is the issuer&amp;rsquo;s&lt;/strong&gt;, checked against keys
+PINNED in the store at &lt;code&gt;&amp;lt;root&amp;gt;/jwks/&amp;lt;issuer&amp;gt;.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;The token is about the subject the attestation names&lt;/strong&gt; — its &lt;code&gt;sub&lt;/code&gt;
+and &lt;code&gt;iss&lt;/code&gt; must equal the binding&amp;rsquo;s, or a valid token from one subject
+would endorse a body naming another.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;The token was live when the binding was written&lt;/strong&gt; — the
+attestation&amp;rsquo;s own &lt;code&gt;:event/at&lt;/code&gt; falls inside the token&amp;rsquo;s &lt;code&gt;nbf&lt;/code&gt;…&lt;code&gt;exp&lt;/code&gt;
+window (60s leeway), so a binding means &amp;ldquo;this actor presented a
+working token at that moment&amp;rdquo; rather than &amp;ldquo;this actor once held a
+token&amp;rdquo;. A token carrying neither &lt;code&gt;exp&lt;/code&gt; nor &lt;code&gt;iat&lt;/code&gt; is refused: nothing
+ties it to a moment.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;The registry is derived, not configured&lt;/strong&gt;: any ticket pinned to the
+&lt;code&gt;identity-registry&lt;/code&gt; process is one. A trust base must not be something a
+config file can forget to mention.&lt;/p&gt;</description></item><item><title>The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service</title><link>https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/</link><pubDate>Thu, 06 Aug 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/</guid><description>&lt;h1 id="adr-0025-the-evidence-bundle-is-a-named-versioned-format"&gt;ADR 0025: The evidence bundle is a named, versioned format&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;The bundle is &lt;code&gt;tik-evidence-bundle&lt;/code&gt;, version 1, and version 1 is what
+already shipped.&lt;/strong&gt; The format published today is the layout the release
+pipeline has been producing, so every bundle in the wild is conformant
+and nothing has to be re-issued.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;A &lt;code&gt;bundle.edn&lt;/code&gt; manifest declares the format name and the version, and
+nothing else.&lt;/strong&gt; The ticket, the head, the definition and the stage are
+all derivable from the files; a manifest that carried them would be
+inviting a reader to believe the producer instead of the evidence, which
+is the one thing a bundle exists to make unnecessary. A bundle without a
+manifest is version 1 — the baseline predates it.&lt;/p&gt;</description></item><item><title>No fold step reads the future — the claimed clock is clamped to the evaluated clock</title><link>https://tik.projects.metio.wtf/decisions/0022-no-step-reads-the-future/</link><pubDate>Wed, 05 Aug 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0022-no-step-reads-the-future/</guid><description>&lt;h1 id="adr-0022-no-fold-step-reads-the-future"&gt;ADR 0022: No fold step reads the future&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Every step of &lt;code&gt;evolve&lt;/code&gt; evaluates guards at the event&amp;rsquo;s own claimed
+&lt;code&gt;:event/at&lt;/code&gt;, clamped to the read&amp;rsquo;s evaluated &lt;code&gt;now&lt;/code&gt;: &lt;code&gt;min(at, now)&lt;/code&gt;.&lt;/strong&gt; No
+step may act as though more time has passed than actually has at the
+moment of the read.&lt;/p&gt;
+&lt;p&gt;Derivation stays exactly what it was — a pure function of
+&lt;code&gt;(events, now)&lt;/code&gt; — and reduction order is untouched: events still fold in
+&lt;code&gt;(at, id)&lt;/code&gt; order, and only the instant each step&amp;rsquo;s guards are &lt;em&gt;evaluated
+at&lt;/em&gt; is clamped. Logs whose events are all dated at or before the read
+derive byte-for-byte as they did before, so the clamp changes the answer
+only for the case it exists to fix.&lt;/p&gt;</description></item><item><title>Coordination-free horizontal scaling — no leader, no lock, no consensus</title><link>https://tik.projects.metio.wtf/decisions/0021-coordination-free-horizontal-scaling/</link><pubDate>Tue, 14 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0021-coordination-free-horizontal-scaling/</guid><description>&lt;h1 id="adr-0021-coordination-free-horizontal-scaling"&gt;ADR 0021: Coordination-free horizontal scaling&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;tik&amp;rsquo;s second law, standing beside derived-beats-declared: every
+operation must be correct on arbitrarily many replicas that share nothing
+and reconcile only by eventually unioning their grow-only,
+content-addressed event sets. No feature may require leader election, a
+distributed lock, a quorum/consensus round, or any synchronous
+cross-replica coordination to be correct.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;This is not an aspiration to bolt on later; it is a constraint every
+feature is checked against now, exactly like the first law. Three
+consequences are load-bearing and must stay true:&lt;/p&gt;</description></item><item><title>Artifacts — the hash is in the trust domain, the blob is not</title><link>https://tik.projects.metio.wtf/decisions/0014-artifact-semantics/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0014-artifact-semantics/</guid><description>&lt;h1 id="adr-0014-artifact-semantics"&gt;ADR 0014: Artifact semantics&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;An &lt;code&gt;:artifact/attach&lt;/code&gt; event binds a path label to a content hash. The
+permanent answers:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;The hash is inside the trust domain; the blob is not.&lt;/strong&gt; The event
+(signed, hashed, parented) proves &lt;em&gt;that&lt;/em&gt; an actor attached &lt;em&gt;exactly
+these bytes&lt;/em&gt; at a claimed time. The bytes themselves are payload:
+stored by hash, transferred lazily, verifiable on arrival.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Blobs are immutable&lt;/strong&gt; — a &amp;ldquo;changed&amp;rdquo; artifact is a new hash attached
+by a new event; the old attachment remains history.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Deletion removes availability, never history&lt;/strong&gt; (GDPR, leaked
+secrets). The event stands, the hash stands, and &lt;code&gt;verify&lt;/code&gt; L3 reports
+&lt;strong&gt;verifiable absence&lt;/strong&gt; — &amp;ldquo;blob absent&amp;rdquo; is a truthful verification
+outcome, not a failure to be papered over. This is a designed
+property; transcripts from real environments contain things that must
+be deletable (PLAN §13).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Metadata is descriptive, never authoritative.&lt;/strong&gt; The path label,
+media type, and any annotations are the attaching actor&amp;rsquo;s &lt;em&gt;claims&lt;/em&gt;
+about the bytes — disputable like any claim — not properties the
+kernel vouches for. A guard trusting &lt;code&gt;path = &amp;quot;repro/…&amp;quot;&lt;/code&gt; trusts the
+attacher&amp;rsquo;s labeling; when it matters, processes require an
+attestation about the content, not a filename shape (PLAN §18,
+evidence flooding).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Two hashes are two artifacts.&lt;/strong&gt; Logical identity across encodings
+(&amp;ldquo;the same report as PDF and HTML&amp;rdquo;) is not a kernel concept; if a
+process needs it, it is asserted as a fact and carries its asserter&amp;rsquo;s
+accountability.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;Artifacts are where the trust domain touches arbitrary external bytes,
+and every mistake here has the same shape: attributing to the blob a
+guarantee that only the &lt;em&gt;event about the blob&lt;/em&gt; carries. Keeping the
+boundary explicit — evidence about bytes vs. the bytes — is what lets
+blobs be deleted, lazily transferred, and quota-limited without any of
+it touching the integrity story.&lt;/p&gt;</description></item><item><title>Canonical serialization is a versioned wire protocol</title><link>https://tik.projects.metio.wtf/decisions/0008-canonical-serialization-protocol/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0008-canonical-serialization-protocol/</guid><description>&lt;h1 id="adr-0008-canonical-serialization-is-a-protocol-boundary"&gt;ADR 0008: Canonical serialization is a protocol boundary&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Canonical EDN is a &lt;strong&gt;versioned wire protocol&lt;/strong&gt;, not an implementation
+detail. A format version defines the &lt;em&gt;complete&lt;/em&gt; byte representation;
+implementations MUST NOT serialize equivalent structures differently.
+The permanent answers, per format-version 1:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Numbers&lt;/strong&gt;: integers only, printed as longs. Floats, ratios, and
+bigdecimals are &lt;em&gt;rejected at emit&lt;/em&gt; — no numeric normalization exists
+because no ambiguous numerics are admitted.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Keywords and symbols&lt;/strong&gt;: printed textually (&lt;code&gt;:ns/name&lt;/code&gt;, &lt;code&gt;name&lt;/code&gt;);
+namespaces are part of identity forever.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;UUIDs&lt;/strong&gt;: lowercase textual form, tagged (&lt;code&gt;#uuid &amp;quot;...&amp;quot;&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Timestamps&lt;/strong&gt;: UTC, truncated to millisecond precision, tagged
+(&lt;code&gt;#inst &amp;quot;...&amp;quot;&lt;/code&gt; in &lt;code&gt;java.time.Instant&lt;/code&gt; ISO-8601 form).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Maps&lt;/strong&gt;: entries sorted by the canonical encoding of the key (never
+by a host-language print function — &lt;code&gt;pr-str&lt;/code&gt; was tried and is
+identity-hash-unstable for types without a print-method).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Sets&lt;/strong&gt;: members sorted by their canonical encoding.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Vectors and seqs&lt;/strong&gt;: preserve order (&lt;code&gt;[..]&lt;/code&gt;, &lt;code&gt;(..)&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Unknown types&lt;/strong&gt;: rejected at emit, never &amp;ldquo;best-effort&amp;rdquo; printed.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Whitespace&lt;/strong&gt;: single space between elements; no other whitespace.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Any change to canonical output — however &amp;ldquo;equivalent&amp;rdquo; — is a
+format-version bump.&lt;/p&gt;</description></item><item><title>Conformance is defined by the corpus, the laws, and normative sweep semantics</title><link>https://tik.projects.metio.wtf/decisions/0018-conformance/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0018-conformance/</guid><description>&lt;h1 id="adr-0018-second-implementation-conformance"&gt;ADR 0018: Second-implementation conformance&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;The corpus, not the Clojure, is the definition of tik. A conforming
+implementation must agree on all five layers:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Canonical bytes&lt;/strong&gt; (ADR 0008): identical serialization for every
+supported value, byte for byte.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Event validity&lt;/strong&gt; (ADR 0004, 0009): minting rules (mandatory
+parents, root uniqueness), totality over unknown types.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Reduction&lt;/strong&gt;: identical ticket state from identical event sets —
+ordered by &lt;code&gt;(at, id)&lt;/code&gt;, deduplicated by id, handler semantics per the
+closed vocabulary.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Fixpoint semantics&lt;/strong&gt;: the &lt;strong&gt;synchronous sweep is normative&lt;/strong&gt;
+(ADR 0005) — all enabled stages added per sweep against the
+sweep-start snapshot. Fire-one-stage-at-a-time iteration is
+nonconformant even on stratification-clean processes;
+&lt;code&gt;spec/ChaoticFixpoint.tla&lt;/code&gt; exhibits the divergence and the corpus
+case &lt;code&gt;sweep-order-negation&lt;/code&gt; pins the correct result.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Explain laws&lt;/strong&gt;: soundness (every block re-derivable, nothing
+speculative) and completeness (every unreached-with-prereqs-reached
+stage appears) — the data contract of ADR 0016.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Conformance is demonstrated by passing the corpus and the property laws,
+not by code review of the implementation.&lt;/p&gt;</description></item><item><title>Definition hash is identity; publication signatures are authority</title><link>https://tik.projects.metio.wtf/decisions/0015-process-definition-trust/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0015-process-definition-trust/</guid><description>&lt;h1 id="adr-0015-process-definition-trust"&gt;ADR 0015: Process definition trust&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;A process definition&amp;rsquo;s &lt;strong&gt;hash is its identity&lt;/strong&gt; (ADR 0002/0006); a
+&lt;strong&gt;detached signature sidecar over its canonical bytes is publication
+authority&lt;/strong&gt; — who vouches that this definition is an approved rule set.
+The two are independent: an unsigned definition is still a definite,
+pinnable identity; a signature adds &amp;ldquo;and Compliance published it&amp;rdquo;.&lt;/p&gt;
+&lt;p&gt;The permanent answers:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Signatures are over canonical definition bytes&lt;/strong&gt; (the ADR 0007
+pattern), never over the hash string alone — signing a name instead
+of content is how substitution bugs are born.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Multiple signatures accumulate&lt;/strong&gt; as sidecars (author, security
+review, compliance) without touching identity.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Who may publish is deployment policy&lt;/strong&gt;, expressed as which
+publisher keys a deployment accepts — checked at ticket creation and
+by lint/CI, &lt;em&gt;not&lt;/em&gt; by the kernel at derivation time: a ticket pinned
+to a definition derives under it regardless, because reproducibility
+of past conclusions must not depend on today&amp;rsquo;s trust list.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Revocation is prospective&lt;/strong&gt;: revoking a definition (an attestation
+by its publisher) means &amp;ldquo;create no new tickets under this; migrate
+existing ones&amp;rdquo;. Existing tickets keep deriving under their pin —
+ADR 0002&amp;rsquo;s reproducibility — while lint, &lt;code&gt;next&lt;/code&gt;, and migration sweeps
+surface them as work. Retroactive invalidation would rewrite what
+past conclusions meant, which is the exact audit hole pinning closes.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;A process definition is executable governance: publishing a bad one is
+the definition-poisoning attack (PLAN §18), and the kernel is correctly
+neutral about it — the verifier proves correct evaluation, not good
+policy. What the kernel &lt;em&gt;can&lt;/em&gt; do is make authorship and endorsement of
+definitions first-class evidence, so &amp;ldquo;who allowed these rules&amp;rdquo; is a log
+question with the same answerability as &amp;ldquo;who asserted this fact&amp;rdquo;.&lt;/p&gt;</description></item><item><title>Derived material may be cached only if disposable and untrusted</title><link>https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/</guid><description>&lt;h1 id="adr-0013-derived-state-is-never-persisted-as-authoritative"&gt;ADR 0013: Derived state is never persisted as authoritative&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Derived material — stages, frontiers, explain output, totals, indexes,
+reduction summaries — may be cached, indexed, or materialized &lt;strong&gt;only if
+it is disposable and verification never trusts it&lt;/strong&gt;. Deleting any cache
+must be a no-op for correctness. &lt;code&gt;verify&lt;/code&gt; re-derives from the log,
+always; it never reads a cache, an index, or a checkpoint as input.&lt;/p&gt;
+&lt;p&gt;Checkpoints (a verified reduction summary pinned to a head) are
+&lt;strong&gt;untrusted accelerators&lt;/strong&gt;: an implementation may use one to skip work,
+but replay always outranks it, and any disagreement is resolved in favor
+of replay.&lt;/p&gt;</description></item><item><title>Effects observe derivation; transport is not a domain concept</title><link>https://tik.projects.metio.wtf/decisions/0019-effects-observe-derivation/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0019-effects-observe-derivation/</guid><description>&lt;h1 id="adr-0019-effects-observe-derivation"&gt;ADR 0019: Effects observe derivation&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Derivation is pure; &lt;strong&gt;effects observe derivation&lt;/strong&gt;. An effect planner
+watches derived frontier transitions and fires outbound integrations —
+webhooks, mail, chat — under these rules:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Delivery never touches truth.&lt;/strong&gt; Success or failure of an outbound
+call changes nothing in any ticket&amp;rsquo;s log.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;No transport event types, ever.&lt;/strong&gt; There is no &lt;code&gt;:webhook/sent&lt;/code&gt;, no
+&lt;code&gt;:email/delivered&lt;/code&gt;, no &lt;code&gt;:kafka/published&lt;/code&gt; — transport is not a domain
+concept. When the &lt;em&gt;business outcome&lt;/em&gt; matters (&amp;ldquo;customer was
+notified&amp;rdquo;), it re-enters as a fact or attestation asserted by the
+notifying actor, accountable like any claim.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Idempotency is structural, not stateful&lt;/strong&gt;: the effect key is the
+content hash of &lt;code&gt;(ticket, stage, sink identity)&lt;/code&gt;, so replays and
+re-derivations dedupe without a delivery-state machine — and any
+delivery ledger an effect runner keeps is disposable porcelain
+(ADR 0013). The key deliberately excludes the head: a head moves with
+every appended event, so keying on it would re-notify the same stage
+on every subsequent write — the opposite of dedup.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Structural dedup is scoped to one runner&amp;rsquo;s ledger, not to the
+estate.&lt;/strong&gt; The key is stable across replicas, but the ledger recording
+which keys were sent is local, so N runners observing the same
+transition deliver N times. Under the horizontal scaling ADR 0021
+calls preferred, that is the narrow per-pipeline delivery lease
+ADR 0021 admits as its one exception — the only place coordination is
+allowed, and it serializes DELIVERY, never the log. Until a runner
+takes such a lease, run exactly one effect runner per estate.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Inbound is symmetric and already covered&lt;/strong&gt;: an external system&amp;rsquo;s
+webhook is just another actor whose bridge validates, authenticates,
+and appends signed events (ADR 0001, 0011).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;The first integration author under deadline pressure will want to
+record &amp;ldquo;the webhook succeeded&amp;rdquo; in the ticket — and each such record is
+a transport detail promoted to domain truth, the exact accretion path
+by which event vocabularies grow to &lt;code&gt;CommentEdited&lt;/code&gt;/&lt;code&gt;EmailSent&lt;/code&gt; size.
+The rule that prevents it is cheap and total: effects are a lens with
+side effects, downstream of truth, never upstream.&lt;/p&gt;</description></item><item><title>Events are never deleted; blobs may be; nothing is compacted into authority</title><link>https://tik.projects.metio.wtf/decisions/0017-deletion-and-compaction/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0017-deletion-and-compaction/</guid><description>&lt;h1 id="adr-0017-deletion-retention-and-compaction"&gt;ADR 0017: Deletion, retention, and compaction&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Events are never deleted.&lt;/strong&gt; History is the truth substrate; an
+event store that forgets events is corrupt (missing parents,
+ADR 0004), not compact.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Blobs may be deleted.&lt;/strong&gt; Deletion removes &lt;em&gt;availability&lt;/em&gt;, never
+&lt;em&gt;history&lt;/em&gt;: the attach event and hash remain, and verify L3 reports
+verifiable absence (ADR 0014). This is the designed answer to GDPR
+erasure, leaked secrets, and retention policy — personal data and
+sensitive payloads belong in blobs, precisely so they are deletable.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;No cryptographic compaction of event history.&lt;/strong&gt; Any &amp;ldquo;verified
+reduction summary&amp;rdquo; is derived state: usable as an untrusted
+accelerator, never as a replacement for the events it summarizes
+(ADR 0013). A store that can no longer replay is a store that can no
+longer verify.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;Long-lived append-only systems always eventually ask &amp;ldquo;can we delete old
+events?&amp;rdquo;, usually citing storage cost or privacy law. The two motives
+have different correct answers, and blurring them is the danger: storage
+cost is a payload problem (blobs, quotas, lazy transfer — events
+themselves are tiny), while privacy law is about &lt;em&gt;content&lt;/em&gt;, which is why
+deletable content lives behind hashes rather than inside events. The
+design keeps a sharp line: &lt;strong&gt;verification reports absence; it never
+rewrites truth.&lt;/strong&gt;&lt;/p&gt;</description></item><item><title>Explain's structured reasons are the stable API; renderings are not</title><link>https://tik.projects.metio.wtf/decisions/0016-explain-stability-contract/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0016-explain-stability-contract/</guid><description>&lt;h1 id="adr-0016-explain-stability-contract"&gt;ADR 0016: Explain stability contract&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Explain output is structured data with stable semantics; rendering is
+not stable.&lt;/strong&gt; Clients — web UIs, MCP agents, chat surfaces, dashboards —
+bind to the reason data (&lt;code&gt;:reason&lt;/code&gt; keywords like &lt;code&gt;:fact/missing&lt;/code&gt;,
+&lt;code&gt;:role/unsatisfied&lt;/code&gt;, plus their payload keys), never to English strings.&lt;/p&gt;
+&lt;p&gt;The compatibility rules:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Reason keywords and their payload keys are &lt;strong&gt;versioned with the guard
+vocabulary&lt;/strong&gt;: a guard-vocab version enumerates exactly which reasons
+can occur (a closed vocabulary implies a closed reason set).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;New reasons appear only additively under a version bump&lt;/strong&gt;; existing
+reason keywords never change meaning or payload shape within a
+version.&lt;/li&gt;
+&lt;li&gt;The block structure (&lt;code&gt;:stage&lt;/code&gt;, &lt;code&gt;:satisfied&lt;/code&gt;, &lt;code&gt;:missing&lt;/code&gt;, &lt;code&gt;:blocks&lt;/code&gt;,
+&lt;code&gt;:hint&lt;/code&gt;) is part of the same contract, backed by the property-tested
+soundness/completeness laws (PLAN §8).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Renderings may change freely&lt;/strong&gt; — wording, ordering, localization,
+ranking, capability-based redaction (IDEAS) are all lens behavior. A
+client that greps CLI text has no compatibility claim.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;Explain is the product surface, which makes it the API everyone will
+integrate against. Without this contract, MCP and UI clients would
+inevitably couple to English strings, and improving a message would
+become a breaking change — freezing exactly the layer that must stay
+free to improve. The kernel-speaks-data rule (PLAN §5) already provides
+the mechanism; this ADR adds the promise.&lt;/p&gt;</description></item><item><title>Signatures establish authorship; authorization is derived</title><link>https://tik.projects.metio.wtf/decisions/0010-authority-model/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0010-authority-model/</guid><description>&lt;h1 id="adr-0010-the-authority-model"&gt;ADR 0010: The authority model&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Signatures establish authorship. Authorization is derived&lt;/strong&gt; — from
+identity attestations, role facts, and process guards. The kernel never
+interprets a signature as permission by itself; there is no code path
+where &amp;ldquo;validly signed&amp;rdquo; alone unlocks anything.&lt;/p&gt;
+&lt;p&gt;The permanent answers:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Revocation is prospective, not retroactive.&lt;/strong&gt; A key revocation is an
+attestation event. Signatures made before revocation remain valid
+&lt;em&gt;authorship claims&lt;/em&gt; forever — the log is immutable and history does
+not get rewritten (ADR 0002&amp;rsquo;s reproducibility applies to trust too).
+Whether the author was &lt;em&gt;authorized&lt;/em&gt; is evaluated against role validity
+at the relevant time.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Role membership is time-dependent.&lt;/strong&gt; &amp;ldquo;Alice was a triager &lt;em&gt;when she
+triaged&lt;/em&gt;&amp;rdquo; is the derivable question; the three clocks (PLAN §5) decide
+which &amp;ldquo;when&amp;rdquo; — claimed by default, witnessed where the process demands
+it.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Delegation is an attestation with scope and expiry&lt;/strong&gt; (&lt;code&gt;:valid-until&lt;/code&gt;,
+capability), including human→agent delegation. An authority chain
+(Alice ← Bob ← Compliance) is derivation over delegation attestations.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Key compromise does not invalidate history&lt;/strong&gt;; it changes
+interpretation. The response is evidence: revoke (attestation),
+dispute facts the compromised key asserted, and let derivation regress
+what depended on them. A lens may flag &amp;ldquo;signed by a later-revoked
+key&amp;rdquo;; the kernel keeps the record.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;Someone will eventually read &lt;code&gt;[:signed-by :manager]&lt;/code&gt; and conclude the
+signature system &lt;em&gt;is&lt;/em&gt; the authorization system. It is not: that guard
+expands to authorship (the signature) &lt;strong&gt;plus&lt;/strong&gt; role derivation (is the
+author in the role, at the right time, per the identity attestations).
+Losing this distinction is how &amp;ldquo;it&amp;rsquo;s signed&amp;rdquo; quietly becomes &amp;ldquo;it&amp;rsquo;s
+approved&amp;rdquo; — the sidecar-discovery footgun (ADR 0007) and role-decay
+attack (PLAN §18) are both instances.&lt;/p&gt;</description></item><item><title>The EventStore contract every backend must honor</title><link>https://tik.projects.metio.wtf/decisions/0020-eventstore-contract/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0020-eventstore-contract/</guid><description>&lt;h1 id="adr-0020-the-eventstore-contract"&gt;ADR 0020: The EventStore contract&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Any storage backend (file/git today; SQLite next; anything later) is
+valid iff it honors this contract:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Append-only&lt;/strong&gt;: no operation deletes or mutates an event, ever
+(ADR 0017; blobs are separate and deletable, ADR 0014).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Append is idempotent by id&lt;/strong&gt;: appending an already-present event id
+is a no-op — union semantics are the store&amp;rsquo;s job to preserve, which
+is what makes replica merge trivial.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Events are returned unordered&lt;/strong&gt;: the reducer orders by &lt;code&gt;(at, id)&lt;/code&gt;;
+a store that returns &amp;ldquo;helpful&amp;rdquo; ordering invites callers to depend on
+it (ADR 0004: parents are not ordering either).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;has-event?&lt;/code&gt; is the reconciliation primitive&lt;/strong&gt;: sync between any
+two stores is git-style have/want set reconciliation over event ids;
+a server is just a well-connected replica.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;The store holds bytes, not interpretations&lt;/strong&gt;: no store may index
+its way into authority — any derived index it keeps is disposable
+(ADR 0013). For the file store this is literal (&lt;code&gt;sha256sum(file) = filename = id&lt;/code&gt;, ADR 0007); other backends must preserve the exact
+canonical bytes so the same guarantee is testable
+(&lt;code&gt;events(id TEXT PRIMARY KEY, bytes BLOB)&lt;/code&gt; — never a parsed-columns
+schema that re-serializes on read).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;The storage seam is where &amp;ldquo;just this once&amp;rdquo; optimizations concentrate:
+a parsed-column schema that re-serializes (hash fork risk, ADR 0008), a
+store that orders by insertion (hidden coupling), a cleanup job that
+prunes &amp;ldquo;obsolete&amp;rdquo; events (corruption, ADR 0004). Writing the contract
+before the second backend exists means SQLite gets built against rules,
+not against the file store&amp;rsquo;s incidental behavior.&lt;/p&gt;</description></item><item><title>The log admits all well-formed claims; trust is evaluated, not filtered</title><link>https://tik.projects.metio.wtf/decisions/0011-log-admission-vs-trust/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0011-log-admission-vs-trust/</guid><description>&lt;h1 id="adr-0011-event-existence-vs-participation-in-truth"&gt;ADR 0011: Event existence vs. participation in truth&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;The log contains all received well-formed claims. Derivation consumes
+the whole set.&lt;/strong&gt; Trust is never a silent reducer filter — it is
+expressed where it is visible: in guards (&lt;code&gt;:signed-by&lt;/code&gt;, and any future
+trust-conditions) and in the verify ladder (L1 authenticity). A fact
+asserted by an actor lacking the required role &lt;em&gt;exists&lt;/em&gt;, &lt;em&gt;is derived
+over&lt;/em&gt;, and &lt;em&gt;fails the guard with an explainable reason&lt;/em&gt;
+(&lt;code&gt;:role/unsatisfied&lt;/code&gt;, naming the actor) — it is never treated as
+nonexistent.&lt;/p&gt;</description></item><item><title>Three clocks; claimed is the default; the clock is part of the guard</title><link>https://tik.projects.metio.wtf/decisions/0012-time-semantics/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0012-time-semantics/</guid><description>&lt;h1 id="adr-0012-time-semantics-are-part-of-the-process-contract"&gt;ADR 0012: Time semantics are part of the process contract&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Three clocks, never conflated:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Claimed&lt;/strong&gt; — &lt;code&gt;:event/at&lt;/code&gt;, asserted by the actor, inside the hashed
+region.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Observed&lt;/strong&gt; — witness countersignature over a head: &amp;ldquo;this history
+existed no later than T&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Evaluated&lt;/strong&gt; — the explicit &lt;code&gt;now&lt;/code&gt; argument to derivation; never an
+implicit system clock.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;Claimed is the default clock for guards.&lt;/strong&gt; A guard opts into observed
+time with &lt;code&gt;{:clock :witnessed}&lt;/code&gt; where backdating matters. Evaluation
+time is always explicit — the kernel has no ambient &amp;ldquo;now&amp;rdquo; (CLAUDE.md:
+no kernel I/O includes no clock reads).&lt;/p&gt;</description></item><item><title>Unknown data handling differs by layer, on purpose</title><link>https://tik.projects.metio.wtf/decisions/0009-unknown-data-policy/</link><pubDate>Thu, 09 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0009-unknown-data-policy/</guid><description>&lt;h1 id="adr-0009-unknown-data-policy"&gt;ADR 0009: Unknown data policy&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Three layers, three different answers — because the cost of being wrong
+differs:&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Layer&lt;/th&gt;
+					&lt;th&gt;Unknown data&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Event types&lt;/td&gt;
+					&lt;td&gt;&lt;strong&gt;preserved, hashed, ignored&lt;/strong&gt; by the reducer&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Guard operators&lt;/td&gt;
+					&lt;td&gt;&lt;strong&gt;rejected&lt;/strong&gt;: lint error at authoring, throw at eval&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Definition fields&lt;/td&gt;
+					&lt;td&gt;&lt;strong&gt;carried and hashed, never interpreted&lt;/strong&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Events must tolerate the future&lt;/strong&gt;: a replicated store cannot
+retroactively reject an event that already exists on three replicas,
+so the reducer is total — unknown types stay in the log (and in the
+hash domain) and simply do not contribute to ticket state. Ignoring
+is safe because an event the reducer skips cannot silently change
+truth.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Guards must not tolerate the unknown&lt;/strong&gt;: a guard the evaluator does
+not understand &lt;em&gt;would&lt;/em&gt; change truth if guessed at. There is no safe
+default for &amp;ldquo;some condition I cannot evaluate&amp;rdquo; — neither
+satisfied-by-default nor failed-by-default is honest. So the guard
+vocabulary is closed (ADR 0001, PLAN §5): unknown operators are lint
+errors, and evaluation throws rather than improvising.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Definitions may carry annotations&lt;/strong&gt; (&lt;code&gt;:hint&lt;/code&gt;, &lt;code&gt;:purpose&lt;/code&gt;, lint
+config): they are part of the pinned bytes — two definitions
+differing only in annotations are different definitions, honestly —
+but the kernel never reads them; only lenses do.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="consequences"&gt;Consequences&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Forward compatibility is asymmetric by design: new &lt;em&gt;evidence&lt;/em&gt; flows
+through old kernels harmlessly; new &lt;em&gt;semantics&lt;/em&gt; (guards) require a
+version bump everywhere.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik lint&lt;/code&gt;&amp;rsquo;s closed-basis check is the enforcement point for the
+middle row; the reducer-totality property test enforces the top row.&lt;/li&gt;
+&lt;li&gt;Nobody gets to add meaning by sneaking a field into a definition:
+if the kernel doesn&amp;rsquo;t interpret it, it is annotation, whatever it is
+named.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Concurrent conflicting assertions block guards; humans resolve</title><link>https://tik.projects.metio.wtf/decisions/0003-conflicts-block/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0003-conflicts-block/</guid><description>&lt;h1 id="adr-0003-conflicts-are-facts-about-disagreement"&gt;ADR 0003: Conflicts are facts about disagreement&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;When causally concurrent assertions (neither an ancestor of the other via
+&lt;code&gt;:event/parents&lt;/code&gt;) target the same fact path with different values, the fact
+becomes &lt;strong&gt;conflicted&lt;/strong&gt;. A conflicted fact — like a disputed one — does not
+satisfy guards. &lt;code&gt;explain&lt;/code&gt; surfaces both claims, both actors, and asks for a
+superseding assertion. Resolution is a new signed event: a human judgment on
+the record.&lt;/p&gt;
+&lt;p&gt;tik ships &lt;strong&gt;no conflict-resolution policy language&lt;/strong&gt;. No latest-wins, no
+role-priority, no per-process resolution rules.&lt;/p&gt;</description></item><item><title>Event parents are mandatory; the log is a Merkle DAG</title><link>https://tik.projects.metio.wtf/decisions/0004-mandatory-parents/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0004-mandatory-parents/</guid><description>&lt;h1 id="adr-0004-mandatory-parents--the-log-is-a-merkle-dag"&gt;ADR 0004: Mandatory parents — the log is a Merkle DAG&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Every event carries &lt;code&gt;:event/parents&lt;/code&gt;: the set of head event ids the actor
+observed when minting. &lt;code&gt;:ticket/create&lt;/code&gt; is the unique root with &lt;code&gt;#{}&lt;/code&gt;; for
+every other event type an empty parent set is a mint-time error. Since
+parents are inside the content-addressed, signed region, the log is a
+Merkle DAG: one head hash commits to the entire history.&lt;/p&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;Parents are not metadata — they change what kind of object the log is:
+without them, an append-only collection of claims; with them, an
+&lt;strong&gt;authenticated history graph&lt;/strong&gt; where every claim carries what its author
+knew. Parents were originally optional &amp;ldquo;Phase 1&amp;rdquo; metadata. Review of the
+axes showed that optionality here is ambiguity, not flexibility, and that
+mandatory parents simplify or strengthen nearly every other axis
+simultaneously:&lt;/p&gt;</description></item><item><title>SHA-256 content addressing, self-describing ids, one algorithm per store</title><link>https://tik.projects.metio.wtf/decisions/0006-hash-policy/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0006-hash-policy/</guid><description>&lt;h1 id="adr-0006-hash-policy"&gt;ADR 0006: Hash policy&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;Content addresses are SHA-256 over canonical bytes, written as
+self-describing ids: &lt;code&gt;sha256-&amp;lt;hex&amp;gt;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Exactly one algorithm per store per format-version.&lt;/strong&gt; Verifiers reject
+stores mixing algorithms within a format version — hash agility in the
+&lt;em&gt;format&lt;/em&gt;, discipline in the &lt;em&gt;policy&lt;/em&gt;, because &amp;ldquo;verifier accepts
+whatever&amp;rdquo; is a downgrade-attack surface.&lt;/li&gt;
+&lt;li&gt;Migration, if ever needed, is &lt;strong&gt;additive&lt;/strong&gt;: a format-version bump after
+which new events use the new prefix while old events remain exactly as
+signed. Mixed-prefix DAGs verify as long as the verifier implements both
+prefixes. No rewrite of history, ever.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;The format version defines the trust contract, not the identifier
+syntax.&lt;/strong&gt; A verifier implementing a format version must support exactly
+the hash algorithms that version requires; support for other algorithms
+is never inferred from a self-describing prefix alone. A generic
+hash-registry verifier (&amp;ldquo;dispatch on whatever the prefix says&amp;rdquo;) would
+recreate the downgrade surface rule 2 exists to close.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;The argument for SHA-256 is ecosystem weight, not a prediction about
+cryptography: it is sufficiently deployed that the verification ecosystem
+around it currently outweighs the benefits of any alternative. git&amp;rsquo;s own
+hash transition targets SHA-256 (SHA-512, SHA-512/256, BLAKE2 and K12 were
+considered and rejected), OCI digests, Sigstore/in-toto/DSSE, Nix SRI,
+FIPS 180-4 — and &lt;code&gt;sha256sum&lt;/code&gt; in coreutils, which is what keeps verify
+level 0 checkable with tools from 1995. Should that balance ever shift,
+rule 3 is the exit.&lt;/p&gt;</description></item><item><title>Stage negation must be stratified</title><link>https://tik.projects.metio.wtf/decisions/0005-stratified-negation/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0005-stratified-negation/</guid><description>&lt;h1 id="adr-0005-stratified-negation-over-stages"&gt;ADR 0005: Stratified negation over stages&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;A stage may apply &lt;code&gt;[:not [:stage-reached X]]&lt;/code&gt; only to stages in a
+&lt;strong&gt;strictly earlier stratum&lt;/strong&gt; of the process graph (stratum = longest
+&lt;code&gt;:after&lt;/code&gt; path depth). &lt;code&gt;tik lint&lt;/code&gt; enforces this as an error. (A dedicated
+&lt;code&gt;:not-stage&lt;/code&gt; alias for the same guard existed through plan v5 and was
+removed in the v6 subtraction — one spelling means the linter polices one
+shape.)&lt;/p&gt;
+&lt;h2 id="context"&gt;Context&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;[:not [:stage-reached X]]&lt;/code&gt; is negation inside a fixpoint — non-monotone.
+Without stratification, two stages in the same stratum can both derive in
+the same fixpoint sweep against the pre-sweep snapshot (e.g. &lt;code&gt;:escalated&lt;/code&gt;
+guarded by &lt;code&gt;[:not [:stage-reached :triaged]]&lt;/code&gt; co-deriving with
+&lt;code&gt;:triaged&lt;/code&gt;), producing a state
+that is deterministic only by accident of iteration strategy. Datalog
+solved this decades ago: evaluate strata in order, negate only what earlier
+strata have finished deciding. Adopting the same rule makes determinism
+&lt;em&gt;provable&lt;/em&gt; rather than incidental and connects the guard language to
+well-understood theory.&lt;/p&gt;</description></item><item><title>Stored bytes are exactly the hashed region; signatures are detached</title><link>https://tik.projects.metio.wtf/decisions/0007-stored-bytes-are-the-hashed-region/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0007-stored-bytes-are-the-hashed-region/</guid><description>&lt;h1 id="adr-0007-stored-bytes--hashed-region-detached-signatures"&gt;ADR 0007: Stored bytes = hashed region; detached signatures&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;An event file contains exactly the canonical bytes of the hashed region —
+the event map WITHOUT &lt;code&gt;:event/id&lt;/code&gt; (the filename is the id; storing it
+inside would be redundant and, decisively, breaks &lt;code&gt;sha256sum(file) = filename&lt;/code&gt;). Signatures never live inside the event either:
+&lt;code&gt;:event/key&lt;/code&gt;/&lt;code&gt;:event/sig&lt;/code&gt; are removed from the schema entirely; signatures
+are detached sidecar files (&lt;code&gt;&amp;lt;event-id&amp;gt;.sig.&amp;lt;key-fingerprint&amp;gt;&lt;/code&gt;) verifying
+against the exact stored bytes, allowing multiple signatures per event
+without touching the hashed region.&lt;/p&gt;</description></item><item><title>The event-log acceptance test for all features</title><link>https://tik.projects.metio.wtf/decisions/0001-event-log-acceptance-test/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0001-event-log-acceptance-test/</guid><description>&lt;h1 id="adr-0001-the-event-log-acceptance-test"&gt;ADR 0001: The event-log acceptance test&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;A feature proposal must be expressible as one or more of:&lt;/p&gt;
+&lt;p&gt;(a) new &lt;strong&gt;event or attestation types&lt;/strong&gt; over the existing append-only log,
+(b) new &lt;strong&gt;guard vocabulary&lt;/strong&gt; evaluated purely from &lt;code&gt;(events, now)&lt;/code&gt;,
+(c) &lt;strong&gt;porcelain or lens&lt;/strong&gt; behavior deriving from (a) and (b).&lt;/p&gt;
+&lt;p&gt;Proposals requiring stored mutable state, imperative stage transitions, or
+verification paths that leave the log are &lt;strong&gt;rejected or redesigned&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;One carve-out, so the test cannot be misread: features necessary to
+preserve the &lt;strong&gt;integrity, authenticity, or reproducibility of the log
+itself&lt;/strong&gt; — canonical serialization, signature algorithms, hash migration,
+witness sidecars, store verification — are trust substrate, governed by
+their own ADRs (0004–0007), not by this test. The substrate may never
+introduce domain truth outside the log; it exists to make (a)–(c)
+trustworthy. &amp;ldquo;A new signature algorithm is neither an event nor a lens,
+therefore rejected&amp;rdquo; is a misreading, not an application, of this ADR.&lt;/p&gt;</description></item><item><title>Tickets pin their process definition hash; migration is an event</title><link>https://tik.projects.metio.wtf/decisions/0002-pinned-process-versions/</link><pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/0002-pinned-process-versions/</guid><description>&lt;h1 id="adr-0002-pinned-process-versions-explicit-migration"&gt;ADR 0002: Pinned process versions, explicit migration&lt;/h1&gt;
+&lt;h2 id="decision"&gt;Decision&lt;/h2&gt;
+&lt;p&gt;Tickets &lt;strong&gt;pin the process definition hash&lt;/strong&gt; in effect at creation — the
+hash is the identity (ADR 0006); the human-readable version number is a
+label carried as metadata. Re-evaluation under a newer definition happens
+only via an explicit, signed &lt;code&gt;:process/migrate&lt;/code&gt; event carrying the new
+hash. &lt;code&gt;tik migrate --dry-run&lt;/code&gt; shows the derived-stage diff before anyone
+commits to it — a migration is a consequence-bearing decision (&amp;ldquo;under the
+new rules, security-review is now missing&amp;rdquo;), not a version-number edit.&lt;/p&gt;</description></item><item><title>automated-release</title><link>https://tik.projects.metio.wtf/processes/automated-release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/automated-release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-c1cffcb2e879ff82ad36bf8e67c993aa8ddb0c5caacbdd484ec8440cb549c8bb
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ★ ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ★ ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ scanned ★ ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>automated-release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-attested/</guid><description>&lt;h1 id="automated-release--attested"&gt;automated-release · attested&lt;/h1&gt;
+&lt;p&gt;What the artifact is made of, and how it came to be — each said by a
+party the registry trusts, each recent enough to be about this build.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the artifact&amp;rsquo;s digest and have &lt;code&gt;ci&lt;/code&gt; sign it:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; artifact.digest=&amp;quot;\&amp;quot;sha256:…\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Bring the SBOM and the provenance in as attestations. Where the
+pipeline already emits in-toto or SLSA documents, &lt;code&gt;tik bridge intoto &amp;lt;file&amp;gt;&lt;/code&gt; maps their &lt;code&gt;predicateType&lt;/code&gt; onto the claim these guards read, so
+nothing is invented and nothing is transcribed by hand.&lt;/li&gt;
+&lt;li&gt;Both windows are one day, and they are measured against the moment the
+attestation was written. Produce them in the release job; an older
+document describes an older build.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;tik checks that a trusted attester said these things. It never reads the
+SBOM and forms no opinion about its contents, so this stage is worth
+exactly what the attester is worth — choose who may sign accordingly, and
+say so to whoever reads the badge.&lt;/p&gt;</description></item><item><title>automated-release / :built</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-built/</guid><description>&lt;h1 id="automated-release--built"&gt;automated-release · built&lt;/h1&gt;
+&lt;p&gt;The pipeline says which commit produced these bytes, and hands over the
+checksums that name them.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the version and the commit from the pipeline&amp;rsquo;s own context:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; version=&amp;quot;\&amp;quot;1.4.0\&amp;quot;&amp;quot; commit=&amp;quot;\&amp;quot;$GITHUB_SHA\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;commit&lt;/code&gt; fact must be signed by a member of the &lt;code&gt;ci&lt;/code&gt; role. Name
+yours first with &lt;code&gt;tik roles add ci &amp;lt;actor&amp;gt;&lt;/code&gt; — the definition ships with
+the role empty so adoption inherits nobody else&amp;rsquo;s org chart.&lt;/li&gt;
+&lt;li&gt;Attach the checksums under a &lt;code&gt;checksums/&lt;/code&gt; prefix:
+&lt;code&gt;tik attach &amp;lt;id&amp;gt; dist/SHA256SUMS --as checksums/SHA256SUMS&lt;/code&gt;. The hash
+goes on the log and the blob is stored beside it, so a reader compares
+their own download against a value the signature covers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Give &lt;code&gt;ci&lt;/code&gt; a keypair generated per run and bound to the pipeline&amp;rsquo;s own
+workload identity — &lt;code&gt;tik bridge workload --github&lt;/code&gt; binds it to the token
+the platform already issues — so nothing long-lived exists to leak and
+the binding is what makes the signatures checkable afterwards.&lt;/p&gt;</description></item><item><title>automated-release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/automated-release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/automated-release-scanned/</guid><description>&lt;h1 id="automated-release--scanned"&gt;automated-release · scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this build and came back clean.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attest the scan, naming the tool and the advisory database it read:
+&lt;code&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body '{:tool &amp;quot;…&amp;quot; :db &amp;quot;…&amp;quot;}'&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record the outcome as a fact &lt;code&gt;ci&lt;/code&gt; signs:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; scan.result=:clean&lt;/code&gt; — or &lt;code&gt;:findings&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;code&gt;:findings&lt;/code&gt; is a legitimate outcome and belongs on the record. Let the
+scanner write what it found, let the ticket carry it, and let the release
+ship anyway if that is the call — the stage stays unreached and the badge
+says so, which is the whole reason this stage is worth deriving. A stage
+nothing could ever fail would be decoration.&lt;/p&gt;</description></item><item><title>Bundle format</title><link>https://tik.projects.metio.wtf/evidence/bundle-format/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/bundle-format/</guid><description>&lt;p&gt;&lt;code&gt;tik-evidence-bundle&lt;/code&gt;, version 1. A gzipped tar holding one ticket and
+everything its derivation needs.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik bundle &amp;lt;id&amp;gt; --out evidence.tgz
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;bundle.edn the format name and version
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;actors the allowed-signers registry
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;roles.edn role membership, where the store keeps a register
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/&amp;lt;event-id&amp;gt;.edn key bindings, as signed registry events
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/&amp;lt;event-id&amp;gt;.sig.&amp;lt;fpr&amp;gt; their authorship signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/keys/&amp;lt;kid&amp;gt;.pem the issuer keys those bindings rest on
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;processes/by-hash/&amp;lt;hash&amp;gt;.edn the definition the ticket pinned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;processes/by-hash/&amp;lt;hash&amp;gt;.sig.&amp;lt;fpr&amp;gt; its publication signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.edn the append-only log
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.sig.&amp;lt;fpr&amp;gt; authorship signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.witness.&amp;lt;fpr&amp;gt; countersignatures over a head
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/blobs/&amp;lt;hash&amp;gt; attached artifacts, addressed by content
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verify.sh a coreutils implementation of the checks
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;README.md what the recipient is holding
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="what-a-reader-may-assume"&gt;What a reader may assume&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Every stored file&amp;rsquo;s name is the SHA-256 of its bytes&lt;/strong&gt;, prefixed
+&lt;code&gt;sha256-&lt;/code&gt;. Event and definition files carry a &lt;code&gt;.edn&lt;/code&gt; suffix after the
+address; blobs are named by the bare address. &lt;code&gt;sha256sum&lt;/code&gt; alone audits
+the archive.&lt;/p&gt;</description></item><item><title>Claude Code skill</title><link>https://tik.projects.metio.wtf/integrations/claude-code/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/integrations/claude-code/</guid><description>&lt;p&gt;Install the tik skill into &lt;a href="https://claude.com/claude-code"&gt;Claude Code&lt;/a&gt;
+
+and Claude gains working knowledge of tik: it recognises a store, records
+facts with &lt;code&gt;tik set&lt;/code&gt; rather than inventing a status field, reads
+&lt;code&gt;tik explain&lt;/code&gt; before asking a person anything, and authors process
+definitions whose stages derive from evidence instead of listing
+activities.&lt;/p&gt;
+&lt;p&gt;That last part is the reason the skill exists. The failure mode for any
+model writing a tik process is a task list wearing a process costume —
+stages named after activities, with nothing following from anything. The
+skill carries the design law that rules it out, along with the closed
+guard vocabulary and the authoring loop that checks the result.&lt;/p&gt;</description></item><item><title>Derived beats declared</title><link>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</guid><description>&lt;p&gt;&lt;strong&gt;If something can be derived, storing it as authoritative state is a
+bug.&lt;/strong&gt; That is the whole law, and every design question in tik resolves
+against it.&lt;/p&gt;
+&lt;p&gt;A ticket&amp;rsquo;s stage is the obvious case. It is never written down anywhere. It
+is &lt;code&gt;f(events, now)&lt;/code&gt; — a pure function of the ticket&amp;rsquo;s own event log, the
+process definition that ticket pinned, and the instant you are asking
+about. Ask twice with the same inputs and you get the same answer, forever.&lt;/p&gt;</description></item><item><title>employee-onboarding</title><link>https://tik.projects.metio.wtf/processes/employee-onboarding-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/employee-onboarding-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-equipment&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;does someone hand over equipment? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-accounts&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;does someone provision accounts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-buddy&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;is a named buddy required before day one counts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;employee-onboarding.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>employee-onboarding</title><link>https://tik.projects.metio.wtf/processes/employee-onboarding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/employee-onboarding/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-95c7eadc7481ddec6ed5db85ac555e9302d6d7e2c9bc82505e767c8628de0f23
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● hired ⊢ start-date · ⧉contract/ · ✎hr
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ equipped ⊢ ✎it
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ ready
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ accounts-live ⊢ ✎it
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ▼ ready ★ ⊢ ⋈ after equipped, accounts-live buddy
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>employee-onboarding / :accounts</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-accounts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-accounts/</guid><description>&lt;h1 id="employee-onboarding-accounts"&gt;employee-onboarding: accounts&lt;/h1&gt;
+&lt;p&gt;IT stands behind the account creation:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; accounts.email=&amp;lt;address&amp;gt;&lt;/code&gt; signed by IT.
+Runs in parallel with equipment — neither waits for the other.&lt;/p&gt;</description></item><item><title>employee-onboarding / :equipped</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-equipped/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-equipped/</guid><description>&lt;h1 id="employee-onboarding-equipped"&gt;employee-onboarding: equipped&lt;/h1&gt;
+&lt;p&gt;IT stands behind the hardware handover:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; equipment.ref=&amp;lt;asset tag&amp;gt;&lt;/code&gt; signed by IT.&lt;/p&gt;</description></item><item><title>employee-onboarding / :hired</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-hired/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-hired/</guid><description>&lt;h1 id="employee-onboarding-hired"&gt;employee-onboarding: hired&lt;/h1&gt;
+&lt;p&gt;The paperwork is real: a start date, the contract file, and HR&amp;rsquo;s
+signed reference to it.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; start-date=2026-09-01&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik attach &amp;lt;id&amp;gt; contract/&amp;lt;name&amp;gt;.pdf&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;HR records &lt;code&gt;tik set &amp;lt;id&amp;gt; contract.ref=&amp;lt;reference&amp;gt;&lt;/code&gt; with their key.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>employee-onboarding / :ready</title><link>https://tik.projects.metio.wtf/runbooks/onboarding-ready/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/onboarding-ready/</guid><description>&lt;h1 id="employee-onboarding-ready"&gt;employee-onboarding: ready&lt;/h1&gt;
+&lt;p&gt;Both branches landed and a buddy is named:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; buddy=&amp;lt;name&amp;gt;&lt;/code&gt;. Day one can happen.&lt;/p&gt;</description></item><item><title>Events and facts</title><link>https://tik.projects.metio.wtf/concepts/events-and-facts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/events-and-facts/</guid><description>&lt;p&gt;A ticket is an append-only set of events. Everything else about it is
+computed.&lt;/p&gt;
+&lt;h2 id="seven-event-types"&gt;Seven event types&lt;/h2&gt;
+&lt;p&gt;The vocabulary is closed and versioned, because the semantics of a
+verifiable kernel have to be enumerable:&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Event&lt;/th&gt;
+					&lt;th&gt;Meaning&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:ticket/create&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;the ticket exists, pinned to a process definition by hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/assert&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a claim about a path: &lt;code&gt;[:severity] = :high&lt;/code&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/retract&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;withdraw a claim, with no replacement&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/dispute&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;reject a claim, with a reason&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:artifact/attach&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a file, stored and addressed by its hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:attestation/add&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a signed claim the kernel does not interpret&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:process/migrate&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;re-pin this ticket to a newer definition&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Things that look like they need their own type turn out not to. Comments
+are artifacts — text blobs attached by hash. Links are facts under a
+&lt;code&gt;[:link …]&lt;/code&gt; path. Work records are &lt;code&gt;:work&lt;/code&gt; attestation claims. Witness
+countersignatures are detached sidecars over a head rather than events,
+because an event would move the very head it witnesses.&lt;/p&gt;</description></item><item><title>expense-approval</title><link>https://tik.projects.metio.wtf/processes/expense-approval-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/expense-approval-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;approvers&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:vector&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;who can approve?&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-legal&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require legal sign-off? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one, and this template ships no reference
+answers — so there is a shape to see only once you have chosen:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;(your answers decide it)
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>Explain</title><link>https://tik.projects.metio.wtf/concepts/explain/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/explain/</guid><description>&lt;p&gt;A traditional tracker exposes state. tik exposes &lt;strong&gt;justification&lt;/strong&gt;: what is
+true, why it is true, and what evidence is missing next. &lt;code&gt;tik explain&lt;/code&gt; is
+where that surfaces, and every other view is a rendering of it.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-console" data-lang="console"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="gp"&gt;$&lt;/span&gt; tik explain &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt;To reach :resolved:
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; ✓ [:fact [:resolution :ref]]
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; ✗ attach an artifact whose path starts with &amp;#34;repro/&amp;#34;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; blocks: :closed
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="go"&gt; (see: kb/runbooks/support-request-resolved.md)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Nothing in that block is speculation. The checkmarks are guards that
+already hold, the crosses are structured reasons produced by guard
+evaluation, &lt;code&gt;blocks&lt;/code&gt; is the downstream closure, and the hint is the
+&lt;a href="https://tik.projects.metio.wtf/runbooks/"&gt;runbook&lt;/a&gt;
+ the definition declares for that stage.&lt;/p&gt;</description></item><item><title>Getting started</title><link>https://tik.projects.metio.wtf/get-started/guide/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/get-started/guide/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+Front matter publishes this file on the website (mounted at
+/get-started/guide/) while it stays the file the test suite executes,
+so the page and the software cannot drift apart.
+--&gt;
+&lt;p&gt;A working ticket system in under five minutes: no server, no database,
+no account, no YAML. Tickets are plain files in a directory you own;
+everything else — stages, boards, inboxes — is computed from them when
+you ask.&lt;/p&gt;</description></item><item><title>Guards</title><link>https://tik.projects.metio.wtf/concepts/guards/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/guards/</guid><description>&lt;h1 id="guards"&gt;Guards&lt;/h1&gt;
+&lt;p&gt;Deterministic pure functions of &lt;code&gt;(events, now)&lt;/code&gt; from a closed, versioned
+vocabulary (&lt;code&gt;tik.guard&lt;/code&gt;). Never effectful: &lt;code&gt;verify&lt;/code&gt; must re-evaluate them
+identically, offline, years later. Effectful validation lives only in edge
+admission checks (CLI porcelain, server ingest), before events are minted.&lt;/p&gt;
+&lt;p&gt;Design law: &lt;strong&gt;facts over flags.&lt;/strong&gt; A bare boolean guard is a checkbox with
+extra steps; &lt;code&gt;tik lint&lt;/code&gt; warns. Prefer facts useful downstream — categories
+that route branches, artifacts, signed approvals.&lt;/p&gt;</description></item><item><title>hypothesis</title><link>https://tik.projects.metio.wtf/processes/hypothesis/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/hypothesis/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-2c85c9e54182541ec2243ac82b2d466fd286b511f4f113e4dd139328bea44e47
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● captured
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ stated ⊢ statement · kill · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ running ⊢ experiment
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ validated ★ ⊢ verdict = validated · evidence
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ killed ★ ⊢ verdict = killed · evidence
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>hypothesis / :captured</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-captured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-captured/</guid><description>&lt;h1 id="runbook-hypothesis--captured"&gt;Runbook: hypothesis / :captured&lt;/h1&gt;
+&lt;p&gt;A belief worth testing exists. Capture it even half-formed — but do
+not state it until you can also state what would kill it. A hypothesis
+you cannot lose is marketing.&lt;/p&gt;</description></item><item><title>hypothesis / :killed</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-killed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-killed/</guid><description>&lt;h1 id="runbook-hypothesis--killed"&gt;Runbook: hypothesis / :killed&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;verdict=:killed&lt;/code&gt; and &lt;code&gt;evidence&lt;/code&gt; of the kill: which criterion
+fired, observed how. A kill is a RESULT — it retires a belief and
+usually implies design work (the roadmap says what dies with it: kill
+H1 and the core loop is wrong, not under-featured). Write the evidence
+so the next design argument can cite it. Judgment stage, same rules as
+:validated: sign reasoning a stranger could dispute.&lt;/p&gt;</description></item><item><title>hypothesis / :running</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-running/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-running/</guid><description>&lt;h1 id="runbook-hypothesis--running"&gt;Runbook: hypothesis / :running&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;experiment&lt;/code&gt;: what is actually being run, on what, measured
+how. If the full experiment cannot start yet, name the leg that can
+and the leg that waits (H3 is the template). While running, record
+datapoints as comments — negative ones ESPECIALLY; an experiment that
+only logs good news is not running, it is performing.&lt;/p&gt;</description></item><item><title>hypothesis / :stated</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-stated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-stated/</guid><description>&lt;h1 id="runbook-hypothesis--stated"&gt;Runbook: hypothesis / :stated&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;statement&lt;/code&gt; (the falsifiable claim) and &lt;code&gt;kill&lt;/code&gt; (what counts as
+losing, decided NOW, before any work). Write the kill criterion as an
+observable event, not a feeling: &amp;lsquo;abandoned within a month&amp;rsquo;, &amp;lsquo;requires
+prompt-side enforcement&amp;rsquo;. The process will not let a verdict through
+without this — that is the point.&lt;/p&gt;</description></item><item><title>hypothesis / :validated</title><link>https://tik.projects.metio.wtf/runbooks/hypothesis-validated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/hypothesis-validated/</guid><description>&lt;h1 id="runbook-hypothesis--validated"&gt;Runbook: hypothesis / :validated&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;verdict=:validated&lt;/code&gt; and &lt;code&gt;evidence&lt;/code&gt; that a stranger could
+check: what ran, what was observed, why the kill criterion never
+fired, and any scoping decisions that bound the claim. Sticky — later
+doubts are a NEW hypothesis, not an edit. This stage is judgment:
+the process cannot verify your evidence is sufficient, only that you
+signed it. Leave enough that someone can dispute you specifically.&lt;/p&gt;</description></item><item><title>identity-registry</title><link>https://tik.projects.metio.wtf/processes/identity-registry/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/identity-registry/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-e3d4a4cd66b79971817e05d25afa5a7bb3e0a2c1db673b4e56a72308a3af3bb0
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● registry
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="registry"&gt;&lt;code&gt;registry&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;p&gt;Runbook: &lt;code&gt;kb/runbooks/identity-registry-registry.md&lt;/code&gt;&lt;/p&gt;
+&lt;h2 id="take-it"&gt;Take it&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik adopt processes/identity-registry.edn&lt;span class="sb"&gt;```&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;The definition and its runbooks are copied into your store, and the
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;publisher&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;s signature travels with them when a key in your &lt;span class="sb"&gt;`&lt;/span&gt;actors&lt;span class="sb"&gt;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verifies it.
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;Read the stages before you adopt: they say who has to sign what,
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;which is a decision about your organisation.
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>identity-registry / :registry</title><link>https://tik.projects.metio.wtf/runbooks/identity-registry-registry/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/identity-registry-registry/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="identity-registry-registry"&gt;identity-registry: registry&lt;/h1&gt;
+&lt;p&gt;The registry ticket accumulates signed &lt;code&gt;:identity&lt;/code&gt; attestations, each
+binding an IdP subject to an actor&amp;rsquo;s public key. The ticket is always
+in this stage — bindings are evidence, not workflow.&lt;/p&gt;
+&lt;h2 id="recording-a-binding"&gt;Recording a binding&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik bridge oidc --registry &amp;lt;id&amp;gt; --actor &amp;lt;name&amp;gt;&lt;/code&gt; runs the device-flow
+login and appends the binding, signed by the bridge&amp;rsquo;s &lt;code&gt;TIK_KEY&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Rotation and re-attestation are newer attestations by the same
+bridge; readers take the latest binding per (issuer, subject).&lt;/li&gt;
+&lt;li&gt;Revocation is a dispute of nothing — attestations are claims by the
+bridge; a binding the bridge no longer stands behind simply stops
+being re-attested, and lenses can require freshness via
+&lt;code&gt;:attested-within&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="reading-bindings"&gt;Reading bindings&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik log &amp;lt;registry-id&amp;gt;&lt;/code&gt; shows every binding with its signature;
+&lt;code&gt;tik verify &amp;lt;registry-id&amp;gt;&lt;/code&gt; checks them offline — no IdP call, ever.&lt;/p&gt;</description></item><item><title>incident-response</title><link>https://tik.projects.metio.wtf/processes/incident-response-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/incident-response-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;postmortem-after&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:string&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;flag a missing postmortem after (ISO-8601, e.g. P5D)&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-deadline&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;let the ticket flag its own overdue postmortem? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-review&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require a second person to accept the postmortem? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;incident-response.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>incident-response</title><link>https://tik.projects.metio.wtf/processes/incident-response/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/incident-response/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-79744dfcb0177c97ecb00d676f64a8e7cc9f8e630f9e76988e805a5258e4f533
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● declared ⊢ severity · impact
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ mitigated ⊢ ✎commander · mitigation.note
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ postmortem-due ⊢ ⏱P5D · ¬postmortem.summary
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ analyzed ⊢ root-cause · postmortem.summary
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ▼ reviewed ★ ⊢ review.verdict = accepted · ✎commander · ⚖ postmortem.summary ≠ review.verdict
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>incident-response / :analyzed</title><link>https://tik.projects.metio.wtf/runbooks/incident-analyzed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-analyzed/</guid><description>&lt;h1 id="incident-response-analyzed"&gt;incident-response: analyzed&lt;/h1&gt;
+&lt;p&gt;The learning is written down.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; root-cause=the actual cause, not the trigger&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; postmortem.summary=a paragraph a stranger can learn from&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>incident-response / :declared</title><link>https://tik.projects.metio.wtf/runbooks/incident-declared/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-declared/</guid><description>&lt;h1 id="incident-response-declared"&gt;incident-response: declared&lt;/h1&gt;
+&lt;p&gt;An incident exists once its severity and impact are on record.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; severity=:sev1|:sev2|:sev3&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; impact=who is affected and how&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Declare early and cheap — severity can be corrected later, and the
+correction (like everything) is part of the record.&lt;/p&gt;</description></item><item><title>incident-response / :mitigated</title><link>https://tik.projects.metio.wtf/runbooks/incident-mitigated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-mitigated/</guid><description>&lt;h1 id="incident-response-mitigated"&gt;incident-response: mitigated&lt;/h1&gt;
+&lt;p&gt;The bleeding has stopped, on the commander&amp;rsquo;s word.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The commander confirms severity by asserting it themselves —
+&lt;code&gt;tik set &amp;lt;id&amp;gt; severity=:sev1&lt;/code&gt; signed with their key.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; mitigation.note=what stopped the bleeding&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>incident-response / :postmortem-due</title><link>https://tik.projects.metio.wtf/runbooks/incident-postmortem-due/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-postmortem-due/</guid><description>&lt;h1 id="incident-response-postmortem-due"&gt;incident-response: postmortem-due&lt;/h1&gt;
+&lt;p&gt;Five days have passed and no postmortem summary exists. Nobody set
+this stage — time and absence derived it, and delivering the summary
+(see analyzed) retracts it the same way.&lt;/p&gt;</description></item><item><title>incident-response / :reviewed</title><link>https://tik.projects.metio.wtf/runbooks/incident-reviewed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/incident-reviewed/</guid><description>&lt;h1 id="incident-response-reviewed"&gt;incident-response: reviewed&lt;/h1&gt;
+&lt;p&gt;A second pair of eyes accepted the analysis.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Someone OTHER than the summary&amp;rsquo;s author records
+&lt;code&gt;tik set &amp;lt;id&amp;gt; review.verdict=:accepted&lt;/code&gt; — the commander signs it,
+and the definition enforces the different-person rule.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Install</title><link>https://tik.projects.metio.wtf/get-started/install/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/get-started/install/</guid><description>&lt;p&gt;Each release publishes two downloads, a &lt;code&gt;SHA256SUMS&lt;/code&gt; file covering both,
+and a cosign keyless signature over those checksums.&lt;/p&gt;
+&lt;h2 id="download-a-release"&gt;Download a release&lt;/h2&gt;
+&lt;p&gt;From the &lt;a href="https://github.com/metio/tik/releases"&gt;releases page&lt;/a&gt;
+:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;tik-linux-amd64-glibc&lt;/code&gt;&lt;/strong&gt; — the native binary, no runtime needed. It is
+labelled for exactly what it is: linux/amd64 against glibc.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;tik.jar&lt;/code&gt;&lt;/strong&gt; — the uberjar, for macOS, Windows, and arm. Runs on any
+JDK 21: &lt;code&gt;java -jar tik.jar --help&lt;/code&gt;. The container image is the universal
+deployment path.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;chmod +x tik-linux-amd64-glibc
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;./tik-linux-amd64-glibc --help
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Verify before trusting. The checksums cover the downloads, and the cosign
+bundle covers the checksums:&lt;/p&gt;</description></item><item><title>Lint, simulate, test</title><link>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</guid><description>&lt;p&gt;Three checks, in the order you reach for them.&lt;/p&gt;
+&lt;h2 id="lint"&gt;Lint&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik lint processes/support-request.edn
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The linter enforces what the kernel cannot:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;The closed guard basis&lt;/strong&gt; — only operators the declared
+&lt;code&gt;:process/guard-vocab&lt;/code&gt; admits.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Graph sanity&lt;/strong&gt; — every &lt;code&gt;:after&lt;/code&gt; names a stage that exists, and no
+cycles.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Stratified negation&lt;/strong&gt; — &lt;code&gt;[:not [:stage-reached …]]&lt;/code&gt; may only name a
+stage in a strictly earlier stratum, which is what makes the fixpoint
+provably deterministic.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Facts over flags&lt;/strong&gt; — a warning where a bare boolean stands in for
+information worth recording.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Prefix boundaries&lt;/strong&gt; — an &lt;code&gt;:artifact&lt;/code&gt; prefix that does not end at a path
+boundary matches more than its author expects.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;With no argument it lints the &lt;em&gt;store&lt;/em&gt; instead: open tickets missing
+descriptions, titles, or signatures.&lt;/p&gt;</description></item><item><title>MCP server</title><link>https://tik.projects.metio.wtf/integrations/mcp-server/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/integrations/mcp-server/</guid><description>&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nv"&gt;TIK_ACTOR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;bot &lt;span class="nv"&gt;TIK_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;~/.config/tik/bot_ed25519 tik mcp
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;tik mcp&lt;/code&gt; speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+&lt;em&gt;is&lt;/em&gt; the authorization boundary.&lt;/p&gt;
+&lt;h2 id="why-the-boundary-holds"&gt;Why the boundary holds&lt;/h2&gt;
+&lt;p&gt;An agent&amp;rsquo;s permission to act is derived from the same guards a person&amp;rsquo;s
+is. A step whose &lt;code&gt;:signed-by&lt;/code&gt; names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.&lt;/p&gt;</description></item><item><title>okf-publish</title><link>https://tik.projects.metio.wtf/processes/okf-publish/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/okf-publish/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-be995ad80e6eb4f0a3873b17c3f3a984d18a9671ba4e408fa31c75a1580e991c
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● drafted ⊢ bundle · ⧉okf/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ reviewed ⊢ ✎reviewer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ approved ⊢ ✎approver
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ published ⊢ published.url
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>okf-publish / :approved</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-approved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-approved/</guid><description>&lt;h1 id="okf-publish--approved"&gt;okf-publish · approved&lt;/h1&gt;
+&lt;p&gt;An owner authorizes public release.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of the &lt;code&gt;approver&lt;/code&gt; role signs over &lt;code&gt;[:bundle]&lt;/code&gt; — ideally a
+different person than the reviewer (separation of duties).&lt;/li&gt;
+&lt;li&gt;Approval binds to the exact hash; revise the bundle and approval
+regresses, forcing re-approval before it can be published again.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :drafted</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-drafted/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-drafted/</guid><description>&lt;h1 id="okf-publish--drafted"&gt;okf-publish · drafted&lt;/h1&gt;
+&lt;p&gt;The bundle exists and is identified.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attach the OKF bundle files under &lt;code&gt;okf/&lt;/code&gt; (&lt;code&gt;tik attach &amp;lt;id&amp;gt; okf/...&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Record the bundle&amp;rsquo;s content hash: &lt;code&gt;tik set &amp;lt;id&amp;gt; bundle=&amp;lt;sha256&amp;gt;&lt;/code&gt;.
+This hash is what review and approval will sign over, so a later
+revision (new hash) automatically un-reviews the bundle.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :published</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-published/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-published/</guid><description>&lt;h1 id="okf-publish--published"&gt;okf-publish · published&lt;/h1&gt;
+&lt;p&gt;The bundle is public.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record where it went live: &lt;code&gt;tik set &amp;lt;id&amp;gt; published.url=&amp;lt;url&amp;gt;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;This stage is NOT sticky: if the bundle is later revised, approval
+regresses and the ticket drops back out of &lt;code&gt;published&lt;/code&gt; until the new
+version is re-reviewed and re-approved. Stale public knowledge
+un-publishes itself by derivation.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>okf-publish / :reviewed</title><link>https://tik.projects.metio.wtf/runbooks/okf-publish-reviewed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/okf-publish-reviewed/</guid><description>&lt;h1 id="okf-publish--reviewed"&gt;okf-publish · reviewed&lt;/h1&gt;
+&lt;p&gt;A reviewer vouches the bundle is accurate.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of the &lt;code&gt;reviewer&lt;/code&gt; role signs over the &lt;code&gt;[:bundle]&lt;/code&gt; fact
+(&lt;code&gt;tik sign &amp;lt;id&amp;gt; --over bundle&lt;/code&gt;, or the review attestation flow).&lt;/li&gt;
+&lt;li&gt;Reviewing a &lt;em&gt;different&lt;/em&gt; hash than the current one does not count —
+the signature must cover the bundle as it stands now.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Re-deriving a bundle</title><link>https://tik.projects.metio.wtf/evidence/re-deriving/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/re-deriving/</guid><description>&lt;p&gt;&lt;code&gt;verify.sh&lt;/code&gt; answers one question: are these bytes what they claim to be?
+&lt;code&gt;tik rederive&lt;/code&gt; answers the other one: what do they add up to?&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik rederive evidence.tgz
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;bundle sha256-04a0bf413895fefb1c20e9231632fbc0d0a0d768275b42c097581ed19365973a
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; format tik-evidence-bundle version 1
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ticket e26a1d57-6643-4564-99fa-8968ced7afa5 &amp;#34;2026.8.6132954&amp;#34;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; events 10
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; judged by release sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verification
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok … hashes to its name and is schema-valid
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok every referenced parent is present
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok exactly one root event
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok … verifies as ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok ci is bound to its key by repo:metio/tik:ref:refs/heads/main, per …
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; =&amp;gt; the bytes are what they claim to be
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;derivation at 2026-08-06T20:29:26.198Z
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; reached :attested, :built, :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; current :attested, :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; :built
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:fact [:version]]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:signed-by :ci [:commit]]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:artifact &amp;#34;checksums/&amp;#34;]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:attested-within :vulnerability-scan &amp;#34;P1D&amp;#34;]
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;It takes a &lt;code&gt;.tgz&lt;/code&gt;, an unpacked directory, or an &lt;code&gt;https&lt;/code&gt; URL, and exits 1
+when the bundle fails to verify — a derivation over bytes that are not
+what they claim to be is worth nothing. &lt;code&gt;--edn&lt;/code&gt; prints the same result as
+data.&lt;/p&gt;</description></item><item><title>Reading a store</title><link>https://tik.projects.metio.wtf/cli/reading-a-store/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/reading-a-store/</guid><description>&lt;p&gt;Every view here is computed when you ask, so none of them can be stale.&lt;/p&gt;
+&lt;h2 id="what-should-i-do"&gt;What should I do?&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik next --actor alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik next --role :triager
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik explain &lt;span class="m"&gt;3184&lt;/span&gt; --actor alice
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;next&lt;/code&gt; ranks by how much downstream work each step unlocks, with quiet
+tickets rising. &lt;code&gt;explain&lt;/code&gt; is the per-ticket answer: what is missing, whose
+signature it needs, and which stages it blocks. See
+&lt;a href="https://tik.projects.metio.wtf/concepts/explain/"&gt;Explain&lt;/a&gt;
+ for the model behind them.&lt;/p&gt;
+&lt;h2 id="the-board"&gt;The board&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls --all --long
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls --where &lt;span class="s1"&gt;&amp;#39;stage=:blocked and fact:severity=:high and not disputed&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik search firefox login
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A selector is space-separated terms, all ANDed, each optionally negated:
+&lt;code&gt;stage=:blocked&lt;/code&gt;, &lt;code&gt;fact:severity&lt;/code&gt;, &lt;code&gt;fact:severity=:high&lt;/code&gt;, &lt;code&gt;actor=seb&lt;/code&gt;,
+&lt;code&gt;disputed&lt;/code&gt;, &lt;code&gt;conflicted&lt;/code&gt;, &lt;code&gt;unsigned&lt;/code&gt;, &lt;code&gt;derived-from=&amp;lt;hash&amp;gt;&lt;/code&gt;, &lt;code&gt;~text&lt;/code&gt;. The
+same grammar drives &lt;code&gt;search&lt;/code&gt;, and &lt;code&gt;tik dupes&lt;/code&gt; reports near-title
+lookalikes.&lt;/p&gt;</description></item><item><title>Recording work</title><link>https://tik.projects.metio.wtf/cli/recording-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/recording-work/</guid><description>&lt;p&gt;You record evidence. Stages follow.&lt;/p&gt;
+&lt;h2 id="create-a-ticket"&gt;Create a ticket&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik new support-request --title &lt;span class="s2"&gt;&amp;#34;login fails on Firefox&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The ticket pins the process definition&amp;rsquo;s content hash at creation, so it is
+judged by the rules it was minted under until somebody deliberately moves
+it with &lt;code&gt;tik reprocess&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Created beneath a store, a ticket inherits its context as signed facts:
+&lt;code&gt;repo=&amp;lt;name&amp;gt;&lt;/code&gt; from the enclosing git repository, plus any &lt;code&gt;.tik-facts.edn&lt;/code&gt;
+maps on the way down, nearest winning, with anything explicit beating both.&lt;/p&gt;</description></item><item><title>release</title><link>https://tik.projects.metio.wtf/processes/release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ scanned ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ published
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ⊢ image · signature.bundle · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ published ★ ⊢ ⋈ after scanned, attested approval = ship · ✎maintainer · ⚖ commit ≠ approval
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ withheld ⊢ approval = hold · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-attested/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-attested"&gt;release: attested&lt;/h1&gt;
+&lt;p&gt;The container image exists, an SBOM and build provenance were produced for it,
+and the checksums carry a signature.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;image&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;ghcr.io/metio/tik@sha256:... --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; signature.bundle&lt;span class="o"&gt;=&lt;/span&gt;&amp;lt;sha256 of SHA256SUMS.bundle&amp;gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :sbom --body &lt;span class="s1"&gt;&amp;#39;{:format &amp;#34;spdx-json&amp;#34; :digest &amp;#34;sha256:...&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :provenance --body &lt;span class="s1"&gt;&amp;#39;{:format &amp;#34;slsa-v1&amp;#34; :digest &amp;#34;sha256:...&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The guard checks that a trusted attester said an SBOM exists. It does not read
+the SBOM — guards never query anything, which is what keeps evaluation offline
+and reproducible forever. The derivation is therefore exactly as trustworthy as
+&lt;code&gt;:ci&lt;/code&gt;, and that is a property to state plainly rather than bury.&lt;/p&gt;</description></item><item><title>release / :built</title><link>https://tik.projects.metio.wtf/runbooks/release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-built/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-built"&gt;release: built&lt;/h1&gt;
+&lt;p&gt;The artifacts for this version exist and the pipeline has said which commit
+produced them.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;version&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;2026.8.5204821 &lt;span class="nv"&gt;commit&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&amp;lt;sha&amp;gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attach &amp;lt;id&amp;gt; checksums/SHA256SUMS
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;commit&lt;/code&gt; must be signed by a member of &lt;code&gt;:ci&lt;/code&gt;: the pipeline is the only party
+that can honestly say which source produced these bytes, and a human asserting
+it is a claim about something they did not observe.&lt;/p&gt;</description></item><item><title>release / :published</title><link>https://tik.projects.metio.wtf/runbooks/release-published/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-published/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-published"&gt;release: published&lt;/h1&gt;
+&lt;p&gt;A maintainer decided to ship, and that maintainer is not the party that built
+it.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;approval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;:ship --actor seb
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The &lt;code&gt;:different-person&lt;/code&gt; guard compares who asserted &lt;code&gt;commit&lt;/code&gt; with who asserted
+&lt;code&gt;approval&lt;/code&gt;. The pipeline cannot approve its own release — not because a rule
+forbids it, but because the two facts would carry the same signature and the
+guard would not hold.&lt;/p&gt;</description></item><item><title>release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-scanned/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-scanned"&gt;release: scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this version&amp;rsquo;s dependencies, found nothing,
+and said so recently enough to be about today&amp;rsquo;s advisories.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body &lt;span class="s1"&gt;&amp;#39;{:tool &amp;#34;clj-watson&amp;#34; :db &amp;#34;github-advisory&amp;#34;}&amp;#39;&lt;/span&gt; --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; scan.result&lt;span class="o"&gt;=&lt;/span&gt;:clean --actor ci
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Both halves are needed and they say different things. The fact records the
+verdict; the attestation records that a scan happened and when. The one-day
+freshness window is what makes replay useless — a scan from last month is
+cryptographically valid and fails this guard honestly, because the advisory
+database it consulted no longer exists.&lt;/p&gt;</description></item><item><title>release / :withheld</title><link>https://tik.projects.metio.wtf/runbooks/release-withheld/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/release-withheld/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="release-withheld"&gt;release: withheld&lt;/h1&gt;
+&lt;p&gt;A maintainer decided this version does not ship.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;approval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;:hold --actor seb
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik comment &amp;lt;id&amp;gt; &lt;span class="s2"&gt;&amp;#34;held: the scan is clean but the advisory for the transitive dep is unresolved upstream&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Recorded with the same weight as shipping, because the reason a version never
+shipped is worth as much a year later as the reason one did — and it is the
+question nobody can answer from a green pipeline.&lt;/p&gt;</description></item><item><title>renovate-migration</title><link>https://tik.projects.metio.wtf/processes/renovate-migration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/renovate-migration/</guid><description>&lt;p&gt;move a repository from Dependabot to Renovate, with evidence&lt;/p&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-fc1d1067f6e89f52537828296ef3e78e01ed0a552da105d8770aa399131bc0e1
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● planned ⊢ approach
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ configured ⊢ renovate.config.ref · removal.commit · dependabot.status = absent
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ verified ⊢ renovate.dashboard · renovate.first-pr · approval.maintainer = approved · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>renovate-migration / :configured</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-configured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-configured/</guid><description>&lt;h1 id="renovate-migration-configured"&gt;renovate-migration: configured&lt;/h1&gt;
+&lt;p&gt;Renovate is in, Dependabot is out — the commits are the proof&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.config.ref&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record &lt;code&gt;removal.commit&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>renovate-migration / :planned</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-planned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-planned/</guid><description>&lt;h1 id="renovate-migration-planned"&gt;renovate-migration: planned&lt;/h1&gt;
+&lt;p&gt;the approach is decided and on record&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;approach&lt;/code&gt; — one of org-wide-config, repo-local-config.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>renovate-migration / :verified</title><link>https://tik.projects.metio.wtf/runbooks/renovate-migration-verified/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/renovate-migration-verified/</guid><description>&lt;h1 id="renovate-migration-verified"&gt;renovate-migration: verified&lt;/h1&gt;
+&lt;p&gt;Renovate demonstrably runs, and a maintainer stands behind the migration&lt;/p&gt;
+&lt;h2 id="how-a-ticket-gets-here"&gt;How a ticket gets here&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.dashboard&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record &lt;code&gt;renovate.first-pr&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;A member of the &lt;code&gt;maintainer&lt;/code&gt; role records and signs their approval.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Replication</title><link>https://tik.projects.metio.wtf/concepts/replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/replication/</guid><description>&lt;p&gt;A tik store replicates by copying files. Two clones append independently,
+merge by set union, and derive the same answer — because derivation is a
+pure function of the event set and events are addressed by their content.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;git pull &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; git push &lt;span class="c1"&gt;# this is the replication protocol&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="why-the-merge-is-trivial"&gt;Why the merge is trivial&lt;/h2&gt;
+&lt;p&gt;Every event lives in its own file whose name is the SHA-256 of its bytes.
+Two people adding evidence to the same ticket create different files, so
+the merge is a union of directories and git never sees a conflicting hunk.
+Two people making the &lt;em&gt;identical&lt;/em&gt; claim produce byte-identical files with
+the same name, and the union keeps one — deduplication for free.&lt;/p&gt;</description></item><item><title>Roles and authority</title><link>https://tik.projects.metio.wtf/authoring/roles-and-authority/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/authoring/roles-and-authority/</guid><description>&lt;p&gt;A role is a name a definition uses in its guards. Membership is store
+state that decides who is in that role today.&lt;/p&gt;
+&lt;h2 id="declaring-a-role"&gt;Declaring a role&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-clojure" data-lang="clojure"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="ss"&gt;:process/roles&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:triager&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:members&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s"&gt;&amp;#34;seb&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:approver&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:members&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s"&gt;&amp;#34;alice&amp;#34;&lt;/span&gt; &lt;span class="s"&gt;&amp;#34;bob&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Guards refer to the name:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-clojure" data-lang="clojure"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="ss"&gt;:guards&lt;/span&gt; &lt;span class="p"&gt;[[&lt;/span&gt;&lt;span class="ss"&gt;:signed-by&lt;/span&gt; &lt;span class="ss"&gt;:triager&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:category&lt;/span&gt;&lt;span class="p"&gt;]]]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;That guard holds when the fact at &lt;code&gt;[:category]&lt;/code&gt; was asserted by a member of
+&lt;code&gt;:triager&lt;/code&gt;. It is a statement about evidence — who put this claim on the
+record — rather than a permission check performed somewhere else.&lt;/p&gt;</description></item><item><title>SLSA, said honestly</title><link>https://tik.projects.metio.wtf/evidence/slsa/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/slsa/</guid><description>&lt;p&gt;The stages of &lt;a href="https://tik.projects.metio.wtf/processes/supply-chain-release/"&gt;&lt;code&gt;supply-chain-release&lt;/code&gt;&lt;/a&gt;
+ and
+&lt;a href="https://tik.projects.metio.wtf/processes/automated-release/"&gt;&lt;code&gt;automated-release&lt;/code&gt;&lt;/a&gt;
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a &lt;strong&gt;trusted attester said&lt;/strong&gt;
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called &lt;code&gt;slsa-l3&lt;/code&gt; would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.&lt;/p&gt;
+&lt;p&gt;What &lt;code&gt;supply-chain-release&lt;/code&gt; demands maps onto SLSA&amp;rsquo;s build requirements like
+this — and the table is a claim about &lt;strong&gt;the definition&lt;/strong&gt;, never about any
+ticket that pins it. &lt;code&gt;automated-release&lt;/code&gt; demands the same, minus the two-person
+row:&lt;/p&gt;</description></item><item><title>Stages</title><link>https://tik.projects.metio.wtf/concepts/stages/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/stages/</guid><description>&lt;p&gt;A process defines stages. Each stage names its prerequisites (&lt;code&gt;:after&lt;/code&gt;) and
+the conditions that must hold to reach it (&lt;code&gt;:guards&lt;/code&gt;). Reaching a stage is
+never an action somebody takes; it is a conclusion.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-clojure" data-lang="clojure"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="ss"&gt;:stage/id&lt;/span&gt; &lt;span class="ss"&gt;:resolved&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:after&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:triaged&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="ss"&gt;:guards&lt;/span&gt; &lt;span class="p"&gt;[[&lt;/span&gt;&lt;span class="ss"&gt;:fact&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:resolution&lt;/span&gt; &lt;span class="ss"&gt;:ref&lt;/span&gt;&lt;span class="p"&gt;]]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:or&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:not&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:fact=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:category&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="ss"&gt;:technical&lt;/span&gt;&lt;span class="p"&gt;]]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="ss"&gt;:stage-reached&lt;/span&gt; &lt;span class="ss"&gt;:reproducible&lt;/span&gt;&lt;span class="p"&gt;]]]}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;That second guard reads &amp;ldquo;technical implies reproduced&amp;rdquo; — material
+implication written out, because the vocabulary has &lt;code&gt;:or&lt;/code&gt; and &lt;code&gt;:not&lt;/code&gt; and
+needs no separate conditional.&lt;/p&gt;
+&lt;h2 id="the-reached-set-is-a-fixpoint"&gt;The reached set is a fixpoint&lt;/h2&gt;
+&lt;p&gt;Derivation computes the set of reached stages by iterating to closure:
+every stage whose prerequisites are reached and whose guards hold joins the
+set, which may in turn enable further stages, until nothing changes.&lt;/p&gt;</description></item><item><title>Store administration</title><link>https://tik.projects.metio.wtf/cli/administration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/administration/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik actor add alice ~/.config/tik/id_ed25519.pub
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik sign &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik witness &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;actor add&lt;/code&gt; registers a signer in the store&amp;rsquo;s allowed-signers registry.
+Exporting &lt;code&gt;TIK_KEY&lt;/code&gt; signs every write as it happens; &lt;code&gt;sign&lt;/code&gt; catches up on
+your own earlier events, and only your own — signing somebody else&amp;rsquo;s would
+assert something false. &lt;code&gt;witness&lt;/code&gt; countersigns a ticket&amp;rsquo;s head, and one
+signature timestamps the entire ancestry beneath it.&lt;/p&gt;
+&lt;h2 id="roles"&gt;Roles&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles add triager alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles remove triager bob
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A process definition declares which roles exist and who starts in them; the
+store&amp;rsquo;s register decides who is in one today, for every ticket at once. Use
+it for a hire or a departure — it takes effect on in-flight tickets
+immediately, with no definition version bump and no per-ticket migration.
+See &lt;a href="https://tik.projects.metio.wtf/authoring/roles-and-authority/"&gt;Roles and authority&lt;/a&gt;
+.&lt;/p&gt;</description></item><item><title>supply-chain-release</title><link>https://tik.projects.metio.wtf/processes/supply-chain-release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/supply-chain-release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-f2aa808ac68e7f6a7e79b347d3006b8bfdadd6b01d279547b5646603f6212b27
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ approved
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ scanned ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ approved ★ ⊢ ⋈ after attested, scanned approval = ship · ✎release-manager · ⚖ commit ≠ approval
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ withheld ⊢ approval = hold · ✎release-manager
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>supply-chain-release / :approved</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-approved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-approved/</guid><description>&lt;h1 id="supply-chain-release--approved"&gt;supply-chain-release · approved&lt;/h1&gt;
+&lt;p&gt;Somebody who is not the pipeline looked at the evidence and decided to
+ship.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of &lt;code&gt;release-manager&lt;/code&gt; records the decision:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; approval=:ship&lt;/code&gt;, signed with their own key.&lt;/li&gt;
+&lt;li&gt;Four eyes is derived, not promised: &lt;code&gt;[:different-person [:commit] [:approval]]&lt;/code&gt; compares who asserted each fact, so the actor that
+signed the commit cannot also sign the approval. A single-person
+project never reaches this stage, and the honest reading of that is
+&amp;ldquo;nobody independent looked&amp;rdquo;, which is worth knowing.&lt;/li&gt;
+&lt;li&gt;The stage is sticky. An advisory published next week does not
+un-approve a version that already shipped; it starts a new ticket
+against the next one.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Approve after &lt;code&gt;:attested&lt;/code&gt; and &lt;code&gt;:scanned&lt;/code&gt; hold, since both are the
+material the decision is supposed to rest on. If you find yourself
+approving first, the process is telling you something true about how
+releases actually happen here.&lt;/p&gt;</description></item><item><title>supply-chain-release / :attested</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-attested/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-attested/</guid><description>&lt;h1 id="supply-chain-release--attested"&gt;supply-chain-release · attested&lt;/h1&gt;
+&lt;p&gt;What the artifact is made of, and how it came to be — each said by a
+party the registry trusts, each recent enough to be about this build.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the artifact&amp;rsquo;s digest and have &lt;code&gt;ci&lt;/code&gt; sign it:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; artifact.digest=&amp;quot;\&amp;quot;sha256:…\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Bring the SBOM and the provenance in as attestations. If your pipeline
+already emits in-toto or SLSA documents, &lt;code&gt;tik bridge intoto &amp;lt;file&amp;gt;&lt;/code&gt;
+maps their &lt;code&gt;predicateType&lt;/code&gt; onto the claim these guards read, so no
+format is invented and nothing is transcribed by hand.&lt;/li&gt;
+&lt;li&gt;Both windows are one day. An attestation older than that describes a
+different build, and the stage will not hold — re-attest as part of
+the release rather than replaying an older document.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;tik checks that a trusted attester said these things. It does not read
+the SBOM and forms no opinion about its contents, so this stage is worth
+exactly what the attester is worth. Choose who may sign accordingly, and
+say so to whoever reads the badge.&lt;/p&gt;</description></item><item><title>supply-chain-release / :built</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-built/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-built/</guid><description>&lt;h1 id="supply-chain-release--built"&gt;supply-chain-release · built&lt;/h1&gt;
+&lt;p&gt;The pipeline says which commit produced these bytes, and hands over the
+checksums that name them.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Record the version and the commit from the pipeline&amp;rsquo;s own context:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; version=&amp;quot;\&amp;quot;1.4.0\&amp;quot;&amp;quot; commit=&amp;quot;\&amp;quot;$GITHUB_SHA\&amp;quot;&amp;quot;&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;commit&lt;/code&gt; fact must be signed by a member of the &lt;code&gt;ci&lt;/code&gt; role. A build
+is the one party that can honestly say which source produced which
+artifact, so a human asserting it proves nothing.&lt;/li&gt;
+&lt;li&gt;Attach the checksums file under a &lt;code&gt;checksums/&lt;/code&gt; prefix:
+&lt;code&gt;tik attach &amp;lt;id&amp;gt; dist/SHA256SUMS --as checksums/SHA256SUMS&lt;/code&gt;. The
+artifact&amp;rsquo;s hash is on the log; the blob is stored beside it, so a
+reader compares their download against a value the signature covers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Give &lt;code&gt;ci&lt;/code&gt; an ephemeral key bound to the pipeline&amp;rsquo;s own workload identity
+rather than a long-lived secret — &lt;code&gt;tik bridge workload --github&lt;/code&gt; binds a
+per-run keypair to the token the platform already issues, and nothing
+long-lived exists to leak.&lt;/p&gt;</description></item><item><title>supply-chain-release / :scanned</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-scanned/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-scanned/</guid><description>&lt;h1 id="supply-chain-release--scanned"&gt;supply-chain-release · scanned&lt;/h1&gt;
+&lt;p&gt;A vulnerability scan ran against this build and came back clean.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Attest the scan, naming the tool and the advisory database it read:
+&lt;code&gt;tik attest &amp;lt;id&amp;gt; :vulnerability-scan --body '{:tool &amp;quot;…&amp;quot; :db &amp;quot;…&amp;quot;}'&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Record the outcome as a fact &lt;code&gt;ci&lt;/code&gt; signs:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; scan.result=:clean&lt;/code&gt; — or &lt;code&gt;:findings&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;:findings&lt;/code&gt; is a legitimate answer and belongs on the record. Let the
+scan write what it found and let the ticket carry it; the stage stays
+unreached, and the release is a decision somebody makes with that in
+front of them.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Run the scan inside the release job rather than reusing an earlier
+result. The one-day window exists because a scan is a claim about the
+advisory database at a moment: last week&amp;rsquo;s clean result is
+cryptographically valid, honestly stale, and says nothing about the
+advisories published since.&lt;/p&gt;</description></item><item><title>supply-chain-release / :withheld</title><link>https://tik.projects.metio.wtf/runbooks/supply-chain-release-withheld/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/supply-chain-release-withheld/</guid><description>&lt;h1 id="supply-chain-release--withheld"&gt;supply-chain-release · withheld&lt;/h1&gt;
+&lt;p&gt;A version that was built and then deliberately not shipped, with the
+decision and its author on the record.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A member of &lt;code&gt;release-manager&lt;/code&gt; records the hold:
+&lt;code&gt;tik set &amp;lt;id&amp;gt; approval=:hold&lt;/code&gt;, signed.&lt;/li&gt;
+&lt;li&gt;Say why in the same breath: &lt;code&gt;tik comment &amp;lt;id&amp;gt; &amp;quot;held: the scan found CVE-… in a transitive dependency&amp;quot;&lt;/code&gt;. The comment is an artifact
+addressed by hash, so the reason travels in the evidence bundle
+alongside the decision.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This stage earns its keep months later. A version that quietly never
+shipped looks identical to one nobody got around to, and the difference
+matters when somebody asks what happened to 1.4.0. Reaching &lt;code&gt;:withheld&lt;/code&gt;
+answers that from the log rather than from memory.&lt;/p&gt;</description></item><item><title>support-request</title><link>https://tik.projects.metio.wtf/processes/support-request-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/support-request-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;escalate-after&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:string&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;escalate an untriaged request after (ISO-8601, e.g. PT48H)&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-escalation&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;flag requests nobody triaged in that window? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-repro&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require a reproduction before a technical fix counts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-ack&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;close only once the customer confirms? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;support-request.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>support-request</title><link>https://tik.projects.metio.wtf/processes/support-request/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/support-request/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-84c7f6140fc8cf90ee3a33efde68238cb3eba603b216dfb08aeafcbafc28aa20
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● received
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ triaged ⊢ category · severity · ✎triager
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ├─▶ reproducible ⊢ category = technical · ⧉repro/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ └─▶ resolved ⊢ resolution.ref · (¬category = technical | ⤳reproducible)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ closed ★ ⊢ customer.ack
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ escalated ⊢ ⏱PT48H · ¬category
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>support-request / :closed</title><link>https://tik.projects.metio.wtf/runbooks/support-request-closed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-closed/</guid><description>&lt;h1 id="runbook-support-request--closed"&gt;Runbook: support-request / :closed&lt;/h1&gt;
+&lt;p&gt;Sticky milestone: only the customer&amp;rsquo;s acknowledgement closes, and a
+later retraction will NOT reopen (the log shows both truths). Ask for
+the ack explicitly — the customer information-request pattern. If the
+customer goes silent, the ticket honestly stays at :resolved; do not
+assert the ack on their behalf, ever (authorship is the whole point,
+ADR 0010).&lt;/p&gt;</description></item><item><title>support-request / :escalated</title><link>https://tik.projects.metio.wtf/runbooks/support-request-escalated/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-escalated/</guid><description>&lt;h1 id="runbook-support-request--escalated"&gt;Runbook: support-request / :escalated&lt;/h1&gt;
+&lt;p&gt;This stage derives on its own: 48 hours without a category. There is
+no action that produces it — the runbook is for reacting to it. An
+escalated ticket means triage is the bottleneck: find why (nobody on
+rotation? report unintelligible?) and either triage it now or record
+what blocks triage. Escalation clears itself the moment a category
+lands (fact-level negation).&lt;/p&gt;</description></item><item><title>support-request / :received</title><link>https://tik.projects.metio.wtf/runbooks/support-request-received/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-received/</guid><description>&lt;h1 id="runbook-support-request--received"&gt;Runbook: support-request / :received&lt;/h1&gt;
+&lt;p&gt;A new report exists; nothing is known yet. Read the title and any
+attached artifacts. Your job is to move it toward triage: get a
+category and a severity asserted by a triager. If the report is
+unintelligible, ask the reporter (a comment or an information-request
+effect) rather than guessing a category — a wrong category asserted
+confidently is worse than an honest gap.&lt;/p&gt;</description></item><item><title>support-request / :reproducible</title><link>https://tik.projects.metio.wtf/runbooks/support-request-reproducible/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-reproducible/</guid><description>&lt;h1 id="runbook-support-request--reproducible"&gt;Runbook: support-request / :reproducible&lt;/h1&gt;
+&lt;p&gt;Attach a reproduction under &lt;code&gt;repro/&lt;/code&gt; — a script, a request trace, a
+recording; the smallest artifact that makes the failure happen again.
+If you cannot reproduce it, say so in a comment with what you tried;
+do not attach a placeholder to satisfy the guard (evidence theater,
+PLAN §18). A technical ticket without a repro simply is not resolvable
+yet — that is the process being honest, not slow.&lt;/p&gt;</description></item><item><title>support-request / :resolved</title><link>https://tik.projects.metio.wtf/runbooks/support-request-resolved/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-resolved/</guid><description>&lt;h1 id="runbook-support-request--resolved"&gt;Runbook: support-request / :resolved&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;resolution.ref&lt;/code&gt; pointing at the fix (commit, config change,
+knowledge-base answer). For technical tickets the reproduction must
+exist first — &amp;lsquo;fixed it but can&amp;rsquo;t show the bug&amp;rsquo; does not resolve.
+Resolution is a claim the customer has not yet accepted; do not
+consider the work done here.&lt;/p&gt;</description></item><item><title>support-request / :triaged</title><link>https://tik.projects.metio.wtf/runbooks/support-request-triaged/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/support-request-triaged/</guid><description>&lt;h1 id="runbook-support-request--triaged"&gt;Runbook: support-request / :triaged&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;category&lt;/code&gt; and &lt;code&gt;severity&lt;/code&gt; — both must come from a triager
+(the &lt;code&gt;:signed-by&lt;/code&gt; guard checks the role, not the values). Category is
+a claim about what KIND of problem this is; when genuinely unsure,
+pick the closest and say why in a comment — a later dispute is cheap
+and leaves better history than stalling. Severity reflects impact on
+the customer, not effort to fix.&lt;/p&gt;</description></item><item><title>sweep-order</title><link>https://tik.projects.metio.wtf/processes/sweep-order/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/sweep-order/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-6fed34008ad5e2d4d44b057ec365a8075e591f1de6c85c613e3c53a6dec8bcae
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● a
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ b
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ d ⊢ ¬⤳c
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ c
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="a"&gt;&lt;code&gt;a&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="b"&gt;&lt;code&gt;b&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;a&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="c"&gt;&lt;code&gt;c&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;a&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="d"&gt;&lt;code&gt;d&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;b&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>The event log</title><link>https://tik.projects.metio.wtf/concepts/event-log/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/event-log/</guid><description>&lt;h1 id="the-event-log"&gt;The event log&lt;/h1&gt;
+&lt;p&gt;A ticket is an append-only set of immutable, content-addressed events
+(canonical-EDN SHA-256). Replica merge is set union: replicas converge
+without coordination — &lt;em&gt;merge&lt;/em&gt; is conflict-free by construction, &lt;em&gt;truth&lt;/em&gt;
+is deliberately not. Conflicting claims are never hidden or resolved by
+merge; they remain in the log and surface as derived fact states
+(&lt;a href="https://tik.projects.metio.wtf/decisions/0003-conflicts-block/"&gt;decisions/0003&lt;/a&gt;
+). Ticket state
+and stage are pure functions of the log; any materialized view is a
+rebuildable cache
+(&lt;a href="https://tik.projects.metio.wtf/decisions/0001-event-log-acceptance-test/"&gt;decisions/0001&lt;/a&gt;
+,
+&lt;a href="https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/"&gt;decisions/0013&lt;/a&gt;
+).&lt;/p&gt;</description></item><item><title>The witness</title><link>https://tik.projects.metio.wtf/concepts/witness/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/witness/</guid><description>&lt;h1 id="the-witness"&gt;The witness&lt;/h1&gt;
+&lt;p&gt;Servers countersign events at ingest: &amp;ldquo;I saw hash H at time T.&amp;rdquo; Trusted
+signing time is the load-bearing input for &amp;ldquo;actor held role R at signing
+time&amp;rdquo; and the moment a stage&amp;rsquo;s social meaning solidifies.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;witnessed.dev&lt;/strong&gt; productizes this as a neutral third-party witness:
+countersigning event &lt;em&gt;hashes only&lt;/em&gt; (no content leaves the organization),
+giving self-hosted instances independent timestamping evidence for audits.&lt;/p&gt;</description></item><item><title>tik-dev</title><link>https://tik.projects.metio.wtf/processes/tik-dev/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/tik-dev/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● captured
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ triaged ⊢ summary · kind · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ implemented ⊢ commit
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ landed ★ ⊢ gate = green
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ parked ⊢ parked.reason
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>tik-dev / :captured</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-captured/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-captured/</guid><description>&lt;h1 id="runbook-tik-dev--captured"&gt;Runbook: tik-dev / :captured&lt;/h1&gt;
+&lt;p&gt;A thought exists; the ticket preserves it. Give it a title that will
+mean something in six months. Nothing else is required — capture must
+stay cheap or ideas stop being written down. Move to triage when you
+can honestly write one summary sentence and name the kind.&lt;/p&gt;</description></item><item><title>tik-dev / :implemented</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-implemented/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-implemented/</guid><description>&lt;h1 id="runbook-tik-dev--implemented"&gt;Runbook: tik-dev / :implemented&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;commit&lt;/code&gt; naming the commit that does the work. The commit must
+exist before the fact does — the fact is a claim about evidence, and
+the evidence is the git history. One feature, one commit, stacked on
+main (this repo&amp;rsquo;s workflow).&lt;/p&gt;</description></item><item><title>tik-dev / :landed</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-landed/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-landed/</guid><description>&lt;h1 id="runbook-tik-dev--landed"&gt;Runbook: tik-dev / :landed&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;gate=:green&lt;/code&gt; only after the FULL local gate: kaocha, kondo
+(0/0), eastwood, splint, cljfmt, tla, process tests, reuse, typos,
+markdown. Not the one check your change touched — all of them.
+Sticky: a later gate dispute does not un-land; file a new bug ticket
+instead. If the gate is red, assert &lt;code&gt;gate=:red&lt;/code&gt; honestly and fix
+forward.&lt;/p&gt;</description></item><item><title>tik-dev / :parked</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-parked/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-parked/</guid><description>&lt;h1 id="runbook-tik-dev--parked"&gt;Runbook: tik-dev / :parked&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;parked.reason&lt;/code&gt; — the reason is the deliverable. Cite the
+verdict that parks it (a PLAN §19 entry, a trigger condition not yet
+met). Parked is not closed: the ticket stays visible on the board and
+can resume by simply asserting the missing facts. Parking without a
+real reason is deferral theater.&lt;/p&gt;</description></item><item><title>tik-dev / :triaged</title><link>https://tik.projects.metio.wtf/runbooks/tik-dev-triaged/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/tik-dev-triaged/</guid><description>&lt;h1 id="runbook-tik-dev--triaged"&gt;Runbook: tik-dev / :triaged&lt;/h1&gt;
+&lt;p&gt;Assert &lt;code&gt;summary&lt;/code&gt; (what and why, one breath) and &lt;code&gt;kind&lt;/code&gt;
+(feature/bug/docs/spike) as a maintainer. If it duplicates existing
+work, link it (&lt;code&gt;link.duplicate-of=&amp;lt;uuid&amp;gt;&lt;/code&gt;) instead of triaging twice.
+If it should wait, this is also where you park it — with the reason,
+not silently.&lt;/p&gt;</description></item><item><title>track</title><link>https://tik.projects.metio.wtf/processes/track/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/track/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-5812cdba533c92d934af16c73fe4027fc37bd034e6005f56237358680037d3c3
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● open
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ done ★ ⊢ outcome
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="facts-it-records"&gt;Facts it records&lt;/h2&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Path&lt;/th&gt;
+					&lt;th&gt;Shape&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;outcome&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;[:string {:min 4}]&lt;/code&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="open"&gt;&lt;code&gt;open&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;p&gt;Runbook: &lt;code&gt;kb/runbooks/track-open.md&lt;/code&gt;&lt;/p&gt;
+&lt;h3 id="done--sticky"&gt;&lt;code&gt;done&lt;/code&gt; · sticky&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;open&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.&lt;/p&gt;</description></item><item><title>track / :done</title><link>https://tik.projects.metio.wtf/runbooks/track-done/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/track-done/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="track-done"&gt;track: done&lt;/h1&gt;
+&lt;p&gt;The thing ended — say how:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik &lt;span class="nb"&gt;set&lt;/span&gt; &amp;lt;id&amp;gt; &lt;span class="nv"&gt;outcome&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;shipped in v2; see order #1234&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A few honest words beat a closed flag: the outcome is the only thing
+anyone will want from this ticket in a year.&lt;/p&gt;</description></item><item><title>track / :open</title><link>https://tik.projects.metio.wtf/runbooks/track-open/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/track-open/</guid><description>&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+--&gt;
+&lt;h1 id="track-open"&gt;track: open&lt;/h1&gt;
+&lt;p&gt;The ticket exists. There is no workflow to satisfy — record what is
+true as it happens:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tik set &amp;lt;id&amp;gt; key=value&lt;/code&gt; for facts worth keeping.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik comment &amp;lt;id&amp;gt; &amp;lt;text&amp;gt;&lt;/code&gt; for anything else.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tik attach &amp;lt;id&amp;gt; &amp;lt;file&amp;gt;&lt;/code&gt; for evidence.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When several track tickets start following the same informal shape,
+run &lt;code&gt;tik author&lt;/code&gt; and give that shape a real definition.&lt;/p&gt;</description></item><item><title>Writing a definition</title><link>https://tik.projects.metio.wtf/authoring/writing-a-definition/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/authoring/writing-a-definition/</guid><description>&lt;h2 id="the-design-law"&gt;The design law&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;A stage is defined by what must be TRUE to reach it, never by who moved
+what.&lt;/strong&gt; Ask of every stage: what evidence, on record, would convince a
+sceptical auditor a year from now? Write that as guards. If the honest
+answer is &amp;ldquo;somebody said so&amp;rdquo;, then make &lt;em&gt;that&lt;/em&gt; the fact — a named person&amp;rsquo;s
+signature on a named claim — rather than a status somebody sets.&lt;/p&gt;</description></item></channel></rss>

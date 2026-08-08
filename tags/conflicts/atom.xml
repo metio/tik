@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Conflicts on tik</title><link href="https://tik.projects.metio.wtf/tags/conflicts/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/conflicts/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/conflicts/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/conflicts/</id><entry><title type="html">Replication</title><link href="https://tik.projects.metio.wtf/concepts/replication/?utm_source=atom_feed" rel="alternate" type="text/html"/><id>https://tik.projects.metio.wtf/concepts/replication/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Merging by set union — no leader, no lock, no consensus, and no file-level conflicts to resolve by hand.</blockquote><p>A tik store replicates by copying files. Two clones append independently,
+merge by set union, and derive the same answer — because derivation is a
+pure function of the event set and events are addressed by their content.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">git pull <span class="o">&amp;&amp;</span> git push     <span class="c1"># this is the replication protocol</span>
+</span></span></code></pre></div><h2 id="why-the-merge-is-trivial">Why the merge is trivial</h2>
+<p>Every event lives in its own file whose name is the SHA-256 of its bytes.
+Two people adding evidence to the same ticket create different files, so
+the merge is a union of directories and git never sees a conflicting hunk.
+Two people making the <em>identical</em> claim produce byte-identical files with
+the same name, and the union keeps one — deduplication for free.</p>
+<p>That is why merging never requires a human to resolve a text conflict
+inside a ticket. What it can produce is a <em>derived</em> disagreement, and that
+is the point.</p>
+<h2 id="disagreement-resolves-by-derivation">Disagreement resolves by derivation</h2>
+<p>When two replicas wrote the same fact path without having seen each other,
+and their claims differ, the fact reads <code>:conflicted</code>. Every guard reading
+it fails with a reason naming the competing claims, and <code>tik explain</code> asks
+for a value that supersedes them:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">To reach :triaged:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ fact [:category] has conflicting concurrent assertions — one must
+</span></span></span><span class="line"><span class="cl"><span class="go">    supersede (ADR 0003)
+</span></span></span></code></pre></div><p>Nobody wins an election. A later write that observed both competitors
+settles it, and the conflict disappears from the derivation. Parents are
+what make &ldquo;observed&rdquo; a checkable claim rather than a guess.</p>
+<h2 id="no-leader-no-lock-no-consensus">No leader, no lock, no consensus</h2>
+<p>No operation needs a leader, a distributed lock, or a quorum to be correct:</p>
+<ul>
+<li><strong>Reads shard without limit.</strong> A derivation reads one ticket&rsquo;s own log
+and nothing else. Guards never query across tickets, so N stateless
+replicas across M shards scale reads with zero coordination.</li>
+<li><strong>Writes never resolve by lock.</strong> A write is either a content-addressed
+event that is a pure function of its intent, or an append whose
+contention resolves by derivation.</li>
+<li><strong>Self-minted events are deterministic.</strong> Anything a replica mints on its
+own — a recurring ticket, a scheduled probe — derives its id and every
+byte, <code>:at</code> included, from its inputs. Two replicas firing the same
+schedule concurrently mint the same event, and the union keeps one.</li>
+</ul>
+<p>A tik replica is stateless by construction, so horizontal scaling is the
+preferred deployment.</p>
+<h2 id="partial-logs-say-so">Partial logs say so</h2>
+<p>Between syncs, a replica&rsquo;s copy of a ticket is incomplete by definition,
+and a derivation over a partial log is not merely incomplete — it is
+confidently wrong in a specific way. Ancestry the replica cannot see reads
+as concurrency, so writes that supersede each other in a linear history
+surface as <code>:conflicted</code>, and explain asks somebody to resolve a conflict
+that does not exist.</p>
+<p>Every lens therefore checks whether referenced ancestors are missing and
+says so, rather than presenting a mid-sync view with the confidence of a
+complete one.</p>
+<h2 id="backends">Backends</h2>
+<p>The file store is the signed interchange format: a <code>tickets/</code> tree that
+<code>sha256sum</code> audits and git replicates. The SQLite backend keeps the same
+events in a single file when that suits operations better. Convert in place
+with <code>tik store migrate --to sqlite|file</code> — events and their detached
+signatures both travel.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/replication" term="replication" label="replication"/><category scheme="https://tik.projects.metio.wtf/tags/git" term="git" label="git"/><category scheme="https://tik.projects.metio.wtf/tags/crdt" term="crdt" label="crdt"/><category scheme="https://tik.projects.metio.wtf/tags/conflicts" term="conflicts" label="conflicts"/><category scheme="https://tik.projects.metio.wtf/tags/scaling" term="scaling" label="scaling"/></entry></feed>

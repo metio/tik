@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Reasons on tik</title><link href="https://tik.projects.metio.wtf/tags/reasons/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/reasons/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/reasons/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/reasons/</id><entry><title type="html">Explain</title><link href="https://tik.projects.metio.wtf/concepts/explain/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><id>https://tik.projects.metio.wtf/concepts/explain/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T23:28:02+02:00</updated><content type="html"><![CDATA[<blockquote>The product surface — what evidence is missing, who may supply it, and when waiting is pointless.</blockquote><p>A traditional tracker exposes state. tik exposes <strong>justification</strong>: what is
+true, why it is true, and what evidence is missing next. <code>tik explain</code> is
+where that surfaces, and every other view is a rendering of it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✓ [:fact [:resolution :ref]]
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  blocks: :closed
+</span></span></span><span class="line"><span class="cl"><span class="go">  (see: kb/runbooks/support-request-resolved.md)
+</span></span></span></code></pre></div><p>Nothing in that block is speculation. The checkmarks are guards that
+already hold, the crosses are structured reasons produced by guard
+evaluation, <code>blocks</code> is the downstream closure, and the hint is the
+<a href="/runbooks/">runbook</a>
+ the definition declares for that stage.</p>
+<h2 id="reasons-are-data">Reasons are data</h2>
+<p>The prose lives in this lens only. Underneath, each missing step is a
+structured reason carrying the path, the schema, the role, the actor whose
+signature already counted — whatever the guard knows:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --edn
+</span></span></code></pre></div><p>That data contract is stable plumbing; the English is not. It renders as
+CLI text, as web forms built from the schemas in the reasons, and as agent
+task specifications whose acceptance criteria <em>are</em> the guards.</p>
+<p>Reasons are sorted by <strong>who can act on them right now</strong>: values anyone can
+supply first, then corrections, artifacts, specific people, attestations,
+other stages, and finally time, which is nobody&rsquo;s to act on.</p>
+<h2 id="who-can-act">Who can act</h2>
+<p><code>--actor</code> filters a block to what one person can do, and counts the rest
+rather than hiding it:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span> --actor alice
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  … 1 step(s) waiting on others or time
+</span></span></span></code></pre></div><p><code>tik next</code> rotates the same derivation into an inbox — for a person, or for
+a whole role:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik next --actor alice
+</span></span><span class="line"><span class="cl">tik next --role :triager
+</span></span></code></pre></div><p>The inbox ranks by unlock impact, so the step that frees the most
+downstream work comes first, and it holds back tickets whose dependency
+links point at unsettled upstream work.</p>
+<h2 id="waiting-versus-impossible">Waiting versus impossible</h2>
+<p>Some blocked tickets are waiting for a colleague. Others can never move at
+all — a role with no members, a negation over a sticky stage already
+reached, a prerequisite that is itself dead. Those look identical until you
+say so, and telling somebody to wait for something that will never arrive
+is the failure that matters most for a tool whose whole claim is answering
+what is blocking.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain 9c21
+</span></span><span class="line"><span class="cl"><span class="go">To reach :approved (unreachable):
+</span></span></span><span class="line"><span class="cl"><span class="go">  ⊘ fact [:sign-off] must be asserted by a member of role :auditor
+</span></span></span><span class="line"><span class="cl"><span class="go">      (currently by &#34;seb&#34;) — nobody can ever do this
+</span></span></span></code></pre></div><p>The derivation stays conservative: a step is only called impossible when it
+is provably undischargeable from the definition and the log. A choice dies
+only when every one of its branches does. Anything merely waiting keeps its
+<code>✗</code>.</p>
+<h2 id="proving-it">Proving it</h2>
+<p><code>tik causal</code> answers the auditor&rsquo;s question — which signed events made each
+reached stage true, with negations and time saying so honestly:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik causal <span class="m">3184</span>
+</span></span></code></pre></div><p>And <code>tik whatif</code> asks the counterfactual without writing anything:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik whatif <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:low +P2D retract:category
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/explain" term="explain" label="explain"/><category scheme="https://tik.projects.metio.wtf/tags/next" term="next" label="next"/><category scheme="https://tik.projects.metio.wtf/tags/inbox" term="inbox" label="inbox"/><category scheme="https://tik.projects.metio.wtf/tags/reasons" term="reasons" label="reasons"/></entry></feed>

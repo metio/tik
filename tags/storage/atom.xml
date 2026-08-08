@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Storage on tik</title><link href="https://tik.projects.metio.wtf/tags/storage/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/storage/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/storage/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/storage/</id><entry><title type="html">Events and facts</title><link href="https://tik.projects.metio.wtf/concepts/events-and-facts/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><id>https://tik.projects.metio.wtf/concepts/events-and-facts/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Seven event types, five fact statuses, and the content addressing that makes a store auditable with coreutils.</blockquote><p>A ticket is an append-only set of events. Everything else about it is
+computed.</p>
+<h2 id="seven-event-types">Seven event types</h2>
+<p>The vocabulary is closed and versioned, because the semantics of a
+verifiable kernel have to be enumerable:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Event</th>
+					<th>Meaning</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>:ticket/create</code></td>
+					<td>the ticket exists, pinned to a process definition by hash</td>
+			</tr>
+			<tr>
+					<td><code>:fact/assert</code></td>
+					<td>a claim about a path: <code>[:severity] = :high</code></td>
+			</tr>
+			<tr>
+					<td><code>:fact/retract</code></td>
+					<td>withdraw a claim, with no replacement</td>
+			</tr>
+			<tr>
+					<td><code>:fact/dispute</code></td>
+					<td>reject a claim, with a reason</td>
+			</tr>
+			<tr>
+					<td><code>:artifact/attach</code></td>
+					<td>a file, stored and addressed by its hash</td>
+			</tr>
+			<tr>
+					<td><code>:attestation/add</code></td>
+					<td>a signed claim the kernel does not interpret</td>
+			</tr>
+			<tr>
+					<td><code>:process/migrate</code></td>
+					<td>re-pin this ticket to a newer definition</td>
+			</tr>
+	</tbody>
+</table>
+<p>Things that look like they need their own type turn out not to. Comments
+are artifacts — text blobs attached by hash. Links are facts under a
+<code>[:link …]</code> path. Work records are <code>:work</code> attestation claims. Witness
+countersignatures are detached sidecars over a head rather than events,
+because an event would move the very head it witnesses.</p>
+<h2 id="content-addressing">Content addressing</h2>
+<p>An event&rsquo;s id is the SHA-256 of its canonical bytes, and the stored file is
+named for that id. The bytes on disk are exactly the hashed region, so a
+store audits with nothing but coreutils:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">sha256sum tickets/*/events/*.edn   <span class="c1"># filename must equal the digest</span>
+</span></span></code></pre></div><p>Signatures never live inside the hashed region. They are detached sidecars
+alongside the event, which is what lets a second person add their signature
+to an event without changing its identity.</p>
+<p>Every event names its parents, forming a Merkle DAG. Parents carry
+integrity and causality — they are how a replica knows whether two writes
+saw each other. They never carry ordering: the fold orders by <code>(at, id)</code>
+over the event <em>set</em>, which is what makes the reducer total, commutative,
+and idempotent.</p>
+<h2 id="fact-status">Fact status</h2>
+<p>One function decides why a fact does or does not satisfy a guard, and
+guards consult nothing else:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Status</th>
+					<th>Meaning</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>:present</code></td>
+					<td>a value stands</td>
+			</tr>
+			<tr>
+					<td><code>:absent</code></td>
+					<td>nothing has been claimed</td>
+			</tr>
+			<tr>
+					<td><code>:retracted</code></td>
+					<td>withdrawn, no replacement offered</td>
+			</tr>
+			<tr>
+					<td><code>:disputed</code></td>
+					<td>rejected with a reason, and unusable until corrected</td>
+			</tr>
+			<tr>
+					<td><code>:conflicted</code></td>
+					<td>causally concurrent claims disagree</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="what-a-dispute-means">What a dispute means</h2>
+<p>A dispute rejects <strong>the value that stood when it was raised</strong>, so the
+assertion that answers it has to claim something else. Re-asserting the
+rejected value verbatim leaves the path <code>:disputed</code> — otherwise the party a
+dispute holds accountable could clear it in one command by retyping the
+same fact.</p>
+<p>A retraction clears disputes too, because the rejected claim is gone. A
+dispute raised on a path holding nothing rejects no particular value, so
+the first assertion answers it, which is what keeps a dispute from making a
+path permanently unusable.</p>
+<p>Disputes accumulate: several people may reject the same claim, and each
+withdraws only their own.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --reason <span class="s2">&#34;this is billing, not technical&#34;</span>
+</span></span><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --withdraw     <span class="c1"># takes back your own objection</span>
+</span></span></code></pre></div><h2 id="what-a-conflict-means">What a conflict means</h2>
+<p>When two replicas write the same path without having seen each other, and
+they disagree, the fact reads <code>:conflicted</code> and every guard that depends on
+it fails with a reason saying so. Nobody has to win. A later write that
+observed both supersedes them, and the conflict resolves by derivation.</p>
+<p>Concurrent writes that happen to <em>agree</em> are not a conflict — there is no
+disagreement to surface.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/events" term="events" label="events"/><category scheme="https://tik.projects.metio.wtf/tags/facts" term="facts" label="facts"/><category scheme="https://tik.projects.metio.wtf/tags/disputes" term="disputes" label="disputes"/><category scheme="https://tik.projects.metio.wtf/tags/storage" term="storage" label="storage"/></entry></feed>

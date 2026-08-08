@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Stages on tik</title><link href="https://tik.projects.metio.wtf/tags/stages/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/stages/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/stages/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/stages/</id><entry><title type="html">Runbooks</title><link href="https://tik.projects.metio.wtf/runbooks/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="related" type="text/html" title="Stages"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/runbooks/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>One page per stage — what reaching it means and what evidence gets you there.</blockquote><p>A process definition names a runbook per stage through its <code>:hint</code> field, and
+<code>tik explain</code> prints that link beside the missing evidence:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">To reach :triaged:
+</span></span><span class="line"><span class="cl">  ✗ set fact [:category] ([:enum :billing :technical :account :abuse])
+</span></span><span class="line"><span class="cl">  (see: kb/runbooks/support-request-triaged.md)
+</span></span></code></pre></div><p>So these pages are read at the moment somebody is stuck, and each answers a
+single question: what has to become true here, and who can make it so. They
+live in the repository&rsquo;s knowledge bundle under <code>kb/runbooks/</code>, so a checkout,
+an agent, and this site read the same document.</p>
+<p>Each process below is listed in stage order rather than alphabetically — a
+runbook makes most sense beside the stages it sits between.</p>
+<h2 id="support-request">support-request</h2>
+<p>The sample process the conformance corpus pins: a customer report from arrival
+to acknowledgement.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/support-request-received/"><code>:received</code></a>
+</td>
+					<td>A new report exists and nothing is known yet.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-triaged/"><code>:triaged</code></a>
+</td>
+					<td>A triager has signed off a category and a severity.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-reproducible/"><code>:reproducible</code></a>
+</td>
+					<td>A reproduction is attached under <code>repro/</code>.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-resolved/"><code>:resolved</code></a>
+</td>
+					<td>A resolution reference points at the fix.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-escalated/"><code>:escalated</code></a>
+</td>
+					<td>Derives on its own: 48 hours with no category.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-closed/"><code>:closed</code></a>
+</td>
+					<td>Sticky milestone — only the customer&rsquo;s acknowledgement closes it.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="release">release</h2>
+<p>A version&rsquo;s supply chain as evidence: one ticket per release, each stage
+saying what must be true of the artifacts rather than which job ran.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/release-built/"><code>:built</code></a>
+</td>
+					<td>Artifacts exist and CI has signed which commit produced them.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, attested within the last day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM, build provenance, and a signature are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-published/"><code>:published</code></a>
+</td>
+					<td>Sticky — a maintainer shipped it, and not the one who built it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-withheld/"><code>:withheld</code></a>
+</td>
+					<td>A maintainer decided it does not ship, with the reason.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="tik-dev">tik-dev</h2>
+<p>The process tik&rsquo;s own development runs in; this repository is a live store.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/tik-dev-captured/"><code>:captured</code></a>
+</td>
+					<td>A thought exists and the ticket preserves it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-triaged/"><code>:triaged</code></a>
+</td>
+					<td>A summary and a kind are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-implemented/"><code>:implemented</code></a>
+</td>
+					<td>A commit is named.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-landed/"><code>:landed</code></a>
+</td>
+					<td>The full local gate came back green.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-parked/"><code>:parked</code></a>
+</td>
+					<td>Deliberately not now — with the reason, which is the deliverable.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="hypothesis">hypothesis</h2>
+<p>Falsifiable claims carrying a kill criterion, so a plan can be wrong on
+purpose rather than by accident.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/hypothesis-captured/"><code>:captured</code></a>
+</td>
+					<td>A belief worth testing exists, even half-formed.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-stated/"><code>:stated</code></a>
+</td>
+					<td>The claim and what would kill it are both written down.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-running/"><code>:running</code></a>
+</td>
+					<td>The experiment is named: what is run, on what, measured how.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-validated/"><code>:validated</code></a>
+</td>
+					<td>Evidence a stranger could check.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-killed/"><code>:killed</code></a>
+</td>
+					<td>Which criterion fired, and the evidence it fired on.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="track">track</h2>
+<p>Two stages, for something that needs recording rather than a workflow.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/track-open/"><code>:open</code></a>
+</td>
+					<td>The ticket exists; record what is true as it happens.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/track-done/"><code>:done</code></a>
+</td>
+					<td>The thing ended — say how.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity-registry">identity-registry</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/identity-registry-registry/"><code>:registry</code></a>
+</td>
+					<td>Always this stage: key bindings are evidence, not workflow.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="incident-response">incident-response</h2>
+<p>From first alarm to a reviewed postmortem.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/incident-declared/"><code>:declared</code></a>
+</td>
+					<td>Severity and impact are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-mitigated/"><code>:mitigated</code></a>
+</td>
+					<td>A commander signed the severity and the bleeding stopped.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-postmortem-due/"><code>:postmortem-due</code></a>
+</td>
+					<td>Derives from time alone: five days with no postmortem.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-analyzed/"><code>:analyzed</code></a>
+</td>
+					<td>A root cause and a postmortem summary exist.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-reviewed/"><code>:reviewed</code></a>
+</td>
+					<td>Sticky — accepted by somebody who did not write it.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="employee-onboarding">employee-onboarding</h2>
+<p>The checklist that runs itself, two branches rejoining at the end.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/onboarding-hired/"><code>:hired</code></a>
+</td>
+					<td>A start date, a signed contract, and the file to go with it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-equipped/"><code>:equipped</code></a>
+</td>
+					<td>IT signed off the equipment reference.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-accounts/"><code>:accounts-live</code></a>
+</td>
+					<td>IT signed off the account.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-ready/"><code>:ready</code></a>
+</td>
+					<td>Sticky — both branches landed and a buddy is named.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="okf-publish">okf-publish</h2>
+<p>Publishing a knowledge bundle, with review signed over its content hash.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/okf-publish-drafted/"><code>:drafted</code></a>
+</td>
+					<td>The bundle exists and its hash is on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-reviewed/"><code>:reviewed</code></a>
+</td>
+					<td>A reviewer vouched for it, signing over that hash.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-approved/"><code>:approved</code></a>
+</td>
+					<td>An owner authorised release over the same hash.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-published/"><code>:published</code></a>
+</td>
+					<td>Public — and it un-publishes if the bundle is revised.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="renovate-migration">renovate-migration</h2>
+<p>Moving a repository from Dependabot to Renovate, with a probe keeping it honest.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-planned/"><code>:planned</code></a>
+</td>
+					<td>An approach is written down.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-configured/"><code>:configured</code></a>
+</td>
+					<td>Renovate is in, Dependabot is out, and the probe agrees.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-verified/"><code>:verified</code></a>
+</td>
+					<td>A dashboard, a first PR, and a maintainer&rsquo;s approval.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="supply-chain-release">supply-chain-release</h2>
+<p>A release as evidence, with four-eyes approval.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-built/"><code>:built</code></a>
+</td>
+					<td>CI signed which commit produced these bytes.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM and provenance, each attested within a day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, recently.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-approved/"><code>:approved</code></a>
+</td>
+					<td>Sticky — approved by somebody who is not the pipeline.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-withheld/"><code>:withheld</code></a>
+</td>
+					<td>A decision not to ship, with the reason on record.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="automated-release">automated-release</h2>
+<p>The same, for a pipeline that ships with no human in the loop.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/automated-release-built/"><code>:built</code></a>
+</td>
+					<td>CI signed which commit produced these bytes.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/automated-release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM and provenance, each attested within a day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/automated-release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, recently.</td>
+			</tr>
+	</tbody>
+</table>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/runbooks" term="runbooks" label="runbooks"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/></entry><entry><title type="html">Stages</title><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/derived-beats-declared/?utm_source=atom_feed" rel="related" type="text/html" title="Derived beats declared"/><id>https://tik.projects.metio.wtf/concepts/stages/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Position in a process as a fixpoint over the reached set — synchronous sweeps, sticky milestones, and regression by derivation.</blockquote><p>A process defines stages. Each stage names its prerequisites (<code>:after</code>) and
+the conditions that must hold to reach it (<code>:guards</code>). Reaching a stage is
+never an action somebody takes; it is a conclusion.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:resolved</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:triaged</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:resolution</span> <span class="ss">:ref</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">          <span class="p">[</span><span class="ss">:or</span> <span class="p">[</span><span class="ss">:not</span> <span class="p">[</span><span class="ss">:fact=</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">           <span class="p">[</span><span class="ss">:stage-reached</span> <span class="ss">:reproducible</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>That second guard reads &ldquo;technical implies reproduced&rdquo; — material
+implication written out, because the vocabulary has <code>:or</code> and <code>:not</code> and
+needs no separate conditional.</p>
+<h2 id="the-reached-set-is-a-fixpoint">The reached set is a fixpoint</h2>
+<p>Derivation computes the set of reached stages by iterating to closure:
+every stage whose prerequisites are reached and whose guards hold joins the
+set, which may in turn enable further stages, until nothing changes.</p>
+<p>Each iteration is a <strong>synchronous sweep</strong>: every stage is evaluated against
+the snapshot taken at the start of the sweep, and all newly enabled stages
+are added at once. Firing one stage at a time gives order-dependent answers
+even on definitions the linter accepts, because a later stratum negating an
+earlier one can jump the queue. The synchronous sweep is normative — a TLA+
+model exhibits the counterexample, and a conformance corpus case pins the
+correct answer.</p>
+<p>Because <code>[:not [:stage-reached …]]</code> is negation inside a fixpoint, the
+linter enforces <strong>stratified negation</strong>: a definition may only negate
+stages in a strictly earlier stratum. That is what makes determinism
+provable rather than incidental.</p>
+<h2 id="regression-is-by-derivation">Regression is by derivation</h2>
+<p>Nothing rolls a ticket back. Withdraw the evidence and the conclusion stops
+following:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik retract <span class="m">3184</span> resolution.ref --reason <span class="s2">&#34;wrong commit&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="gp">$</span> tik status <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">stage:   triaged (reached: received, triaged)
+</span></span></span></code></pre></div><p>The same holds for a dispute, and for a fact that a schema no longer
+accepts. The board cannot show a stage the evidence does not support,
+because there is no stored stage to go stale.</p>
+<h2 id="sticky-milestones">Sticky milestones</h2>
+<p>Some stages are milestones: reaching them once is a historical fact that
+later evidence does not undo. <code>:stage/sticky? true</code> says so, and the fold
+carries such a stage forward once any prefix of the log reached it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:closed</span> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:resolved</span><span class="p">]</span> <span class="ss">:stage/sticky?</span> <span class="nv">true</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:customer</span> <span class="ss">:ack</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>A customer who withdraws their acknowledgement does not un-close the
+ticket. The log shows both truths — it was closed, and the ack was
+withdrawn — and the derived present misrepresents neither.</p>
+<p>Sticky is monotone <strong>in fold position</strong>, not in the event set. The reached
+set is a function of the whole trajectory, so an event that arrives by
+merge carrying an earlier timestamp splices a new prefix into that
+trajectory and every later prefix is re-derived. A replica can therefore
+hold a sticky reach, sync, and no longer derive it. Convergence is
+unaffected — the same event set always derives the same answer — but a
+reach observed before a sync is not promised to survive it, which is why an
+effect pipeline records that it fired as its own fact.</p>
+<h2 id="time">Time</h2>
+<p>Time enters derivation as an explicit <code>now</code> argument. The kernel reads no
+clock of its own, which is what makes a re-derivation years from now
+reproducible.</p>
+<p>Guards read the claimed clock — the <code>:at</code> an actor asserted — by default,
+and each fold step evaluates at its event&rsquo;s <code>:at</code> <strong>clamped to the read&rsquo;s
+<code>now</code></strong>. No step acts as though more time has passed than actually has, so
+a postdated event cannot buy the 48 hours an <code>:elapsed-since</code> guard is
+waiting for. The clamp lifts by itself once that time really passes.</p>
+<h2 id="several-stages-at-once">Several stages at once</h2>
+<p>A process is a graph, not a line, so a ticket can sit at several current
+stages at the same time — two branch tips, both maximal. <code>tik status</code>
+reports the reached set and the current tips; <code>tik debug</code> shows every
+sweep and every guard verdict that produced them.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/><category scheme="https://tik.projects.metio.wtf/tags/fixpoint" term="fixpoint" label="fixpoint"/><category scheme="https://tik.projects.metio.wtf/tags/sticky" term="sticky" label="sticky"/><category scheme="https://tik.projects.metio.wtf/tags/derivation" term="derivation" label="derivation"/></entry></feed>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Supply-Chain on tik</title><link href="https://tik.projects.metio.wtf/tags/supply-chain/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/supply-chain/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/supply-chain/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/supply-chain/</id><entry><title type="html">Evidence</title><link href="https://tik.projects.metio.wtf/evidence/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/evidence/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T08:44:03+02:00</updated><content type="html"><![CDATA[<blockquote>The published bundle format, and how anyone re-derives what a bundle&rsquo;s facts imply under the rules it pinned.</blockquote><p>A ticket travels as an evidence bundle: the signed facts, the hash-pinned
+rules that judge them, the registry the signatures check against, and a
+script that checks the lot with coreutils. Whoever holds one recomputes
+the answer.</p>
+<p>That is the whole claim, and it is a narrow one. A build system tells you
+a process ran. A bundle tells you <em>which</em> rules judged it, what they
+required, what was supplied, and lets you recompute the verdict on a
+laptop with no network, years later.</p>
+<ul>
+<li><a href="/evidence/bundle-format/">Bundle format</a>
+ — the on-disk contract, what
+a reader may assume, and what forces a version bump.</li>
+<li><a href="/evidence/re-deriving/">Re-deriving a bundle</a>
+ — <code>tik rederive</code>, the
+HTTP service, and what a badge is allowed to say.</li>
+<li><a href="/evidence/slsa/">SLSA, said honestly</a>
+ — what the release processes
+demand, mapped onto SLSA&rsquo;s requirements, and where that mapping stops.</li>
+</ul>
+<h2 id="what-a-bundle-is-worth">What a bundle is worth</h2>
+<p>A guard checks that a trusted attester said something. It never reads the
+SBOM. So a derivation is exactly as good as the attesters named in it,
+and that belongs in the first paragraph rather than a footnote — the
+signatures prove <em>who claimed</em>, the hashes prove <em>what was claimed</em>, and
+the definition proves <em>which rule accepted it</em>.</p>
+<p>What the format adds on top of a signed archive is the rules. Two people
+holding the same bundle reach the same stages, because the definition
+that judged the ticket travels inside it, addressed by its own hash.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/supply-chain" term="supply-chain" label="supply-chain"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry><entry><title type="html">SLSA, said honestly</title><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/evidence/slsa/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T08:44:03+02:00</updated><content type="html"><![CDATA[<blockquote>What the release processes demand, mapped onto SLSA&rsquo;s build requirements — a claim about the definitions, never about a ticket.</blockquote><p>The stages of <a href="/processes/supply-chain-release/"><code>supply-chain-release</code></a>
+ and
+<a href="/processes/automated-release/"><code>automated-release</code></a>
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a <strong>trusted attester said</strong>
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called <code>slsa-l3</code> would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.</p>
+<p>What <code>supply-chain-release</code> demands maps onto SLSA&rsquo;s build requirements like
+this — and the table is a claim about <strong>the definition</strong>, never about any
+ticket that pins it. <code>automated-release</code> demands the same, minus the two-person
+row:</p>
+<table>
+	<thead>
+			<tr>
+					<th>SLSA asks for</th>
+					<th>This definition demands</th>
+					<th>Stage</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>Provenance exists, generated by the build platform</td>
+					<td>An attestation of claim <code>:provenance</code>, signed by the <code>ci</code> role, within a day of the build</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>Provenance is authenticated and distributed</td>
+					<td>The attestation is a signed event in the ticket&rsquo;s own log, and it travels in the evidence bundle</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>The build is described by its inputs</td>
+					<td><code>commit</code> signed by <code>ci</code>, plus <code>artifact.digest</code> and a <code>checksums/</code> artifact</td>
+					<td><code>built</code></td>
+			</tr>
+			<tr>
+					<td>Dependencies are known</td>
+					<td>An attestation of claim <code>:sbom</code>, within a day</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>Two-person review of what ships</td>
+					<td><code>approval</code> signed by <code>release-manager</code>, and <code>[:different-person [:commit] [:approval]]</code></td>
+					<td><code>approved</code></td>
+			</tr>
+	</tbody>
+</table>
+<p>A build&rsquo;s SLSA level is a property of the build <strong>platform</strong>, and no ticket
+system can confer one. What this gives you instead is the thing an auditor
+actually asks for months later: which rules judged this release, what evidence
+was supplied, who signed it, and how to recompute the answer without trusting
+anybody&rsquo;s word.</p>
+<h2 id="carrying-the-publication-signature-into-your-bundles">Carrying the publication signature into your bundles</h2>
+<p>Adopting a definition preserves its <em>identity</em> — the address is over the parsed definition, so the pretty-printed
+copy in your store hashes to the same value. It does not bring the signature,
+so a bundle you produce carries the rules but not our word for them.</p>
+<p>To carry that too, copy the signed archive alongside:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">cp processes/by-hash/&lt;hash&gt;.edn      &lt;your-store&gt;/processes/by-hash/
+</span></span><span class="line"><span class="cl">cp processes/by-hash/&lt;hash&gt;.sig.*    &lt;your-store&gt;/processes/by-hash/
+</span></span><span class="line"><span class="cl">cat actors &gt;&gt; &lt;your-store&gt;/actors     # so the signature has a key to check against
+</span></span></code></pre></div><p>tik leaves an archive that already exists alone, and <code>tik bundle</code> ships every
+file whose name starts with the pinned hash. So your evidence bundles then
+carry <strong>our signature over the rules that judged your release</strong>, and the
+recipient&rsquo;s <code>verify.sh</code> checks it with <code>ssh-keygen</code> and nothing else:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">ok    sha256-c1cffcb2….sig.e8290a63236755f2 verifies as seb
+</span></span><span class="line"><span class="cl">bundle: PASS
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/slsa" term="slsa" label="slsa"/><category scheme="https://tik.projects.metio.wtf/tags/supply-chain" term="supply-chain" label="supply-chain"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/></entry></feed>

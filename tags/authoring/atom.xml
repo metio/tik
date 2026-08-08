@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Authoring on tik</title><link href="https://tik.projects.metio.wtf/tags/authoring/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/authoring/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/authoring/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/authoring/</id><entry><title type="html">Lint, simulate, test</title><link href="https://tik.projects.metio.wtf/authoring/lint-simulate-test/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Proving a definition does what you meant — before a real ticket depends on it.</blockquote><p>Three checks, in the order you reach for them.</p>
+<h2 id="lint">Lint</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik lint processes/support-request.edn
+</span></span></code></pre></div><p>The linter enforces what the kernel cannot:</p>
+<ul>
+<li><strong>The closed guard basis</strong> — only operators the declared
+<code>:process/guard-vocab</code> admits.</li>
+<li><strong>Graph sanity</strong> — every <code>:after</code> names a stage that exists, and no
+cycles.</li>
+<li><strong>Stratified negation</strong> — <code>[:not [:stage-reached …]]</code> may only name a
+stage in a strictly earlier stratum, which is what makes the fixpoint
+provably deterministic.</li>
+<li><strong>Facts over flags</strong> — a warning where a bare boolean stands in for
+information worth recording.</li>
+<li><strong>Prefix boundaries</strong> — an <code>:artifact</code> prefix that does not end at a path
+boundary matches more than its author expects.</li>
+</ul>
+<p>With no argument it lints the <em>store</em> instead: open tickets missing
+descriptions, titles, or signatures.</p>
+<h2 id="simulate">Simulate</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik sim processes/support-request.edn
+</span></span></code></pre></div><p>A scratch ticket against a definition that reloads on every save. Assert
+facts, watch stages derive, and edit the definition in another window —
+the fastest loop for finding out that a guard means something other than
+what you read into it.</p>
+<h2 id="test">Test</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">test</span> processes/support-request.tests.edn
+</span></span></code></pre></div><p>Scripted cases: evidence in, expected stages out. Deterministic — a fixed
+epoch, pure derivation, no store — and a failing case prints <code>explain</code>, so
+the process itself says why a stage did not derive.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:test/process</span> <span class="s">&#34;support-request.edn&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:test/cases</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:case/name</span> <span class="s">&#34;facts alone do not triage — the triager role must sign&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/steps</span> <span class="p">[[</span><span class="ss">:actor</span> <span class="s">&#34;rando&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="p">[</span><span class="ss">:set</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="p">[</span><span class="ss">:set</span> <span class="p">[</span><span class="ss">:severity</span><span class="p">]</span> <span class="ss">:high</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/expect</span> <span class="p">{</span><span class="ss">:excludes</span> <span class="o">#</span><span class="p">{</span><span class="ss">:triaged</span><span class="p">}}}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:case/name</span> <span class="s">&#34;uncategorized tickets escalate after 48h&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/steps</span> <span class="p">[[</span><span class="ss">:now</span> <span class="s">&#34;+PT49H&#34;</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/expect</span> <span class="p">{</span><span class="ss">:includes</span> <span class="o">#</span><span class="p">{</span><span class="ss">:escalated</span><span class="p">}}}]}</span>
+</span></span></code></pre></div><p><code>[:now &quot;+PT49H&quot;]</code> moves the evaluation clock, so time-gated stages are
+testable without waiting and without a mock. <code>[:actor &quot;rando&quot;]</code> switches
+who is signing, which is how a <code>:signed-by</code> guard gets tested from both
+sides.</p>
+<p>Write the negative cases. &ldquo;A triager categorizing reaches <code>:triaged</code>&rdquo; is
+the easy half; &ldquo;facts alone do not triage&rdquo; is the half that catches a
+<code>:signed-by</code> you dropped.</p>
+<h2 id="publish">Publish</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik process sign support-request
+</span></span></code></pre></div><p>Signing archives the definition by content hash and signs those canonical
+bytes. The hash stays the identity; the signature is the authority behind
+it.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/authoring" term="authoring" label="authoring"/><category scheme="https://tik.projects.metio.wtf/tags/lint" term="lint" label="lint"/><category scheme="https://tik.projects.metio.wtf/tags/testing" term="testing" label="testing"/><category scheme="https://tik.projects.metio.wtf/tags/simulation" term="simulation" label="simulation"/></entry><entry><title type="html">Writing a definition</title><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/authoring/lint-simulate-test/?utm_source=atom_feed" rel="related" type="text/html" title="Lint, simulate, test"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/authoring/writing-a-definition/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>The shape of a process definition, the closed guard vocabulary, and the design law that separates a process from a task list.</blockquote><h2 id="the-design-law">The design law</h2>
+<p><strong>A stage is defined by what must be TRUE to reach it, never by who moved
+what.</strong> Ask of every stage: what evidence, on record, would convince a
+sceptical auditor a year from now? Write that as guards. If the honest
+answer is &ldquo;somebody said so&rdquo;, then make <em>that</em> the fact — a named person&rsquo;s
+signature on a named claim — rather than a status somebody sets.</p>
+<p>A definition whose stages are really a checklist of activities is a task
+list wearing a process costume. It derives nothing, because nothing about
+it follows from evidence.</p>
+<h2 id="the-shape">The shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:process/id</span> <span class="ss">:support-request</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/version</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/guard-vocab</span> <span class="mi">2</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/roles</span>
+</span></span><span class="line"><span class="cl"> <span class="p">{</span><span class="ss">:triager</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;seb&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="ss">:billing</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;billing&#34;</span><span class="p">]}}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/facts</span>
+</span></span><span class="line"><span class="cl"> <span class="p">{[</span><span class="ss">:category</span><span class="p">]</span>        <span class="p">[</span><span class="ss">:enum</span> <span class="ss">:billing</span> <span class="ss">:technical</span> <span class="ss">:account</span> <span class="ss">:abuse</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">[</span><span class="ss">:severity</span><span class="p">]</span>        <span class="p">[</span><span class="ss">:enum</span> <span class="ss">:low</span> <span class="ss">:normal</span> <span class="ss">:high</span> <span class="ss">:critical</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">[</span><span class="ss">:resolution</span> <span class="ss">:ref</span><span class="p">]</span> <span class="p">[</span><span class="ss">:string</span> <span class="p">{</span><span class="ss">:min</span> <span class="mi">8</span><span class="p">}]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/stages</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:stage/id</span> <span class="ss">:received</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:hint</span> <span class="s">&#34;kb/runbooks/support-request-received.md&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:triaged</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:after</span> <span class="p">[</span><span class="ss">:received</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:hint</span> <span class="s">&#34;kb/runbooks/support-request-triaged.md&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">            <span class="p">[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:severity</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">            <span class="p">[</span><span class="ss">:signed-by</span> <span class="ss">:triager</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]]]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:closed</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:after</span> <span class="p">[</span><span class="ss">:resolved</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:stage/sticky?</span> <span class="nv">true</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:customer</span> <span class="ss">:ack</span><span class="p">]]]}]}</span>
+</span></span></code></pre></div><p><code>:process/facts</code> declares the schema for each path, which is what lets
+<code>explain</code> tell somebody not merely that a fact is missing but what shape it
+must take — and what lets a web form be generated from the reason.</p>
+<p><code>:hint</code> names a runbook for the stage. Those files are published here under
+<a href="/runbooks/">Runbooks</a>
+, so the hint a person sees in <code>explain</code> resolves to
+a page.</p>
+<h2 id="the-guard-vocabulary">The guard vocabulary</h2>
+<p>Twelve operators, closed and versioned. New keywords need a version bump,
+because the semantics of a verifiable kernel have to be enumerable:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Operator</th>
+					<th>Holds when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>[:fact path]</code></td>
+					<td>a value stands at <code>path</code></td>
+			</tr>
+			<tr>
+					<td><code>[:fact= path v]</code></td>
+					<td>that value equals <code>v</code></td>
+			</tr>
+			<tr>
+					<td><code>[:artifact &quot;prefix&quot;]</code></td>
+					<td>an attached artifact&rsquo;s path starts with <code>prefix</code></td>
+			</tr>
+			<tr>
+					<td><code>[:signed-by :role path]</code></td>
+					<td>the fact at <code>path</code> was asserted by a member of <code>:role</code></td>
+			</tr>
+			<tr>
+					<td><code>[:stage-reached :id]</code></td>
+					<td>that stage is in the reached set</td>
+			</tr>
+			<tr>
+					<td><code>[:elapsed-since :ticket/create &quot;PT48H&quot;]</code></td>
+					<td>that much time has passed</td>
+			</tr>
+			<tr>
+					<td><code>[:attested-within claim &quot;P7D&quot;]</code></td>
+					<td>a fresh-enough attestation of <code>claim</code> exists</td>
+			</tr>
+			<tr>
+					<td><code>[:different-person path-a path-b]</code></td>
+					<td>two facts came from distinct actors</td>
+			</tr>
+			<tr>
+					<td><code>[:malli schema]</code></td>
+					<td>the fact map satisfies a schema</td>
+			</tr>
+			<tr>
+					<td><code>[:and …]</code> <code>[:or …]</code> <code>[:not …]</code></td>
+					<td>the connectives</td>
+			</tr>
+	</tbody>
+</table>
+<p><code>:different-person</code> is the four-eyes principle as a derivable condition.
+<code>:attested-within</code> closes the stale-evidence gap: a replayed &ldquo;CI green&rdquo;
+from last month is cryptographically valid and fails the guard honestly.</p>
+<p>There is no conditional operator, because material implication already
+spells one — &ldquo;technical implies reproduced&rdquo; is:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">[</span><span class="ss">:or</span> <span class="p">[</span><span class="ss">:not</span> <span class="p">[</span><span class="ss">:fact=</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[</span><span class="ss">:stage-reached</span> <span class="ss">:reproducible</span><span class="p">]]</span>
+</span></span></code></pre></div><h2 id="guards-never-query">Guards never query</h2>
+<p>A guard reads one ticket&rsquo;s own log and nothing else. No service call, no
+database lookup, no other ticket, no clock of its own. Anything from the
+outside world enters as a signed attestation event first, which is what
+keeps evaluation offline, reproducible, and true years from now.</p>
+<h2 id="facts-over-flags">Facts over flags</h2>
+<p>Prefer a fact that carries information to a boolean that carries a
+decision. <code>[:customer :ack] = true</code> records that somebody clicked; a
+richer fact records what they actually agreed to. The linter warns about
+bare booleans for this reason, and the warning is opt-out per definition
+when a flag genuinely is the whole truth.</p>
+<h2 id="versions-and-pinning">Versions and pinning</h2>
+<p>A ticket pins the definition&rsquo;s content hash at creation. Editing a
+definition therefore changes its identity and leaves existing tickets
+deriving under the version that judged them, until somebody moves each one
+with <code>tik reprocess</code>. The version number is a human label; the hash is the
+identity.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/authoring" term="authoring" label="authoring"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/><category scheme="https://tik.projects.metio.wtf/tags/guards" term="guards" label="guards"/><category scheme="https://tik.projects.metio.wtf/tags/edn" term="edn" label="edn"/></entry></feed>

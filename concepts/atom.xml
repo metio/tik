@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Concepts on tik</title><link href="https://tik.projects.metio.wtf/concepts/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/concepts/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/concepts/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/concepts/</id><entry><title type="html">Derived beats declared</title><link href="https://tik.projects.metio.wtf/concepts/derived-beats-declared/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="related" type="text/html" title="Stages"/><id>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>The one law — if something follows from the log, storing it as authoritative state is a bug.</blockquote><p><strong>If something can be derived, storing it as authoritative state is a
+bug.</strong> That is the whole law, and every design question in tik resolves
+against it.</p>
+<p>A ticket&rsquo;s stage is the obvious case. It is never written down anywhere. It
+is <code>f(events, now)</code> — a pure function of the ticket&rsquo;s own event log, the
+process definition that ticket pinned, and the instant you are asking
+about. Ask twice with the same inputs and you get the same answer, forever.</p>
+<h2 id="what-the-law-buys">What the law buys</h2>
+<p><strong>Correctness by construction.</strong> A stored status can disagree with the
+facts; a derived one cannot. When somebody retracts the approval that a
+ticket&rsquo;s <code>:approved</code> stage depended on, the stage regresses on the next
+read, with no rollback step, no cleanup job, and no window during which the
+board is lying.</p>
+<p><strong>Every question about every moment.</strong> Because <code>now</code> is an argument rather
+than an ambient clock, &ldquo;what was true on March 1&rdquo; is answered by evaluating
+March 1:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik status <span class="m">3184</span> --at 2026-03-01T00:00:00Z
+</span></span></code></pre></div><p><strong>Replication without coordination.</strong> There is no authoritative mutable
+cell to serialize behind a lock, so replicas merge by unioning their event
+sets and each derives the same answer independently. See
+<a href="/concepts/replication/">Replication</a>
+.</p>
+<p><strong>Auditability that survives the tool.</strong> The conclusion is reproducible
+from the signed bytes by anyone, including someone who does not run tik.
+<code>tik bundle</code> packs one ticket into a tarball that verifies with coreutils
+and <code>ssh-keygen</code> alone, and <code>tik rederive</code> recomputes the stages it
+implies from the rules travelling inside it. See
+<a href="/evidence/">Evidence</a>
+.</p>
+<h2 id="what-the-law-costs">What the law costs</h2>
+<p>Derivation is work done on every read, and the law forbids the obvious
+shortcut of remembering the answer. tik pays that cost deliberately and
+keeps it bounded: the fold is linear in events and polynomial in the size
+of the process definition, which is authored and small. Fact lookups are
+served from indexes the fold maintains, so history length does not turn
+into a quadratic.</p>
+<p>Performance problems get indexes, caches, or a different storage backend.
+They never get new authoritative state. A cache that some lens keeps is
+fine as long as nothing treats it as the truth — the truth is recomputed
+from the events.</p>
+<h2 id="the-companion-law">The companion law</h2>
+<p><strong>Coordination-free by construction: no leader, no lock, no consensus.</strong>
+Every operation is correct on arbitrarily many replicas that share nothing
+and reconcile only by eventually unioning their grow-only,
+content-addressed event sets.</p>
+<p>Reads consult one ticket&rsquo;s own log, so they shard without limit. Writes are
+either content-addressed events that are a pure function of their intent —
+two replicas forming the same intent emit byte-identical events, and the
+union keeps one — or appends whose contention resolves by <em>derivation</em>:
+two competing claims about a fact reduce to <code>:conflicted</code>, a derived state,
+rather than a lock to be won.</p>
+<p>A design that needs a replica to win an election, hold a lock, or agree
+with a quorum before it can act breaks this law as surely as caching a
+derived value breaks the first one.</p>
+<h2 id="what-the-kernel-refuses-to-answer">What the kernel refuses to answer</h2>
+<p><strong>The kernel answers &ldquo;what follows from these signed facts?&rdquo; It never
+answers &ldquo;what should happen next?&rdquo;</strong> There are no workflow transitions, no
+scheduler, no policy engine, and no external queries in the core. A guard
+consults one ticket&rsquo;s log and nothing else — never a service, never another
+ticket, never a clock of its own.</p>
+<p>Notifications, inboxes, webhooks, boards, and agent surfaces are all
+porcelain over derivations. That boundary is what keeps evaluation offline,
+reproducible, and true years from now.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/law" term="law" label="law"/><category scheme="https://tik.projects.metio.wtf/tags/derivation" term="derivation" label="derivation"/><category scheme="https://tik.projects.metio.wtf/tags/design" term="design" label="design"/></entry><entry><title type="html">Events and facts</title><link href="https://tik.projects.metio.wtf/concepts/events-and-facts/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><id>https://tik.projects.metio.wtf/concepts/events-and-facts/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Seven event types, five fact statuses, and the content addressing that makes a store auditable with coreutils.</blockquote><p>A ticket is an append-only set of events. Everything else about it is
+computed.</p>
+<h2 id="seven-event-types">Seven event types</h2>
+<p>The vocabulary is closed and versioned, because the semantics of a
+verifiable kernel have to be enumerable:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Event</th>
+					<th>Meaning</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>:ticket/create</code></td>
+					<td>the ticket exists, pinned to a process definition by hash</td>
+			</tr>
+			<tr>
+					<td><code>:fact/assert</code></td>
+					<td>a claim about a path: <code>[:severity] = :high</code></td>
+			</tr>
+			<tr>
+					<td><code>:fact/retract</code></td>
+					<td>withdraw a claim, with no replacement</td>
+			</tr>
+			<tr>
+					<td><code>:fact/dispute</code></td>
+					<td>reject a claim, with a reason</td>
+			</tr>
+			<tr>
+					<td><code>:artifact/attach</code></td>
+					<td>a file, stored and addressed by its hash</td>
+			</tr>
+			<tr>
+					<td><code>:attestation/add</code></td>
+					<td>a signed claim the kernel does not interpret</td>
+			</tr>
+			<tr>
+					<td><code>:process/migrate</code></td>
+					<td>re-pin this ticket to a newer definition</td>
+			</tr>
+	</tbody>
+</table>
+<p>Things that look like they need their own type turn out not to. Comments
+are artifacts — text blobs attached by hash. Links are facts under a
+<code>[:link …]</code> path. Work records are <code>:work</code> attestation claims. Witness
+countersignatures are detached sidecars over a head rather than events,
+because an event would move the very head it witnesses.</p>
+<h2 id="content-addressing">Content addressing</h2>
+<p>An event&rsquo;s id is the SHA-256 of its canonical bytes, and the stored file is
+named for that id. The bytes on disk are exactly the hashed region, so a
+store audits with nothing but coreutils:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">sha256sum tickets/*/events/*.edn   <span class="c1"># filename must equal the digest</span>
+</span></span></code></pre></div><p>Signatures never live inside the hashed region. They are detached sidecars
+alongside the event, which is what lets a second person add their signature
+to an event without changing its identity.</p>
+<p>Every event names its parents, forming a Merkle DAG. Parents carry
+integrity and causality — they are how a replica knows whether two writes
+saw each other. They never carry ordering: the fold orders by <code>(at, id)</code>
+over the event <em>set</em>, which is what makes the reducer total, commutative,
+and idempotent.</p>
+<h2 id="fact-status">Fact status</h2>
+<p>One function decides why a fact does or does not satisfy a guard, and
+guards consult nothing else:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Status</th>
+					<th>Meaning</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>:present</code></td>
+					<td>a value stands</td>
+			</tr>
+			<tr>
+					<td><code>:absent</code></td>
+					<td>nothing has been claimed</td>
+			</tr>
+			<tr>
+					<td><code>:retracted</code></td>
+					<td>withdrawn, no replacement offered</td>
+			</tr>
+			<tr>
+					<td><code>:disputed</code></td>
+					<td>rejected with a reason, and unusable until corrected</td>
+			</tr>
+			<tr>
+					<td><code>:conflicted</code></td>
+					<td>causally concurrent claims disagree</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="what-a-dispute-means">What a dispute means</h2>
+<p>A dispute rejects <strong>the value that stood when it was raised</strong>, so the
+assertion that answers it has to claim something else. Re-asserting the
+rejected value verbatim leaves the path <code>:disputed</code> — otherwise the party a
+dispute holds accountable could clear it in one command by retyping the
+same fact.</p>
+<p>A retraction clears disputes too, because the rejected claim is gone. A
+dispute raised on a path holding nothing rejects no particular value, so
+the first assertion answers it, which is what keeps a dispute from making a
+path permanently unusable.</p>
+<p>Disputes accumulate: several people may reject the same claim, and each
+withdraws only their own.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --reason <span class="s2">&#34;this is billing, not technical&#34;</span>
+</span></span><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --withdraw     <span class="c1"># takes back your own objection</span>
+</span></span></code></pre></div><h2 id="what-a-conflict-means">What a conflict means</h2>
+<p>When two replicas write the same path without having seen each other, and
+they disagree, the fact reads <code>:conflicted</code> and every guard that depends on
+it fails with a reason saying so. Nobody has to win. A later write that
+observed both supersedes them, and the conflict resolves by derivation.</p>
+<p>Concurrent writes that happen to <em>agree</em> are not a conflict — there is no
+disagreement to surface.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/events" term="events" label="events"/><category scheme="https://tik.projects.metio.wtf/tags/facts" term="facts" label="facts"/><category scheme="https://tik.projects.metio.wtf/tags/disputes" term="disputes" label="disputes"/><category scheme="https://tik.projects.metio.wtf/tags/storage" term="storage" label="storage"/></entry><entry><title type="html">Explain</title><link href="https://tik.projects.metio.wtf/concepts/explain/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><id>https://tik.projects.metio.wtf/concepts/explain/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T23:28:02+02:00</updated><content type="html"><![CDATA[<blockquote>The product surface — what evidence is missing, who may supply it, and when waiting is pointless.</blockquote><p>A traditional tracker exposes state. tik exposes <strong>justification</strong>: what is
+true, why it is true, and what evidence is missing next. <code>tik explain</code> is
+where that surfaces, and every other view is a rendering of it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✓ [:fact [:resolution :ref]]
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  blocks: :closed
+</span></span></span><span class="line"><span class="cl"><span class="go">  (see: kb/runbooks/support-request-resolved.md)
+</span></span></span></code></pre></div><p>Nothing in that block is speculation. The checkmarks are guards that
+already hold, the crosses are structured reasons produced by guard
+evaluation, <code>blocks</code> is the downstream closure, and the hint is the
+<a href="/runbooks/">runbook</a>
+ the definition declares for that stage.</p>
+<h2 id="reasons-are-data">Reasons are data</h2>
+<p>The prose lives in this lens only. Underneath, each missing step is a
+structured reason carrying the path, the schema, the role, the actor whose
+signature already counted — whatever the guard knows:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --edn
+</span></span></code></pre></div><p>That data contract is stable plumbing; the English is not. It renders as
+CLI text, as web forms built from the schemas in the reasons, and as agent
+task specifications whose acceptance criteria <em>are</em> the guards.</p>
+<p>Reasons are sorted by <strong>who can act on them right now</strong>: values anyone can
+supply first, then corrections, artifacts, specific people, attestations,
+other stages, and finally time, which is nobody&rsquo;s to act on.</p>
+<h2 id="who-can-act">Who can act</h2>
+<p><code>--actor</code> filters a block to what one person can do, and counts the rest
+rather than hiding it:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span> --actor alice
+</span></span><span class="line"><span class="cl"><span class="go">To reach :resolved:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ attach an artifact whose path starts with &#34;repro/&#34;
+</span></span></span><span class="line"><span class="cl"><span class="go">  … 1 step(s) waiting on others or time
+</span></span></span></code></pre></div><p><code>tik next</code> rotates the same derivation into an inbox — for a person, or for
+a whole role:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik next --actor alice
+</span></span><span class="line"><span class="cl">tik next --role :triager
+</span></span></code></pre></div><p>The inbox ranks by unlock impact, so the step that frees the most
+downstream work comes first, and it holds back tickets whose dependency
+links point at unsettled upstream work.</p>
+<h2 id="waiting-versus-impossible">Waiting versus impossible</h2>
+<p>Some blocked tickets are waiting for a colleague. Others can never move at
+all — a role with no members, a negation over a sticky stage already
+reached, a prerequisite that is itself dead. Those look identical until you
+say so, and telling somebody to wait for something that will never arrive
+is the failure that matters most for a tool whose whole claim is answering
+what is blocking.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain 9c21
+</span></span><span class="line"><span class="cl"><span class="go">To reach :approved (unreachable):
+</span></span></span><span class="line"><span class="cl"><span class="go">  ⊘ fact [:sign-off] must be asserted by a member of role :auditor
+</span></span></span><span class="line"><span class="cl"><span class="go">      (currently by &#34;seb&#34;) — nobody can ever do this
+</span></span></span></code></pre></div><p>The derivation stays conservative: a step is only called impossible when it
+is provably undischargeable from the definition and the log. A choice dies
+only when every one of its branches does. Anything merely waiting keeps its
+<code>✗</code>.</p>
+<h2 id="proving-it">Proving it</h2>
+<p><code>tik causal</code> answers the auditor&rsquo;s question — which signed events made each
+reached stage true, with negations and time saying so honestly:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik causal <span class="m">3184</span>
+</span></span></code></pre></div><p>And <code>tik whatif</code> asks the counterfactual without writing anything:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik whatif <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:low +P2D retract:category
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/explain" term="explain" label="explain"/><category scheme="https://tik.projects.metio.wtf/tags/next" term="next" label="next"/><category scheme="https://tik.projects.metio.wtf/tags/inbox" term="inbox" label="inbox"/><category scheme="https://tik.projects.metio.wtf/tags/reasons" term="reasons" label="reasons"/></entry><entry><title type="html">Replication</title><link href="https://tik.projects.metio.wtf/concepts/replication/?utm_source=atom_feed" rel="alternate" type="text/html"/><id>https://tik.projects.metio.wtf/concepts/replication/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Merging by set union — no leader, no lock, no consensus, and no file-level conflicts to resolve by hand.</blockquote><p>A tik store replicates by copying files. Two clones append independently,
+merge by set union, and derive the same answer — because derivation is a
+pure function of the event set and events are addressed by their content.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">git pull <span class="o">&amp;&amp;</span> git push     <span class="c1"># this is the replication protocol</span>
+</span></span></code></pre></div><h2 id="why-the-merge-is-trivial">Why the merge is trivial</h2>
+<p>Every event lives in its own file whose name is the SHA-256 of its bytes.
+Two people adding evidence to the same ticket create different files, so
+the merge is a union of directories and git never sees a conflicting hunk.
+Two people making the <em>identical</em> claim produce byte-identical files with
+the same name, and the union keeps one — deduplication for free.</p>
+<p>That is why merging never requires a human to resolve a text conflict
+inside a ticket. What it can produce is a <em>derived</em> disagreement, and that
+is the point.</p>
+<h2 id="disagreement-resolves-by-derivation">Disagreement resolves by derivation</h2>
+<p>When two replicas wrote the same fact path without having seen each other,
+and their claims differ, the fact reads <code>:conflicted</code>. Every guard reading
+it fails with a reason naming the competing claims, and <code>tik explain</code> asks
+for a value that supersedes them:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik explain <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">To reach :triaged:
+</span></span></span><span class="line"><span class="cl"><span class="go">  ✗ fact [:category] has conflicting concurrent assertions — one must
+</span></span></span><span class="line"><span class="cl"><span class="go">    supersede (ADR 0003)
+</span></span></span></code></pre></div><p>Nobody wins an election. A later write that observed both competitors
+settles it, and the conflict disappears from the derivation. Parents are
+what make &ldquo;observed&rdquo; a checkable claim rather than a guess.</p>
+<h2 id="no-leader-no-lock-no-consensus">No leader, no lock, no consensus</h2>
+<p>No operation needs a leader, a distributed lock, or a quorum to be correct:</p>
+<ul>
+<li><strong>Reads shard without limit.</strong> A derivation reads one ticket&rsquo;s own log
+and nothing else. Guards never query across tickets, so N stateless
+replicas across M shards scale reads with zero coordination.</li>
+<li><strong>Writes never resolve by lock.</strong> A write is either a content-addressed
+event that is a pure function of its intent, or an append whose
+contention resolves by derivation.</li>
+<li><strong>Self-minted events are deterministic.</strong> Anything a replica mints on its
+own — a recurring ticket, a scheduled probe — derives its id and every
+byte, <code>:at</code> included, from its inputs. Two replicas firing the same
+schedule concurrently mint the same event, and the union keeps one.</li>
+</ul>
+<p>A tik replica is stateless by construction, so horizontal scaling is the
+preferred deployment.</p>
+<h2 id="partial-logs-say-so">Partial logs say so</h2>
+<p>Between syncs, a replica&rsquo;s copy of a ticket is incomplete by definition,
+and a derivation over a partial log is not merely incomplete — it is
+confidently wrong in a specific way. Ancestry the replica cannot see reads
+as concurrency, so writes that supersede each other in a linear history
+surface as <code>:conflicted</code>, and explain asks somebody to resolve a conflict
+that does not exist.</p>
+<p>Every lens therefore checks whether referenced ancestors are missing and
+says so, rather than presenting a mid-sync view with the confidence of a
+complete one.</p>
+<h2 id="backends">Backends</h2>
+<p>The file store is the signed interchange format: a <code>tickets/</code> tree that
+<code>sha256sum</code> audits and git replicates. The SQLite backend keeps the same
+events in a single file when that suits operations better. Convert in place
+with <code>tik store migrate --to sqlite|file</code> — events and their detached
+signatures both travel.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/replication" term="replication" label="replication"/><category scheme="https://tik.projects.metio.wtf/tags/git" term="git" label="git"/><category scheme="https://tik.projects.metio.wtf/tags/crdt" term="crdt" label="crdt"/><category scheme="https://tik.projects.metio.wtf/tags/conflicts" term="conflicts" label="conflicts"/><category scheme="https://tik.projects.metio.wtf/tags/scaling" term="scaling" label="scaling"/></entry><entry><title type="html">Stages</title><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/derived-beats-declared/?utm_source=atom_feed" rel="related" type="text/html" title="Derived beats declared"/><id>https://tik.projects.metio.wtf/concepts/stages/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Position in a process as a fixpoint over the reached set — synchronous sweeps, sticky milestones, and regression by derivation.</blockquote><p>A process defines stages. Each stage names its prerequisites (<code>:after</code>) and
+the conditions that must hold to reach it (<code>:guards</code>). Reaching a stage is
+never an action somebody takes; it is a conclusion.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:resolved</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:triaged</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:resolution</span> <span class="ss">:ref</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">          <span class="p">[</span><span class="ss">:or</span> <span class="p">[</span><span class="ss">:not</span> <span class="p">[</span><span class="ss">:fact=</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">           <span class="p">[</span><span class="ss">:stage-reached</span> <span class="ss">:reproducible</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>That second guard reads &ldquo;technical implies reproduced&rdquo; — material
+implication written out, because the vocabulary has <code>:or</code> and <code>:not</code> and
+needs no separate conditional.</p>
+<h2 id="the-reached-set-is-a-fixpoint">The reached set is a fixpoint</h2>
+<p>Derivation computes the set of reached stages by iterating to closure:
+every stage whose prerequisites are reached and whose guards hold joins the
+set, which may in turn enable further stages, until nothing changes.</p>
+<p>Each iteration is a <strong>synchronous sweep</strong>: every stage is evaluated against
+the snapshot taken at the start of the sweep, and all newly enabled stages
+are added at once. Firing one stage at a time gives order-dependent answers
+even on definitions the linter accepts, because a later stratum negating an
+earlier one can jump the queue. The synchronous sweep is normative — a TLA+
+model exhibits the counterexample, and a conformance corpus case pins the
+correct answer.</p>
+<p>Because <code>[:not [:stage-reached …]]</code> is negation inside a fixpoint, the
+linter enforces <strong>stratified negation</strong>: a definition may only negate
+stages in a strictly earlier stratum. That is what makes determinism
+provable rather than incidental.</p>
+<h2 id="regression-is-by-derivation">Regression is by derivation</h2>
+<p>Nothing rolls a ticket back. Withdraw the evidence and the conclusion stops
+following:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="gp">$</span> tik retract <span class="m">3184</span> resolution.ref --reason <span class="s2">&#34;wrong commit&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="gp">$</span> tik status <span class="m">3184</span>
+</span></span><span class="line"><span class="cl"><span class="go">stage:   triaged (reached: received, triaged)
+</span></span></span></code></pre></div><p>The same holds for a dispute, and for a fact that a schema no longer
+accepts. The board cannot show a stage the evidence does not support,
+because there is no stored stage to go stale.</p>
+<h2 id="sticky-milestones">Sticky milestones</h2>
+<p>Some stages are milestones: reaching them once is a historical fact that
+later evidence does not undo. <code>:stage/sticky? true</code> says so, and the fold
+carries such a stage forward once any prefix of the log reached it.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:closed</span> <span class="ss">:after</span> <span class="p">[</span><span class="ss">:resolved</span><span class="p">]</span> <span class="ss">:stage/sticky?</span> <span class="nv">true</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:customer</span> <span class="ss">:ack</span><span class="p">]]]}</span>
+</span></span></code></pre></div><p>A customer who withdraws their acknowledgement does not un-close the
+ticket. The log shows both truths — it was closed, and the ack was
+withdrawn — and the derived present misrepresents neither.</p>
+<p>Sticky is monotone <strong>in fold position</strong>, not in the event set. The reached
+set is a function of the whole trajectory, so an event that arrives by
+merge carrying an earlier timestamp splices a new prefix into that
+trajectory and every later prefix is re-derived. A replica can therefore
+hold a sticky reach, sync, and no longer derive it. Convergence is
+unaffected — the same event set always derives the same answer — but a
+reach observed before a sync is not promised to survive it, which is why an
+effect pipeline records that it fired as its own fact.</p>
+<h2 id="time">Time</h2>
+<p>Time enters derivation as an explicit <code>now</code> argument. The kernel reads no
+clock of its own, which is what makes a re-derivation years from now
+reproducible.</p>
+<p>Guards read the claimed clock — the <code>:at</code> an actor asserted — by default,
+and each fold step evaluates at its event&rsquo;s <code>:at</code> <strong>clamped to the read&rsquo;s
+<code>now</code></strong>. No step acts as though more time has passed than actually has, so
+a postdated event cannot buy the 48 hours an <code>:elapsed-since</code> guard is
+waiting for. The clamp lifts by itself once that time really passes.</p>
+<h2 id="several-stages-at-once">Several stages at once</h2>
+<p>A process is a graph, not a line, so a ticket can sit at several current
+stages at the same time — two branch tips, both maximal. <code>tik status</code>
+reports the reached set and the current tips; <code>tik debug</code> shows every
+sweep and every guard verdict that produced them.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/><category scheme="https://tik.projects.metio.wtf/tags/fixpoint" term="fixpoint" label="fixpoint"/><category scheme="https://tik.projects.metio.wtf/tags/sticky" term="sticky" label="sticky"/><category scheme="https://tik.projects.metio.wtf/tags/derivation" term="derivation" label="derivation"/></entry></feed>

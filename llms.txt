@@ -1,0 +1,147 @@
+# tik
+
+> a process system, not a ticket system: stage is derived, never stored
+
+Project home: https://tik.projects.metio.wtf/ — full text for LLMs: https://tik.projects.metio.wtf/llms-full.txt
+
+## Get started
+
+- [Getting started](https://tik.projects.metio.wtf/get-started/guide/): A working ticket system in five minutes — no server, no database, no account, no YAML.
+- [Install](https://tik.projects.metio.wtf/get-started/install/): Run the native binary or the uberjar, run from source with babashka, or work inside the nix devshell.
+
+## Concepts
+
+- [Derived beats declared](https://tik.projects.metio.wtf/concepts/derived-beats-declared/): The one law — if something follows from the log, storing it as authoritative state is a bug.
+- [Events and facts](https://tik.projects.metio.wtf/concepts/events-and-facts/): Seven event types, five fact statuses, and the content addressing that makes a store auditable with coreutils.
+- [Explain](https://tik.projects.metio.wtf/concepts/explain/): The product surface — what evidence is missing, who may supply it, and when waiting is pointless.
+- [Guards](https://tik.projects.metio.wtf/concepts/guards/)
+- [Replication](https://tik.projects.metio.wtf/concepts/replication/): Merging by set union — no leader, no lock, no consensus, and no file-level conflicts to resolve by hand.
+- [Stages](https://tik.projects.metio.wtf/concepts/stages/): Position in a process as a fixpoint over the reached set — synchronous sweeps, sticky milestones, and regression by derivation.
+- [The event log](https://tik.projects.metio.wtf/concepts/event-log/)
+- [The witness](https://tik.projects.metio.wtf/concepts/witness/)
+
+## CLI
+
+- [Reading a store](https://tik.projects.metio.wtf/cli/reading-a-store/): The inbox, the board, explain, selectors, history, and counterfactuals.
+- [Recording work](https://tik.projects.metio.wtf/cli/recording-work/): Creating tickets, asserting facts, attaching evidence, and correcting the record.
+- [Store administration](https://tik.projects.metio.wtf/cli/administration/): Identity, roles, verification, migration, storage backends, and alerts.
+
+## Authoring processes
+
+- [Lint, simulate, test](https://tik.projects.metio.wtf/authoring/lint-simulate-test/): Proving a definition does what you meant — before a real ticket depends on it.
+- [Roles and authority](https://tik.projects.metio.wtf/authoring/roles-and-authority/): Who may sign what, and keeping membership current without re-pinning every ticket.
+- [Writing a definition](https://tik.projects.metio.wtf/authoring/writing-a-definition/): The shape of a process definition, the closed guard vocabulary, and the design law that separates a process from a task list.
+
+## Processes
+
+- [automated-release](https://tik.projects.metio.wtf/processes/automated-release/): A tik process with 3 stages
+- [employee-onboarding](https://tik.projects.metio.wtf/processes/employee-onboarding-template/): A tik process template with 4 stages
+- [employee-onboarding](https://tik.projects.metio.wtf/processes/employee-onboarding/): A tik process with 4 stages
+- [expense-approval](https://tik.projects.metio.wtf/processes/expense-approval-template/): A tik process template
+- [hypothesis](https://tik.projects.metio.wtf/processes/hypothesis/): A tik process with 5 stages
+- [identity-registry](https://tik.projects.metio.wtf/processes/identity-registry/): A tik process with 1 stage
+- [incident-response](https://tik.projects.metio.wtf/processes/incident-response-template/): A tik process template with 5 stages
+- [incident-response](https://tik.projects.metio.wtf/processes/incident-response/): A tik process with 5 stages
+- [okf-publish](https://tik.projects.metio.wtf/processes/okf-publish/): A tik process with 4 stages
+- [release](https://tik.projects.metio.wtf/processes/release/): A tik process with 5 stages
+- [renovate-migration](https://tik.projects.metio.wtf/processes/renovate-migration/): A tik process with 3 stages: move a repository from Dependabot to Renovate, with evidence
+- [supply-chain-release](https://tik.projects.metio.wtf/processes/supply-chain-release/): A tik process with 5 stages
+- [support-request](https://tik.projects.metio.wtf/processes/support-request-template/): A tik process template with 6 stages
+- [support-request](https://tik.projects.metio.wtf/processes/support-request/): A tik process with 6 stages
+- [sweep-order](https://tik.projects.metio.wtf/processes/sweep-order/): A tik process with 4 stages
+- [tik-dev](https://tik.projects.metio.wtf/processes/tik-dev/): A tik process with 5 stages
+- [track](https://tik.projects.metio.wtf/processes/track/): A tik process with 2 stages
+
+## Evidence
+
+- [Bundle format](https://tik.projects.metio.wtf/evidence/bundle-format/): tik-evidence-bundle version 1 — the on-disk contract, the checks a reader runs, and the rules that govern change.
+- [Re-deriving a bundle](https://tik.projects.metio.wtf/evidence/re-deriving/): tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation.
+- [SLSA, said honestly](https://tik.projects.metio.wtf/evidence/slsa/): What the release processes demand, mapped onto SLSA's build requirements — a claim about the definitions, never about a ticket.
+
+## Integrations
+
+- [Claude Code skill](https://tik.projects.metio.wtf/integrations/claude-code/): Install the tik skill so Claude drives a store correctly — recording evidence and letting stages derive, instead of setting statuses.
+- [MCP server](https://tik.projects.metio.wtf/integrations/mcp-server/): The frontier as an agent's gated tool surface, over stdio.
+
+## Runbooks
+
+- [automated-release / :attested](https://tik.projects.metio.wtf/runbooks/automated-release-attested/)
+- [automated-release / :built](https://tik.projects.metio.wtf/runbooks/automated-release-built/)
+- [automated-release / :scanned](https://tik.projects.metio.wtf/runbooks/automated-release-scanned/)
+- [employee-onboarding / :accounts](https://tik.projects.metio.wtf/runbooks/onboarding-accounts/)
+- [employee-onboarding / :equipped](https://tik.projects.metio.wtf/runbooks/onboarding-equipped/)
+- [employee-onboarding / :hired](https://tik.projects.metio.wtf/runbooks/onboarding-hired/)
+- [employee-onboarding / :ready](https://tik.projects.metio.wtf/runbooks/onboarding-ready/)
+- [hypothesis / :captured](https://tik.projects.metio.wtf/runbooks/hypothesis-captured/)
+- [hypothesis / :killed](https://tik.projects.metio.wtf/runbooks/hypothesis-killed/)
+- [hypothesis / :running](https://tik.projects.metio.wtf/runbooks/hypothesis-running/)
+- [hypothesis / :stated](https://tik.projects.metio.wtf/runbooks/hypothesis-stated/)
+- [hypothesis / :validated](https://tik.projects.metio.wtf/runbooks/hypothesis-validated/)
+- [identity-registry / :registry](https://tik.projects.metio.wtf/runbooks/identity-registry-registry/)
+- [incident-response / :analyzed](https://tik.projects.metio.wtf/runbooks/incident-analyzed/)
+- [incident-response / :declared](https://tik.projects.metio.wtf/runbooks/incident-declared/)
+- [incident-response / :mitigated](https://tik.projects.metio.wtf/runbooks/incident-mitigated/)
+- [incident-response / :postmortem-due](https://tik.projects.metio.wtf/runbooks/incident-postmortem-due/)
+- [incident-response / :reviewed](https://tik.projects.metio.wtf/runbooks/incident-reviewed/)
+- [okf-publish / :approved](https://tik.projects.metio.wtf/runbooks/okf-publish-approved/)
+- [okf-publish / :drafted](https://tik.projects.metio.wtf/runbooks/okf-publish-drafted/)
+- [okf-publish / :published](https://tik.projects.metio.wtf/runbooks/okf-publish-published/)
+- [okf-publish / :reviewed](https://tik.projects.metio.wtf/runbooks/okf-publish-reviewed/)
+- [release / :attested](https://tik.projects.metio.wtf/runbooks/release-attested/)
+- [release / :built](https://tik.projects.metio.wtf/runbooks/release-built/)
+- [release / :published](https://tik.projects.metio.wtf/runbooks/release-published/)
+- [release / :scanned](https://tik.projects.metio.wtf/runbooks/release-scanned/)
+- [release / :withheld](https://tik.projects.metio.wtf/runbooks/release-withheld/)
+- [renovate-migration / :configured](https://tik.projects.metio.wtf/runbooks/renovate-migration-configured/)
+- [renovate-migration / :planned](https://tik.projects.metio.wtf/runbooks/renovate-migration-planned/)
+- [renovate-migration / :verified](https://tik.projects.metio.wtf/runbooks/renovate-migration-verified/)
+- [supply-chain-release / :approved](https://tik.projects.metio.wtf/runbooks/supply-chain-release-approved/)
+- [supply-chain-release / :attested](https://tik.projects.metio.wtf/runbooks/supply-chain-release-attested/)
+- [supply-chain-release / :built](https://tik.projects.metio.wtf/runbooks/supply-chain-release-built/)
+- [supply-chain-release / :scanned](https://tik.projects.metio.wtf/runbooks/supply-chain-release-scanned/)
+- [supply-chain-release / :withheld](https://tik.projects.metio.wtf/runbooks/supply-chain-release-withheld/)
+- [support-request / :closed](https://tik.projects.metio.wtf/runbooks/support-request-closed/)
+- [support-request / :escalated](https://tik.projects.metio.wtf/runbooks/support-request-escalated/)
+- [support-request / :received](https://tik.projects.metio.wtf/runbooks/support-request-received/)
+- [support-request / :reproducible](https://tik.projects.metio.wtf/runbooks/support-request-reproducible/)
+- [support-request / :resolved](https://tik.projects.metio.wtf/runbooks/support-request-resolved/)
+- [support-request / :triaged](https://tik.projects.metio.wtf/runbooks/support-request-triaged/)
+- [tik-dev / :captured](https://tik.projects.metio.wtf/runbooks/tik-dev-captured/)
+- [tik-dev / :implemented](https://tik.projects.metio.wtf/runbooks/tik-dev-implemented/)
+- [tik-dev / :landed](https://tik.projects.metio.wtf/runbooks/tik-dev-landed/)
+- [tik-dev / :parked](https://tik.projects.metio.wtf/runbooks/tik-dev-parked/)
+- [tik-dev / :triaged](https://tik.projects.metio.wtf/runbooks/tik-dev-triaged/)
+- [track / :done](https://tik.projects.metio.wtf/runbooks/track-done/)
+- [track / :open](https://tik.projects.metio.wtf/runbooks/track-open/)
+
+## Decisions
+
+- [A link's value names its referent; a foreign ticket is a map carrying the head observed](https://tik.projects.metio.wtf/decisions/0024-link-values-name-foreign-tickets/)
+- [Key bindings are evidence — rung 2 grants signing authority, pinned keys anchor it](https://tik.projects.metio.wtf/decisions/0023-key-bindings-are-evidence/)
+- [The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service](https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/)
+- [No fold step reads the future — the claimed clock is clamped to the evaluated clock](https://tik.projects.metio.wtf/decisions/0022-no-step-reads-the-future/)
+- [Coordination-free horizontal scaling — no leader, no lock, no consensus](https://tik.projects.metio.wtf/decisions/0021-coordination-free-horizontal-scaling/)
+- [Artifacts — the hash is in the trust domain, the blob is not](https://tik.projects.metio.wtf/decisions/0014-artifact-semantics/)
+- [Canonical serialization is a versioned wire protocol](https://tik.projects.metio.wtf/decisions/0008-canonical-serialization-protocol/)
+- [Conformance is defined by the corpus, the laws, and normative sweep semantics](https://tik.projects.metio.wtf/decisions/0018-conformance/)
+- [Definition hash is identity; publication signatures are authority](https://tik.projects.metio.wtf/decisions/0015-process-definition-trust/)
+- [Derived material may be cached only if disposable and untrusted](https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/)
+- [Effects observe derivation; transport is not a domain concept](https://tik.projects.metio.wtf/decisions/0019-effects-observe-derivation/)
+- [Events are never deleted; blobs may be; nothing is compacted into authority](https://tik.projects.metio.wtf/decisions/0017-deletion-and-compaction/)
+- [Explain's structured reasons are the stable API; renderings are not](https://tik.projects.metio.wtf/decisions/0016-explain-stability-contract/)
+- [Signatures establish authorship; authorization is derived](https://tik.projects.metio.wtf/decisions/0010-authority-model/)
+- [The EventStore contract every backend must honor](https://tik.projects.metio.wtf/decisions/0020-eventstore-contract/)
+- [The log admits all well-formed claims; trust is evaluated, not filtered](https://tik.projects.metio.wtf/decisions/0011-log-admission-vs-trust/)
+- [Three clocks; claimed is the default; the clock is part of the guard](https://tik.projects.metio.wtf/decisions/0012-time-semantics/)
+- [Unknown data handling differs by layer, on purpose](https://tik.projects.metio.wtf/decisions/0009-unknown-data-policy/)
+- [Concurrent conflicting assertions block guards; humans resolve](https://tik.projects.metio.wtf/decisions/0003-conflicts-block/)
+- [Event parents are mandatory; the log is a Merkle DAG](https://tik.projects.metio.wtf/decisions/0004-mandatory-parents/)
+- [SHA-256 content addressing, self-describing ids, one algorithm per store](https://tik.projects.metio.wtf/decisions/0006-hash-policy/)
+- [Stage negation must be stratified](https://tik.projects.metio.wtf/decisions/0005-stratified-negation/)
+- [Stored bytes are exactly the hashed region; signatures are detached](https://tik.projects.metio.wtf/decisions/0007-stored-bytes-are-the-hashed-region/)
+- [The event-log acceptance test for all features](https://tik.projects.metio.wtf/decisions/0001-event-log-acceptance-test/)
+- [Tickets pin their process definition hash; migration is an event](https://tik.projects.metio.wtf/decisions/0002-pinned-process-versions/)
+
+## Contributing
+
+

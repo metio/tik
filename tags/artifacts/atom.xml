@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Artifacts on tik</title><link href="https://tik.projects.metio.wtf/tags/artifacts/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/artifacts/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/artifacts/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/artifacts/</id><entry><title type="html">Recording work</title><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/events-and-facts/?utm_source=atom_feed" rel="related" type="text/html" title="Events and facts"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/cli/recording-work/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Creating tickets, asserting facts, attaching evidence, and correcting the record.</blockquote><p>You record evidence. Stages follow.</p>
+<h2 id="create-a-ticket">Create a ticket</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik new support-request --title <span class="s2">&#34;login fails on Firefox&#34;</span>
+</span></span></code></pre></div><p>The ticket pins the process definition&rsquo;s content hash at creation, so it is
+judged by the rules it was minted under until somebody deliberately moves
+it with <code>tik reprocess</code>.</p>
+<p>Created beneath a store, a ticket inherits its context as signed facts:
+<code>repo=&lt;name&gt;</code> from the enclosing git repository, plus any <code>.tik-facts.edn</code>
+maps on the way down, nearest winning, with anything explicit beating both.</p>
+<h2 id="assert-facts">Assert facts</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:high resolution.ref<span class="o">=</span>abc123def456
+</span></span></code></pre></div><p>Dotted keys nest, so <code>parked.reason=&quot;waiting on legal&quot;</code> writes the path
+<code>[:parked :reason]</code>. Values parse as EDN, and a bare word becomes a
+keyword — <code>severity=high</code> and <code>severity=:high</code> mean the same thing, which
+keeps facts out of the swamp of free-form strings.</p>
+<p>Links are facts too:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">set</span> <span class="m">3184</span> link.depends-on<span class="o">=</span>9c21f0a4
+</span></span></code></pre></div><p><code>tik next</code> then holds 3184 back while 9c21 is unsettled, and <code>tik status</code>
+names the blocker.</p>
+<h2 id="attach-evidence">Attach evidence</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik attach <span class="m">3184</span> ./crash-repro.sh
+</span></span><span class="line"><span class="cl">tik comment <span class="m">3184</span> reproduced on a clean profile, video attached
+</span></span></code></pre></div><p>Artifacts are stored by hash. A comment is an artifact too — a text blob
+attached by its digest — which is why comments need no event type of their
+own.</p>
+<h2 id="correct-the-record">Correct the record</h2>
+<p>Nothing is edited or deleted. Corrections are new events:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:critical              <span class="c1"># supersedes; history retained</span>
+</span></span><span class="line"><span class="cl">tik retract <span class="m">3184</span> resolution.ref --reason <span class="s2">&#34;wrong commit&#34;</span>
+</span></span><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --reason <span class="s2">&#34;this is billing&#34;</span>
+</span></span><span class="line"><span class="cl">tik dispute <span class="m">3184</span> category --withdraw         <span class="c1"># take back your own objection</span>
+</span></span></code></pre></div><p>A later assertion supersedes an earlier one. A retraction says the claim
+should not exist and offers no replacement. A dispute rejects the value
+that stood when it was raised, so only a <em>different</em> value answers it. In
+every case the stage regresses by derivation — there is no rollback step.</p>
+<h2 id="signed-claims-and-attestations">Signed claims and attestations</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik attest <span class="m">3184</span> <span class="o">{</span>:ci :green<span class="o">}</span>
+</span></span></code></pre></div><p>An attestation is a signed claim whose meaning the kernel does not
+interpret. Lenses read it, and the <code>:attested-within</code> guard checks that a
+fresh-enough one exists — a replayed &ldquo;CI green&rdquo; from last month is
+cryptographically valid and fails that guard honestly.</p>
+<h2 id="derive-facts-from-the-world">Derive facts from the world</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik probe <span class="m">3184</span>
+</span></span></code></pre></div><p>A probe is any executable that prints <code>key=value</code> lines. It runs with its
+working directory in the ticket&rsquo;s <code>[:repo]</code> repository, and changed values
+land as ordinary signed facts, so a ticket regresses on its own when
+reality does. The environment carries <code>TIK_TICKET</code>, <code>TIK_REPO</code>, and every
+present fact as <code>TIK_FACT_&lt;PATH&gt;</code>, which is what lets one repository hold
+many subjects — a package, tenant, or workload per ticket.</p>
+<h2 id="recurring-and-bulk-work">Recurring and bulk work</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik recur weekly-review --period 2026-W32
+</span></span><span class="line"><span class="cl">tik rollout dependency-audit --parent-title <span class="s2">&#34;Q3 audit&#34;</span>
+</span></span></code></pre></div><p><code>recur</code> mints this period&rsquo;s ticket exactly once: it creates only when no
+ticket already carries that period label. The schedule lives outside the
+log — run it from cron or a timer — and tik derives whether the period
+exists yet. <code>rollout</code> creates one ticket per git repository under the
+store, wired to a parent by link facts, so the parent is a checklist whose
+checkmarks derive from each child&rsquo;s evidence.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/><category scheme="https://tik.projects.metio.wtf/tags/facts" term="facts" label="facts"/><category scheme="https://tik.projects.metio.wtf/tags/artifacts" term="artifacts" label="artifacts"/><category scheme="https://tik.projects.metio.wtf/tags/corrections" term="corrections" label="corrections"/></entry></feed>

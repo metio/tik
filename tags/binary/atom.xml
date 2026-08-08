@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Binary on tik</title><link href="https://tik.projects.metio.wtf/tags/binary/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/binary/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/binary/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/binary/</id><entry><title type="html">Install</title><link href="https://tik.projects.metio.wtf/get-started/install/?utm_source=atom_feed" rel="alternate" type="text/html"/><id>https://tik.projects.metio.wtf/get-started/install/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Run the native binary or the uberjar, run from source with babashka, or work inside the nix devshell.</blockquote><p>Each release publishes two downloads, a <code>SHA256SUMS</code> file covering both,
+and a cosign keyless signature over those checksums.</p>
+<h2 id="download-a-release">Download a release</h2>
+<p>From the <a href="https://github.com/metio/tik/releases">releases page</a>
+:</p>
+<ul>
+<li><strong><code>tik-linux-amd64-glibc</code></strong> — the native binary, no runtime needed. It is
+labelled for exactly what it is: linux/amd64 against glibc.</li>
+<li><strong><code>tik.jar</code></strong> — the uberjar, for macOS, Windows, and arm. Runs on any
+JDK 21: <code>java -jar tik.jar --help</code>. The container image is the universal
+deployment path.</li>
+</ul>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">chmod +x tik-linux-amd64-glibc
+</span></span><span class="line"><span class="cl">./tik-linux-amd64-glibc --help
+</span></span></code></pre></div><p>Verify before trusting. The checksums cover the downloads, and the cosign
+bundle covers the checksums:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">sha256sum --check SHA256SUMS
+</span></span><span class="line"><span class="cl">cosign verify-blob SHA256SUMS <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --bundle SHA256SUMS.bundle <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --certificate-identity-regexp <span class="s1">&#39;^https://github.com/metio/tik/&#39;</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+</span></span></code></pre></div><h2 id="from-source-with-babashka">From source with babashka</h2>
+<p>The CLI runs on <a href="https://babashka.org/">babashka</a>
+, so a checkout is enough:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">git clone https://github.com/metio/tik.git
+</span></span><span class="line"><span class="cl"><span class="nb">cd</span> tik
+</span></span><span class="line"><span class="cl">bb tik --help
+</span></span></code></pre></div><p>Every command in this documentation is written as <code>tik</code>; substitute
+<code>bb tik</code> when running this way.</p>
+<h2 id="the-nix-devshell">The nix devshell</h2>
+<p>Contributors get the whole toolchain — JVM, Clojure, babashka, clj-kondo,
+TLC, GraalVM, ssh-keygen — from the flake:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">nix develop --command bb <span class="nb">test</span>
+</span></span></code></pre></div><p><a href="/contributing/">Contributing</a>
+ describes the gate a change is expected to
+pass.</p>
+<h2 id="signing-your-writes">Signing your writes</h2>
+<p>A store works unsigned, and signing turns authorship into evidence anyone
+can check offline. Register yourself as an actor and point <code>TIK_KEY</code> at an
+ed25519 private key:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">ssh-keygen -t ed25519 -f ~/.config/tik/id_ed25519
+</span></span><span class="line"><span class="cl">tik actor add alice ~/.config/tik/id_ed25519.pub
+</span></span><span class="line"><span class="cl"><span class="nb">export</span> <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/id_ed25519
+</span></span><span class="line"><span class="cl"><span class="nb">export</span> <span class="nv">TIK_ACTOR</span><span class="o">=</span>alice
+</span></span></code></pre></div><p>Signatures are detached sidecars produced by <code>ssh-keygen -Y</code>, so <code>tik verify</code> checks them with stock OpenSSH and nothing else. The public
+registry (<code>actors</code>) belongs in version control; the private key stays
+outside the store.</p>
+<h2 id="where-a-store-lives">Where a store lives</h2>
+<p>Commands find a store the way git does: <code>TIK_ROOT</code> wins, otherwise the
+nearest ancestor directory holding <code>tickets/</code>, <code>tik.db</code>, or <code>.tik/</code>,
+otherwise the current directory. <code>tik init</code> marks one explicitly —
+<code>--sqlite</code> for the single-file backend, <code>--hidden</code> to keep everything
+inside <code>.tik/</code> when the store sits above several repositories.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/install" term="install" label="install"/><category scheme="https://tik.projects.metio.wtf/tags/binary" term="binary" label="binary"/><category scheme="https://tik.projects.metio.wtf/tags/babashka" term="babashka" label="babashka"/><category scheme="https://tik.projects.metio.wtf/tags/nix" term="nix" label="nix"/></entry></feed>

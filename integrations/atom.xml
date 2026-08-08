@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Integrations on tik</title><link href="https://tik.projects.metio.wtf/integrations/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/integrations/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/integrations/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/integrations/</id><entry><title type="html">Claude Code skill</title><link href="https://tik.projects.metio.wtf/integrations/claude-code/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/mcp-server/?utm_source=atom_feed" rel="related" type="text/html" title="MCP server"/><id>https://tik.projects.metio.wtf/integrations/claude-code/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Install the tik skill so Claude drives a store correctly — recording evidence and letting stages derive, instead of setting statuses.</blockquote><p>Install the tik skill into <a href="https://claude.com/claude-code">Claude Code</a>
+
+and Claude gains working knowledge of tik: it recognises a store, records
+facts with <code>tik set</code> rather than inventing a status field, reads
+<code>tik explain</code> before asking a person anything, and authors process
+definitions whose stages derive from evidence instead of listing
+activities.</p>
+<p>That last part is the reason the skill exists. The failure mode for any
+model writing a tik process is a task list wearing a process costume —
+stages named after activities, with nothing following from anything. The
+skill carries the design law that rules it out, along with the closed
+guard vocabulary and the authoring loop that checks the result.</p>
+<p>The skill lives in this repository under <code>skills/tik/</code>, packaged as a
+Claude Code plugin by the manifests in <code>.claude-plugin/</code>.</p>
+<h2 id="install">Install</h2>
+<p>Add this repository as a plugin marketplace, then install the plugin:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">/plugin marketplace add metio/tik
+</span></span><span class="line"><span class="cl">/plugin install tik@tik
+</span></span></code></pre></div><p>Claude activates the skill whenever a repository holds a <code>tickets/</code> or
+<code>.tik/</code> directory, an <code>actors</code> registry, or <code>processes/*.edn</code> — or when
+you mention tik, tickets, processes, or stages.</p>
+<h2 id="what-it-grants-claude">What it grants Claude</h2>
+<p>The skill teaches the CLI surface and the model behind it:</p>
+<ul>
+<li><strong>The daily loop</strong> — <code>tik ls</code>, <code>tik next</code>, <code>tik new</code>, <code>tik set</code>,
+<code>tik explain</code>, <code>tik status</code>, and the selector grammar for filtering a
+board.</li>
+<li><strong>Corrections</strong> — retract, dispute, and the fact that a dispute is
+answered only by a <em>different</em> value, so Claude does not try to clear
+one by retyping the same fact.</li>
+<li><strong>Authoring</strong> — <code>tik author</code>, the guard vocabulary, and the lint,
+simulate, and test loop that proves a definition before a real ticket
+depends on it.</li>
+<li><strong>The one design law</strong> — a stage is defined by what must be TRUE to
+reach it, never by who moved what.</li>
+</ul>
+<p>It also knows when <em>not</em> to act: an unreachable step in <code>explain</code> means
+waiting is pointless and the definition or the role register needs
+fixing, not patience.</p>
+<h2 id="for-agents-generally">For agents generally</h2>
+<p>The skill is one surface over a derivation every tool can read. The gated
+agent commands enforce the same boundary without any prompt-side
+cooperation:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik agent actions <span class="m">3184</span> --actor bot
+</span></span><span class="line"><span class="cl">tik agent <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:high --actor bot
+</span></span></code></pre></div><p>An agent sees only what the frontier admits for its role, and anything
+else is refused with the derived reason. Because the boundary is the
+derivation rather than an instruction, it cannot be talked around.</p>
+<p>This site also publishes <code>/llms.txt</code> and <code>/llms-full.txt</code>, so a model can
+read the documentation directly.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/claude" term="claude" label="claude"/><category scheme="https://tik.projects.metio.wtf/tags/skill" term="skill" label="skill"/><category scheme="https://tik.projects.metio.wtf/tags/plugin" term="plugin" label="plugin"/><category scheme="https://tik.projects.metio.wtf/tags/agents" term="agents" label="agents"/></entry><entry><title type="html">MCP server</title><link href="https://tik.projects.metio.wtf/integrations/mcp-server/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/claude-code/?utm_source=atom_feed" rel="related" type="text/html" title="Claude Code skill"/><id>https://tik.projects.metio.wtf/integrations/mcp-server/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>The frontier as an agent&rsquo;s gated tool surface, over stdio.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nv">TIK_ACTOR</span><span class="o">=</span>bot <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/bot_ed25519 tik mcp
+</span></span></code></pre></div><p><code>tik mcp</code> speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+<em>is</em> the authorization boundary.</p>
+<h2 id="why-the-boundary-holds">Why the boundary holds</h2>
+<p>An agent&rsquo;s permission to act is derived from the same guards a person&rsquo;s
+is. A step whose <code>:signed-by</code> names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.</p>
+<p>That matters because the alternative — telling a model in its prompt what
+it may not do — is enforcement by cooperation. Here the check happens
+where the answer is computed, and it produces the same reason string a
+person would see.</p>
+<h2 id="accountability">Accountability</h2>
+<p>Every write the agent makes is an ordinary signed event with the agent&rsquo;s
+own actor identity. The log therefore distinguishes what a person claimed
+from what an agent claimed, permanently and without a separate audit
+trail. <code>tik causal</code> names the events behind each reached stage, so a
+conclusion an agent contributed to can be traced to the evidence it
+supplied and the key that signed it.</p>
+<h2 id="task-specifications-from-guards">Task specifications from guards</h2>
+<p>An agent asking &ldquo;what should I do?&rdquo; gets the same structured answer every
+other lens renders:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --actor bot --edn
+</span></span></code></pre></div><p>Each missing step carries its path, its schema, and who may satisfy it —
+which makes an acceptance criterion out of a guard, rather than out of a
+sentence somebody wrote in a ticket description.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/mcp" term="mcp" label="mcp"/><category scheme="https://tik.projects.metio.wtf/tags/agents" term="agents" label="agents"/><category scheme="https://tik.projects.metio.wtf/tags/authorization" term="authorization" label="authorization"/></entry></feed>

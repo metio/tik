@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Verification on tik</title><link href="https://tik.projects.metio.wtf/tags/verification/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/verification/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/verification/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/verification/</id><entry><title type="html">Bundle format</title><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/evidence/bundle-format/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>tik-evidence-bundle version 1 — the on-disk contract, the checks a reader runs, and the rules that govern change.</blockquote><p><code>tik-evidence-bundle</code>, version 1. A gzipped tar holding one ticket and
+everything its derivation needs.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle &lt;id&gt; --out evidence.tgz
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">bundle.edn                          the format name and version
+</span></span><span class="line"><span class="cl">actors                              the allowed-signers registry
+</span></span><span class="line"><span class="cl">roles.edn                           role membership, where the store keeps a register
+</span></span><span class="line"><span class="cl">identity/&lt;event-id&gt;.edn             key bindings, as signed registry events
+</span></span><span class="line"><span class="cl">identity/&lt;event-id&gt;.sig.&lt;fpr&gt;       their authorship signatures
+</span></span><span class="line"><span class="cl">identity/keys/&lt;kid&gt;.pem             the issuer keys those bindings rest on
+</span></span><span class="line"><span class="cl">processes/by-hash/&lt;hash&gt;.edn        the definition the ticket pinned
+</span></span><span class="line"><span class="cl">processes/by-hash/&lt;hash&gt;.sig.&lt;fpr&gt;  its publication signatures
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.edn      the append-only log
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.sig.&lt;fpr&gt;      authorship signatures
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/events/&lt;id&gt;.witness.&lt;fpr&gt;  countersignatures over a head
+</span></span><span class="line"><span class="cl">tickets/&lt;uuid&gt;/blobs/&lt;hash&gt;         attached artifacts, addressed by content
+</span></span><span class="line"><span class="cl">verify.sh                           a coreutils implementation of the checks
+</span></span><span class="line"><span class="cl">README.md                           what the recipient is holding
+</span></span></code></pre></div><h2 id="what-a-reader-may-assume">What a reader may assume</h2>
+<p><strong>Every stored file&rsquo;s name is the SHA-256 of its bytes</strong>, prefixed
+<code>sha256-</code>. Event and definition files carry a <code>.edn</code> suffix after the
+address; blobs are named by the bare address. <code>sha256sum</code> alone audits
+the archive.</p>
+<p><strong>Event bytes are exactly the hashed region.</strong> An event file holds the
+canonical serialization <em>without</em> its <code>:event/id</code>, because the filename
+is the id. Re-emitting a parsed event reproduces the file byte for byte.</p>
+<p><strong>Signatures are detached siblings.</strong> <code>&lt;id&gt;.sig.&lt;fingerprint&gt;</code> covers the
+event&rsquo;s stored bytes under the <code>tik-event</code> namespace; <code>&lt;id&gt;.witness.&lt;fpr&gt;</code>
+covers a head under <code>tik-witness</code>; a definition&rsquo;s <code>.sig.&lt;fpr&gt;</code> uses
+<code>tik-process</code>. Each verifies with <code>ssh-keygen -Y verify</code> against
+<code>actors</code>.</p>
+<p><strong>Exactly one ticket directory, with exactly one root event.</strong> Every
+parent an event names is present in the same directory, so the Merkle DAG
+the log commits to is complete.</p>
+<p><strong>The pinned definition travels.</strong> The create event carries
+<code>:ticket/process-hash</code>, and <code>processes/by-hash/&lt;that hash&gt;.edn</code> holds the
+definition whose content address equals it.</p>
+<p><strong><code>identity/</code> holds excerpts.</strong> A key binding travels as the single
+registry event that made it, with its own authorship signature and the
+issuer&rsquo;s public key. Its parents live in a registry ticket that stays
+behind, so its standing rests on its content address plus the issuer&rsquo;s
+signature over the id-token it carries.</p>
+<p><strong><code>bundle.edn</code> declares the packaging version and nothing else.</strong> The
+ticket, the head, the definition and the stage are derivable from the
+files, so the manifest names none of them and nothing in it is trusted.
+A bundle without a manifest is version 1.</p>
+<h2 id="the-checks">The checks</h2>
+<p>These are what the format promises. <code>verify.sh</code> implements them with
+coreutils, <code>ssh-keygen</code> and — for key bindings — <code>openssl</code>;
+<a href="/evidence/re-deriving/"><code>tik rederive</code></a>
+ implements them in process. The
+script travels inside the archive it checks, so read it before you run
+it, or run this list yourself.</p>
+<ol>
+<li><strong>Integrity.</strong> Every <code>tickets/*/events/*.edn</code>,
+<code>processes/by-hash/*.edn</code> and <code>tickets/*/blobs/*</code> hashes to its own
+name.</li>
+<li><strong>Shape.</strong> Exactly one ticket directory.</li>
+<li><strong>Completeness.</strong> Every parent referenced by an event is present, and
+exactly one event has empty <code>:event/parents</code>.</li>
+<li><strong>Authorship.</strong> Every <code>.sig.</code> sidecar verifies <em>as the actor its own
+event names</em> — binding <code>-I</code> to <code>:event/actor</code> rather than accepting
+whoever happened to sign, so a registered actor cannot sign another&rsquo;s
+authorship.</li>
+<li><strong>Countersignature.</strong> Every <code>.witness.</code> sidecar verifies as a
+registered principal under <code>tik-witness</code>.</li>
+<li><strong>Key bindings.</strong> For each binding in <code>identity/</code>: the issuer signed
+the id-token, using the key at <code>identity/keys/&lt;kid&gt;.pem</code>; the token&rsquo;s
+<code>sub</code> and <code>iss</code> equal the binding&rsquo;s; the token was live at the
+binding&rsquo;s <code>:event/at</code>; and the key it binds appears in <code>actors</code>.</li>
+</ol>
+<p>Check 6 is checkable offline because the issuer&rsquo;s key travels in the
+archive, and it says exactly this much: <em>whoever built this bundle holds
+a token that this key signed, for this subject, at that moment.</em>
+Recognizing the key as the issuer&rsquo;s is the reader&rsquo;s job, the same way
+recognizing an <code>actors</code> line is — a subject like
+<code>repo:metio/tik:ref:refs/heads/main</code> is worth what the reader knows about
+that repository and that IdP.</p>
+<p>An unsigned event is authenticity unclaimed rather than a failure, and a
+binding whose issuer key is absent grants nothing and is reported as
+such. Everything else in the list is a failure.</p>
+<p>Deriving the ticket&rsquo;s stages needs the definition as well, which is where
+<code>tik rederive</code> goes on and <code>verify.sh</code> stops.</p>
+<h2 id="compatibility">Compatibility</h2>
+<p>Version 1 is the layout above. The rules below are what a reader written
+against it may rely on.</p>
+<p><strong>A reader ignores what it does not recognize.</strong> Unknown files,
+directories and manifest keys are passed over. That is what makes the
+additions in the next paragraph safe.</p>
+<p><strong>These may appear without a version bump:</strong></p>
+<ul>
+<li>new top-level files and directories;</li>
+<li>new files inside existing directories, including new sidecar kinds
+(<code>&lt;id&gt;.&lt;kind&gt;.&lt;fingerprint&gt;</code>);</li>
+<li>new keys in <code>bundle.edn</code>;</li>
+<li>new event types, fact paths, guard operators and process keys inside
+the files, which are versioned by the kernel&rsquo;s own vocabularies rather
+than by this format;</li>
+<li>any change to <code>verify.sh</code> and <code>README.md</code>, which carry no contract of
+their own.</li>
+</ul>
+<p><strong>These force a version bump:</strong></p>
+<ul>
+<li>moving, renaming or removing anything the layout names;</li>
+<li>changing what a name means — a different hash function, a different
+suffix convention, a signature namespace;</li>
+<li>changing the canonical serialization, which changes every event id and
+is versioned separately by <code>tik.canonical/format-version</code>;</li>
+<li>carrying more than one ticket;</li>
+<li>anything else that makes a conforming version-1 reader compute a
+different answer or fail.</li>
+</ul>
+<p>A reader holding a bundle whose major version it does not know declines
+it and says so.</p>
+<h2 id="reading-a-bundle-yourself">Reading a bundle yourself</h2>
+<p>The archive unpacks to plain files, so an implementation in any language
+is a hash, a signature check and an EDN reader.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">mkdir bundle <span class="o">&amp;&amp;</span> tar xzf evidence.tgz -C bundle <span class="o">&amp;&amp;</span> <span class="nb">cd</span> bundle
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># 1. integrity, without any tool of ours</span>
+</span></span><span class="line"><span class="cl">sha256sum tickets/*/events/*.edn <span class="p">|</span> <span class="k">while</span> <span class="nb">read</span> sum f<span class="p">;</span> <span class="k">do</span>
+</span></span><span class="line"><span class="cl">  <span class="o">[</span> <span class="s2">&#34;sha256-</span><span class="nv">$sum</span><span class="s2">&#34;</span> <span class="o">=</span> <span class="s2">&#34;</span><span class="k">$(</span>basename <span class="s2">&#34;</span><span class="nv">$f</span><span class="s2">&#34;</span> .edn<span class="k">)</span><span class="s2">&#34;</span> <span class="o">]</span> <span class="o">||</span> <span class="nb">echo</span> <span class="s2">&#34;MISMATCH </span><span class="nv">$f</span><span class="s2">&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="k">done</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># 2. authorship, as the actor each event names</span>
+</span></span><span class="line"><span class="cl"><span class="k">for</span> sig in tickets/*/events/*.sig.*<span class="p">;</span> <span class="k">do</span>
+</span></span><span class="line"><span class="cl">  <span class="nv">ev</span><span class="o">=</span><span class="s2">&#34;</span><span class="si">${</span><span class="nv">sig</span><span class="p">%%.sig.*</span><span class="si">}</span><span class="s2">.edn&#34;</span>
+</span></span><span class="line"><span class="cl">  <span class="nv">actor</span><span class="o">=</span><span class="k">$(</span>sed -n <span class="s1">&#39;s/^{:event\/actor &#34;\([^&#34;]*\)&#34;.*/\1/p&#39;</span> <span class="s2">&#34;</span><span class="nv">$ev</span><span class="s2">&#34;</span><span class="k">)</span>
+</span></span><span class="line"><span class="cl">  ssh-keygen -Y verify -f actors -I <span class="s2">&#34;</span><span class="nv">$actor</span><span class="s2">&#34;</span> -n tik-event -s <span class="s2">&#34;</span><span class="nv">$sig</span><span class="s2">&#34;</span> &lt; <span class="s2">&#34;</span><span class="nv">$ev</span><span class="s2">&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="k">done</span>
+</span></span></code></pre></div><p>Canonical bytes sort map keys, so <code>:event/actor</code> always leads an event
+file — which is why one <code>sed</code> finds it.</p>
+<h2 id="relationship-to-in-toto">Relationship to in-toto</h2>
+<p><a href="https://in-toto.io/">in-toto</a>
+ attestations describe a build: this
+subject, this predicate, signed by this functionary. A bundle carries a
+different kind of thing — the facts, the rules that judge them, and the
+means to recompute the verdict offline. in-toto&rsquo;s nearest analogue is the
+layout, and a tik process definition already is one.</p>
+<p>The two compose. <code>tik bridge intoto</code> reads a SLSA provenance, an SPDX or
+CycloneDX SBOM, or a vulnerability report into an attestation event, so
+an <code>:attested-within</code> guard is satisfied by the format your pipeline
+already emits, and the result travels in a bundle.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/format" term="format" label="format"/><category scheme="https://tik.projects.metio.wtf/tags/specification" term="specification" label="specification"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry><entry><title type="html">Evidence</title><link href="https://tik.projects.metio.wtf/evidence/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/evidence/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T08:44:03+02:00</updated><content type="html"><![CDATA[<blockquote>The published bundle format, and how anyone re-derives what a bundle&rsquo;s facts imply under the rules it pinned.</blockquote><p>A ticket travels as an evidence bundle: the signed facts, the hash-pinned
+rules that judge them, the registry the signatures check against, and a
+script that checks the lot with coreutils. Whoever holds one recomputes
+the answer.</p>
+<p>That is the whole claim, and it is a narrow one. A build system tells you
+a process ran. A bundle tells you <em>which</em> rules judged it, what they
+required, what was supplied, and lets you recompute the verdict on a
+laptop with no network, years later.</p>
+<ul>
+<li><a href="/evidence/bundle-format/">Bundle format</a>
+ — the on-disk contract, what
+a reader may assume, and what forces a version bump.</li>
+<li><a href="/evidence/re-deriving/">Re-deriving a bundle</a>
+ — <code>tik rederive</code>, the
+HTTP service, and what a badge is allowed to say.</li>
+<li><a href="/evidence/slsa/">SLSA, said honestly</a>
+ — what the release processes
+demand, mapped onto SLSA&rsquo;s requirements, and where that mapping stops.</li>
+</ul>
+<h2 id="what-a-bundle-is-worth">What a bundle is worth</h2>
+<p>A guard checks that a trusted attester said something. It never reads the
+SBOM. So a derivation is exactly as good as the attesters named in it,
+and that belongs in the first paragraph rather than a footnote — the
+signatures prove <em>who claimed</em>, the hashes prove <em>what was claimed</em>, and
+the definition proves <em>which rule accepted it</em>.</p>
+<p>What the format adds on top of a signed archive is the rules. Two people
+holding the same bundle reach the same stages, because the definition
+that judged the ticket travels inside it, addressed by its own hash.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/supply-chain" term="supply-chain" label="supply-chain"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry><entry><title type="html">Re-deriving a bundle</title><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/evidence/re-deriving/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-07T12:26:39+02:00</updated><content type="html"><![CDATA[<blockquote>tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation.</blockquote><p><code>verify.sh</code> answers one question: are these bytes what they claim to be?
+<code>tik rederive</code> answers the other one: what do they add up to?</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive evidence.tgz
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">bundle sha256-04a0bf413895fefb1c20e9231632fbc0d0a0d768275b42c097581ed19365973a
+</span></span><span class="line"><span class="cl">  format    tik-evidence-bundle version 1
+</span></span><span class="line"><span class="cl">  ticket    e26a1d57-6643-4564-99fa-8968ced7afa5  &#34;2026.8.6132954&#34;
+</span></span><span class="line"><span class="cl">  events    10
+</span></span><span class="line"><span class="cl">  judged by release sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">verification
+</span></span><span class="line"><span class="cl">  ok   … hashes to its name and is schema-valid
+</span></span><span class="line"><span class="cl">  ok   every referenced parent is present
+</span></span><span class="line"><span class="cl">  ok   exactly one root event
+</span></span><span class="line"><span class="cl">  ok   … verifies as ci
+</span></span><span class="line"><span class="cl">  ok   ci is bound to its key by repo:metio/tik:ref:refs/heads/main, per …
+</span></span><span class="line"><span class="cl">  =&gt; the bytes are what they claim to be
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">derivation at 2026-08-06T20:29:26.198Z
+</span></span><span class="line"><span class="cl">  reached   :attested, :built, :scanned
+</span></span><span class="line"><span class="cl">  current   :attested, :scanned
+</span></span><span class="line"><span class="cl">  :built
+</span></span><span class="line"><span class="cl">      ✓ [:fact [:version]]
+</span></span><span class="line"><span class="cl">      ✓ [:signed-by :ci [:commit]]
+</span></span><span class="line"><span class="cl">      ✓ [:artifact &#34;checksums/&#34;]
+</span></span><span class="line"><span class="cl">  :scanned
+</span></span><span class="line"><span class="cl">      ✓ [:attested-within :vulnerability-scan &#34;P1D&#34;]
+</span></span></code></pre></div><p>It takes a <code>.tgz</code>, an unpacked directory, or an <code>https</code> URL, and exits 1
+when the bundle fails to verify — a derivation over bytes that are not
+what they claim to be is worth nothing. <code>--edn</code> prints the same result as
+data.</p>
+<h2 id="derivation-names-its-instant">Derivation names its instant</h2>
+<p><code>reached</code> above is what the pinned rules grant <strong>at the instant printed
+under it</strong>. The release process demands a vulnerability scan attested
+within a day; a month from now the same archive, byte for byte, derives
+<code>:built</code> alone — the scan it carries is real, signed, and too old for the
+rule that reads it.</p>
+<p>That is the reason to re-derive rather than record. A stored &ldquo;passed&rdquo;
+survives its own evidence; a derivation ages with it.</p>
+<h2 id="gating-on-a-bundle">Gating on a bundle</h2>
+<p>Two flags turn re-derivation into a check a consumer&rsquo;s own CI can stand on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive https://example.com/evidence.tgz <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --expect-stage :published <span class="se">\
+</span></span></span><span class="line"><span class="cl">  --expect-definition sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span></code></pre></div><p>Exit 0 when every named stage is reached under that exact definition, 1
+otherwise, with a line saying which expectation failed and what was
+derived instead.</p>
+<p><strong>Pin the definition.</strong> A bundle carries the rules that judged it, so a
+supplier who writes those rules can reach any stage they choose —
+<code>:published</code> becomes a claim about a process only once the reader names
+<em>which</em> process. That is why <code>--expect-definition</code> takes the full hash
+and refuses an abbreviation: eight hex characters is thirty-two bits for
+somebody to collide with deliberately, and the value is pasted into a
+workflow file once.</p>
+<h2 id="in-github-actions">In GitHub Actions</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-yaml" data-lang="yaml"><span class="line"><span class="cl"><span class="nt">permissions</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l">read</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nt">steps</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l">metio/tik/.github/actions/install@2026.8.7062815</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span>- <span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l">metio/tik/.github/actions/verify@2026.8.7062815</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">with</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">bundle</span><span class="p">:</span><span class="w"> </span><span class="l">https://github.com/you/proj/releases/download/v1/evidence.tgz</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">expect-stage</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;:published&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="nt">expect-definition</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;sha256-3c577f36…&#34;</span><span class="w">
+</span></span></span></code></pre></div><p>The ref you pin <em>is</em> the tik you get: with no <code>version</code> input, the
+installer resolves the release matching its own ref, so a pinned action
+and a pinned tool are one decision rather than two.</p>
+<p>The installer verifies before it trusts. It fetches the release&rsquo;s
+<code>SHA256SUMS</code>, checks the cosign keyless signature naming the release
+workflow that produced it, and only then checks the binary against those
+checksums — an installer for a verification tool has no business asking
+you to trust an unverified download. Linux/amd64 gets the native binary;
+other platforms get the portable jar and need a JDK already on PATH.</p>
+<p><code>verify</code> needs <code>tik</code> on PATH and does one thing with it, so bring your
+own build if you have one.</p>
+<h2 id="the-service">The service</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik rederive --serve --port <span class="m">7788</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">POST /rederive                     the bundle as the request body -&gt; EDN
+</span></span><span class="line"><span class="cl">GET  /derivation?bundle=&lt;url&gt;      fetch it, re-derive, render the page
+</span></span><span class="line"><span class="cl">GET  /badge.svg?bundle=&lt;url&gt;       the same, as a badge
+</span></span></code></pre></div><p>Every request re-derives. The one thing held between requests is a cache
+keyed by the bundle&rsquo;s content address <em>and</em> the minute the answer was
+computed for — both inputs to the derivation, both immutable, so an entry
+is either exactly right or absent and the whole cache is disposable.</p>
+<p>The service fetches <code>https</code> URLs whose every resolved address is public,
+follows at most four redirects, checking each hop, and caps what it will
+download. It runs nothing from inside a bundle: the <code>verify.sh</code> that
+travels in an archive is a convenience for whoever chooses to run it, and
+the service implements the checks itself.</p>
+<p>Point a README badge at a release artifact:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-markdown" data-lang="markdown"><span class="line"><span class="cl">[<span class="nt">![evidence</span>](<span class="na">https://your-host/badge.svg?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz</span>)](https://your-host/derivation?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz)
+</span></span></code></pre></div><h2 id="what-a-badge-says">What a badge says</h2>
+<p>The stages the pinned definition grants, and which definition granted
+them: <code>release@3c577f36 · :attested · :scanned</code>. The badge links to a
+page carrying the guards that held, the ones that did not, who may sign
+in this bundle and on whose say-so, and the two commands that reach the
+same answer with the service switched off.</p>
+<p>A badge is a derived conclusion displayed as though it were a fact, which
+is the one thing <a href="/concepts/derived-beats-declared/">derived beats
+declared</a>
+ forbids storing. Three
+properties keep it honest:</p>
+<ul>
+<li><strong>it is derived per request</strong>, so it is a lens rather than a status;</li>
+<li><strong>it names the derivation</strong> — stages, definition hash, instant — where
+a word like <em>compliant</em> would name a policy it cannot see;</li>
+<li><strong>the service is disposable.</strong> Delete it and the bundle still checks
+out with coreutils. A verification service that becomes the authority
+has re-introduced exactly the trust the bundle removes.</li>
+</ul>
+<p>The colour follows the same rule: one shade for a bundle that verifies,
+red for one that does not. Green would read as approval, and the badge
+reports a derivation, which is a different kind of claim.</p>
+<h2 id="publishing-bundles-from-ci">Publishing bundles from CI</h2>
+<p>The wedge is one line over evidence a pipeline already produces. tik&rsquo;s own
+release workflow records the version, the commit, the image digest and
+the checksums file as signed facts, imports the SBOM, provenance and scan
+as attestations through <code>tik bridge intoto</code>, and ships the result:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle <span class="s2">&#34;</span><span class="nv">$TICKET</span><span class="s2">&#34;</span> --out <span class="s2">&#34;evidence-</span><span class="nv">$VERSION</span><span class="s2">.tgz&#34;</span>
+</span></span></code></pre></div><p>CI signs with an ephemeral key bound to its workload identity (<a href="/decisions/0023-key-bindings-are-evidence/">ADR
+0023</a>
+), so the bundle carries
+the binding and its issuer&rsquo;s key, and a recipient re-earns that trust from
+the issuer&rsquo;s own signature.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/bundle" term="bundle" label="bundle"/><category scheme="https://tik.projects.metio.wtf/tags/badge" term="badge" label="badge"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/></entry></feed>

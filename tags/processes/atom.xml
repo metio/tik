@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Processes on tik</title><link href="https://tik.projects.metio.wtf/tags/processes/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/processes/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/processes/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/processes/</id><entry><title type="html">Runbooks</title><link href="https://tik.projects.metio.wtf/runbooks/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="related" type="text/html" title="Stages"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/runbooks/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T02:48:42+02:00</updated><content type="html"><![CDATA[<blockquote>One page per stage — what reaching it means and what evidence gets you there.</blockquote><p>A process definition names a runbook per stage through its <code>:hint</code> field, and
+<code>tik explain</code> prints that link beside the missing evidence:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">To reach :triaged:
+</span></span><span class="line"><span class="cl">  ✗ set fact [:category] ([:enum :billing :technical :account :abuse])
+</span></span><span class="line"><span class="cl">  (see: kb/runbooks/support-request-triaged.md)
+</span></span></code></pre></div><p>So these pages are read at the moment somebody is stuck, and each answers a
+single question: what has to become true here, and who can make it so. They
+live in the repository&rsquo;s knowledge bundle under <code>kb/runbooks/</code>, so a checkout,
+an agent, and this site read the same document.</p>
+<p>Each process below is listed in stage order rather than alphabetically — a
+runbook makes most sense beside the stages it sits between.</p>
+<h2 id="support-request">support-request</h2>
+<p>The sample process the conformance corpus pins: a customer report from arrival
+to acknowledgement.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/support-request-received/"><code>:received</code></a>
+</td>
+					<td>A new report exists and nothing is known yet.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-triaged/"><code>:triaged</code></a>
+</td>
+					<td>A triager has signed off a category and a severity.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-reproducible/"><code>:reproducible</code></a>
+</td>
+					<td>A reproduction is attached under <code>repro/</code>.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-resolved/"><code>:resolved</code></a>
+</td>
+					<td>A resolution reference points at the fix.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-escalated/"><code>:escalated</code></a>
+</td>
+					<td>Derives on its own: 48 hours with no category.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/support-request-closed/"><code>:closed</code></a>
+</td>
+					<td>Sticky milestone — only the customer&rsquo;s acknowledgement closes it.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="release">release</h2>
+<p>A version&rsquo;s supply chain as evidence: one ticket per release, each stage
+saying what must be true of the artifacts rather than which job ran.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/release-built/"><code>:built</code></a>
+</td>
+					<td>Artifacts exist and CI has signed which commit produced them.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, attested within the last day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM, build provenance, and a signature are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-published/"><code>:published</code></a>
+</td>
+					<td>Sticky — a maintainer shipped it, and not the one who built it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/release-withheld/"><code>:withheld</code></a>
+</td>
+					<td>A maintainer decided it does not ship, with the reason.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="tik-dev">tik-dev</h2>
+<p>The process tik&rsquo;s own development runs in; this repository is a live store.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/tik-dev-captured/"><code>:captured</code></a>
+</td>
+					<td>A thought exists and the ticket preserves it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-triaged/"><code>:triaged</code></a>
+</td>
+					<td>A summary and a kind are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-implemented/"><code>:implemented</code></a>
+</td>
+					<td>A commit is named.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-landed/"><code>:landed</code></a>
+</td>
+					<td>The full local gate came back green.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/tik-dev-parked/"><code>:parked</code></a>
+</td>
+					<td>Deliberately not now — with the reason, which is the deliverable.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="hypothesis">hypothesis</h2>
+<p>Falsifiable claims carrying a kill criterion, so a plan can be wrong on
+purpose rather than by accident.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/hypothesis-captured/"><code>:captured</code></a>
+</td>
+					<td>A belief worth testing exists, even half-formed.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-stated/"><code>:stated</code></a>
+</td>
+					<td>The claim and what would kill it are both written down.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-running/"><code>:running</code></a>
+</td>
+					<td>The experiment is named: what is run, on what, measured how.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-validated/"><code>:validated</code></a>
+</td>
+					<td>Evidence a stranger could check.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/hypothesis-killed/"><code>:killed</code></a>
+</td>
+					<td>Which criterion fired, and the evidence it fired on.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="track">track</h2>
+<p>Two stages, for something that needs recording rather than a workflow.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/track-open/"><code>:open</code></a>
+</td>
+					<td>The ticket exists; record what is true as it happens.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/track-done/"><code>:done</code></a>
+</td>
+					<td>The thing ended — say how.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="identity-registry">identity-registry</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>What it means</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/identity-registry-registry/"><code>:registry</code></a>
+</td>
+					<td>Always this stage: key bindings are evidence, not workflow.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="incident-response">incident-response</h2>
+<p>From first alarm to a reviewed postmortem.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/incident-declared/"><code>:declared</code></a>
+</td>
+					<td>Severity and impact are on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-mitigated/"><code>:mitigated</code></a>
+</td>
+					<td>A commander signed the severity and the bleeding stopped.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-postmortem-due/"><code>:postmortem-due</code></a>
+</td>
+					<td>Derives from time alone: five days with no postmortem.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-analyzed/"><code>:analyzed</code></a>
+</td>
+					<td>A root cause and a postmortem summary exist.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/incident-reviewed/"><code>:reviewed</code></a>
+</td>
+					<td>Sticky — accepted by somebody who did not write it.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="employee-onboarding">employee-onboarding</h2>
+<p>The checklist that runs itself, two branches rejoining at the end.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/onboarding-hired/"><code>:hired</code></a>
+</td>
+					<td>A start date, a signed contract, and the file to go with it.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-equipped/"><code>:equipped</code></a>
+</td>
+					<td>IT signed off the equipment reference.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-accounts/"><code>:accounts-live</code></a>
+</td>
+					<td>IT signed off the account.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/onboarding-ready/"><code>:ready</code></a>
+</td>
+					<td>Sticky — both branches landed and a buddy is named.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="okf-publish">okf-publish</h2>
+<p>Publishing a knowledge bundle, with review signed over its content hash.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/okf-publish-drafted/"><code>:drafted</code></a>
+</td>
+					<td>The bundle exists and its hash is on record.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-reviewed/"><code>:reviewed</code></a>
+</td>
+					<td>A reviewer vouched for it, signing over that hash.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-approved/"><code>:approved</code></a>
+</td>
+					<td>An owner authorised release over the same hash.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/okf-publish-published/"><code>:published</code></a>
+</td>
+					<td>Public — and it un-publishes if the bundle is revised.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="renovate-migration">renovate-migration</h2>
+<p>Moving a repository from Dependabot to Renovate, with a probe keeping it honest.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-planned/"><code>:planned</code></a>
+</td>
+					<td>An approach is written down.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-configured/"><code>:configured</code></a>
+</td>
+					<td>Renovate is in, Dependabot is out, and the probe agrees.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/renovate-migration-verified/"><code>:verified</code></a>
+</td>
+					<td>A dashboard, a first PR, and a maintainer&rsquo;s approval.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="supply-chain-release">supply-chain-release</h2>
+<p>A release as evidence, with four-eyes approval.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-built/"><code>:built</code></a>
+</td>
+					<td>CI signed which commit produced these bytes.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM and provenance, each attested within a day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, recently.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-approved/"><code>:approved</code></a>
+</td>
+					<td>Sticky — approved by somebody who is not the pipeline.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/supply-chain-release-withheld/"><code>:withheld</code></a>
+</td>
+					<td>A decision not to ship, with the reason on record.</td>
+			</tr>
+	</tbody>
+</table>
+<h2 id="automated-release">automated-release</h2>
+<p>The same, for a pipeline that ships with no human in the loop.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Stage</th>
+					<th>Reached when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><a href="/runbooks/automated-release-built/"><code>:built</code></a>
+</td>
+					<td>CI signed which commit produced these bytes.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/automated-release-attested/"><code>:attested</code></a>
+</td>
+					<td>An SBOM and provenance, each attested within a day.</td>
+			</tr>
+			<tr>
+					<td><a href="/runbooks/automated-release-scanned/"><code>:scanned</code></a>
+</td>
+					<td>A vulnerability scan came back clean, recently.</td>
+			</tr>
+	</tbody>
+</table>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/runbooks" term="runbooks" label="runbooks"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/></entry><entry><title type="html">SLSA, said honestly</title><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/evidence/slsa/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-08T08:44:03+02:00</updated><content type="html"><![CDATA[<blockquote>What the release processes demand, mapped onto SLSA&rsquo;s build requirements — a claim about the definitions, never about a ticket.</blockquote><p>The stages of <a href="/processes/supply-chain-release/"><code>supply-chain-release</code></a>
+ and
+<a href="/processes/automated-release/"><code>automated-release</code></a>
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a <strong>trusted attester said</strong>
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called <code>slsa-l3</code> would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.</p>
+<p>What <code>supply-chain-release</code> demands maps onto SLSA&rsquo;s build requirements like
+this — and the table is a claim about <strong>the definition</strong>, never about any
+ticket that pins it. <code>automated-release</code> demands the same, minus the two-person
+row:</p>
+<table>
+	<thead>
+			<tr>
+					<th>SLSA asks for</th>
+					<th>This definition demands</th>
+					<th>Stage</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>Provenance exists, generated by the build platform</td>
+					<td>An attestation of claim <code>:provenance</code>, signed by the <code>ci</code> role, within a day of the build</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>Provenance is authenticated and distributed</td>
+					<td>The attestation is a signed event in the ticket&rsquo;s own log, and it travels in the evidence bundle</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>The build is described by its inputs</td>
+					<td><code>commit</code> signed by <code>ci</code>, plus <code>artifact.digest</code> and a <code>checksums/</code> artifact</td>
+					<td><code>built</code></td>
+			</tr>
+			<tr>
+					<td>Dependencies are known</td>
+					<td>An attestation of claim <code>:sbom</code>, within a day</td>
+					<td><code>attested</code></td>
+			</tr>
+			<tr>
+					<td>Two-person review of what ships</td>
+					<td><code>approval</code> signed by <code>release-manager</code>, and <code>[:different-person [:commit] [:approval]]</code></td>
+					<td><code>approved</code></td>
+			</tr>
+	</tbody>
+</table>
+<p>A build&rsquo;s SLSA level is a property of the build <strong>platform</strong>, and no ticket
+system can confer one. What this gives you instead is the thing an auditor
+actually asks for months later: which rules judged this release, what evidence
+was supplied, who signed it, and how to recompute the answer without trusting
+anybody&rsquo;s word.</p>
+<h2 id="carrying-the-publication-signature-into-your-bundles">Carrying the publication signature into your bundles</h2>
+<p>Adopting a definition preserves its <em>identity</em> — the address is over the parsed definition, so the pretty-printed
+copy in your store hashes to the same value. It does not bring the signature,
+so a bundle you produce carries the rules but not our word for them.</p>
+<p>To carry that too, copy the signed archive alongside:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">cp processes/by-hash/&lt;hash&gt;.edn      &lt;your-store&gt;/processes/by-hash/
+</span></span><span class="line"><span class="cl">cp processes/by-hash/&lt;hash&gt;.sig.*    &lt;your-store&gt;/processes/by-hash/
+</span></span><span class="line"><span class="cl">cat actors &gt;&gt; &lt;your-store&gt;/actors     # so the signature has a key to check against
+</span></span></code></pre></div><p>tik leaves an archive that already exists alone, and <code>tik bundle</code> ships every
+file whose name starts with the pinned hash. So your evidence bundles then
+carry <strong>our signature over the rules that judged your release</strong>, and the
+recipient&rsquo;s <code>verify.sh</code> checks it with <code>ssh-keygen</code> and nothing else:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">ok    sha256-c1cffcb2….sig.e8290a63236755f2 verifies as seb
+</span></span><span class="line"><span class="cl">bundle: PASS
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/evidence" term="evidence" label="evidence"/><category scheme="https://tik.projects.metio.wtf/tags/slsa" term="slsa" label="slsa"/><category scheme="https://tik.projects.metio.wtf/tags/supply-chain" term="supply-chain" label="supply-chain"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/></entry><entry><title type="html">Writing a definition</title><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/authoring/lint-simulate-test/?utm_source=atom_feed" rel="related" type="text/html" title="Lint, simulate, test"/><link href="https://tik.projects.metio.wtf/evidence/slsa/?utm_source=atom_feed" rel="related" type="text/html" title="SLSA, said honestly"/><id>https://tik.projects.metio.wtf/authoring/writing-a-definition/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>The shape of a process definition, the closed guard vocabulary, and the design law that separates a process from a task list.</blockquote><h2 id="the-design-law">The design law</h2>
+<p><strong>A stage is defined by what must be TRUE to reach it, never by who moved
+what.</strong> Ask of every stage: what evidence, on record, would convince a
+sceptical auditor a year from now? Write that as guards. If the honest
+answer is &ldquo;somebody said so&rdquo;, then make <em>that</em> the fact — a named person&rsquo;s
+signature on a named claim — rather than a status somebody sets.</p>
+<p>A definition whose stages are really a checklist of activities is a task
+list wearing a process costume. It derives nothing, because nothing about
+it follows from evidence.</p>
+<h2 id="the-shape">The shape</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:process/id</span> <span class="ss">:support-request</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/version</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/guard-vocab</span> <span class="mi">2</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/roles</span>
+</span></span><span class="line"><span class="cl"> <span class="p">{</span><span class="ss">:triager</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;seb&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="ss">:billing</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;billing&#34;</span><span class="p">]}}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/facts</span>
+</span></span><span class="line"><span class="cl"> <span class="p">{[</span><span class="ss">:category</span><span class="p">]</span>        <span class="p">[</span><span class="ss">:enum</span> <span class="ss">:billing</span> <span class="ss">:technical</span> <span class="ss">:account</span> <span class="ss">:abuse</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">[</span><span class="ss">:severity</span><span class="p">]</span>        <span class="p">[</span><span class="ss">:enum</span> <span class="ss">:low</span> <span class="ss">:normal</span> <span class="ss">:high</span> <span class="ss">:critical</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">[</span><span class="ss">:resolution</span> <span class="ss">:ref</span><span class="p">]</span> <span class="p">[</span><span class="ss">:string</span> <span class="p">{</span><span class="ss">:min</span> <span class="mi">8</span><span class="p">}]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"> <span class="ss">:process/stages</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:stage/id</span> <span class="ss">:received</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:hint</span> <span class="s">&#34;kb/runbooks/support-request-received.md&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:triaged</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:after</span> <span class="p">[</span><span class="ss">:received</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:hint</span> <span class="s">&#34;kb/runbooks/support-request-triaged.md&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">            <span class="p">[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:severity</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">            <span class="p">[</span><span class="ss">:signed-by</span> <span class="ss">:triager</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]]]}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:stage/id</span> <span class="ss">:closed</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:after</span> <span class="p">[</span><span class="ss">:resolved</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:stage/sticky?</span> <span class="nv">true</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:fact</span> <span class="p">[</span><span class="ss">:customer</span> <span class="ss">:ack</span><span class="p">]]]}]}</span>
+</span></span></code></pre></div><p><code>:process/facts</code> declares the schema for each path, which is what lets
+<code>explain</code> tell somebody not merely that a fact is missing but what shape it
+must take — and what lets a web form be generated from the reason.</p>
+<p><code>:hint</code> names a runbook for the stage. Those files are published here under
+<a href="/runbooks/">Runbooks</a>
+, so the hint a person sees in <code>explain</code> resolves to
+a page.</p>
+<h2 id="the-guard-vocabulary">The guard vocabulary</h2>
+<p>Twelve operators, closed and versioned. New keywords need a version bump,
+because the semantics of a verifiable kernel have to be enumerable:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Operator</th>
+					<th>Holds when</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>[:fact path]</code></td>
+					<td>a value stands at <code>path</code></td>
+			</tr>
+			<tr>
+					<td><code>[:fact= path v]</code></td>
+					<td>that value equals <code>v</code></td>
+			</tr>
+			<tr>
+					<td><code>[:artifact &quot;prefix&quot;]</code></td>
+					<td>an attached artifact&rsquo;s path starts with <code>prefix</code></td>
+			</tr>
+			<tr>
+					<td><code>[:signed-by :role path]</code></td>
+					<td>the fact at <code>path</code> was asserted by a member of <code>:role</code></td>
+			</tr>
+			<tr>
+					<td><code>[:stage-reached :id]</code></td>
+					<td>that stage is in the reached set</td>
+			</tr>
+			<tr>
+					<td><code>[:elapsed-since :ticket/create &quot;PT48H&quot;]</code></td>
+					<td>that much time has passed</td>
+			</tr>
+			<tr>
+					<td><code>[:attested-within claim &quot;P7D&quot;]</code></td>
+					<td>a fresh-enough attestation of <code>claim</code> exists</td>
+			</tr>
+			<tr>
+					<td><code>[:different-person path-a path-b]</code></td>
+					<td>two facts came from distinct actors</td>
+			</tr>
+			<tr>
+					<td><code>[:malli schema]</code></td>
+					<td>the fact map satisfies a schema</td>
+			</tr>
+			<tr>
+					<td><code>[:and …]</code> <code>[:or …]</code> <code>[:not …]</code></td>
+					<td>the connectives</td>
+			</tr>
+	</tbody>
+</table>
+<p><code>:different-person</code> is the four-eyes principle as a derivable condition.
+<code>:attested-within</code> closes the stale-evidence gap: a replayed &ldquo;CI green&rdquo;
+from last month is cryptographically valid and fails the guard honestly.</p>
+<p>There is no conditional operator, because material implication already
+spells one — &ldquo;technical implies reproduced&rdquo; is:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">[</span><span class="ss">:or</span> <span class="p">[</span><span class="ss">:not</span> <span class="p">[</span><span class="ss">:fact=</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[</span><span class="ss">:stage-reached</span> <span class="ss">:reproducible</span><span class="p">]]</span>
+</span></span></code></pre></div><h2 id="guards-never-query">Guards never query</h2>
+<p>A guard reads one ticket&rsquo;s own log and nothing else. No service call, no
+database lookup, no other ticket, no clock of its own. Anything from the
+outside world enters as a signed attestation event first, which is what
+keeps evaluation offline, reproducible, and true years from now.</p>
+<h2 id="facts-over-flags">Facts over flags</h2>
+<p>Prefer a fact that carries information to a boolean that carries a
+decision. <code>[:customer :ack] = true</code> records that somebody clicked; a
+richer fact records what they actually agreed to. The linter warns about
+bare booleans for this reason, and the warning is opt-out per definition
+when a flag genuinely is the whole truth.</p>
+<h2 id="versions-and-pinning">Versions and pinning</h2>
+<p>A ticket pins the definition&rsquo;s content hash at creation. Editing a
+definition therefore changes its identity and leaves existing tickets
+deriving under the version that judged them, until somebody moves each one
+with <code>tik reprocess</code>. The version number is a human label; the hash is the
+identity.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/authoring" term="authoring" label="authoring"/><category scheme="https://tik.projects.metio.wtf/tags/processes" term="processes" label="processes"/><category scheme="https://tik.projects.metio.wtf/tags/guards" term="guards" label="guards"/><category scheme="https://tik.projects.metio.wtf/tags/edn" term="edn" label="edn"/></entry></feed>

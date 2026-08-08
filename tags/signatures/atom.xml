@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Signatures on tik</title><link href="https://tik.projects.metio.wtf/tags/signatures/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/signatures/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/signatures/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/signatures/</id><entry><title type="html">Roles and authority</title><link href="https://tik.projects.metio.wtf/authoring/roles-and-authority/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/authoring/roles-and-authority/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Who may sign what, and keeping membership current without re-pinning every ticket.</blockquote><p>A role is a name a definition uses in its guards. Membership is store
+state that decides who is in that role today.</p>
+<h2 id="declaring-a-role">Declaring a role</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="ss">:process/roles</span>
+</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:triager</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;seb&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:approver</span> <span class="p">{</span><span class="ss">:members</span> <span class="p">[</span><span class="s">&#34;alice&#34;</span> <span class="s">&#34;bob&#34;</span><span class="p">]}}</span>
+</span></span></code></pre></div><p>Guards refer to the name:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="ss">:guards</span> <span class="p">[[</span><span class="ss">:signed-by</span> <span class="ss">:triager</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]]]</span>
+</span></span></code></pre></div><p>That guard holds when the fact at <code>[:category]</code> was asserted by a member of
+<code>:triager</code>. It is a statement about evidence — who put this claim on the
+record — rather than a permission check performed somewhere else.</p>
+<h2 id="membership-lives-in-the-register">Membership lives in the register</h2>
+<p>A definition declares which roles exist and who starts in them. The store&rsquo;s
+register decides who is in one now:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik roles                          <span class="c1"># who gates what, with effective members</span>
+</span></span><span class="line"><span class="cl">tik roles add approver carol
+</span></span><span class="line"><span class="cl">tik roles remove approver bob
+</span></span></code></pre></div><p>The register overrides a definition role by role, and takes effect on
+in-flight tickets immediately — no version bump, no <code>reprocess</code>. That is
+what makes a departure actually remove authority and a hire actually confer
+it, rather than leaving a departed member able to sign every ticket minted
+before they left.</p>
+<p>Overriding is whole-role: the register&rsquo;s entry replaces the definition&rsquo;s
+members for that role rather than merging with them, because a departure
+has to be expressible. The first <code>tik roles add</code> on a role says so.</p>
+<p>A store with no register derives exactly as before, so a definition&rsquo;s
+declared members are a working default rather than something to restate.</p>
+<p>Resolution takes no <code>now</code>. Time-aware validity — &ldquo;was this actor a member
+last March&rdquo; — is a separate concern that wants signed bindings rather than
+a mutable file, so a re-derivation at a past instant reads today&rsquo;s
+membership.</p>
+<h2 id="separation-of-duties">Separation of duties</h2>
+<p>Two guards express the common controls without a policy engine.</p>
+<p><strong>Four eyes.</strong> <code>:different-person</code> holds when two facts are present and
+were asserted by distinct actors:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">[</span><span class="ss">:different-person</span> <span class="p">[</span><span class="ss">:proposal</span><span class="p">]</span> <span class="p">[</span><span class="ss">:approval</span><span class="p">]]</span>
+</span></span></code></pre></div><p>Nobody approves their own proposal, and <code>explain</code> says so by name when
+they try — the reason carries the actor whose signature already counted,
+so anyone else re-asserting one path breaks the tie.</p>
+<p><strong>Fresh evidence.</strong> <code>:attested-within</code> holds when an attestation of a claim
+exists and is recent enough:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">[</span><span class="ss">:attested-within</span> <span class="p">{</span><span class="ss">:claim</span> <span class="ss">:ci-green</span><span class="p">}</span> <span class="s">&#34;P7D&#34;</span><span class="p">]</span>
+</span></span></code></pre></div><p>A replayed attestation from last month is cryptographically valid and
+fails this guard honestly, which is exactly the distinction a stale-evidence
+control needs.</p>
+<h2 id="an-empty-role-is-a-dead-end">An empty role is a dead end</h2>
+<p>A role with no members can never sign, so every stage behind it is
+unreachable. <code>explain</code> says that rather than leaving somebody waiting:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-console" data-lang="console"><span class="line"><span class="cl"><span class="go">To reach :approved (unreachable):
+</span></span></span><span class="line"><span class="cl"><span class="go">  ⊘ fact [:sign-off] must be asserted by a member of role :auditor
+</span></span></span><span class="line"><span class="cl"><span class="go">      — nobody can ever do this
+</span></span></span></code></pre></div><p>The fix is <code>tik roles add</code>, or a definition that does not demand a
+signature nobody can give.</p>
+<h2 id="signing">Signing</h2>
+<p>Authority only means something once writes are signed. Register a signer
+once, then let every write carry authorship:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik actor add alice ~/.config/tik/id_ed25519.pub
+</span></span><span class="line"><span class="cl"><span class="nb">export</span> <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/id_ed25519
+</span></span></code></pre></div><p>Signatures are detached sidecars from <code>ssh-keygen -Y</code>, checked by
+<code>tik verify</code> with stock OpenSSH. A signature is an authorship claim, which
+is why <code>tik sign</code> refuses to sign somebody else&rsquo;s events.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/roles" term="roles" label="roles"/><category scheme="https://tik.projects.metio.wtf/tags/authority" term="authority" label="authority"/><category scheme="https://tik.projects.metio.wtf/tags/signatures" term="signatures" label="signatures"/><category scheme="https://tik.projects.metio.wtf/tags/separation-of-duties" term="separation-of-duties" label="separation-of-duties"/></entry></feed>

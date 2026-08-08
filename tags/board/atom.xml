@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Board on tik</title><link href="https://tik.projects.metio.wtf/tags/board/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/board/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/board/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/board/</id><entry><title type="html">Reading a store</title><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/explain/?utm_source=atom_feed" rel="related" type="text/html" title="Explain"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="related" type="text/html" title="Store administration"/><id>https://tik.projects.metio.wtf/cli/reading-a-store/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-06T23:58:57+02:00</updated><content type="html"><![CDATA[<blockquote>The inbox, the board, explain, selectors, history, and counterfactuals.</blockquote><p>Every view here is computed when you ask, so none of them can be stale.</p>
+<h2 id="what-should-i-do">What should I do?</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik next --actor alice
+</span></span><span class="line"><span class="cl">tik next --role :triager
+</span></span><span class="line"><span class="cl">tik explain <span class="m">3184</span> --actor alice
+</span></span></code></pre></div><p><code>next</code> ranks by how much downstream work each step unlocks, with quiet
+tickets rising. <code>explain</code> is the per-ticket answer: what is missing, whose
+signature it needs, and which stages it blocks. See
+<a href="/concepts/explain/">Explain</a>
+ for the model behind them.</p>
+<h2 id="the-board">The board</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls
+</span></span><span class="line"><span class="cl">tik ls --all --long
+</span></span><span class="line"><span class="cl">tik ls --where <span class="s1">&#39;stage=:blocked and fact:severity=:high and not disputed&#39;</span>
+</span></span><span class="line"><span class="cl">tik search firefox login
+</span></span></code></pre></div><p>A selector is space-separated terms, all ANDed, each optionally negated:
+<code>stage=:blocked</code>, <code>fact:severity</code>, <code>fact:severity=:high</code>, <code>actor=seb</code>,
+<code>disputed</code>, <code>conflicted</code>, <code>unsigned</code>, <code>derived-from=&lt;hash&gt;</code>, <code>~text</code>. The
+same grammar drives <code>search</code>, and <code>tik dupes</code> reports near-title
+lookalikes.</p>
+<h2 id="one-ticket">One ticket</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik status <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik status <span class="m">3184</span> --at 2026-03-01T00:00:00Z
+</span></span><span class="line"><span class="cl">tik log <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik diff <span class="m">3184</span> <span class="m">5</span>
+</span></span></code></pre></div><p><code>status</code> reports the derived stage, the facts behind it, links, and what is
+next. <code>--at</code> answers the same question about any past moment by evaluating
+that moment. <code>diff</code> shows the evidence gained over the last few events.</p>
+<h2 id="why-and-what-if">Why, and what if</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik causal <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik whatif <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:low +P2D retract:category
+</span></span><span class="line"><span class="cl">tik debug <span class="m">3184</span>
+</span></span></code></pre></div><p><code>causal</code> names the signed events that made each reached stage true —
+including negations and time saying so honestly. <code>whatif</code> shows the stage
+diff a change would produce and writes nothing. <code>debug</code> shows the fixpoint
+with its working: every sweep, every guard verdict.</p>
+<h2 id="the-roadmap-and-the-wider-picture">The roadmap and the wider picture</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik plan
+</span></span><span class="line"><span class="cl">tik plan roadmap.html
+</span></span><span class="line"><span class="cl">tik roles
+</span></span><span class="line"><span class="cl">tik work week --actor alice
+</span></span></code></pre></div><p><code>plan</code> derives the dependency-link roadmap — ready, blocked, done, cyclic,
+the critical path, and each item&rsquo;s unlock impact. <code>roles</code> shows who gates
+what: every role on the open board, its effective members, and the stages
+waiting on its signature.</p>
+<h2 id="sharing-what-you-see">Sharing what you see</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik board board.html
+</span></span><span class="line"><span class="cl">tik serve --port <span class="m">8080</span>
+</span></span><span class="line"><span class="cl">tik bundle <span class="m">3184</span> --out ticket-3184.tgz
+</span></span><span class="line"><span class="cl">tik rederive ticket-3184.tgz
+</span></span></code></pre></div><p><code>board</code> renders the whole store into one dependency-free HTML file you can
+mail or archive. <code>serve</code> publishes it live, read-only, with <code>/tickets.edn</code>
+and <code>/explain/&lt;id&gt;.edn</code> for tools. <code>bundle</code> packs one ticket — events,
+signatures, witness marks, the pinned ruleset, and a <code>verify.sh</code> — into a
+tarball a third party checks with coreutils and <code>ssh-keygen</code>, no tik
+required. <code>rederive</code> is the other half: it checks a bundle and recomputes
+what its facts imply under the rules the ticket pinned, at the instant you
+ask. See <a href="/evidence/">Evidence</a>
+.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/><category scheme="https://tik.projects.metio.wtf/tags/explain" term="explain" label="explain"/><category scheme="https://tik.projects.metio.wtf/tags/next" term="next" label="next"/><category scheme="https://tik.projects.metio.wtf/tags/board" term="board" label="board"/><category scheme="https://tik.projects.metio.wtf/tags/selectors" term="selectors" label="selectors"/></entry></feed>

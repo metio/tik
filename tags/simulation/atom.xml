@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.163.3">Hugo</generator><title type="html">Simulation on tik</title><link href="https://tik.projects.metio.wtf/tags/simulation/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/simulation/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/simulation/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-08-08T09:46:18+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/simulation/</id><entry><title type="html">Lint, simulate, test</title><link href="https://tik.projects.metio.wtf/authoring/lint-simulate-test/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/authoring/writing-a-definition/?utm_source=atom_feed" rel="related" type="text/html" title="Writing a definition"/><id>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-08-05T22:45:55+02:00</updated><content type="html"><![CDATA[<blockquote>Proving a definition does what you meant — before a real ticket depends on it.</blockquote><p>Three checks, in the order you reach for them.</p>
+<h2 id="lint">Lint</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik lint processes/support-request.edn
+</span></span></code></pre></div><p>The linter enforces what the kernel cannot:</p>
+<ul>
+<li><strong>The closed guard basis</strong> — only operators the declared
+<code>:process/guard-vocab</code> admits.</li>
+<li><strong>Graph sanity</strong> — every <code>:after</code> names a stage that exists, and no
+cycles.</li>
+<li><strong>Stratified negation</strong> — <code>[:not [:stage-reached …]]</code> may only name a
+stage in a strictly earlier stratum, which is what makes the fixpoint
+provably deterministic.</li>
+<li><strong>Facts over flags</strong> — a warning where a bare boolean stands in for
+information worth recording.</li>
+<li><strong>Prefix boundaries</strong> — an <code>:artifact</code> prefix that does not end at a path
+boundary matches more than its author expects.</li>
+</ul>
+<p>With no argument it lints the <em>store</em> instead: open tickets missing
+descriptions, titles, or signatures.</p>
+<h2 id="simulate">Simulate</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik sim processes/support-request.edn
+</span></span></code></pre></div><p>A scratch ticket against a definition that reloads on every save. Assert
+facts, watch stages derive, and edit the definition in another window —
+the fastest loop for finding out that a guard means something other than
+what you read into it.</p>
+<h2 id="test">Test</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">test</span> processes/support-request.tests.edn
+</span></span></code></pre></div><p>Scripted cases: evidence in, expected stages out. Deterministic — a fixed
+epoch, pure derivation, no store — and a failing case prints <code>explain</code>, so
+the process itself says why a stage did not derive.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:test/process</span> <span class="s">&#34;support-request.edn&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:test/cases</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:case/name</span> <span class="s">&#34;facts alone do not triage — the triager role must sign&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/steps</span> <span class="p">[[</span><span class="ss">:actor</span> <span class="s">&#34;rando&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="p">[</span><span class="ss">:set</span> <span class="p">[</span><span class="ss">:category</span><span class="p">]</span> <span class="ss">:technical</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="p">[</span><span class="ss">:set</span> <span class="p">[</span><span class="ss">:severity</span><span class="p">]</span> <span class="ss">:high</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/expect</span> <span class="p">{</span><span class="ss">:excludes</span> <span class="o">#</span><span class="p">{</span><span class="ss">:triaged</span><span class="p">}}}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:case/name</span> <span class="s">&#34;uncategorized tickets escalate after 48h&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/steps</span> <span class="p">[[</span><span class="ss">:now</span> <span class="s">&#34;+PT49H&#34;</span><span class="p">]]</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:case/expect</span> <span class="p">{</span><span class="ss">:includes</span> <span class="o">#</span><span class="p">{</span><span class="ss">:escalated</span><span class="p">}}}]}</span>
+</span></span></code></pre></div><p><code>[:now &quot;+PT49H&quot;]</code> moves the evaluation clock, so time-gated stages are
+testable without waiting and without a mock. <code>[:actor &quot;rando&quot;]</code> switches
+who is signing, which is how a <code>:signed-by</code> guard gets tested from both
+sides.</p>
+<p>Write the negative cases. &ldquo;A triager categorizing reaches <code>:triaged</code>&rdquo; is
+the easy half; &ldquo;facts alone do not triage&rdquo; is the half that catches a
+<code>:signed-by</code> you dropped.</p>
+<h2 id="publish">Publish</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik process sign support-request
+</span></span></code></pre></div><p>Signing archives the definition by content hash and signs those canonical
+bytes. The hash stays the identity; the signature is the authority behind
+it.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/authoring" term="authoring" label="authoring"/><category scheme="https://tik.projects.metio.wtf/tags/lint" term="lint" label="lint"/><category scheme="https://tik.projects.metio.wtf/tags/testing" term="testing" label="testing"/><category scheme="https://tik.projects.metio.wtf/tags/simulation" term="simulation" label="simulation"/></entry></feed>
