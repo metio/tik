@@ -2,7 +2,8 @@
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.impossible-test
   "explain distinguishes waiting on somebody from waiting forever."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [tik.harness :as h]
+            [clojure.test :refer [deftest is testing]]
             [tik.event :as event]
             [tik.explain :as explain])
   (:import (java.time Instant)))
@@ -28,7 +29,7 @@
     {:stage/id :either :after [:open]
      :guards [[:or [:signed-by :auditor [:report]] [:fact [:note]]]]}]})
 
-(def roles (:process/roles proc))
+(def roles (h/sample-roles proc))
 (def tid #uuid "018f2f6e-7c1a-7000-8000-000000000009")
 (defn at [s] (Instant/parse s))
 (def now (at "2026-07-08T12:00:00Z"))

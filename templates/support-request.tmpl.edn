@@ -1,0 +1,99 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Customer support, parameterized. `tik adopt` asks the questions below
+;; and writes a plain, hash-pinnable definition — the template never runs
+;; as code, and the expanded EDN is what a ticket pins.
+;;
+;; What is a knob here and what is not. The escalation window and the
+;; three optional stages differ genuinely between support teams, so they
+;; are asked. ROLE MEMBERS are not: they belong in the store's register
+;; (`tik roles add triager alice`), where a hire or a departure takes
+;; effect on in-flight tickets with no new definition and no re-pin.
+;; Baking people into a definition would put every staffing change into
+;; the hash a ticket pinned.
+;;
+;; The category taxonomy stays fixed because the guard basis has no way
+;; to build an enum from an answer, and a template that asked for one
+;; would have to accept raw EDN — which is the thing templates exist to
+;; avoid. Edit the expanded definition if your categories differ; that is
+;; a one-line change and it is honest about being one.
+{:tik/params
+ [:map
+  [:escalate-after
+   {:description "escalate an untriaged request after (ISO-8601, e.g. PT48H)"}
+   :string]
+  [:with-escalation
+   {:optional true
+    :description "flag requests nobody triaged in that window?"}
+   :boolean]
+  [:with-repro
+   {:optional true
+    :description "require a reproduction before a technical fix counts?"}
+   :boolean]
+  [:with-ack
+   {:optional true
+    :description "close only once the customer confirms?"}
+   :boolean]]
+
+ :tik/template
+ {:process/id :support-request
+  :process/version 1
+  :process/guard-vocab 1
+
+  :process/roles
+  {:triager {:members []}}
+
+  :process/facts
+  {[:category]        [:enum :billing :technical :account :abuse]
+   [:severity]        [:enum :low :normal :high :critical]
+   [:resolution :ref] [:string {:min 8}]
+   ;; a reference to the customer's confirmation, not a checkbox — what
+   ;; they said and where it is beats a boolean somebody ticked
+   [:customer :ack]   [:string {:min 2}]}
+
+  :process/stages
+  [{:stage/id :received
+    :hint "kb/runbooks/support-request-received.md"
+    :guards []}
+
+   {:stage/id :triaged
+    :after [:received]
+    :hint "kb/runbooks/support-request-triaged.md"
+    :guards [[:fact [:category]]
+             [:fact [:severity]]
+             [:signed-by :triager [:category]]]}
+
+   ;; fact-level negation rather than [:not [:stage-reached :triaged]]:
+   ;; stage negation inside one stratum is forbidden (ADR 0005), and
+   ;; "this long with no category" is the more honest claim anyway
+   [:tik/when :with-escalation
+    {:stage/id :escalated
+     :hint "kb/runbooks/support-request-escalated.md"
+     :after [:received]
+     :guards [[:elapsed-since :ticket/create [:tik/param :escalate-after]]
+              [:not [:fact [:category]]]]}]
+
+   [:tik/when :with-repro
+    {:stage/id :reproducible
+     :hint "kb/runbooks/support-request-reproducible.md"
+     :after [:triaged]
+     :guards [[:fact= [:category] :technical]
+              [:artifact "repro/"]]}]
+
+   {:stage/id :resolved
+    :hint "kb/runbooks/support-request-resolved.md"
+    :after [:triaged]
+    :guards [[:fact [:resolution :ref]]
+             ;; "technical implies reproduced", as material implication
+             ;; over :or/:not — and only when that stage exists at all
+             [:tik/when :with-repro
+              [:or [:not [:fact= [:category] :technical]]
+               [:stage-reached :reproducible]]]]}
+
+   [:tik/when :with-ack
+    {:stage/id :closed
+     :hint "kb/runbooks/support-request-closed.md"
+     :after [:resolved]
+     :stage/sticky? true
+     :guards [[:fact [:customer :ack]]]}]]}}

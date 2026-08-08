@@ -21,7 +21,8 @@
     the current stages are :<id>[, :<id>…]
     explain for :<stage> lists <path> as missing
     explain for :<stage> says only \"<role>\" may provide <path>"
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -40,7 +41,7 @@
   (let [proc (edn/read-string (slurp (str "processes/" proc-name ".edn")))
         tid (random-uuid)]
     {:process proc
-     :roles (:process/roles proc {})
+     :roles (h/sample-roles proc)
      :ticket tid
      :now epoch
      :events [(event/create-ticket {:ticket tid :actor "gherkin" :at epoch

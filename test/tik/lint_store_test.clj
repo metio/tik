@@ -21,6 +21,9 @@
         _ (io/copy (io/file repo "processes/support-request.edn")
                    (io/file (doto (io/file root "processes")
                               (.mkdirs)) "support-request.edn"))
+        ;; the definition ships :triager empty, and settling this ticket
+        ;; needs a signed category — who is in a role lives in the register
+        _ (tik* root "roles" "add" "triager" "seb")
         id (str/trim (:out (tik* root "new" "support-request"
                                  "--title" "undescribed")))
         short (subs id 0 8)]

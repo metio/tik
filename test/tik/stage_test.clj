@@ -1,7 +1,8 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.stage-test
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
@@ -13,7 +14,7 @@
   (:import (java.time Instant)))
 
 (def proc (edn/read-string (slurp "processes/support-request.edn")))
-(def roles (:process/roles proc))
+(def roles (h/sample-roles proc))
 (def tid #uuid "018f2f6e-7c1a-7000-8000-000000000002")
 (defn at [s] (Instant/parse s))
 (def now (at "2026-07-08T12:00:00Z"))

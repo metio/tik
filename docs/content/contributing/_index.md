@@ -86,12 +86,11 @@ kernel code doing I/O.
 
 ## Regenerating the process gallery
 
-The pages under [/processes/](/processes/) are generated from the definitions
-in [metio/tik-processes](https://github.com/metio/tik-processes), not written
-by hand:
+The pages under [/processes/](/processes/) are generated from `processes/` and
+`templates/`, not written by hand:
 
 ```sh
-tik gallery ../tik-processes/processes ../tik-processes/templates \
+tik gallery processes templates \
   --out docs/content/processes \
   --assets docs/static/processes \
   --intro docs/processes-intro.md
@@ -105,9 +104,8 @@ that address ship together. `--intro` splices in the library-specific prose,
 kept in a file precisely so regenerating cannot discard it.
 
 Each page carries the content address it was generated from, so a page that
-has fallen behind the library names a hash the library no longer publishes.
-Regenerate after the library changes; the site build does not do it, because
-the definitions live in a different repository.
+has fallen behind names a hash nothing here publishes. Regenerate after
+changing a definition.
 
 ## Licensing
 

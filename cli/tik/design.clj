@@ -151,6 +151,7 @@
 (defn cmd-test
   "Process tests: scripted inputs, expected derived outcomes. The file is
   {:test/process \"<path relative to this file>\"
+   :test/roles   {:role {:members [\"actor\" …]}}   ; optional staffing
    :test/cases [{:case/name … :case/steps [[:set [:category] :technical] …]
                  :case/expect {:reached #{…} :current #{…}
                                :includes #{…} :excludes #{…}}} …]}
@@ -173,7 +174,16 @@
         _ (when-not (map? proc)
             (die (str "the :test/process path holds no process definition: "
                       process)))
-        roles (:process/roles proc {})
+        ;; A definition that ships its roles EMPTY — the shape anyone can
+        ;; adopt without inheriting somebody else's org chart — cannot have
+        ;; its `:signed-by` stages tested against declared members, because
+        ;; there are none. So a test states the staffing it needs, exactly
+        ;; as a store's register does, and stays self-contained: no store
+        ;; is read, and the same file derives the same answer anywhere.
+        register (:test/roles spec)
+        _ (when-not (or (nil? register) (process/valid-role-bindings? register))
+            (die ":test/roles must be {:role {:members [\"actor\" …]} …}"))
+        roles (process/resolve-roles (:process/roles proc {}) register)
         failures (atom 0)]
     (when (print-problems (lint/lint proc))
       (die "process definition has lint errors"))

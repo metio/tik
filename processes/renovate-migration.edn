@@ -1,0 +1,58 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Move a repository from Dependabot to Renovate, with evidence — and
+;; keep it moved. The migration is not "done" because a commit removed
+;; the config; it is done only while Dependabot STAYS gone. That live
+;; bar is what makes this a process, not a checklist: `dependabot.status`
+;; is re-derived from the repo's own contents every run by the probe
+;; (`probes/renovate-migration.sh`), so a stray automerge workflow or a
+;; re-added `.github/dependabot.yml` flips it back to :present and the
+;; :configured and :verified stages regress on their own.
+;;
+;; Fill :maintainer with the people who may stand behind the migration,
+;; then `tik new renovate-migration --title "…"`.
+{:process/id :renovate-migration,
+ :probe "probes/renovate-migration.sh",
+ :process/version 2,
+ :process/guard-vocab 1,
+ :process/purpose
+ "move a repository from Dependabot to Renovate, with evidence",
+ :process/roles {:maintainer {:members []}},
+ :process/facts
+ {[:approach] [:enum :org-wide-config :repo-local-config],
+  [:renovate :config :ref] [:string {:min 1}],
+  [:removal :commit] [:string {:min 1}],
+  ;; the LIVE state of the world, re-derived by the probe every run —
+  ;; flips back to :present when a new dependabot file appears
+  [:dependabot :status] [:enum :present :absent],
+  [:renovate :dashboard] [:string {:min 1}],
+  [:renovate :first-pr] [:string {:min 1}],
+  [:approval :maintainer] [:enum :approved :rejected]},
+ :process/stages
+ [{:stage/id :planned,
+   :purpose "the approach is decided and on record",
+   :guards [[:fact [:approach]]],
+   :hint "kb/runbooks/renovate-migration-planned.md"}
+  {:stage/id :configured,
+   :purpose
+   "Renovate is in, Dependabot is out — and stays out",
+   :after [:planned],
+   ;; removal.commit is the audit trail; dependabot.status=absent is the
+   ;; LIVE guard — re-probe finds a new dependabot file, status flips to
+   ;; :present, and configured (and verified above it) regress
+   :guards
+   [[:fact [:renovate :config :ref]]
+    [:fact [:removal :commit]]
+    [:fact= [:dependabot :status] :absent]],
+   :hint "kb/runbooks/renovate-migration-configured.md"}
+  {:stage/id :verified,
+   :purpose
+   "Renovate demonstrably runs, and a maintainer stands behind the migration",
+   :after [:configured],
+   :guards
+   [[:fact [:renovate :dashboard]]
+    [:fact [:renovate :first-pr]]
+    [:fact= [:approval :maintainer] :approved]
+    [:signed-by :maintainer [:approval :maintainer]]],
+   :hint "kb/runbooks/renovate-migration-verified.md"}]}

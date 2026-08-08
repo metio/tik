@@ -5,7 +5,8 @@
   a fact :conflicted; agreement is not conflict; any write that observed
   all competitors resolves; and the detection is a function of the event
   SET (commutative), even under adversarially backdated claimed times."
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing]]
             [tik.dag :as dag]
             [tik.event :as event]
@@ -15,7 +16,7 @@
   (:import (java.time Instant)))
 
 (def proc (edn/read-string (slurp "processes/support-request.edn")))
-(def roles (:process/roles proc))
+(def roles (h/sample-roles proc))
 (def tid #uuid "018f2f6e-7c1a-7000-8000-00000000cafe")
 (defn at [s] (Instant/parse s))
 (def now (at "2026-07-08T12:00:00Z"))

@@ -117,7 +117,10 @@
   (let [gating (process/roles-gating sample)]
     (is (= [:triaged] (get-in gating [:triager :stages]))
         "the triager gates exactly the stage demanding its signature")
-    (is (= ["seb"] (get-in gating [:triager :members])))
+    ;; the sample ships its roles EMPTY — who is in one is organisation
+    ;; state and lives in a store's register, so the gating lens reports
+    ;; the role and no members until a register names some
+    (is (= [] (get-in gating [:triager :members])))
     (testing "declared-but-not-gating roles still appear"
       (is (contains? gating :billing))
       (is (= [] (get-in gating [:billing :stages]))))

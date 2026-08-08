@@ -1,0 +1,7 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Every option on: expanding the template with these answers reproduces
+;; the definition this library publishes under processes/, which is how a
+;; template is checked for having drifted from its worked example.
+{:with-equipment true :with-accounts true :with-buddy true}

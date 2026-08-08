@@ -36,6 +36,12 @@
                    (io/file (doto (io/file root "processes") (.mkdirs))
                             (str (name process) ".edn")))
         _ (run "actor" "add" "seb" (str key ".pub"))
+        ;; the definitions ship their roles empty — who is in one lives in
+        ;; the store's register, so a store that means to reach a signature
+        ;; stage has to say who is in the role
+        _ (doseq [[role who] [["triager" "seb"] ["billing" "seb"]
+                              ["maintainer" "seb"]]]
+            (run "roles" "add" role who))
         id (str/trim (:out (run "new" (name process) "--title" "bundled")))]
     (when (seq sets) (apply run "set" id sets))
     {:root root :id id :run run :key key :env env}))

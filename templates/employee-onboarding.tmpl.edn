@@ -1,0 +1,77 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Onboarding, parameterized: the checklist that runs itself. `tik adopt`
+;; asks which steps your organisation actually has and writes a plain,
+;; hash-pinnable definition — the template never runs as code.
+;;
+;; The branches proceed independently after :hired and rejoin at :ready,
+;; which is what a DAG expresses and a linear checklist cannot: equipment
+;; and accounts do not wait for each other. Turning a branch off removes
+;; it from the join as well, so the definition stays coherent instead of
+;; pointing at a stage nobody kept.
+;;
+;; ROLE MEMBERS are not a knob: they belong in the store's register
+;; (`tik roles add it alice`), where a team change takes effect on
+;; everyone already onboarding, with no new definition and no re-pin.
+{:tik/params
+ [:map
+  [:with-equipment
+   {:optional true
+    :description "does someone hand over equipment?"}
+   :boolean]
+  [:with-accounts
+   {:optional true
+    :description "does someone provision accounts?"}
+   :boolean]
+  [:with-buddy
+   {:optional true
+    :description "is a named buddy required before day one counts?"}
+   :boolean]]
+
+ :tik/template
+ {:process/id :employee-onboarding
+  :process/version 1
+  :process/guard-vocab 1
+
+  :process/roles
+  {:hr {:members []}
+   :it {:members []}}
+
+  :process/facts
+  {[:start-date]      [:string {:min 10}]
+   [:contract :ref]   [:string {:min 4}]
+   [:equipment :ref]  [:string {:min 4}]
+   [:accounts :email] [:string {:min 5}]
+   [:buddy]           [:string {:min 2}]}
+
+  :process/stages
+  ;; the signed-artifact pattern: the file AND a role's signature over
+  ;; its reference, so neither an unsigned upload nor a signature over
+  ;; nothing is enough
+  [{:stage/id :hired
+    :hint "kb/runbooks/onboarding-hired.md"
+    :guards [[:fact [:start-date]]
+             [:artifact "contract/"]
+             [:signed-by :hr [:contract :ref]]]}
+
+   [:tik/when :with-equipment
+    {:stage/id :equipped
+     :after [:hired]
+     :hint "kb/runbooks/onboarding-equipped.md"
+     :guards [[:signed-by :it [:equipment :ref]]]}]
+
+   [:tik/when :with-accounts
+    {:stage/id :accounts-live
+     :after [:hired]
+     :hint "kb/runbooks/onboarding-accounts.md"
+     :guards [[:signed-by :it [:accounts :email]]]}]
+
+   {:stage/id :ready
+    ;; the join follows exactly the branches that exist — dropping one
+    ;; from the process drops it from here too
+    :after [[:tik/when :with-equipment :equipped]
+            [:tik/when :with-accounts :accounts-live]]
+    :stage/sticky? true
+    :hint "kb/runbooks/onboarding-ready.md"
+    :guards [[:tik/when :with-buddy [:fact [:buddy]]]]}]}}

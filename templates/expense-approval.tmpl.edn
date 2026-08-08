@@ -1,0 +1,31 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; A PARAMETERIZED process: `tik adopt` fills it from your answers and
+;; writes a plain, hash-pinnable definition — the template never runs as
+;; code. Two knobs: who approves, and whether legal must sign off.
+{:tik/params
+ [:map
+  [:approvers  {:description "who can approve?"}            [:vector :string]]
+  [:with-legal {:optional true
+                :description "require legal sign-off?"}     :boolean]]
+
+ :tik/template
+ {:process/id :expense-approval
+  :process/version 1
+  :process/guard-vocab 1
+  :lint {:runbooks :off}
+  :process/roles {:approver {:members [:tik/param :approvers]}
+                  :legal {:members []}}
+  :process/facts {[:amount] [:int]}
+  :process/stages
+  [{:stage/id :submitted
+    :guards [[:fact [:amount]]]}
+   {:stage/id :approved
+    :after [:submitted]
+    :guards [[:signed-by :approver]]}
+   ;; included only when :with-legal is true
+   [:tik/when :with-legal
+    {:stage/id :legal-cleared
+     :after [:approved]
+     :guards [[:signed-by :legal]]}]]}}

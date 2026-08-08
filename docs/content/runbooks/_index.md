@@ -87,3 +87,69 @@ Two stages, for something that needs recording rather than a workflow.
 | Stage | What it means |
 | --- | --- |
 | [`:registry`](/runbooks/identity-registry-registry/) | Always this stage: key bindings are evidence, not workflow. |
+
+## incident-response
+
+From first alarm to a reviewed postmortem.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:declared`](/runbooks/incident-declared/) | Severity and impact are on record. |
+| [`:mitigated`](/runbooks/incident-mitigated/) | A commander signed the severity and the bleeding stopped. |
+| [`:postmortem-due`](/runbooks/incident-postmortem-due/) | Derives from time alone: five days with no postmortem. |
+| [`:analyzed`](/runbooks/incident-analyzed/) | A root cause and a postmortem summary exist. |
+| [`:reviewed`](/runbooks/incident-reviewed/) | Sticky — accepted by somebody who did not write it. |
+
+## employee-onboarding
+
+The checklist that runs itself, two branches rejoining at the end.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:hired`](/runbooks/onboarding-hired/) | A start date, a signed contract, and the file to go with it. |
+| [`:equipped`](/runbooks/onboarding-equipped/) | IT signed off the equipment reference. |
+| [`:accounts-live`](/runbooks/onboarding-accounts/) | IT signed off the account. |
+| [`:ready`](/runbooks/onboarding-ready/) | Sticky — both branches landed and a buddy is named. |
+
+## okf-publish
+
+Publishing a knowledge bundle, with review signed over its content hash.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:drafted`](/runbooks/okf-publish-drafted/) | The bundle exists and its hash is on record. |
+| [`:reviewed`](/runbooks/okf-publish-reviewed/) | A reviewer vouched for it, signing over that hash. |
+| [`:approved`](/runbooks/okf-publish-approved/) | An owner authorised release over the same hash. |
+| [`:published`](/runbooks/okf-publish-published/) | Public — and it un-publishes if the bundle is revised. |
+
+## renovate-migration
+
+Moving a repository from Dependabot to Renovate, with a probe keeping it honest.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:planned`](/runbooks/renovate-migration-planned/) | An approach is written down. |
+| [`:configured`](/runbooks/renovate-migration-configured/) | Renovate is in, Dependabot is out, and the probe agrees. |
+| [`:verified`](/runbooks/renovate-migration-verified/) | A dashboard, a first PR, and a maintainer's approval. |
+
+## supply-chain-release
+
+A release as evidence, with four-eyes approval.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:built`](/runbooks/supply-chain-release-built/) | CI signed which commit produced these bytes. |
+| [`:attested`](/runbooks/supply-chain-release-attested/) | An SBOM and provenance, each attested within a day. |
+| [`:scanned`](/runbooks/supply-chain-release-scanned/) | A vulnerability scan came back clean, recently. |
+| [`:approved`](/runbooks/supply-chain-release-approved/) | Sticky — approved by somebody who is not the pipeline. |
+| [`:withheld`](/runbooks/supply-chain-release-withheld/) | A decision not to ship, with the reason on record. |
+
+## automated-release
+
+The same, for a pipeline that ships with no human in the loop.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:built`](/runbooks/automated-release-built/) | CI signed which commit produced these bytes. |
+| [`:attested`](/runbooks/automated-release-attested/) | An SBOM and provenance, each attested within a day. |
+| [`:scanned`](/runbooks/automated-release-scanned/) | A vulnerability scan came back clean, recently. |

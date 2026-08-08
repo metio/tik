@@ -1,14 +1,15 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.causal-test
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness :as h]
+            [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing]]
             [tik.causal :as causal]
             [tik.event :as event])
   (:import (java.time Instant)))
 
 (def process (edn/read-string (slurp "processes/support-request.edn")))
-(def roles (:process/roles process))
+(def roles (h/sample-roles process))
 (def tid (random-uuid))
 (def ^Instant t0 (Instant/parse "2026-01-01T00:00:00Z"))
 

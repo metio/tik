@@ -1,0 +1,19 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Who is in a role today, for every ticket at once.
+;;
+;; A definition says which roles a process HAS; this says who is in one.
+;; Membership is organisation state, not a rule of the process — with the
+;; definition as the only source, a hire or a departure would be a
+;; version bump, and every in-flight ticket would need migrating before
+;; it took effect. Resolving outside the pin means a change here lands on
+;; everything already deriving, immediately.
+;;
+;; That is also what lets the definitions in processes/ ship with empty
+;; members: they are the same processes anyone else can adopt, and this
+;; file is the part that is ours. A role absent here keeps whatever its
+;; definition declares.
+{:triager    {:members ["seb"]}
+ :billing    {:members ["billing"]}
+ :maintainer {:members ["seb"]}}

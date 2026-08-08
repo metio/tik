@@ -1,0 +1,98 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; A release as evidence: what was built, from which commit, with what
+;; supply-chain material attested, scanned by whom, and approved by
+;; somebody who is not the pipeline.
+;;
+;; Stages are named after the EVIDENCE they demand, never after a level
+;; in someone's framework. tik checks that a trusted attester said a
+;; thing; it never reads the SBOM or the provenance and forms no opinion
+;; about their contents. A stage called `:slsa-l3` would put that
+;; overclaim into the derivation itself, where every badge, lens and
+;; consumer assertion would repeat it. `:provenance-attested` says
+;; exactly what held. The README maps these stages onto SLSA's
+;; requirements as a claim about THIS DEFINITION — never about a ticket.
+;;
+;; The branches are deliberately independent and the process degrades
+;; honestly. A repository that publishes no SBOM never reaches
+;; `:attested`; one that runs no scanner never reaches `:scanned`; one
+;; with a single maintainer can never satisfy four eyes and never
+;; reaches `:approved`. Nothing is configured off — the derivation
+;; simply says less, which is the true answer and the one a reader can
+;; act on.
+;;
+;; The freshness windows are the point of `:attested-within`. A replayed
+;; scan from last month is cryptographically valid and fails the guard
+;; honestly, so a badge cannot go on asserting a property whose evidence
+;; has aged out.
+{:process/id :supply-chain-release
+ :process/version 1
+ :process/guard-vocab 2
+
+ ;; `:ci` signs what the pipeline observed; `:release-manager` signs the
+ ;; decision to ship. Keeping them apart is what gives `:different-person`
+ ;; on `:approved` its meaning — a pipeline cannot approve its own
+ ;; release. Both ship empty: adoption never inherits an org chart.
+ :process/roles
+ {:ci {:members []}
+  :release-manager {:members []}}
+
+ :process/facts
+ {[:version]           [:string {:min 1}]
+  [:commit]            [:string {:min 7}]
+  [:artifact :digest]  [:string {:min 8}]
+  [:scan :result]      [:enum :clean :findings]
+  [:approval]          [:enum :ship :hold]}
+
+ :process/stages
+ [{:stage/id :built
+   :hint "kb/runbooks/supply-chain-release-built.md"
+   ;; the pipeline is the only party that can honestly say which commit
+   ;; produced these bytes, and the checksums travel as an artifact
+   ;; addressed by hash — the digest is in the trust domain, the blob is
+   ;; not (ADR 0014)
+   :guards [[:fact [:version]]
+            [:fact [:commit]]
+            [:signed-by :ci [:commit]]
+            [:artifact "checksums/"]]}
+
+  {:stage/id :attested
+   :after [:built]
+   :hint "kb/runbooks/supply-chain-release-attested.md"
+   ;; what the artifact is made of and how it came to be, each attested
+   ;; by a party the registry trusts, each recent enough to be about
+   ;; THIS build rather than a previous one
+   :guards [[:fact [:artifact :digest]]
+            [:signed-by :ci [:artifact :digest]]
+            [:attested-within :sbom "P1D"]
+            [:attested-within :provenance "P1D"]]}
+
+  {:stage/id :scanned
+   :after [:built]
+   :hint "kb/runbooks/supply-chain-release-scanned.md"
+   ;; a scan is a claim about the world at a moment; one older than the
+   ;; build tells you about a different set of advisories
+   :guards [[:fact= [:scan :result] :clean]
+            [:signed-by :ci [:scan :result]]
+            [:attested-within :vulnerability-scan "P1D"]]}
+
+  {:stage/id :approved
+   :after [:attested :scanned]
+   :hint "kb/runbooks/supply-chain-release-approved.md"
+   ;; shipping is a historical fact: an advisory published next week does
+   ;; not un-approve this version, it starts a new ticket
+   :stage/sticky? true
+   :guards [[:fact= [:approval] :ship]
+            [:signed-by :release-manager [:approval]]
+            ;; four eyes: whoever's pipeline built it is not who approved
+            [:different-person [:commit] [:approval]]]}
+
+  {:stage/id :withheld
+   :after [:built]
+   :hint "kb/runbooks/supply-chain-release-withheld.md"
+   ;; a decision, on record, with the same weight as shipping — the
+   ;; reason a version never shipped is worth as much later as the
+   ;; reason one did
+   :guards [[:fact= [:approval] :hold]
+            [:signed-by :release-manager [:approval]]]}]}

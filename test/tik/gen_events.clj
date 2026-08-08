@@ -7,7 +7,8 @@
   are common — because ties are where ordering bugs live. Histories include
   retractions, disputes, invalid-per-schema values, and unknown event
   types, since the reducer must be total over all of them."
-  (:require [clojure.edn :as edn]
+  (:require [tik.harness]
+            [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.test.check.generators :as gen]
             [tik.canonical :as canonical]
@@ -15,7 +16,7 @@
   (:import (java.time Instant)))
 
 (def process (edn/read-string (slurp "processes/support-request.edn")))
-(def roles (:process/roles process))
+(def roles (tik.harness/sample-roles process))
 (def tid #uuid "018f2f6e-7c1a-7000-8000-00000000beef")
 (def ^Instant base (Instant/parse "2026-07-08T10:00:00Z"))
 (defn at-sec ^Instant [s] (.plusSeconds base (long s)))

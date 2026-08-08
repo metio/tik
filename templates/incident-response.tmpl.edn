@@ -1,0 +1,85 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Incident response, parameterized: from first alarm to a reviewed
+;; postmortem. `tik adopt` asks the questions below and writes a plain,
+;; hash-pinnable definition — the template never runs as code.
+;;
+;; Two things teams genuinely differ on are asked: how long an incident
+;; may go without a postmortem before the ticket says so itself, and
+;; whether a second person must accept that postmortem. Everything else
+;; is fixed on purpose.
+;;
+;; ROLE MEMBERS are not a knob: they belong in the store's register
+;; (`tik roles add commander alice`), where a rota change takes effect on
+;; in-flight incidents without a new definition. The severity taxonomy is
+;; fixed because the guard basis cannot build an enum from an answer, and
+;; a template that asked for one would have to accept raw EDN.
+{:tik/params
+ [:map
+  [:postmortem-after
+   {:description "flag a missing postmortem after (ISO-8601, e.g. P5D)"}
+   :string]
+  [:with-deadline
+   {:optional true
+    :description "let the ticket flag its own overdue postmortem?"}
+   :boolean]
+  [:with-review
+   {:optional true
+    :description "require a second person to accept the postmortem?"}
+   :boolean]]
+
+ :tik/template
+ {:process/id :incident-response
+  :process/version 1
+  :process/guard-vocab 2
+
+  :process/roles
+  {:commander {:members []}
+   :responder {:members []}}
+
+  :process/facts
+  {[:severity]            [:enum :sev1 :sev2 :sev3]
+   [:impact]              [:string {:min 10}]
+   [:mitigation :note]    [:string {:min 10}]
+   [:root-cause]          [:string {:min 10}]
+   [:postmortem :summary] [:string {:min 40}]
+   [:review :verdict]     [:enum :accepted :needs-work]}
+
+  :process/stages
+  [{:stage/id :declared
+    :hint "kb/runbooks/incident-declared.md"
+    :guards [[:fact [:severity]]
+             [:fact [:impact]]]}
+
+   ;; a SIGNED severity: an unsigned guess does not gate the response
+   {:stage/id :mitigated
+    :after [:declared]
+    :hint "kb/runbooks/incident-mitigated.md"
+    :guards [[:signed-by :commander [:severity]]
+             [:fact [:mitigation :note]]]}
+
+   ;; derived from TIME, not from memory — nobody has to remember to
+   ;; chase it, the ticket says so on its own
+   [:tik/when :with-deadline
+    {:stage/id :postmortem-due
+     :after [:mitigated]
+     :hint "kb/runbooks/incident-postmortem-due.md"
+     :guards [[:elapsed-since :ticket/create [:tik/param :postmortem-after]]
+              [:not [:fact [:postmortem :summary]]]]}]
+
+   {:stage/id :analyzed
+    :after [:mitigated]
+    :hint "kb/runbooks/incident-analyzed.md"
+    :guards [[:fact [:root-cause]]
+             [:fact [:postmortem :summary]]]}
+
+   ;; four eyes: whoever wrote the postmortem is not who accepts it
+   [:tik/when :with-review
+    {:stage/id :reviewed
+     :after [:analyzed]
+     :stage/sticky? true
+     :hint "kb/runbooks/incident-reviewed.md"
+     :guards [[:fact= [:review :verdict] :accepted]
+              [:signed-by :commander [:review :verdict]]
+              [:different-person [:postmortem :summary] [:review :verdict]]]}]]}}

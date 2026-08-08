@@ -1,0 +1,9 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Every option on. Unlike the other templates, this expansion is NOT the
+;; definition under processes/: the sample keeps [:customer :ack] as a bare
+;; boolean on purpose, to demonstrate the facts-over-flags lint warning, and
+;; a template meant for real use should not ship that. Here the ack is a
+;; reference to what the customer actually said.
+{:escalate-after "PT48H" :with-escalation true :with-repro true :with-ack true}

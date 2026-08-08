@@ -11,11 +11,30 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.event :as event]
+            [tik.process :as process]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
   (:import (java.io File)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
+
+(def sample-register
+  "Who is in a role, for tests that drive the sample processes.
+
+  The definitions ship their roles EMPTY: who is in one is organisation
+  state, not a rule of the process, so it lives in a store's register
+  (`roles.edn`) rather than inside the hash a ticket pinned. A test of a
+  signature stage therefore supplies the staffing it needs, exactly as
+  the register does — taking it from the definition only ever worked by
+  accident of the definition also being this store's own copy."
+  {:triager    {:members ["seb"]}
+   :billing    {:members ["billing"]}
+   :maintainer {:members ["seb"]}})
+
+(defn sample-roles
+  "`proc`'s roles as this suite staffs them."
+  [proc]
+  (process/resolve-roles (:process/roles proc {}) sample-register))
 
 (defn temp-dir!
   "A fresh temp directory as a File."

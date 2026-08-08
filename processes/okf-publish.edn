@@ -1,0 +1,49 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; Publishing a unit of org knowledge (an OKF bundle) to the public.
+;; The bundle is identified by its content hash; review and approval are
+;; SIGNED OVER that hash, so revising the bundle changes the hash and the
+;; old signatures no longer cover it — reviewed/approved regress by
+;; derivation and the knowledge falls back out of "published" until it is
+;; re-reviewed. The kernel never reads the bundle: to tik it is a hash and
+;; some attached files (ADR 0009). Roles are one person here to bootstrap;
+;; assign DISTINCT reviewer/approver members for real separation of duties.
+{:process/id :okf-publish
+ :process/version 1
+ :process/guard-vocab 1
+
+ :process/roles
+ {:author   {:members []}
+  :reviewer {:members []}
+  :approver {:members []}}
+
+ :process/facts
+ {[:bundle]         [:string {:min 16}]   ; the OKF bundle's content hash
+  [:published :url] [:string {:min 8}]}   ; where it went public
+
+ :process/stages
+ [{:stage/id :drafted
+   :hint "kb/runbooks/okf-publish-drafted.md"
+   ;; the bundle exists: its hash is on record and its files attached
+   :guards [[:fact [:bundle]]
+            [:artifact "okf/"]]}
+
+  {:stage/id :reviewed
+   :after [:drafted]
+   :hint "kb/runbooks/okf-publish-reviewed.md"
+   ;; a reviewer vouches for accuracy, signing OVER the bundle hash
+   :guards [[:signed-by :reviewer [:bundle]]]}
+
+  {:stage/id :approved
+   :after [:reviewed]
+   :hint "kb/runbooks/okf-publish-approved.md"
+   ;; an owner authorizes public release, over the same exact hash
+   :guards [[:signed-by :approver [:bundle]]]}
+
+  {:stage/id :published
+   :after [:approved]
+   :hint "kb/runbooks/okf-publish-published.md"
+   ;; public, and NOT sticky on purpose: revise the bundle -> approved
+   ;; regresses -> published regresses, so stale knowledge un-publishes
+   :guards [[:fact [:published :url]]]}]}

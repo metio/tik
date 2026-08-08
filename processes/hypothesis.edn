@@ -7,21 +7,12 @@
 ;; evidence, because a killed hypothesis is a result, not a failure.
 ;; There is no way to reach a verdict without having stated, in advance
 ;; and on the record, what would count as losing.
-;;
-;; This is tik's OWN copy, and the roadmap actually runs on it — eleven
-;; tickets pin this hash. metio/tik-processes publishes a variant under
-;; the same name at
-;; sha256-2c85c9e54182541ec2243ac82b2d466fd286b511f4f113e4dd139328bea44e47
-;; for adopters to take. Same name, different rules, deliberately not
-;; kept in step: this one answers to the tickets already deriving under
-;; it, that one to whoever adopts it next. A ticket pins a HASH, so the
-;; two never collide where it matters.
 {:process/id :hypothesis
  :process/version 1
  :process/guard-vocab 1
 
  :process/roles
- {:maintainer {:members ["seb"]}}
+ {:maintainer {:members []}}
 
  :process/facts
  {[:statement]  [:string {:min 12}]

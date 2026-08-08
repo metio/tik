@@ -10,23 +10,13 @@
 ;;   than [:not [:stage-reached :triaged]]: stage negation within the same
 ;;   stratum is forbidden by ADR 0005 (stratified negation), and "48h with
 ;;   no category" is the more honest claim anyway.
-;;
-;; This is tik's OWN copy: the teaching example the guide, the authoring
-;; docs and fifteen test files are written against, plus two corpus
-;; cases that carry their own copy of these exact bytes.
-;; metio/tik-processes publishes a variant under the same name at
-;; sha256-84c7f6140fc8cf90ee3a33efde68238cb3eba603b216dfb08aeafcbafc28aa20
-;; for adopters to take — that one drops the bare boolean below, which
-;; is here on purpose. Same name, different rules, deliberately not kept
-;; in step; a ticket pins a HASH, so the two never collide where it
-;; matters.
 {:process/id :support-request
  :process/version 1
  :process/guard-vocab 1
 
  :process/roles
- {:triager {:members ["seb"]}
-  :billing {:members ["billing"]}}
+ {:triager {:members []}
+  :billing {:members []}}
 
  :process/facts
  {[:category]        [:enum :billing :technical :account :abuse]

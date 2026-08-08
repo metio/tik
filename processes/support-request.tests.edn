@@ -6,6 +6,12 @@
 ;; case prints explain, so the process tells you why a stage did not
 ;; derive. Deterministic: fixed epoch, pure derivation, no store.
 {:test/process "support-request.edn"
+ ;; the definition ships its roles empty so anyone can adopt it; a test
+ ;; of the signature stages has to say who is in them, the same way a
+ ;; store's register does
+ :test/roles
+ {:triager {:members ["seb"]}
+               :billing {:members ["billing"]}}
  :test/cases
  [{:case/name "facts alone do not triage — the triager role must sign"
    :case/steps [[:actor "rando"]

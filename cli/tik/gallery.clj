@@ -288,14 +288,16 @@
 
 (defn- definition-files
   "The library files worth a page. A `<name>.params.edn` is an ANSWER
-  SHEET for the template beside it, not a process — rendering one would
-  produce a page with no stages and a blank name."
+  SHEET for the template beside it and a `<name>.tests.edn` is a scripted
+  suite FOR the definition beside it — neither is a process, and
+  rendering one produces a page with no stages and a blank name."
   [^File dir]
   (->> (or (.listFiles dir) [])
        (filter (fn [^File f]
                  (and (.isFile f)
                       (str/ends-with? (.getName f) ".edn")
-                      (not (str/ends-with? (.getName f) ".params.edn")))))
+                      (not (str/ends-with? (.getName f) ".params.edn"))
+                      (not (str/ends-with? (.getName f) ".tests.edn")))))
        (sort-by (fn [^File f] (.getName f)))))
 
 (defn- archived-hash

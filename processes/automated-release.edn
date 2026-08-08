@@ -1,0 +1,79 @@
+;; SPDX-FileCopyrightText: The tik-processes Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; A release that ships without a human in the loop, recorded as evidence.
+;;
+;; Every stage here is satisfiable by a pipeline, and every stage can
+;; still FAIL: a scanner that reports findings leaves `scanned` unreached
+;; and says so on the record. That is the bar a stage has to meet to be
+;; worth deriving — a stage nothing could ever fail is decoration.
+;;
+;; Use this when nobody reviews a release before it goes out. Its sibling
+;; `supply-chain-release` adds an approval signed by a second person; a
+;; project with one maintainer can never satisfy that, and an unreachable
+;; stage renders as an eternal TODO on every release rather than as the
+;; impossibility it is. Choosing the definition that matches who actually
+;; exists is what keeps the derivation honest.
+;;
+;; THE STAGES ARE STICKY, and that is the other difference from the
+;; sibling. A published release is immutable: it is never rebuilt, never
+;; re-scanned, and the bundle attached to it is frozen at the moment it
+;; shipped. So the claim worth deriving is "when this version was
+;; published, a fresh SBOM, provenance and scan existed and the scan said
+;; clean" — a claim about a moment, which stays true. Without stickiness
+;; the freshness windows would lapse a day later and the badge on a
+;; permanent artifact would decay to `built`, which reads as evidence
+;; going missing rather than as evidence aging.
+;;
+;; "Is this version STILL clean?" is a different question about the same
+;; artifact, and in tik it is a different ticket: a later scan against an
+;; older version, with its own evidence and its own moment.
+{:process/id :automated-release
+ :process/version 1
+ :process/guard-vocab 2
+
+ ;; one role: the pipeline. It ships empty, so adoption never inherits
+ ;; someone else's org chart — `tik roles add ci <actor>` names yours.
+ :process/roles
+ {:ci {:members []}}
+
+ :process/facts
+ {[:version]          [:string {:min 1}]
+  [:commit]           [:string {:min 7}]
+  [:artifact :digest] [:string {:min 8}]
+  [:scan :result]     [:enum :clean :findings]}
+
+ :process/stages
+ [{:stage/id :built
+   :hint "kb/runbooks/automated-release-built.md"
+   :stage/sticky? true
+   ;; the pipeline is the only party that can honestly say which commit
+   ;; produced these bytes; the checksums travel as an artifact addressed
+   ;; by hash, so the digest is in the trust domain and the blob is not
+   :guards [[:fact [:version]]
+            [:fact [:commit]]
+            [:signed-by :ci [:commit]]
+            [:artifact "checksums/"]]}
+
+  {:stage/id :attested
+   :after [:built]
+   :hint "kb/runbooks/automated-release-attested.md"
+   :stage/sticky? true
+   ;; what the artifact is made of and how it came to be, each attested
+   ;; by a party the registry trusts and each recent enough to be about
+   ;; THIS build rather than a previous one
+   :guards [[:fact [:artifact :digest]]
+            [:signed-by :ci [:artifact :digest]]
+            [:attested-within :sbom "P1D"]
+            [:attested-within :provenance "P1D"]]}
+
+  {:stage/id :scanned
+   :after [:built]
+   :hint "kb/runbooks/automated-release-scanned.md"
+   :stage/sticky? true
+   ;; a scan is a claim about the advisory database at a moment; one
+   ;; older than the build tells you about a different set of advisories,
+   ;; so the window is what makes reaching this stage mean anything
+   :guards [[:fact= [:scan :result] :clean]
+            [:signed-by :ci [:scan :result]]
+            [:attested-within :vulnerability-scan "P1D"]]}]}
