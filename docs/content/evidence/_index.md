@@ -18,6 +18,8 @@ laptop with no network, years later.
   a reader may assume, and what forces a version bump.
 - [Re-deriving a bundle](/evidence/re-deriving/) — `tik rederive`, the
   HTTP service, and what a badge is allowed to say.
+- [SLSA, said honestly](/evidence/slsa/) — what the release processes
+  demand, mapped onto SLSA's requirements, and where that mapping stops.
 
 ## What a bundle is worth
 

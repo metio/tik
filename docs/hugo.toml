@@ -188,6 +188,11 @@ ignoreFiles = ['kb/index\.md$', 'kb/log\.md$']
     name = "Re-deriving a bundle"
     url = "/evidence/re-deriving/"
     weight = 2
+  [[menu.main]]
+    parent = "evidence"
+    name = "SLSA, said honestly"
+    url = "/evidence/slsa/"
+    weight = 3
 
   # 7 ── Integrations: agent surfaces over the same derivation.
   [[menu.main]]
