@@ -345,14 +345,6 @@
   actor forges another's authorship and the audit still passes."
   [{:keys [events-dir actors]} events]
   (cond
-    ;; being UNABLE to check is a note, never a failure. Every verification
-    ;; path shells out to ssh-keygen, and reporting a good signature as
-    ;; forged because the tool is absent is the one direction this must
-    ;; never fail in (the distroless image ships without it).
-    (not @sign/verifier-available?)
-    [(note (str "no ssh-keygen here, so authorship is unchecked — install"
-                " OpenSSH to judge these signatures"))]
-
     (not (.isFile ^File actors))
     [(note "no actors registry travels with this bundle — authorship is unclaimed")]
     :else
@@ -374,11 +366,17 @@
                         (if-not (string? actor)
                           (bad (str (.getName sig) " covers an event with no"
                                     " :event/actor to bind it to"))
-                          (if (try (sign/verify-bytes actors bytes sb actor)
-                                   (catch Exception _ false))
-                            (ok (str (.getName sig) " verifies as " actor))
-                            (bad (str (.getName sig) " does not verify as its"
-                                      " event's actor (" actor ")"))))))]
+                          ;; nil is "could not judge" — an unsupported key type
+                          ;; with no ssh-keygen to fall back to — and being
+                          ;; unable to check is a note, never a failure
+                          (case (try (sign/verify-bytes actors bytes sb actor)
+                                     (catch Exception _ false))
+                            true (ok (str (.getName sig) " verifies as " actor))
+                            false (bad (str (.getName sig) " does not verify as"
+                                            " its event's actor (" actor ")"))
+                            (note (str (.getName sig) " is a key type this"
+                                       " build cannot check, and no ssh-keygen"
+                                       " is here to ask"))))))]
       (cond-> checks
         (pos? @unsigned)
         (conj (note (str @unsigned " event(s) unsigned — authenticity"
@@ -388,9 +386,7 @@
   "L3: countersignatures over a head. One signature timestamps the whole
   ancestry that head commits to."
   [{:keys [events-dir actors]} events]
-  (if-not @sign/verifier-available?
-    [(note "no ssh-keygen here, so countersignatures are unchecked")]
-    (let [heads (dag/heads events)
+  (let [heads (dag/heads events)
         pairs (for [h heads, ^File sc (sidecar-files events-dir h "witness")]
                 [h sc])]
     (if (empty? pairs)
@@ -406,7 +402,7 @@
                (ok (str (subs h 0 15) "… witnessed by " who
                         " (whole ancestry)"))
                (bad (str (subs h 0 15) "… carries a countersignature that"
-                         " does not verify")))))))))
+                         " does not verify"))))))))
 
 ;; ------------------------------------------------------------ rung 2
 

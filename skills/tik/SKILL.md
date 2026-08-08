@@ -106,6 +106,12 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   agrees with `status`; `tik debug <process> <id>` asks about a different
   definition instead and warns on stderr that it is not the pin.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
+  Signature checking is IN PROCESS for the Ed25519 keys tik mints
+  (`tik.sshsig` reads OpenSSH's SSHSIG format), so verification needs no
+  `ssh-keygen` on the host — which the distroless container has none of.
+  Signing still shells out. An unsupported key type falls back to
+  ssh-keygen, and reports UNCHECKED rather than forged when neither can
+  judge.
   L1 credits a signature when the key is in `actors` (rung 1) **or** a verified
   binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
   not a failure — it grants nothing, and events are never deleted, so failing

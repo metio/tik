@@ -17,7 +17,8 @@
             [tik.cli]
             [tik.harness :as h]
             [tik.rederive :as rederive]
-            [tik.sign])
+            [tik.sign]
+            [tik.sshsig])
   (:import (java.io File)
            (java.nio.file Files)
            (java.time Instant)
@@ -363,23 +364,36 @@
     (is (:verified? parsed))
     (is (= (bundle/digest tgz) (:digest parsed)))))
 
-(deftest an_absent_verifier_is_reported_as_unchecked_not_as_forged
-  ;; Every verification path shells out to ssh-keygen. When it is missing —
-  ;; the published container is distroless and carries none — catching
-  ;; broadly would turn "cannot judge" into "does not verify", and report a
-  ;; good bundle as forged. That is the one direction a verification tool
-  ;; must never fail in.
+(deftest signatures_are_checked_without_ssh_keygen_on_the_host
+  ;; Ed25519 is read in process, so a host with no OpenSSH still judges
+  ;; authorship — which is what makes the distroless image we publish
+  ;; usable as the re-derivation service.
   (let [store (signed-store! :support-request "category=:billing" "severity=:low")
         tgz (bundle! store)
-        dest (h/temp-dir! "tik-no-verifier")]
+        dest (h/temp-dir! "tik-no-openssh")]
     (bundle/untar-gz! tgz dest)
     (with-redefs [tik.sign/verifier-available? (delay false)]
       (let [r (bundle/re-derive dest (Instant/now))
             msgs (map :msg (:checks r))]
+        (is (:verified? r))
+        (is (some #(str/includes? % "verifies as seb") msgs)
+            "no subprocess was available and the signatures were still checked")
+        (is (not-any? #(str/includes? % "does not verify") msgs))))))
+
+(deftest a_key_this_build_cannot_read_is_unchecked_not_forged
+  ;; The remaining fallback case: a key type tik.sshsig does not
+  ;; implement, on a host with no ssh-keygen to ask instead. Catching
+  ;; broadly here would report an honest signature as forged, which is
+  ;; the one direction a verification tool must never fail in.
+  (let [store (signed-store! :support-request "category=:billing" "severity=:low")
+        tgz (bundle! store)
+        dest (h/temp-dir! "tik-unreadable-key")]
+    (bundle/untar-gz! tgz dest)
+    (with-redefs [tik.sign/verifier-available? (delay false)
+                  tik.sshsig/verify (fn [& _] :tik.sshsig/unsupported)]
+      (let [r (bundle/re-derive dest (Instant/now))
+            msgs (map :msg (:checks r))]
         (is (:verified? r)
             "an unjudgeable signature is a note, so the bundle still stands")
-        (is (some #(str/includes? % "no ssh-keygen here") msgs))
-        (is (not-any? #(str/includes? % "does not verify") msgs))))
-    (testing "and with a verifier the signatures are actually checked"
-      (let [r (bundle/re-derive dest (Instant/now))]
-        (is (some #(str/includes? (:msg %) "verifies as seb") (:checks r)))))))
+        (is (some #(str/includes? % "cannot check") msgs))
+        (is (not-any? #(str/includes? % "does not verify") msgs))))))

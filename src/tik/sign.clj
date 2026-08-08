@@ -19,6 +19,7 @@
   key blob — filesystem-safe and coreutils-checkable:
   `awk '{print $2}' key.pub | base64 -d | sha256sum`."
   (:require [clojure.java.io :as io]
+            [tik.sshsig :as sshsig]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.canonical :as canonical])
@@ -66,12 +67,10 @@
 (def verifier-available?
   "Is `ssh-keygen` here to check a signature with?
 
-  It has to be asked, because the alternative is worse than not knowing.
-  Every verification path shells out, and a missing binary raises the
-  same way a bad signature returns false — so a caller that catches
-  broadly reports a GOOD signature as forged. That is the one direction a
-  verification tool must never fail in, and it is not hypothetical: the
-  published container image is distroless and carries no ssh-keygen.
+  Only asked for key types tik.sshsig does not implement — Ed25519, what
+  tik mints, is read in process. Signing still shells out (a private key
+  is the agent's business, not ours), so this stays the honest answer to
+  \"can this host fall back?\" rather than a claim about verification.
 
   Memoized: the answer cannot change inside a run, and a service checking
   many bundles should not fork a process per question."
@@ -137,19 +136,29 @@
      (io/copy (ssh-sign->bytes key-file file sig-namespace) target)
      target)))
 
+(declare verify-bytes find-principals-bytes)
+
+(defn- file-bytes ^bytes [^java.io.File f]
+  (java.nio.file.Files/readAllBytes (.toPath f)))
+
 (defn verify
   "Does `sig` verify `file`'s bytes as authored by `actor`, per the
-  allowed-signers registry? Pure exit-code check; no output parsing."
+  allowed-signers registry? The file variant of `verify-bytes`, and the
+  same reader behind it — a signature endorses BYTES, so where they came
+  from changes nothing."
   ([allowed-signers file sig actor]
    (verify allowed-signers file sig actor namespace-event))
   ([allowed-signers ^java.io.File file ^java.io.File sig actor sig-namespace]
-   (ssh-verify allowed-signers (slurp file) sig actor sig-namespace)))
+   (boolean (verify-bytes allowed-signers (file-bytes file) (file-bytes sig)
+                          actor sig-namespace))))
 
 (defn find-principals
   "Which registered principals could have produced `sig` over `file`?
   Empty when the key is not in the registry."
   [allowed-signers ^java.io.File file ^java.io.File sig sig-namespace]
-  (ssh-principals allowed-signers (slurp file) sig sig-namespace))
+  (or (find-principals-bytes allowed-signers (file-bytes file) (file-bytes sig)
+                             sig-namespace)
+      []))
 
 ;; -------------------------------------------- byte variants (the store seam)
 
@@ -162,22 +171,47 @@
      (try (ssh-sign->bytes key-file tmp sig-namespace)
           (finally (.delete tmp))))))
 
+(defn- registry-text
+  "The allowed-signers file as text, or nil when there is none to read."
+  [allowed-signers]
+  (let [f (io/file (str allowed-signers))]
+    (when (.isFile f) (slurp f))))
+
 (defn verify-bytes
-  "Does `sig-bytes` verify `event-bytes` as authored by `actor`?"
+  "Does `sig-bytes` verify `event-bytes` as authored by `actor`?
+
+  Read in process (tik.sshsig) for the Ed25519 keys tik mints, so a host
+  without OpenSSH still judges authorship — which the distroless image we
+  publish has none of. A key type that reader does not implement falls
+  back to ssh-keygen rather than being called forged."
   ([allowed-signers event-bytes sig-bytes actor]
    (verify-bytes allowed-signers event-bytes sig-bytes actor namespace-event))
   ([allowed-signers ^bytes event-bytes ^bytes sig-bytes actor sig-namespace]
-   (let [sig (write-temp "tik-verify" sig-bytes)]
-     (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
-          (finally (.delete sig))))))
+   (let [text (registry-text allowed-signers)
+         in-process (when text
+                      (sshsig/verify text event-bytes sig-bytes actor
+                                     sig-namespace))]
+     (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
+       in-process
+       (when @verifier-available?
+         (let [sig (write-temp "tik-verify" sig-bytes)]
+           (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
+                (finally (.delete sig)))))))))
 
 (defn find-principals-bytes
   "Which registered principals could have produced `sig-bytes` over
   `event-bytes`? Empty when the key is not in the registry."
   [allowed-signers ^bytes event-bytes ^bytes sig-bytes sig-namespace]
-  (let [sig (write-temp "tik-fp" sig-bytes)]
-    (try (ssh-principals allowed-signers event-bytes sig sig-namespace)
-         (finally (.delete sig)))))
+  (let [text (registry-text allowed-signers)
+        in-process (when text
+                     (sshsig/find-principals text event-bytes sig-bytes
+                                             sig-namespace))]
+    (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
+      in-process
+      (when @verifier-available?
+        (let [sig (write-temp "tik-fp" sig-bytes)]
+          (try (ssh-principals allowed-signers event-bytes sig sig-namespace)
+               (finally (.delete sig))))))))
 
 (defn sidecars
   "All signature sidecar Files for an event id in `events-dir`."
