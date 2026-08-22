@@ -12,7 +12,7 @@
         ;; and this pin is declared directly so the newer version wins
         ;; the resolution — drop it once cheshire ships one at or above
         ;; that.
-        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.22.1"}
+        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.22.2"}
         ;; the SQLite backend embeds the driver (bundled native lib,
         ;; version-pinned) so the shipped binary carries its own SQLite —
         ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
@@ -57,7 +57,7 @@
                           com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
-  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.24.0"}}
+  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.25.0"}}
            :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
   :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.5"}}
            :main-opts ["-m" "cljfmt.main"]}
