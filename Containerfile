@@ -15,7 +15,7 @@
 # static/musl binaries and would lack the loader this binary needs; a
 # glibc-static build is rejected because statically-linked glibc breaks NSS/DNS
 # resolution, and tik dials named hosts (IMAP/POP3, OIDC, webhooks).
-FROM gcr.io/distroless/base-debian12:nonroot@sha256:b12529fbbd0bb15eea8905f69d83148679e0b4d7d434c8808100792029b1caae
+FROM gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
 
 # The store (tickets/, actors, processes/) lives on a mounted volume; default
 # TIK_ROOT so the bare image is usable and the Helm chart's mount lines up.
