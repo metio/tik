@@ -37,7 +37,7 @@ jobs:
           fetch-depth: 0
           # the theme lives at docs/themes/metio as a submodule
           submodules: recursive
-      - uses: metio/nix-devshell@1976169d4c51b321be318ade369ccf689849f9f0 # 2026.7.6091757
+      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
       - name: Build Website
         run: nix develop --command hugo --minify --printI18nWarnings --printPathWarnings --source docs
       - name: Deploy Website
