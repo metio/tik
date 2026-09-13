@@ -22,7 +22,7 @@
  {;; the native binary's closed world: bb ships http-client and httpkit
   ;; as builtins, the JVM/native build declares them; graal-build-time
   ;; marks Clojure namespaces initialize-at-build-time for native-image
-  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.24"}
+  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.25"}
                         http-kit/http-kit {:mvn/version "2.8.1"}
                         com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}}
   :build {:extra-paths ["."]
@@ -49,7 +49,7 @@
              :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
                           org.clojure/test.check {:mvn/version "1.1.3"}
                           lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                          org.babashka/http-client {:mvn/version "0.4.24"}
+                          org.babashka/http-client {:mvn/version "0.4.25"}
                           http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
