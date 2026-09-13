@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Verify on tik</title><link>https://tik.projects.metio.wtf/tags/verify/</link><description>Recent content in Verify on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/verify/index.xml" rel="self" type="application/rss+xml"/><item><title>Store administration</title><link>https://tik.projects.metio.wtf/cli/administration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/administration/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik actor add alice ~/.config/tik/id_ed25519.pub
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik sign &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik witness &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;actor add&lt;/code&gt; registers a signer in the store&amp;rsquo;s allowed-signers registry.
+Exporting &lt;code&gt;TIK_KEY&lt;/code&gt; signs every write as it happens; &lt;code&gt;sign&lt;/code&gt; catches up on
+your own earlier events, and only your own — signing somebody else&amp;rsquo;s would
+assert something false. &lt;code&gt;witness&lt;/code&gt; countersigns a ticket&amp;rsquo;s head, and one
+signature timestamps the entire ancestry beneath it.&lt;/p&gt;
+&lt;h2 id="roles"&gt;Roles&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles add triager alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles remove triager bob
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A process definition declares which roles exist and who starts in them; the
+store&amp;rsquo;s register decides who is in one today, for every ticket at once. Use
+it for a hire or a departure — it takes effect on in-flight tickets
+immediately, with no definition version bump and no per-ticket migration.
+See &lt;a href="https://tik.projects.metio.wtf/authoring/roles-and-authority/"&gt;Roles and authority&lt;/a&gt;
+.&lt;/p&gt;</description></item></channel></rss>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Decisions on tik</title><link>https://tik.projects.metio.wtf/tags/decisions/</link><description>Recent content in Decisions on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/decisions/index.xml" rel="self" type="application/rss+xml"/><item><title>Decisions</title><link>https://tik.projects.metio.wtf/decisions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/decisions/</guid><description>&lt;p&gt;Every load-bearing choice in tik has a record: the decision, the context that
+forced it, and the consequences that follow. Several exist to name something
+tik will &lt;em&gt;not&lt;/em&gt; do, which is the part that keeps the model small.&lt;/p&gt;
+&lt;p&gt;New here, read these four: &lt;a href="https://tik.projects.metio.wtf/decisions/0013-derived-state-never-authoritative/"&gt;derived state is never
+authoritative&lt;/a&gt;
+ is the one
+law written as a constraint on every future feature;
+&lt;a href="https://tik.projects.metio.wtf/decisions/0021-coordination-free-horizontal-scaling/"&gt;coordination-free&lt;/a&gt;
+ is
+its companion; &lt;a href="https://tik.projects.metio.wtf/decisions/0007-stored-bytes-are-the-hashed-region/"&gt;stored bytes are the hashed
+region&lt;/a&gt;
+ is why
+&lt;code&gt;sha256sum&lt;/code&gt; alone audits a store; and &lt;a href="https://tik.projects.metio.wtf/decisions/0012-time-semantics/"&gt;three
+clocks&lt;/a&gt;
+ is why a guard&amp;rsquo;s meaning includes
+which clock it reads.&lt;/p&gt;</description></item></channel></rss>

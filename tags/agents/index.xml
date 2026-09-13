@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Agents on tik</title><link>https://tik.projects.metio.wtf/tags/agents/</link><description>Recent content in Agents on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/agents/index.xml" rel="self" type="application/rss+xml"/><item><title>Claude Code skill</title><link>https://tik.projects.metio.wtf/integrations/claude-code/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/integrations/claude-code/</guid><description>&lt;p&gt;Install the tik skill into &lt;a href="https://claude.com/claude-code"&gt;Claude Code&lt;/a&gt;
+
+and Claude gains working knowledge of tik: it recognises a store, records
+facts with &lt;code&gt;tik set&lt;/code&gt; rather than inventing a status field, reads
+&lt;code&gt;tik explain&lt;/code&gt; before asking a person anything, and authors process
+definitions whose stages derive from evidence instead of listing
+activities.&lt;/p&gt;
+&lt;p&gt;That last part is the reason the skill exists. The failure mode for any
+model writing a tik process is a task list wearing a process costume —
+stages named after activities, with nothing following from anything. The
+skill carries the design law that rules it out, along with the closed
+guard vocabulary and the authoring loop that checks the result.&lt;/p&gt;</description></item><item><title>MCP server</title><link>https://tik.projects.metio.wtf/integrations/mcp-server/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/integrations/mcp-server/</guid><description>&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nv"&gt;TIK_ACTOR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;bot &lt;span class="nv"&gt;TIK_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;~/.config/tik/bot_ed25519 tik mcp
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;tik mcp&lt;/code&gt; speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+&lt;em&gt;is&lt;/em&gt; the authorization boundary.&lt;/p&gt;
+&lt;h2 id="why-the-boundary-holds"&gt;Why the boundary holds&lt;/h2&gt;
+&lt;p&gt;An agent&amp;rsquo;s permission to act is derived from the same guards a person&amp;rsquo;s
+is. A step whose &lt;code&gt;:signed-by&lt;/code&gt; names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.&lt;/p&gt;</description></item></channel></rss>

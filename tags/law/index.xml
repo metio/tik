@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Law on tik</title><link>https://tik.projects.metio.wtf/tags/law/</link><description>Recent content in Law on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/law/index.xml" rel="self" type="application/rss+xml"/><item><title>Derived beats declared</title><link>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/derived-beats-declared/</guid><description>&lt;p&gt;&lt;strong&gt;If something can be derived, storing it as authoritative state is a
+bug.&lt;/strong&gt; That is the whole law, and every design question in tik resolves
+against it.&lt;/p&gt;
+&lt;p&gt;A ticket&amp;rsquo;s stage is the obvious case. It is never written down anywhere. It
+is &lt;code&gt;f(events, now)&lt;/code&gt; — a pure function of the ticket&amp;rsquo;s own event log, the
+process definition that ticket pinned, and the instant you are asking
+about. Ask twice with the same inputs and you get the same answer, forever.&lt;/p&gt;</description></item></channel></rss>

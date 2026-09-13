@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Testing on tik</title><link>https://tik.projects.metio.wtf/tags/testing/</link><description>Recent content in Testing on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/testing/index.xml" rel="self" type="application/rss+xml"/><item><title>Lint, simulate, test</title><link>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/authoring/lint-simulate-test/</guid><description>&lt;p&gt;Three checks, in the order you reach for them.&lt;/p&gt;
+&lt;h2 id="lint"&gt;Lint&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik lint processes/support-request.edn
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The linter enforces what the kernel cannot:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;The closed guard basis&lt;/strong&gt; — only operators the declared
+&lt;code&gt;:process/guard-vocab&lt;/code&gt; admits.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Graph sanity&lt;/strong&gt; — every &lt;code&gt;:after&lt;/code&gt; names a stage that exists, and no
+cycles.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Stratified negation&lt;/strong&gt; — &lt;code&gt;[:not [:stage-reached …]]&lt;/code&gt; may only name a
+stage in a strictly earlier stratum, which is what makes the fixpoint
+provably deterministic.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Facts over flags&lt;/strong&gt; — a warning where a bare boolean stands in for
+information worth recording.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Prefix boundaries&lt;/strong&gt; — an &lt;code&gt;:artifact&lt;/code&gt; prefix that does not end at a path
+boundary matches more than its author expects.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;With no argument it lints the &lt;em&gt;store&lt;/em&gt; instead: open tickets missing
+descriptions, titles, or signatures.&lt;/p&gt;</description></item></channel></rss>

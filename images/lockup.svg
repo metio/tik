@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+The horizontal lockup with its ink supplied. An SVG in an <img> renders in its
+own document and cannot inherit the surrounding text colour, which is what the
+brand files' currentColor expects — so READMEs and page headers use this copy
+and get a mark that follows the reader's colour scheme. tik-lockup.svg stays
+pristine for anywhere an ancestor can set the colour.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 285 128" width="285" height="128" fill="none" role="img" aria-labelledby="tik-lockup-title">
+  <title id="tik-lockup-title">tik</title>
+  <style>
+    :root { color: #1f1f1f; }
+    @media (prefers-color-scheme: dark) { :root { color: #f2f2f2; } }
+  </style>
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M91.9 34.1 L103.84 41 L103.84 87 L64 110 L24.16 87 L24.16 41 L64 18 L78 26.1" stroke-width="5.5"/>
+    <path d="M34 70 L50 86 L94.5 14.8" stroke-width="9"/>
+  </g>
+  <circle cx="64" cy="110" r="5.5" fill="var(--tik-accent, #A8752B)"/>
+  <g stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M150 26 V90 a10 10 0 0 0 10 10"/>
+    <path d="M136 52 H166"/>
+    <path d="M188 52 V100"/>
+    <path d="M226 26 V100"/>
+    <path d="M256 52 L228 78"/>
+    <path d="M238 69 L260 100"/>
+  </g>
+  <circle cx="188" cy="32" r="5" fill="var(--tik-accent, #A8752B)"/>
+</svg>

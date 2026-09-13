@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Evidence on tik</title><link>https://tik.projects.metio.wtf/evidence/</link><description>Recent content in Evidence on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/evidence/index.xml" rel="self" type="application/rss+xml"/><item><title>Bundle format</title><link>https://tik.projects.metio.wtf/evidence/bundle-format/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/bundle-format/</guid><description>&lt;p&gt;&lt;code&gt;tik-evidence-bundle&lt;/code&gt;, version 1. A gzipped tar holding one ticket and
+everything its derivation needs.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik bundle &amp;lt;id&amp;gt; --out evidence.tgz
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;bundle.edn the format name and version
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;actors the allowed-signers registry
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;roles.edn role membership, where the store keeps a register
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/&amp;lt;event-id&amp;gt;.edn key bindings, as signed registry events
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/&amp;lt;event-id&amp;gt;.sig.&amp;lt;fpr&amp;gt; their authorship signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;identity/keys/&amp;lt;kid&amp;gt;.pem the issuer keys those bindings rest on
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;processes/by-hash/&amp;lt;hash&amp;gt;.edn the definition the ticket pinned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;processes/by-hash/&amp;lt;hash&amp;gt;.sig.&amp;lt;fpr&amp;gt; its publication signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.edn the append-only log
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.sig.&amp;lt;fpr&amp;gt; authorship signatures
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/events/&amp;lt;id&amp;gt;.witness.&amp;lt;fpr&amp;gt; countersignatures over a head
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tickets/&amp;lt;uuid&amp;gt;/blobs/&amp;lt;hash&amp;gt; attached artifacts, addressed by content
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verify.sh a coreutils implementation of the checks
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;README.md what the recipient is holding
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="what-a-reader-may-assume"&gt;What a reader may assume&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;Every stored file&amp;rsquo;s name is the SHA-256 of its bytes&lt;/strong&gt;, prefixed
+&lt;code&gt;sha256-&lt;/code&gt;. Event and definition files carry a &lt;code&gt;.edn&lt;/code&gt; suffix after the
+address; blobs are named by the bare address. &lt;code&gt;sha256sum&lt;/code&gt; alone audits
+the archive.&lt;/p&gt;</description></item><item><title>Re-deriving a bundle</title><link>https://tik.projects.metio.wtf/evidence/re-deriving/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/re-deriving/</guid><description>&lt;p&gt;&lt;code&gt;verify.sh&lt;/code&gt; answers one question: are these bytes what they claim to be?
+&lt;code&gt;tik rederive&lt;/code&gt; answers the other one: what do they add up to?&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik rederive evidence.tgz
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;bundle sha256-04a0bf413895fefb1c20e9231632fbc0d0a0d768275b42c097581ed19365973a
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; format tik-evidence-bundle version 1
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ticket e26a1d57-6643-4564-99fa-8968ced7afa5 &amp;#34;2026.8.6132954&amp;#34;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; events 10
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; judged by release sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verification
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok … hashes to its name and is schema-valid
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok every referenced parent is present
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok exactly one root event
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok … verifies as ci
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ok ci is bound to its key by repo:metio/tik:ref:refs/heads/main, per …
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; =&amp;gt; the bytes are what they claim to be
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;derivation at 2026-08-06T20:29:26.198Z
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; reached :attested, :built, :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; current :attested, :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; :built
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:fact [:version]]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:signed-by :ci [:commit]]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:artifact &amp;#34;checksums/&amp;#34;]
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; :scanned
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✓ [:attested-within :vulnerability-scan &amp;#34;P1D&amp;#34;]
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;It takes a &lt;code&gt;.tgz&lt;/code&gt;, an unpacked directory, or an &lt;code&gt;https&lt;/code&gt; URL, and exits 1
+when the bundle fails to verify — a derivation over bytes that are not
+what they claim to be is worth nothing. &lt;code&gt;--edn&lt;/code&gt; prints the same result as
+data.&lt;/p&gt;</description></item><item><title>SLSA, said honestly</title><link>https://tik.projects.metio.wtf/evidence/slsa/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/slsa/</guid><description>&lt;p&gt;The stages of &lt;a href="https://tik.projects.metio.wtf/processes/supply-chain-release/"&gt;&lt;code&gt;supply-chain-release&lt;/code&gt;&lt;/a&gt;
+ and
+&lt;a href="https://tik.projects.metio.wtf/processes/automated-release/"&gt;&lt;code&gt;automated-release&lt;/code&gt;&lt;/a&gt;
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a &lt;strong&gt;trusted attester said&lt;/strong&gt;
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called &lt;code&gt;slsa-l3&lt;/code&gt; would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.&lt;/p&gt;
+&lt;p&gt;What &lt;code&gt;supply-chain-release&lt;/code&gt; demands maps onto SLSA&amp;rsquo;s build requirements like
+this — and the table is a claim about &lt;strong&gt;the definition&lt;/strong&gt;, never about any
+ticket that pins it. &lt;code&gt;automated-release&lt;/code&gt; demands the same, minus the two-person
+row:&lt;/p&gt;</description></item></channel></rss>

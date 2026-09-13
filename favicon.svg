@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+The optical-size variant of the mark (seal closed, tick heavier, bead
+removed), which the brand rules call for at 24px and below.
+
+An SVG referenced from <link rel="icon"> renders in its own document, so it
+cannot inherit `color` from the page — the brand files set their ink to
+currentColor and expect an ancestor to supply it. Setting `color` on the root
+here is the sanctioned way to do that, and a prefers-color-scheme query keeps
+the mark legible against both a light and a dark browser chrome.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="32" height="32" fill="none" role="img" aria-labelledby="tik-favicon-title">
+  <title id="tik-favicon-title">tik</title>
+  <style>
+    :root { color: #1f1f1f; }
+    @media (prefers-color-scheme: dark) { :root { color: #f2f2f2; } }
+  </style>
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 18 L103.84 41 L103.84 87 L64 110 L24.16 87 L24.16 41 Z" stroke-width="7"/>
+    <path d="M36 66 L54 84 L86 46" stroke-width="12"/>
+  </g>
+</svg>
