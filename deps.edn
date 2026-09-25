@@ -12,7 +12,7 @@
         ;; and this pin is declared directly so the newer version wins
         ;; the resolution — drop it once cheshire ships one at or above
         ;; that.
-        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.22.2"}
+        com.fasterxml.jackson.core/jackson-core {:mvn/version "2.22.3"}
         ;; the SQLite backend embeds the driver (bundled native lib,
         ;; version-pinned) so the shipped binary carries its own SQLite —
         ;; no external sqlite3 on PATH. bb.edn omits it: bb is the dev
