@@ -59,7 +59,7 @@
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
   :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.25.0"}}
            :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
-  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.5"}}
+  :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.6"}}
            :main-opts ["-m" "cljfmt.main"]}
   :watson {:extra-deps {io.github.clj-holmes/clj-watson
                         {:git/tag "v6.1.0" :git/sha "be98e4db74fb8927db4825cc73bbe2606e44e5e3"}}
