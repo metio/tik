@@ -2,7 +2,7 @@
 ;; SPDX-License-Identifier: 0BSD
 {:paths ["src" "cli"]
  :deps {org.clojure/clojure {:mvn/version "1.12.6"}
-        metosin/malli {:mvn/version "0.20.1"}
+        metosin/malli {:mvn/version "0.20.2"}
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.
