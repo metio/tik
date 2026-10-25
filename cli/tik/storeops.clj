@@ -29,14 +29,52 @@
   (:import (java.io File)
            (java.time Instant LocalDate ZoneOffset)))
 
+(defn- rollout-id
+  "A ticket id that is a pure function of every byte its create event
+  carries — the role (child or parent), the subject, the pinned process
+  hash, the actor and the claimed instant. Two replicas that form the
+  same intent mint the same create event, so a union merge keeps ONE
+  ticket (ADR 0021). Any input that differs yields a different ticket,
+  never a second create event under one id. The parts are stringified
+  before printing, so the encoding is injective (a title may hold spaces)
+  and stable (pr-str of a string, never of an Instant)."
+  [& parts]
+  (java.util.UUID/nameUUIDFromBytes
+   (.getBytes (pr-str (into ["tik/rollout"] (map str) parts)) "UTF-8")))
+
+(defn- write-at
+  "The claimed instant of a rollout write onto a log: the run's base
+  instant, or just after the latest event the write observed when that is
+  later. Deterministic for a given log, and never ordered before an event
+  it saw — a backdated re-assert of a link a human retracted later the
+  same day would fold before the retraction, lose, and be written again on
+  every run."
+  ^Instant [^Instant base events]
+  (reduce (fn [^Instant acc e]
+            (let [at (:event/at e)]
+              (if (and (instance? Instant at) (not (.isAfter acc ^Instant at)))
+                (.plusMillis ^Instant at 1)
+                acc)))
+          base
+          events))
+
+(declare period-start)
+
 (defn cmd-rollout
-  "rollout <process> [--parent <id>] [--parent-title T]
+  "rollout <process> [--parent <id>] [--parent-title T] [--period L] [--at I]
   One ticket per git repository under the store holder, each carrying
   its repo=<name> fact, all wired as link.<repo> facts on a parent —
   a checklist whose checkmarks DERIVE from each child's evidence.
   Idempotent: re-runs create only uncovered repos and missing links,
   and report coverage. The parent's own completion stays a human
   signature; guards never query across tickets (ADR 0004 scope).
+
+  The minted events are a pure function of their intent: ticket ids
+  derive from (role, subject, process hash, actor, base instant) and every
+  write claims `write-at` the base. The base is the period start of
+  --period (the labels recur reads), --at, or the wall clock. A scheduler
+  passes --period, so two backends running the same rollout concurrently
+  mint byte-identical events that union-merge to one set (ADR 0021).
 
   Repos are found RECURSIVELY (GitLab-style group/subgroup/repo trees
   work); descent stops at each repo, hidden directories are skipped.
@@ -67,6 +105,18 @@
             (die (str "no git repositories directly under " holder)))
         s (the-store)
         t (now)
+        who (actor opts)
+        _ (doseq [k [:period :at]
+                  :let [v (get opts k)]
+                  :when (and (some? v) (not (string? v)))]
+            (die (str "rollout --" (name k) " needs a value")))
+        base (cond
+               (:period opts) (period-start (:period opts) (:at opts))
+               (:at opts) (parse-instant (:at opts))
+               :else t)
+        heads-at (fn [id]
+                   (let [evs (store/events s id)]
+                     [(dag/heads evs) (write-at base evs)]))
         all (vec (all-ticket-ctx s))
         child-of (into {}
                        (for [{:keys [id state]} all
@@ -83,43 +133,48 @@
                       id))
                   all)
             (let [track (load-process "track")
+                  track-hash (archive-process! track)
                   e (event/create-ticket
-                     {:ticket (random-uuid) :actor (actor opts) :at (now)
+                     {:ticket (rollout-id "parent" parent-title track-hash who base)
+                      :actor who :at base
                       :title parent-title :process :track
                       :version (:process/version track)
-                      :process-hash (archive-process! track)})]
+                      :process-hash track-hash})]
               (append!* s e opts)
               (println (str "parent " (sid (:event/ticket e))
                             " \"" parent-title "\""))
               (:event/ticket e)))
+        proc-hash (archive-process! proc)
         created (atom 0)]
     (doseq [repo repos]
       (let [child-title (str proc-name ": " repo)
             child (or (child-of repo)
-                      (let [e (event/create-ticket
-                               {:ticket (random-uuid) :actor (actor opts)
-                                :at (now) :title child-title
+                      (let [id (rollout-id "child" proc-name proc-hash repo who base)
+                            e (event/create-ticket
+                               {:ticket id :actor who :at base
+                                :title child-title
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
-                                :process-hash (archive-process! proc)})]
-                        (append!* s e opts)
+                                :process-hash proc-hash})
+                            _ (append!* s e opts)
+                            [parents at] (heads-at id)]
                         (append!* s (event/assert-fact
-                                     {:ticket (:event/ticket e)
-                                      :actor (actor opts) :at (now)
-                                      :parents #{(:event/id e)}
+                                     {:ticket id :actor who :at at
+                                      :parents parents
                                       :path [:repo] :value (repo-value repo)})
                                   opts)
                         (swap! created inc)
-                        (:event/ticket e)))
+                        id))
             {:keys [state]} (ticket-ctx s parent-id)]
         ;; re-runs converge names too: retitling is a superseding fact
         (let [cstate (:state (ticket-ctx s child))]
           (when-not (= child-title (display-title cstate))
-            (append!* s (event/assert-fact
-                         {:ticket child :actor (actor opts) :at (now)
-                          :parents (dag/heads (store/events s child))
-                          :path [:title] :value child-title})
-                      opts)))
+            (let [[parents at] (heads-at child)]
+              (append!* s (event/assert-fact
+                           {:ticket child :actor who :at at
+                            :parents parents
+                            :path [:title] :value child-title})
+                        opts))))
         ;; the link rel is the repo's OWN identity (repo-value: a keyword
         ;; for a flat repo, the "group/repo" string for a nested one) — an
         ;; injective key, so a flat `a.b` and a nested `a/b` never collapse
@@ -127,12 +182,13 @@
         (let [rel (repo-value repo)]
           (when-not (= (str child)
                        (red/fact-value state [:link rel]))
-            (append!* s (event/assert-fact
-                         {:ticket parent-id :actor (actor opts) :at (now)
-                          :parents (dag/heads (store/events s parent-id))
-                          :path [:link rel]
-                          :value (str child)})
-                      opts)))))
+            (let [[parents at] (heads-at parent-id)]
+              (append!* s (event/assert-fact
+                           {:ticket parent-id :actor who :at at
+                            :parents parents
+                            :path [:link rel]
+                            :value (str child)})
+                        opts))))))
     (println (str @created " ticket(s) created, "
                   (- (count repos) @created) " already covered, "
                   (count repos) " repo(s) total — the living checklist:"))

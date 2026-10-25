@@ -103,4 +103,9 @@ ticket already carries that period label. The schedule lives outside the
 log — run it from cron or a timer — and tik derives whether the period
 exists yet. `rollout` creates one ticket per git repository under the
 store, wired to a parent by link facts, so the parent is a checklist whose
-checkmarks derive from each child's evidence.
+checkmarks derive from each child's evidence. Re-runs create tickets only for
+repositories without one, so scheduling `rollout` keeps the checklist current
+as repositories appear. A scheduled run takes `--period` (the labels `recur`
+reads) or `--at`: the ticket ids and every claimed instant then follow from
+the process, the repository, the actor, and the period, and two replicas
+running the same rollout write identical events.
