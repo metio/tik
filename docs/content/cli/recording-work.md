@@ -109,3 +109,31 @@ as repositories appear. A scheduled run takes `--period` (the labels `recur`
 reads) or `--at`: the ticket ids and every claimed instant then follow from
 the process, the repository, the actor, and the period, and two replicas
 running the same rollout write identical events.
+
+## Standing rules
+
+A rule that every repository of a kind must satisfy, such as "every Go
+module has a README", is a process run per repository. The process's
+`:scope` selects the population and its `:probe` observes the evidence:
+
+```clojure
+{:process/id :readme-present
+ :scope "probes/go-module.sh"     ; test -f go.mod
+ :probe "probes/readme.sh"        ; prints readme=:present or readme=:absent
+ :process/facts {[:readme] [:enum :present :absent]}
+ :process/stages
+ [{:stage/id :tracked :guards []}
+  {:stage/id :holds :after [:tracked]
+   :guards [[:fact= [:readme] :present]]}]
+ ...}
+```
+
+`rollout` asks the scope once per repository, with the working directory in
+that repository and `TIK_REPO` set: exit 0 includes it, exit 1 leaves it out,
+and any other exit is reported and leaves that repository out of the run with
+exit code 1. `--scope` replaces the definition's scope for one run. Scheduling
+`rollout --period …` and `probe` keeps the rule current: a repository that
+joins the population gets its own ticket and starts short of `:holds`, and a
+compliant repository falls back from `:holds` when its probe observes the
+README gone, since `:holds` is not sticky. `tik status <parent>` counts the
+children per stage, and `--links holds` lists the compliant ones.
