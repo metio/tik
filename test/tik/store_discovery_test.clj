@@ -160,6 +160,82 @@
           (is (re-find #"\(done\)\s+[0-9a-f]{8} mig: beta" (:out r))
               "the checkmark derived itself from the child's evidence"))))))
 
+(defn- store-fingerprint
+  "Every ticket dir of a hidden store mapped to its sorted event file names:
+  the whole event-id set, independent of listing order."
+  [top]
+  (into (sorted-map)
+        (for [^java.io.File d (.listFiles (io/file top ".tik" "tickets"))
+              :when (.isDirectory d)]
+          [(.getName d)
+           (sort (map #(.getName ^java.io.File %)
+                      (.listFiles (io/file d "events"))))])))
+
+(defn- rollout-store!
+  "A hidden store over alpha, beta and group/delta with the mig process."
+  []
+  (let [top (tmpdir)]
+    (doseq [r ["alpha" "beta"]]
+      (.mkdirs (io/file top r ".git")))
+    (.mkdirs (io/file top "group" "delta" ".git"))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "processes" "mig.edn")
+          (pr-str {:process/id :mig :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/stages [{:stage/id :started :guards []}]}))
+    top))
+
+(deftest rollout_mints_byte_identical_events_on_independent_stores
+  ;; two backends that cannot see each other run the same scheduled
+  ;; rollout: the same period and delegate must yield the same event-id
+  ;; set, so a union merge keeps one parent and one child per repo
+  (let [[a b c] (repeatedly 3 rollout-store!)
+        run! (fn [top period]
+               (tik-at top nil "rollout" "mig" "--period" period
+                       "--actor" "tik-backend"))]
+    (is (zero? (:exit (run! a "2026-W43"))))
+    (is (zero? (:exit (run! b "2026-W43"))))
+    (testing "same intent → identical tickets and events"
+      (is (= 4 (count (store-fingerprint a))) "one parent + three children")
+      (is (= (store-fingerprint a) (store-fingerprint b))))
+    (testing "a re-run on a converged store writes nothing"
+      (let [before (store-fingerprint a)]
+        (is (re-find #"0 ticket\(s\) created, 3 already covered"
+                     (:out (run! a "2026-W43"))))
+        (is (= before (store-fingerprint a)))))
+    (testing "a new repo lands identically on both stores"
+      (doseq [top [a b]]
+        (.mkdirs (io/file top "gamma" ".git"))
+        (run! top "2026-W44"))
+      (is (= 5 (count (store-fingerprint a))))
+      (is (= (store-fingerprint a) (store-fingerprint b))))
+    (testing "a different period mints different tickets, never a second
+              create under one id"
+      (run! c "2026-W44")
+      (is (empty? (filter (set (keys (store-fingerprint a)))
+                          (keys (store-fingerprint c))))))))
+
+(deftest rollout_reasserts_a_link_after_the_retraction_it_observed
+  ;; a write claims just after the latest event it saw, so a re-assert in
+  ;; a period that began before the retraction still supersedes it once
+  ;; and the next run is quiet
+  (let [top (rollout-store!)
+        run! #(tik-at top nil "rollout" "mig" "--period" "2026-W43")
+        _ (run!)
+        parent (-> (tik-at top nil "ls") :out str/split-lines
+                   (->> (filter #(re-find #"mig rollout" %)))
+                   first (str/split #"\s+") first)]
+    ;; the retraction claims the wall clock, after the period began
+    (is (zero? (:exit (tik-at top nil "retract" parent "link.alpha"))))
+    (is (not (re-find #"mig: alpha" (:out (tik-at top nil "status" parent))))
+        "the retraction took the child off the checklist")
+    (run!)
+    (is (re-find #"mig: alpha" (:out (tik-at top nil "status" parent))))
+    (let [before (store-fingerprint top)]
+      (run!)
+      (is (= before (store-fingerprint top)) "converged: nothing re-written"))))
+
 (deftest probe_derives_facts_from_the_world
   (let [top (tmpdir)]
     (doseq [r ["alpha" "beta"]]

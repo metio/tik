@@ -241,7 +241,9 @@ which admits exactly the actions its actor may take on a ticket right now.
   delegation attestation — to the human who authorized the delegate. It never
   changes what a fact means; it only decides WHEN to run a porcelain verb, and
   idempotency (recur is deterministic) means it needs no leader and a missed
-  fire self-heals. This is the all-in-one deployment; the chart can also run
+  fire self-heals. A scheduled `rollout` needs a `:period` (the backend
+  refuses one without): `--period` pins the claimed instant and the minted
+  ticket ids, so replicas running the same rollout mint identical events. This is the all-in-one deployment; the chart can also run
   the slices as separate workloads.
 
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a

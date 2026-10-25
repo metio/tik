@@ -142,7 +142,12 @@
            (catch Exception _ (die (str (label p) " :every " (pr-str every)
                                         " is not an ISO-8601 duration (e.g. PT5M, PT1H, P1D)")))))
     (when (and period (not (period-kinds period)))
-      (die (str (label p) " :period must be one of " period-kinds)))))
+      (die (str (label p) " :period must be one of " period-kinds)))
+    ;; rollout mints tickets; without a period each replica claims its own
+    ;; wall clock, and concurrent backends mint duplicate children (ADR 0021)
+    (when (and (= "rollout" (str (first run))) (not watch) (not period))
+      (die (str (label p) " runs rollout, which needs a :period so every"
+                " replica mints the same events")))))
 
 (defn cmd-backend
   "backend [--config pipelines.edn]

@@ -197,9 +197,12 @@
                                                 tik> replies close the loop
   tik rollout <process> [--parent <id>]         one ticket per git repo under the store
               [--parent-title T]                (context-tagged), wired as link facts on
-                                                a parent: a checklist whose checkmarks
+              [--period <label>] [--at <inst>]  a parent: a checklist whose checkmarks
                                                 derive from each child's evidence.
-                                                Idempotent; re-runs report coverage
+                                                Idempotent; re-runs report coverage.
+                                                --period/--at pin the claimed instant,
+                                                so schedulers on separate replicas
+                                                mint identical events
   tik recur <process> --period <label>          mint THIS period's ticket for a recurring
             [--title T]                         process, once: create only if no ticket
                                                 already carries period=<label>, else no-op.

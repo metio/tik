@@ -77,6 +77,12 @@
       (let [r (run-backend root)]
         (is (= 1 (:exit r)))
         (is (str/includes? (str (:out r) (:err r)) "ISO-8601 duration"))))
+    (testing "a scheduled rollout without a :period is refused"
+      (spit (io/file root "pipelines.edn")
+            (pr-str {:pipelines [{:id :x :every "PT1H" :run ["rollout" "track"]}]}))
+      (let [r (run-backend root)]
+        (is (= 1 (:exit r)))
+        (is (str/includes? (str (:out r) (:err r)) "needs a :period"))))
     (testing "no config file at all is a clean error"
       (.delete (io/file root "pipelines.edn"))
       (is (= 1 (:exit (run-backend root)))))))
