@@ -90,6 +90,14 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   subjects, a package or tenant or workload per ticket, each probe told which
   subject it is running for. Naming an id refuses with a reason when that
   ticket cannot be probed; the whole-store sweep skips and counts instead.
+- `tik rollout <process> [--scope C] [--period L]` — one ticket per git
+  repository under the store, linked from a parent whose `status` counts the
+  children per stage. The process's `:scope` (or `--scope`) narrows the
+  population: an executable run in each repository, exit 0 = in, 1 = out,
+  anything else reported and left out with exit 1. Re-runs create tickets only
+  for uncovered repositories, so a scheduled rollout plus `probe` is a
+  **standing rule**: new members arrive with their own ticket, and a
+  non-sticky goal stage regresses when the probe sees the evidence go.
 - `tik reprocess <id> <new.edn> [--apply]` — migrate ONE ticket onto a newer
   version of its process. A ticket is judged by the rules it was minted
   under, so a definition that grows (a value added to an enum, a stage

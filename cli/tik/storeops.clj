@@ -58,7 +58,29 @@
           base
           events))
 
-(declare period-start)
+(declare period-start rollout-population!)
+
+(defn- scope-verdict
+  "Whether repository `repo` (its path relative to the holder) belongs to
+  a rollout's population: run `scope` — a script resolved like a probe, or
+  a shell command — with cwd in the repository and TIK_REPO set. Exit 0
+  is :in and exit 1 is :out, the convention `test` and `grep -q` follow.
+  Any other exit is an unanswered question, returned as {:error msg}, so
+  a broken scope script never reads as an empty population."
+  [scope ^File holder repo]
+  (let [^File f (resolve-file scope)
+        argv (if (.exists f) ["sh" (str f)] ["sh" "-c" scope])
+        r (try (apply sh/sh (concat argv
+                                    [:dir (str (io/file holder repo))
+                                     :env (assoc (into {} (System/getenv))
+                                                 "TIK_REPO" repo)]))
+               (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
+    (case (long (:exit r))
+      0 :in
+      1 :out
+      {:error (str "scope exited " (:exit r)
+                   (when-let [e (not-empty (str/trim (str (:err r))))]
+                     (str " — " e)))})))
 
 (defn cmd-rollout
   "rollout <process> [--parent <id>] [--parent-title T] [--period L] [--at I]
@@ -79,10 +101,16 @@
   Repos are found RECURSIVELY (GitLab-style group/subgroup/repo trees
   work); descent stops at each repo, hidden directories are skipped.
   A nested repo's identity is its relative path: the [:repo] fact and
-  queries use the string \"group/repo\", flat repos keep the keyword."
+  queries use the string \"group/repo\", flat repos keep the keyword.
+
+  The population is every repo found, narrowed by the process's :scope
+  (or --scope, which wins): an executable or shell command asked once per
+  repo, see `scope-verdict`. A repo whose scope check fails is reported
+  and left out of this run, the others still roll out, and the exit code
+  is 1 so a scheduler logs the failure."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
-                      (die "usage: tik rollout <process> [--parent <id>] [--parent-title T]"))
+                      (die "usage: tik rollout <process> [--parent <id>] [--parent-title T] [--scope C]"))
         proc (load-process proc-name)
         holder (store-holder)
         walk (fn walk [^File d rel]
@@ -95,14 +123,40 @@
         repos (sort (mapcat #(walk % (.getName ^File %))
                             (filter #(.isDirectory ^File %)
                                     (or (.listFiles holder) []))))
-        repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
+        _ (when (empty? repos)
+            (die (str "no git repositories directly under " holder)))
+        scope (or (:scope opts) (:scope proc))
+        _ (when (and (some? scope) (not (and (string? scope) (seq scope))))
+            (die (str "rollout scope must be a script path or shell command, got "
+                      (pr-str scope))))
+        verdicts (into {} (for [r repos]
+                            [r (if scope (scope-verdict scope holder r) :in)]))
+        errors (filterv (comp map? val) verdicts)
+        _ (doseq [[r {:keys [error]}] errors]
+            (binding [*out* *err*]
+              (println (str r ": " error " — left out of this run"))))
+        outside (count (filter #(= :out (val %)) verdicts))
+        repos (filterv #(= :in (verdicts %)) repos)
+        scope-note (when scope
+                     (str ", " outside " outside the scope"
+                          (when (seq errors)
+                            (str ", " (count errors) " unanswered"))))]
+    (if (empty? repos)
+      ;; nothing to roll out mints nothing, a parent included: an empty
+      ;; checklist would be a ticket about no subject
+      (do (println (str "0 repo(s) in scope" scope-note " — nothing rolled out"))
+          (when (seq errors) (exit! 1)))
+      (rollout-population! proc-name proc repos opts scope-note errors))))
+
+(defn- rollout-population!
+  "The minting half of `cmd-rollout`, over the repos already in scope."
+  [proc-name proc repos opts scope-note errors]
+  (let [repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
                       (keyword %)
                       ;; spaces, slashes, EDN-hostile characters: the
                       ;; name rides as a string (mint would refuse a
                       ;; keyword that cannot round-trip)
                       %)
-        _ (when (empty? repos)
-            (die (str "no git repositories directly under " holder)))
         s (the-store)
         t (now)
         who (actor opts)
@@ -191,11 +245,13 @@
                         opts))))))
     (println (str @created " ticket(s) created, "
                   (- (count repos) @created) " already covered, "
-                  (count repos) " repo(s) total — the living checklist:"))
+                  (count repos) " repo(s) total" scope-note
+                  " — the living checklist:"))
     (let [{:keys [state]} (ticket-ctx s parent-id)]
       (doseq [line (link-lines s t state)]
         (println "  " line)))
-    (println (str "watch it: tik status " (sid parent-id)))))
+    (println (str "watch it: tik status " (sid parent-id)))
+    (when (seq errors) (exit! 1))))
 
 (defn- recur-id
   "A ticket id that is a pure function of (process, period): identical on
