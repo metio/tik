@@ -236,6 +236,113 @@
       (run!)
       (is (= before (store-fingerprint top)) "converged: nothing re-written"))))
 
+(defn- scoped-store!
+  "A hidden store over go repos alpha and group/gamma and a non-go beta,
+  with a `rule` process whose :scope selects go modules and whose probe
+  observes a README. :holds is not sticky: it stands only while the
+  README does."
+  []
+  (let [top (tmpdir)]
+    (doseq [r ["alpha" "beta" "group/gamma"]]
+      (.mkdirs (io/file top r ".git")))
+    (doseq [r ["alpha" "group/gamma"]]
+      (spit (io/file top r "go.mod") "module x\n"))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (.mkdirs (io/file top ".tik" "probes"))
+    (spit (io/file top ".tik" "probes" "go-module.sh") "test -f go.mod\n")
+    (spit (io/file top ".tik" "probes" "readme.sh")
+          "if [ -f README.md ]; then echo readme=:present; else echo readme=:absent; fi\n")
+    (spit (io/file top ".tik" "processes" "rule.edn")
+          (pr-str {:process/id :rule :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :scope "probes/go-module.sh"
+                   :probe "probes/readme.sh"
+                   :process/facts {[:readme] [:enum :present :absent]}
+                   :process/stages [{:stage/id :tracked :guards []}
+                                    {:stage/id :holds :after [:tracked]
+                                     :guards [[:fact= [:readme] :present]]}]}))
+    top))
+
+(defn- child-of-repo [top repo]
+  (-> (tik-at top nil "ls" "--all" "--where" (str "fact:repo=" repo))
+      :out str/split-lines first (str/split #"\s+") first))
+
+(deftest rollout_scope_narrows_the_population
+  (let [top (scoped-store!)]
+    (testing "the definition's :scope decides membership"
+      (let [r (tik-at top nil "rollout" "rule")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"2 ticket\(s\) created, 0 already covered, 2 repo\(s\) total, 1 outside the scope"
+                     (:out r)))
+        (is (re-find #"rule: alpha" (:out r)))
+        (is (re-find #"rule: group/gamma" (:out r)))
+        (is (not (re-find #"rule: beta" (:out r))))))
+    (testing "--scope wins over the definition"
+      (let [r (tik-at top nil "rollout" "rule" "--scope" "test \"$TIK_REPO\" = beta")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"1 ticket\(s\) created, 0 already covered, 1 repo\(s\) total, 2 outside the scope"
+                     (:out r)))))))
+
+(deftest rollout_scope_failures_are_reported_never_read_as_out
+  (let [top (scoped-store!)]
+    (testing "an exit other than 0 or 1 is unanswered: reported, left out, exit 1"
+      (let [r (tik-at top nil "rollout" "rule" "--scope"
+                      "if [ \"$TIK_REPO\" = beta ]; then exit 2; fi; test -f go.mod")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"beta: scope exited 2" (:err r)))
+        (is (re-find #"2 ticket\(s\) created.*1 unanswered" (:out r))
+            "the answered repos still roll out")))
+    (testing "a non-string :scope is refused"
+      (spit (io/file top ".tik" "processes" "bad.edn")
+            (pr-str {:process/id :bad :process/version 1
+                     :process/guard-vocab 1 :lint {:runbooks :off}
+                     :scope 42
+                     :process/stages [{:stage/id :tracked :guards []}]}))
+      (let [r (tik-at top nil "rollout" "bad")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"script path or shell command" (str (:out r) (:err r))))
+        (is (h/clean-output? (str (:out r) (:err r))))))))
+
+(deftest rollout_with_an_empty_population_mints_nothing
+  (let [top (scoped-store!)
+        r (tik-at top nil "rollout" "rule" "--scope" "false")]
+    (is (zero? (:exit r)) (:err r))
+    (is (re-find #"0 repo\(s\) in scope, 3 outside the scope — nothing rolled out"
+                 (:out r)))
+    (is (empty? (.listFiles (io/file top ".tik" "tickets"))))))
+
+(deftest a_standing_rule_follows_its_population_and_its_evidence
+  ;; per-repo tickets under a scope, kept current by rollout and probe:
+  ;; a new member arrives non-compliant, a compliant one regresses when
+  ;; the world does, and the parent's link counts show the estate
+  (let [top (scoped-store!)
+        run! (fn [& args] (apply tik-at top nil args))]
+    (spit (io/file top "alpha" "README.md") "# alpha\n")
+    (run! "rollout" "rule" "--period" "2026-W43")
+    (run! "probe")
+    (let [parent (-> (run! "ls") :out str/split-lines
+                     (->> (filter #(re-find #"rule rollout" %)))
+                     first (str/split #"\s+") first)
+          links #(re-find #"links:.*" (:out (run! "status" parent)))]
+      (testing "alpha holds, gamma does not"
+        (is (re-find #"holds" (:out (run! "status" (child-of-repo top ":alpha")))))
+        (is (= "links:  (tracked 1 · holds 1)" (links))))
+      (testing "a new go repo joins the population and starts non-compliant"
+        (.mkdirs (io/file top "delta" ".git"))
+        (spit (io/file top "delta" "go.mod") "module d\n")
+        (is (re-find #"1 ticket\(s\) created, 2 already covered"
+                     (:out (run! "rollout" "rule" "--period" "2026-W44"))))
+        (run! "probe")
+        (is (= "links:  (tracked 2 · holds 1)" (links)))
+        (let [out (:out (run! "status" parent "--links" "holds"))]
+          (is (re-find #"rule: alpha" out) "--links narrows to the compliant")
+          (is (not (re-find #"rule: delta" out)))))
+      (testing "removing the README regresses alpha by derivation"
+        (.delete (io/file top "alpha" "README.md"))
+        (is (re-find #"alpha: readme = :absent" (:out (run! "probe"))))
+        (is (= "links:  (tracked 3)" (links)))))))
+
 (deftest probe_derives_facts_from_the_world
   (let [top (tmpdir)]
     (doseq [r ["alpha" "beta"]]
