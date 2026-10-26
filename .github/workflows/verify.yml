@@ -14,7 +14,7 @@ jobs:
     # repos; every gate runs through this repo's nix devShell. Pinned to the
     # release SHA (Renovate bumps it via the version comment).
     name: Clojure
-    uses: metio/ci/.github/workflows/clojure.yml@4def8bb13ad219067f8e697df842231f315c9de0 # 2026.10.10140717
+    uses: metio/ci/.github/workflows/clojure.yml@14ad475c5f5c4c0df727df1a22345298604e66ba # 2026.10.26174650
     with:
       kondo-paths: src cli test
   tla:
