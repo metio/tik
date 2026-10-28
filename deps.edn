@@ -22,7 +22,7 @@
  {;; the native binary's closed world: bb ships http-client and httpkit
   ;; as builtins, the JVM/native build declares them; graal-build-time
   ;; marks Clojure namespaces initialize-at-build-time for native-image
-  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.25"}
+  :native {:extra-deps {org.babashka/http-client {:mvn/version "0.4.26"}
                         http-kit/http-kit {:mvn/version "2.8.1"}
                         com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}}
   :build {:extra-paths ["."]
@@ -34,7 +34,7 @@
                       ;; an in-process real IMAP/POP3/SMTP server for the mail
                       ;; ingestion end-to-end tests (JVM suite only; never in
                       ;; the native binary or babashka)
-                      com.icegreen/greenmail {:mvn/version "2.1.14"}}
+                      com.icegreen/greenmail {:mvn/version "2.1.15"}}
          :main-opts ["-m" "kaocha.runner"]}
   :bench {:extra-paths ["dev"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}
@@ -49,11 +49,11 @@
              :extra-deps {jonase/eastwood {:mvn/version "1.4.3"}
                           org.clojure/test.check {:mvn/version "1.1.3"}
                           lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                          org.babashka/http-client {:mvn/version "0.4.25"}
+                          org.babashka/http-client {:mvn/version "0.4.26"}
                           http-kit/http-kit {:mvn/version "2.8.1"}
                           ;; eastwood analyze+evals the test sources, so the mail
                           ;; e2e test's GreenMail must resolve on its classpath
-                          com.icegreen/greenmail {:mvn/version "2.1.14"}
+                          com.icegreen/greenmail {:mvn/version "2.1.15"}
                           com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
