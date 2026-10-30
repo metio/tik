@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # needs-release / calver read tags and full history
+          persist-credentials: false
       - id: gate
         # Release only when something that changes the shipped binary/image
         # actually moved since the last tag.
@@ -54,6 +55,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
       - name: Build the uberjar and native binary
         # The same toolchain developers run locally — produces target/tik.jar
