@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Library on tik</title><link>https://tik.projects.metio.wtf/tags/library/</link><description>Recent content in Library on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/library/index.xml" rel="self" type="application/rss+xml"/><item><title>automated-release</title><link>https://tik.projects.metio.wtf/processes/automated-release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/automated-release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-c1cffcb2e879ff82ad36bf8e67c993aa8ddb0c5caacbdd484ec8440cb549c8bb
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ★ ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ★ ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ scanned ★ ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>employee-onboarding</title><link>https://tik.projects.metio.wtf/processes/employee-onboarding-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/employee-onboarding-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-equipment&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;does someone hand over equipment? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-accounts&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;does someone provision accounts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-buddy&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;is a named buddy required before day one counts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;employee-onboarding.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>employee-onboarding</title><link>https://tik.projects.metio.wtf/processes/employee-onboarding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/employee-onboarding/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-95c7eadc7481ddec6ed5db85ac555e9302d6d7e2c9bc82505e767c8628de0f23
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● hired ⊢ start-date · ⧉contract/ · ✎hr
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ equipped ⊢ ✎it
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ ready
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ accounts-live ⊢ ✎it
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ▼ ready ★ ⊢ ⋈ after equipped, accounts-live buddy
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>expense-approval</title><link>https://tik.projects.metio.wtf/processes/expense-approval-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/expense-approval-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;approvers&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:vector&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;who can approve?&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-legal&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require legal sign-off? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one, and this template ships no reference
+answers — so there is a shape to see only once you have chosen:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;(your answers decide it)
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>hypothesis</title><link>https://tik.projects.metio.wtf/processes/hypothesis/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/hypothesis/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-2c85c9e54182541ec2243ac82b2d466fd286b511f4f113e4dd139328bea44e47
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● captured
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ stated ⊢ statement · kill · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ running ⊢ experiment
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ validated ★ ⊢ verdict = validated · evidence
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ killed ★ ⊢ verdict = killed · evidence
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>identity-registry</title><link>https://tik.projects.metio.wtf/processes/identity-registry/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/identity-registry/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-e3d4a4cd66b79971817e05d25afa5a7bb3e0a2c1db673b4e56a72308a3af3bb0
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● registry
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="registry"&gt;&lt;code&gt;registry&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;p&gt;Runbook: &lt;code&gt;kb/runbooks/identity-registry-registry.md&lt;/code&gt;&lt;/p&gt;
+&lt;h2 id="take-it"&gt;Take it&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik adopt processes/identity-registry.edn&lt;span class="sb"&gt;```&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;The definition and its runbooks are copied into your store, and the
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;publisher&lt;span class="err"&gt;&amp;#39;&lt;/span&gt;s signature travels with them when a key in your &lt;span class="sb"&gt;`&lt;/span&gt;actors&lt;span class="sb"&gt;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;verifies it.
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;Read the stages before you adopt: they say who has to sign what,
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;which is a decision about your organisation.
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>incident-response</title><link>https://tik.projects.metio.wtf/processes/incident-response-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/incident-response-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;postmortem-after&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:string&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;flag a missing postmortem after (ISO-8601, e.g. P5D)&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-deadline&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;let the ticket flag its own overdue postmortem? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-review&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require a second person to accept the postmortem? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;incident-response.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>incident-response</title><link>https://tik.projects.metio.wtf/processes/incident-response/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/incident-response/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-79744dfcb0177c97ecb00d676f64a8e7cc9f8e630f9e76988e805a5258e4f533
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● declared ⊢ severity · impact
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ mitigated ⊢ ✎commander · mitigation.note
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ postmortem-due ⊢ ⏱P5D · ¬postmortem.summary
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ analyzed ⊢ root-cause · postmortem.summary
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ▼ reviewed ★ ⊢ review.verdict = accepted · ✎commander · ⚖ postmortem.summary ≠ review.verdict
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>okf-publish</title><link>https://tik.projects.metio.wtf/processes/okf-publish/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/okf-publish/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-be995ad80e6eb4f0a3873b17c3f3a984d18a9671ba4e408fa31c75a1580e991c
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● drafted ⊢ bundle · ⧉okf/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ reviewed ⊢ ✎reviewer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ approved ⊢ ✎approver
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ published ⊢ published.url
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>Processes</title><link>https://tik.projects.metio.wtf/processes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/</guid><description>&lt;p&gt;Process definitions to read, adapt and adopt. Each page is generated from the
+definition it describes, so what you read is what a ticket would derive under.&lt;/p&gt;
+&lt;p&gt;A process is worth reading before it is taken: it says who must sign what,
+and the roles ship empty so adoption never inherits somebody else&amp;rsquo;s org
+chart.&lt;/p&gt;
+&lt;!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+Library-specific prose for the generated /processes/ index. `tik gallery
+--intro` splices it in, so regenerating the catalog never discards it.
+--&gt;
+&lt;p&gt;These pages are generated from the definitions themselves with &lt;code&gt;tik gallery&lt;/code&gt;,
+so what you read is what a ticket derives under. Each carries the content
+address it was generated from — the value a ticket pins, and the one a
+consumer checks against.&lt;/p&gt;</description></item><item><title>release</title><link>https://tik.projects.metio.wtf/processes/release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ scanned ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ published
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ⊢ image · signature.bundle · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ published ★ ⊢ ⋈ after scanned, attested approval = ship · ✎maintainer · ⚖ commit ≠ approval
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ withheld ⊢ approval = hold · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>renovate-migration</title><link>https://tik.projects.metio.wtf/processes/renovate-migration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/renovate-migration/</guid><description>&lt;p&gt;move a repository from Dependabot to Renovate, with evidence&lt;/p&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-fc1d1067f6e89f52537828296ef3e78e01ed0a552da105d8770aa399131bc0e1
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● planned ⊢ approach
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ configured ⊢ renovate.config.ref · removal.commit · dependabot.status = absent
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ verified ⊢ renovate.dashboard · renovate.first-pr · approval.maintainer = approved · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>supply-chain-release</title><link>https://tik.projects.metio.wtf/processes/supply-chain-release/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/supply-chain-release/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-f2aa808ac68e7f6a7e79b347d3006b8bfdadd6b01d279547b5646603f6212b27
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● built ⊢ version · commit · ✎ci · ⧉checksums/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ attested ⊢ artifact.digest · ✎ci · ⊙sbom · ⊙provenance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ┈▶ approved
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ scanned ⊢ scan.result = clean · ✎ci · ⊙vulnerability-scan
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ approved ★ ⊢ ⋈ after attested, scanned approval = ship · ✎release-manager · ⚖ commit ≠ approval
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ withheld ⊢ approval = hold · ✎release-manager
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>support-request</title><link>https://tik.projects.metio.wtf/processes/support-request-template/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/support-request-template/</guid><description>&lt;h2 id="what-you-choose"&gt;What you choose&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;tik adopt&lt;/code&gt; reads these from the template itself and asks for each one,
+typed and validated — no EDN to hand-write.&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Question&lt;/th&gt;
+					&lt;th&gt;Answer&lt;/th&gt;
+					&lt;th&gt;&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;escalate-after&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:string&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;escalate an untriaged request after (ISO-8601, e.g. PT48H)&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-escalation&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;flag requests nobody triaged in that window? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-repro&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;require a reproduction before a technical fix counts? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;with-ack&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;:boolean&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;close only once the customer confirms? &lt;em&gt;(optional)&lt;/em&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;Your answers decide this one: turn a stage off and the process is a
+different process with a different address. The shape below is what
+&lt;code&gt;support-request.params.edn&lt;/code&gt; produces, with every option on:&lt;/p&gt;</description></item><item><title>support-request</title><link>https://tik.projects.metio.wtf/processes/support-request/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/support-request/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-84c7f6140fc8cf90ee3a33efde68238cb3eba603b216dfb08aeafcbafc28aa20
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● received
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ triaged ⊢ category · severity · ✎triager
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ├─▶ reproducible ⊢ category = technical · ⧉repro/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ └─▶ resolved ⊢ resolution.ref · (¬category = technical | ⤳reproducible)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ closed ★ ⊢ customer.ack
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ escalated ⊢ ⏱PT48H · ¬category
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>sweep-order</title><link>https://tik.projects.metio.wtf/processes/sweep-order/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/sweep-order/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-6fed34008ad5e2d4d44b057ec365a8075e591f1de6c85c613e3c53a6dec8bcae
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● a
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ b
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ d ⊢ ¬⤳c
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ c
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="a"&gt;&lt;code&gt;a&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="b"&gt;&lt;code&gt;b&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;a&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="c"&gt;&lt;code&gt;c&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;a&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;h3 id="d"&gt;&lt;code&gt;d&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;b&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>tik-dev</title><link>https://tik.projects.metio.wtf/processes/tik-dev/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/tik-dev/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-93474ce2b4a3090fc946e356abcd54177c7ed6598706ec44f47cf3131fa08813
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● captured
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ triaged ⊢ summary · kind · ✎maintainer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├─▶ implemented ⊢ commit
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ▼ landed ★ ⊢ gate = green
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└─▶ parked ⊢ parked.reason
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="roles-to-fill"&gt;Roles to fill&lt;/h2&gt;
+&lt;p&gt;Every role ships empty, so adopting a process never inherits
+somebody else&amp;rsquo;s org chart. Name yours with &lt;code&gt;tik roles add &amp;lt;role&amp;gt; &amp;lt;actor&amp;gt;&lt;/code&gt;.&lt;/p&gt;</description></item><item><title>track</title><link>https://tik.projects.metio.wtf/processes/track/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/processes/track/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;p&gt;A definition is named by its content, so this address is what a
+ticket pins and what a consumer checks against:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sha256-5812cdba533c92d934af16c73fe4027fc37bd034e6005f56237358680037d3c3
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="shape"&gt;Shape&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;● open
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;▼ done ★ ⊢ outcome
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="facts-it-records"&gt;Facts it records&lt;/h2&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Path&lt;/th&gt;
+					&lt;th&gt;Shape&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;outcome&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;[:string {:min 4}]&lt;/code&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="stages"&gt;Stages&lt;/h2&gt;
+&lt;h3 id="open"&gt;&lt;code&gt;open&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;Reached immediately — it carries no guards.&lt;/p&gt;
+&lt;p&gt;Runbook: &lt;code&gt;kb/runbooks/track-open.md&lt;/code&gt;&lt;/p&gt;
+&lt;h3 id="done--sticky"&gt;&lt;code&gt;done&lt;/code&gt; · sticky&lt;/h3&gt;
+&lt;p&gt;Follows &lt;code&gt;open&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Once reached it stays reached: the fold carries it forward, so later
+evidence cannot take it away.&lt;/p&gt;</description></item></channel></rss>

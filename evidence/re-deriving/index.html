@@ -1,0 +1,107 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="Re-deriving a bundle · tik"><meta property="og:description" content="tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation."><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/evidence/re-deriving/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="Re-deriving a bundle · tik"><meta name=twitter:description content="tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation."><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-08-07T12:26:39+02:00","description":"tik rederive checks a bundle and recomputes what its facts imply — at a terminal, or over HTTP with a badge that names the derivation.","headline":"Re-deriving a bundle","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/evidence/re-deriving/","url":"https://tik.projects.metio.wtf/evidence/re-deriving/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/evidence/","name":"Evidence","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/evidence/re-deriving/","name":"Re-deriving a bundle","position":3}]}</script><link href=https://tik.projects.metio.wtf/evidence/re-deriving/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.4967d6bba3861616e6d5d2de4b890b8edee8aae461c1e8e9b22f733aad49016f2ad27ff42ddfe820f807f32098cfe2e6f6ede06b7cd6922d97a50a4d606cc165.css integrity="sha512-SWfWu6OGFhbm1dLeS4kLjt7oquRhwejpsi9zOq1JAW8q0n/0Ld/oIPgH8yCYz+Lm9u3ga3zWki2XpQpNYGzBZQ==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.589ea6ed457f1e7880d07ce9175ce2200e78eae7cee1a249e9826d625cd1b7eb3ca9ae5391b2fdbb0b2f57f76ea908049e76d457a8ddbd171a0a722020468b5c.css integrity="sha512-WJ6m7UV/HniA0HzpF1ziIA546ufO4aJJ6YJtYlzRt+s8qa5TkbL9uwsvV/duqQgEnnbUV6jdvRcaCnIgIEaLXA==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.61a491426ce90ef60524cb57a4e2f3c74c79b194008cedb00eb86ffb6ea61e6112418fbe3aa565722271f077fdf06d7a75d05bad844bc69e3156ef7ffad1ee1c.css integrity="sha512-YaSRQmzpDvYFJMtXpOLzx0x5sZQAjO2wDrhv+26mHmESQY++OqVlciJx8Hf98G16ddBbrYRLxp4xVu9/+tHuHA==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.1ff1a9b4299fb7c393c44295c028b9ae3e30b0ced53310b7d193c3959d02ac76b805bc70bb530b2a8baf6c1abeab6c4a4ed048d62ca3bd931856ac81e3e6c020.css integrity="sha512-H/GptCmft8OTxEKVwCi5rj4wsM7VMxC30ZPDlZ0CrHa4Bbxwu1MLKouvbBq+q2xKTtBI1iyjvZMYVqyB4+bAIA==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; Re-deriving a bundle</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><h1 class=post-titel><a href=https://tik.projects.metio.wtf/evidence/re-deriving/>Re-deriving a bundle
+</a><a href=https://github.com/metio/tik/commits/main/docs/content/evidence/re-deriving.md title="see history"><img src=https://tik.projects.metio.wtf/images/history.svg height=16 width=14 class="icon svgimg" alt="see history">
+</a><a href=https://github.com/metio/tik/edit/main/docs/content/evidence/re-deriving.md title="edit this page"><img src=https://tik.projects.metio.wtf/images/pencil.svg height=16 width=14 class="icon svgimg" alt="edit this page"></a></h1><div class=subtitle>Talks about:
+<a class="post-tag post-tag-badge" href=/tags/badge/>badge</a>, <a class="post-tag post-tag-bundle" href=/tags/bundle/>bundle</a>, <a class="post-tag post-tag-cli" href=/tags/cli/>cli</a>, <a class="post-tag post-tag-evidence" href=/tags/evidence/>evidence</a>, and <a class="post-tag post-tag-verification" href=/tags/verification/>verification</a></div><div id=post-content><p><code>verify.sh</code> answers one question: are these bytes what they claim to be?
+<code>tik rederive</code> answers the other one: what do they add up to?</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik rederive evidence.tgz
+</span></span></code></pre></div><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>bundle sha256-04a0bf413895fefb1c20e9231632fbc0d0a0d768275b42c097581ed19365973a
+</span></span><span class=line><span class=cl>  format    tik-evidence-bundle version 1
+</span></span><span class=line><span class=cl>  ticket    e26a1d57-6643-4564-99fa-8968ced7afa5  &#34;2026.8.6132954&#34;
+</span></span><span class=line><span class=cl>  events    10
+</span></span><span class=line><span class=cl>  judged by release sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>verification
+</span></span><span class=line><span class=cl>  ok   … hashes to its name and is schema-valid
+</span></span><span class=line><span class=cl>  ok   every referenced parent is present
+</span></span><span class=line><span class=cl>  ok   exactly one root event
+</span></span><span class=line><span class=cl>  ok   … verifies as ci
+</span></span><span class=line><span class=cl>  ok   ci is bound to its key by repo:metio/tik:ref:refs/heads/main, per …
+</span></span><span class=line><span class=cl>  =&gt; the bytes are what they claim to be
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>derivation at 2026-08-06T20:29:26.198Z
+</span></span><span class=line><span class=cl>  reached   :attested, :built, :scanned
+</span></span><span class=line><span class=cl>  current   :attested, :scanned
+</span></span><span class=line><span class=cl>  :built
+</span></span><span class=line><span class=cl>      ✓ [:fact [:version]]
+</span></span><span class=line><span class=cl>      ✓ [:signed-by :ci [:commit]]
+</span></span><span class=line><span class=cl>      ✓ [:artifact &#34;checksums/&#34;]
+</span></span><span class=line><span class=cl>  :scanned
+</span></span><span class=line><span class=cl>      ✓ [:attested-within :vulnerability-scan &#34;P1D&#34;]
+</span></span></code></pre></div><p>It takes a <code>.tgz</code>, an unpacked directory, or an <code>https</code> URL, and exits 1
+when the bundle fails to verify — a derivation over bytes that are not
+what they claim to be is worth nothing. <code>--edn</code> prints the same result as
+data.</p><h2 id=derivation-names-its-instant>Derivation names its instant</h2><p><code>reached</code> above is what the pinned rules grant <strong>at the instant printed
+under it</strong>. The release process demands a vulnerability scan attested
+within a day; a month from now the same archive, byte for byte, derives
+<code>:built</code> alone — the scan it carries is real, signed, and too old for the
+rule that reads it.</p><p>That is the reason to re-derive rather than record. A stored &ldquo;passed&rdquo;
+survives its own evidence; a derivation ages with it.</p><h2 id=gating-on-a-bundle>Gating on a bundle</h2><p>Two flags turn re-derivation into a check a consumer&rsquo;s own CI can stand on:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik rederive https://example.com/evidence.tgz <span class=se>\
+</span></span></span><span class=line><span class=cl>  --expect-stage :published <span class=se>\
+</span></span></span><span class=line><span class=cl>  --expect-definition sha256-3c577f361a46ec2166b7f4d6fb875d2de4e317f478d425eb4ae39f77fdcb9aca
+</span></span></code></pre></div><p>Exit 0 when every named stage is reached under that exact definition, 1
+otherwise, with a line saying which expectation failed and what was
+derived instead.</p><p><strong>Pin the definition.</strong> A bundle carries the rules that judged it, so a
+supplier who writes those rules can reach any stage they choose —
+<code>:published</code> becomes a claim about a process only once the reader names
+<em>which</em> process. That is why <code>--expect-definition</code> takes the full hash
+and refuses an abbreviation: eight hex characters is thirty-two bits for
+somebody to collide with deliberately, and the value is pasted into a
+workflow file once.</p><h2 id=in-github-actions>In GitHub Actions</h2><div class=highlight><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=nt>permissions</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>contents</span><span class=p>:</span><span class=w> </span><span class=l>read</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=nt>steps</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span>- <span class=nt>uses</span><span class=p>:</span><span class=w> </span><span class=l>metio/tik/.github/actions/install@2026.8.7062815</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span>- <span class=nt>uses</span><span class=p>:</span><span class=w> </span><span class=l>metio/tik/.github/actions/verify@2026.8.7062815</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>with</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>bundle</span><span class=p>:</span><span class=w> </span><span class=l>https://github.com/you/proj/releases/download/v1/evidence.tgz</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>expect-stage</span><span class=p>:</span><span class=w> </span><span class=s2>&#34;:published&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>expect-definition</span><span class=p>:</span><span class=w> </span><span class=s2>&#34;sha256-3c577f36…&#34;</span><span class=w>
+</span></span></span></code></pre></div><p>The ref you pin <em>is</em> the tik you get: with no <code>version</code> input, the
+installer resolves the release matching its own ref, so a pinned action
+and a pinned tool are one decision rather than two.</p><p>The installer verifies before it trusts. It fetches the release&rsquo;s
+<code>SHA256SUMS</code>, checks the cosign keyless signature naming the release
+workflow that produced it, and only then checks the binary against those
+checksums — an installer for a verification tool has no business asking
+you to trust an unverified download. Linux/amd64 gets the native binary;
+other platforms get the portable jar and need a JDK already on PATH.</p><p><code>verify</code> needs <code>tik</code> on PATH and does one thing with it, so bring your
+own build if you have one.</p><h2 id=the-service>The service</h2><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik rederive --serve --port <span class=m>7788</span>
+</span></span></code></pre></div><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>POST /rederive                     the bundle as the request body -&gt; EDN
+</span></span><span class=line><span class=cl>GET  /derivation?bundle=&lt;url&gt;      fetch it, re-derive, render the page
+</span></span><span class=line><span class=cl>GET  /badge.svg?bundle=&lt;url&gt;       the same, as a badge
+</span></span></code></pre></div><p>Every request re-derives. The one thing held between requests is a cache
+keyed by the bundle&rsquo;s content address <em>and</em> the minute the answer was
+computed for — both inputs to the derivation, both immutable, so an entry
+is either exactly right or absent and the whole cache is disposable.</p><p>The service fetches <code>https</code> URLs whose every resolved address is public,
+follows at most four redirects, checking each hop, and caps what it will
+download. It runs nothing from inside a bundle: the <code>verify.sh</code> that
+travels in an archive is a convenience for whoever chooses to run it, and
+the service implements the checks itself.</p><p>Point a README badge at a release artifact:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-markdown data-lang=markdown><span class=line><span class=cl>[<span class=nt>![evidence</span>](<span class=na>https://your-host/badge.svg?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz</span>)](https://your-host/derivation?bundle=https://github.com/you/proj/releases/download/v1/evidence.tgz)
+</span></span></code></pre></div><h2 id=what-a-badge-says>What a badge says</h2><p>The stages the pinned definition grants, and which definition granted
+them: <code>release@3c577f36 · :attested · :scanned</code>. The badge links to a
+page carrying the guards that held, the ones that did not, who may sign
+in this bundle and on whose say-so, and the two commands that reach the
+same answer with the service switched off.</p><p>A badge is a derived conclusion displayed as though it were a fact, which
+is the one thing <a href=/concepts/derived-beats-declared/>derived beats
+declared</a>
+forbids storing. Three
+properties keep it honest:</p><ul><li><strong>it is derived per request</strong>, so it is a lens rather than a status;</li><li><strong>it names the derivation</strong> — stages, definition hash, instant — where
+a word like <em>compliant</em> would name a policy it cannot see;</li><li><strong>the service is disposable.</strong> Delete it and the bundle still checks
+out with coreutils. A verification service that becomes the authority
+has re-introduced exactly the trust the bundle removes.</li></ul><p>The colour follows the same rule: one shade for a bundle that verifies,
+red for one that does not. Green would read as approval, and the badge
+reports a derivation, which is a different kind of claim.</p><h2 id=publishing-bundles-from-ci>Publishing bundles from CI</h2><p>The wedge is one line over evidence a pipeline already produces. tik&rsquo;s own
+release workflow records the version, the commit, the image digest and
+the checksums file as signed facts, imports the SBOM, provenance and scan
+as attestations through <code>tik bridge intoto</code>, and ships the result:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik bundle <span class=s2>&#34;</span><span class=nv>$TICKET</span><span class=s2>&#34;</span> --out <span class=s2>&#34;evidence-</span><span class=nv>$VERSION</span><span class=s2>.tgz&#34;</span>
+</span></span></code></pre></div><p>CI signs with an ephemeral key bound to its workload identity (<a href=/decisions/0023-key-bindings-are-evidence/>ADR
+0023</a>
+), so the bundle carries
+the binding and its issuer&rsquo;s key, and a recipient re-earns that trust from
+the issuer&rsquo;s own signature.</p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

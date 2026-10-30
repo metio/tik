@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Claude on tik</title><link>https://tik.projects.metio.wtf/tags/claude/</link><description>Recent content in Claude on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/claude/index.xml" rel="self" type="application/rss+xml"/><item><title>Claude Code skill</title><link>https://tik.projects.metio.wtf/integrations/claude-code/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/integrations/claude-code/</guid><description>&lt;p&gt;Install the tik skill into &lt;a href="https://claude.com/claude-code"&gt;Claude Code&lt;/a&gt;
+
+and Claude gains working knowledge of tik: it recognises a store, records
+facts with &lt;code&gt;tik set&lt;/code&gt; rather than inventing a status field, reads
+&lt;code&gt;tik explain&lt;/code&gt; before asking a person anything, and authors process
+definitions whose stages derive from evidence instead of listing
+activities.&lt;/p&gt;
+&lt;p&gt;That last part is the reason the skill exists. The failure mode for any
+model writing a tik process is a task list wearing a process costume —
+stages named after activities, with nothing following from anything. The
+skill carries the design law that rules it out, along with the closed
+guard vocabulary and the authoring loop that checks the result.&lt;/p&gt;</description></item></channel></rss>

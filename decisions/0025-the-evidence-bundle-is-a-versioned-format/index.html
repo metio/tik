@@ -1,0 +1,87 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-08-06T23:58:57+02:00","datePublished":"2026-08-06T00:00:00Z","headline":"The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/","url":"https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/","name":"The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0025-the-evidence-bundle-is-a-versioned-format/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.4967d6bba3861616e6d5d2de4b890b8edee8aae461c1e8e9b22f733aad49016f2ad27ff42ddfe820f807f32098cfe2e6f6ede06b7cd6922d97a50a4d606cc165.css integrity="sha512-SWfWu6OGFhbm1dLeS4kLjt7oquRhwejpsi9zOq1JAW8q0n/0Ld/oIPgH8yCYz+Lm9u3ga3zWki2XpQpNYGzBZQ==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.589ea6ed457f1e7880d07ce9175ce2200e78eae7cee1a249e9826d625cd1b7eb3ca9ae5391b2fdbb0b2f57f76ea908049e76d457a8ddbd171a0a722020468b5c.css integrity="sha512-WJ6m7UV/HniA0HzpF1ziIA546ufO4aJJ6YJtYlzRt+s8qa5TkbL9uwsvV/duqQgEnnbUV6jdvRcaCnIgIEaLXA==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.61a491426ce90ef60524cb57a4e2f3c74c79b194008cedb00eb86ffb6ea61e6112418fbe3aa565722271f077fdf06d7a75d05bad844bc69e3156ef7ffad1ee1c.css integrity="sha512-YaSRQmzpDvYFJMtXpOLzx0x5sZQAjO2wDrhv+26mHmESQY++OqVlciJx8Hf98G16ddBbrYRLxp4xVu9/+tHuHA==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.1ff1a9b4299fb7c393c44295c028b9ae3e30b0ced53310b7d193c3959d02ac76b805bc70bb530b2a8baf6c1abeab6c4a4ed048d62ca3bd931856ac81e3e6c020.css integrity="sha512-H/GptCmft8OTxEKVwCi5rj4wsM7VMxC30ZPDlZ0CrHa4Bbxwu1MLKouvbBq+q2xKTtBI1iyjvZMYVqyB4+bAIA==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; The evidence bundle is a named, versioned format, and re-derivation is a command before it is a service</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0025-the-evidence-bundle-is-a-named-versioned-format>ADR 0025: The evidence bundle is a named, versioned format</h1><h2 id=decision>Decision</h2><p><strong>The bundle is <code>tik-evidence-bundle</code>, version 1, and version 1 is what
+already shipped.</strong> The format published today is the layout the release
+pipeline has been producing, so every bundle in the wild is conformant
+and nothing has to be re-issued.</p><p><strong>A <code>bundle.edn</code> manifest declares the format name and the version, and
+nothing else.</strong> The ticket, the head, the definition and the stage are
+all derivable from the files; a manifest that carried them would be
+inviting a reader to believe the producer instead of the evidence, which
+is the one thing a bundle exists to make unnecessary. A bundle without a
+manifest is version 1 — the baseline predates it.</p><p><strong>The CHECKS are normative; <code>verify.sh</code> is one implementation of them
+that happens to travel inside the archive it checks.</strong> A reader who runs
+a stranger&rsquo;s script has run a stranger&rsquo;s code, so the checks are
+published as a list anyone can implement, and <code>tik rederive</code> implements
+them without executing anything from the bundle.</p><p><strong>Re-derivation is <code>tik rederive</code>, and the service is that command in a
+loop.</strong> <code>verify.sh</code> proves the bytes are genuine with coreutils alone;
+saying what they ADD UP TO means running the pinned definition, which is
+what tik is. The HTTP face renders the same derivation as a badge and a
+page, and both print the commands that reach it without the service
+running.</p><p><strong>A badge names the derivation and never grades it</strong>: the stages the
+pinned rules grant, the definition hash that judged them, and the instant
+the answer was computed. Not &ldquo;compliant&rdquo;, which means nothing until it
+names a policy.</p><p><strong>A derivation may be cached on the bundle&rsquo;s content address AND the
+minute it was computed for — never on content alone.</strong> Derivation is a
+function of <code>(events, now)</code>. A guard with a freshness window is satisfied
+by evidence that is fresh and unsatisfied by the same bytes later, so
+memoizing on bytes alone would serve a stale answer with no way to
+notice. Keyed on both, an entry cannot go stale: every input is in the
+key, and the whole cache can be dropped at any moment with nothing lost
+but time (ADR 0013).</p><p><strong>A definition&rsquo;s schemas must be data.</strong> <code>tik.process/schema-registry</code> is
+malli&rsquo;s default registry minus <code>:fn</code> and <code>:multi</code>, the two schemas that
+compile a child through <code>m/eval</code>. Derivation cannot evaluate a schema
+outside it — the reason is <code>:schema/unsupported</code> — and <code>tik lint</code>
+reports one as an error.</p><h2 id=context>Context</h2><p>The bundle was already the artifact; what it lacked was a name, a version
+and a written contract. The pressure to write one came from the release
+pipeline: <code>evidence-&lt;version>.tgz</code> now ships on every release, <code>tik import</code> reads it, and the first outside reader will need to know what
+they may assume.</p><p>The bundle carries a different KIND of thing from an in-toto statement,
+which is why this is not a competing envelope. A statement attests facts
+about a build; a bundle carries the facts, the hash-pinned rules that
+judge them, and the means to recompute the verdict offline. in-toto&rsquo;s
+nearest analogue is the layout, and a process definition already is one.
+<code>tik bridge intoto</code> reads their format; this publishes ours.</p><p>Three findings came out of building it, none of them anticipated.</p><p><strong>A cache keyed by content alone is wrong.</strong> The idea as banked said the
+content hash &ldquo;cannot go stale by construction&rdquo;. That holds only for
+time-independent guards. <code>:attested-within</code> and <code>:elapsed-since</code> make the
+instant a second input, and the release process uses both — so the key
+had to carry the minute as well. That is not a weakening: it is what
+makes the memo a memo rather than a stored verdict.</p><p><strong>The role register decides derivations, so it travels.</strong> <code>:signed-by</code>
+resolves a role to its members, and a store keeping a <code>roles.edn</code>
+overrides what the definition declares. A bundle without it re-derives
+under different membership than the store it came from, which is
+precisely the drift evidence exists to rule out.</p><p><strong>A definition is read from material a stranger produced.</strong> A <code>:malli</code>
+guard carrying <code>[:fn "(fn [_] …)"]</code> executes that string on any runtime
+with sci — which babashka is. Nothing shipped uses <code>:fn</code>, and nothing
+could legitimately: a schema that calls a function is not offline, not
+reproducible, and not a pure function of <code>(state, now, reached)</code>. The
+registry restriction enforces a law that was already written rather than
+adding one.</p><h2 id=consequences>Consequences</h2><ul><li><code>tik bundle</code> writes <code>bundle.edn</code> and carries <code>roles.edn</code> when the store
+keeps one. Both are additive; a version-1 reader that ignores what it
+does not recognize is unaffected, which is the compatibility rule the
+format states.</li><li><code>tik rederive &lt;bundle|url> [--edn]</code> checks and re-derives; <code>--serve</code>
+runs it over HTTP with <code>POST /rederive</code>, <code>GET /derivation?bundle=…</code>
+and <code>GET /badge.svg?bundle=…</code>.</li><li>The reader treats the archive as hostile: <code>tik.bundle/untar-gz!</code>
+unpacks it instead of <code>tar</code>, refusing absolute paths, traversal,
+symlinks and archives that unpack without bound. <code>tik import</code> uses the
+same unpacker, because it reads other people&rsquo;s archives too.</li><li>The service fetches only <code>https</code> URLs whose every resolved address is
+public, and follows redirects one hop at a time so a redirect into a
+private network cannot defeat a check made on the first URL.</li><li>A definition carrying <code>[:fn …]</code> or <code>[:multi …]</code> stops deriving. Nothing
+in the corpus, the shipped processes or any authored definition uses
+one, so no pinned definition changes meaning — but this is a semantic
+narrowing and it is recorded here rather than in a changelog line.</li><li>The badge&rsquo;s honesty is load-bearing and fragile. It reports the stage a
+freshness-windowed guard grants TODAY, which means a release badge can
+show fewer stages next month on the same evidence. That is the evidence
+aging, said out loud, and any pressure to make the badge &ldquo;stable&rdquo; is
+pressure to store a derived value.</li><li>Adoption remains the unsolved half. A format nobody publishes verifies
+nothing, and the only wedge is one-line CI integration over evidence a
+project already produces. <code>release.yml</code> demonstrates it; whether anyone
+else adopts it is not a design question and this decision does not
+pretend to settle it.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0025-the-evidence-bundle-is-a-versioned-format.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0025-the-evidence-bundle-is-a-versioned-format.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

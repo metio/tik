@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Supply-Chain on tik</title><link>https://tik.projects.metio.wtf/tags/supply-chain/</link><description>Recent content in Supply-Chain on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/supply-chain/index.xml" rel="self" type="application/rss+xml"/><item><title>Evidence</title><link>https://tik.projects.metio.wtf/evidence/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/</guid><description>&lt;p&gt;A ticket travels as an evidence bundle: the signed facts, the hash-pinned
+rules that judge them, the registry the signatures check against, and a
+script that checks the lot with coreutils. Whoever holds one recomputes
+the answer.&lt;/p&gt;
+&lt;p&gt;That is the whole claim, and it is a narrow one. A build system tells you
+a process ran. A bundle tells you &lt;em&gt;which&lt;/em&gt; rules judged it, what they
+required, what was supplied, and lets you recompute the verdict on a
+laptop with no network, years later.&lt;/p&gt;</description></item><item><title>SLSA, said honestly</title><link>https://tik.projects.metio.wtf/evidence/slsa/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/slsa/</guid><description>&lt;p&gt;The stages of &lt;a href="https://tik.projects.metio.wtf/processes/supply-chain-release/"&gt;&lt;code&gt;supply-chain-release&lt;/code&gt;&lt;/a&gt;
+ and
+&lt;a href="https://tik.projects.metio.wtf/processes/automated-release/"&gt;&lt;code&gt;automated-release&lt;/code&gt;&lt;/a&gt;
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a &lt;strong&gt;trusted attester said&lt;/strong&gt;
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called &lt;code&gt;slsa-l3&lt;/code&gt; would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.&lt;/p&gt;
+&lt;p&gt;What &lt;code&gt;supply-chain-release&lt;/code&gt; demands maps onto SLSA&amp;rsquo;s build requirements like
+this — and the table is a claim about &lt;strong&gt;the definition&lt;/strong&gt;, never about any
+ticket that pins it. &lt;code&gt;automated-release&lt;/code&gt; demands the same, minus the two-person
+row:&lt;/p&gt;</description></item></channel></rss>

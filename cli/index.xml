@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>CLI on tik</title><link>https://tik.projects.metio.wtf/cli/</link><description>Recent content in CLI on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/cli/index.xml" rel="self" type="application/rss+xml"/><item><title>Reading a store</title><link>https://tik.projects.metio.wtf/cli/reading-a-store/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/reading-a-store/</guid><description>&lt;p&gt;Every view here is computed when you ask, so none of them can be stale.&lt;/p&gt;
+&lt;h2 id="what-should-i-do"&gt;What should I do?&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik next --actor alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik next --role :triager
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik explain &lt;span class="m"&gt;3184&lt;/span&gt; --actor alice
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;next&lt;/code&gt; ranks by how much downstream work each step unlocks, with quiet
+tickets rising. &lt;code&gt;explain&lt;/code&gt; is the per-ticket answer: what is missing, whose
+signature it needs, and which stages it blocks. See
+&lt;a href="https://tik.projects.metio.wtf/concepts/explain/"&gt;Explain&lt;/a&gt;
+ for the model behind them.&lt;/p&gt;
+&lt;h2 id="the-board"&gt;The board&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls --all --long
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik ls --where &lt;span class="s1"&gt;&amp;#39;stage=:blocked and fact:severity=:high and not disputed&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik search firefox login
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A selector is space-separated terms, all ANDed, each optionally negated:
+&lt;code&gt;stage=:blocked&lt;/code&gt;, &lt;code&gt;fact:severity&lt;/code&gt;, &lt;code&gt;fact:severity=:high&lt;/code&gt;, &lt;code&gt;actor=seb&lt;/code&gt;,
+&lt;code&gt;disputed&lt;/code&gt;, &lt;code&gt;conflicted&lt;/code&gt;, &lt;code&gt;unsigned&lt;/code&gt;, &lt;code&gt;derived-from=&amp;lt;hash&amp;gt;&lt;/code&gt;, &lt;code&gt;~text&lt;/code&gt;. The
+same grammar drives &lt;code&gt;search&lt;/code&gt;, and &lt;code&gt;tik dupes&lt;/code&gt; reports near-title
+lookalikes.&lt;/p&gt;</description></item><item><title>Recording work</title><link>https://tik.projects.metio.wtf/cli/recording-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/recording-work/</guid><description>&lt;p&gt;You record evidence. Stages follow.&lt;/p&gt;
+&lt;h2 id="create-a-ticket"&gt;Create a ticket&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik new support-request --title &lt;span class="s2"&gt;&amp;#34;login fails on Firefox&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The ticket pins the process definition&amp;rsquo;s content hash at creation, so it is
+judged by the rules it was minted under until somebody deliberately moves
+it with &lt;code&gt;tik reprocess&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Created beneath a store, a ticket inherits its context as signed facts:
+&lt;code&gt;repo=&amp;lt;name&amp;gt;&lt;/code&gt; from the enclosing git repository, plus any &lt;code&gt;.tik-facts.edn&lt;/code&gt;
+maps on the way down, nearest winning, with anything explicit beating both.&lt;/p&gt;</description></item><item><title>Store administration</title><link>https://tik.projects.metio.wtf/cli/administration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/cli/administration/</guid><description>&lt;h2 id="identity"&gt;Identity&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik actor add alice ~/.config/tik/id_ed25519.pub
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik sign &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik witness &lt;span class="m"&gt;3184&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;&lt;code&gt;actor add&lt;/code&gt; registers a signer in the store&amp;rsquo;s allowed-signers registry.
+Exporting &lt;code&gt;TIK_KEY&lt;/code&gt; signs every write as it happens; &lt;code&gt;sign&lt;/code&gt; catches up on
+your own earlier events, and only your own — signing somebody else&amp;rsquo;s would
+assert something false. &lt;code&gt;witness&lt;/code&gt; countersigns a ticket&amp;rsquo;s head, and one
+signature timestamps the entire ancestry beneath it.&lt;/p&gt;
+&lt;h2 id="roles"&gt;Roles&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles add triager alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;tik roles remove triager bob
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A process definition declares which roles exist and who starts in them; the
+store&amp;rsquo;s register decides who is in one today, for every ticket at once. Use
+it for a hire or a departure — it takes effect on in-flight tickets
+immediately, with no definition version bump and no per-ticket migration.
+See &lt;a href="https://tik.projects.metio.wtf/authoring/roles-and-authority/"&gt;Roles and authority&lt;/a&gt;
+.&lt;/p&gt;</description></item></channel></rss>

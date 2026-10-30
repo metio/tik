@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Storage on tik</title><link>https://tik.projects.metio.wtf/tags/storage/</link><description>Recent content in Storage on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/storage/index.xml" rel="self" type="application/rss+xml"/><item><title>Events and facts</title><link>https://tik.projects.metio.wtf/concepts/events-and-facts/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/events-and-facts/</guid><description>&lt;p&gt;A ticket is an append-only set of events. Everything else about it is
+computed.&lt;/p&gt;
+&lt;h2 id="seven-event-types"&gt;Seven event types&lt;/h2&gt;
+&lt;p&gt;The vocabulary is closed and versioned, because the semantics of a
+verifiable kernel have to be enumerable:&lt;/p&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Event&lt;/th&gt;
+					&lt;th&gt;Meaning&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:ticket/create&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;the ticket exists, pinned to a process definition by hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/assert&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a claim about a path: &lt;code&gt;[:severity] = :high&lt;/code&gt;&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/retract&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;withdraw a claim, with no replacement&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:fact/dispute&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;reject a claim, with a reason&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:artifact/attach&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a file, stored and addressed by its hash&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:attestation/add&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;a signed claim the kernel does not interpret&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;&lt;code&gt;:process/migrate&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;re-pin this ticket to a newer definition&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Things that look like they need their own type turn out not to. Comments
+are artifacts — text blobs attached by hash. Links are facts under a
+&lt;code&gt;[:link …]&lt;/code&gt; path. Work records are &lt;code&gt;:work&lt;/code&gt; attestation claims. Witness
+countersignatures are detached sidecars over a head rather than events,
+because an event would move the very head it witnesses.&lt;/p&gt;</description></item></channel></rss>

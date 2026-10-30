@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Replication on tik</title><link>https://tik.projects.metio.wtf/tags/replication/</link><description>Recent content in Replication on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/replication/index.xml" rel="self" type="application/rss+xml"/><item><title>Replication</title><link>https://tik.projects.metio.wtf/concepts/replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/concepts/replication/</guid><description>&lt;p&gt;A tik store replicates by copying files. Two clones append independently,
+merge by set union, and derive the same answer — because derivation is a
+pure function of the event set and events are addressed by their content.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;git pull &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; git push &lt;span class="c1"&gt;# this is the replication protocol&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id="why-the-merge-is-trivial"&gt;Why the merge is trivial&lt;/h2&gt;
+&lt;p&gt;Every event lives in its own file whose name is the SHA-256 of its bytes.
+Two people adding evidence to the same ticket create different files, so
+the merge is a union of directories and git never sees a conflicting hunk.
+Two people making the &lt;em&gt;identical&lt;/em&gt; claim produce byte-identical files with
+the same name, and the union keeps one — deduplication for free.&lt;/p&gt;</description></item></channel></rss>

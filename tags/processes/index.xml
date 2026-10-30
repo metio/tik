@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Processes on tik</title><link>https://tik.projects.metio.wtf/tags/processes/</link><description>Recent content in Processes on tik</description><generator>Hugo</generator><language>en</language><atom:link href="https://tik.projects.metio.wtf/tags/processes/index.xml" rel="self" type="application/rss+xml"/><item><title>Runbooks</title><link>https://tik.projects.metio.wtf/runbooks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/runbooks/</guid><description>&lt;p&gt;A process definition names a runbook per stage through its &lt;code&gt;:hint&lt;/code&gt; field, and
+&lt;code&gt;tik explain&lt;/code&gt; prints that link beside the missing evidence:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;To reach :triaged:
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ✗ set fact [:category] ([:enum :billing :technical :account :abuse])
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; (see: kb/runbooks/support-request-triaged.md)
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;So these pages are read at the moment somebody is stuck, and each answers a
+single question: what has to become true here, and who can make it so. They
+live in the repository&amp;rsquo;s knowledge bundle under &lt;code&gt;kb/runbooks/&lt;/code&gt;, so a checkout,
+an agent, and this site read the same document.&lt;/p&gt;</description></item><item><title>SLSA, said honestly</title><link>https://tik.projects.metio.wtf/evidence/slsa/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/evidence/slsa/</guid><description>&lt;p&gt;The stages of &lt;a href="https://tik.projects.metio.wtf/processes/supply-chain-release/"&gt;&lt;code&gt;supply-chain-release&lt;/code&gt;&lt;/a&gt;
+ and
+&lt;a href="https://tik.projects.metio.wtf/processes/automated-release/"&gt;&lt;code&gt;automated-release&lt;/code&gt;&lt;/a&gt;
+ are named after the
+evidence they demand, never after a level
+in a framework. That is deliberate. tik checks that a &lt;strong&gt;trusted attester said&lt;/strong&gt;
+a thing; it never reads an SBOM or a provenance document and forms no opinion
+about their contents. A stage called &lt;code&gt;slsa-l3&lt;/code&gt; would put that overclaim into
+the derivation itself, where every badge, lens and consumer assertion would
+faithfully repeat it.&lt;/p&gt;
+&lt;p&gt;What &lt;code&gt;supply-chain-release&lt;/code&gt; demands maps onto SLSA&amp;rsquo;s build requirements like
+this — and the table is a claim about &lt;strong&gt;the definition&lt;/strong&gt;, never about any
+ticket that pins it. &lt;code&gt;automated-release&lt;/code&gt; demands the same, minus the two-person
+row:&lt;/p&gt;</description></item><item><title>Writing a definition</title><link>https://tik.projects.metio.wtf/authoring/writing-a-definition/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://tik.projects.metio.wtf/authoring/writing-a-definition/</guid><description>&lt;h2 id="the-design-law"&gt;The design law&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;A stage is defined by what must be TRUE to reach it, never by who moved
+what.&lt;/strong&gt; Ask of every stage: what evidence, on record, would convince a
+sceptical auditor a year from now? Write that as guards. If the honest
+answer is &amp;ldquo;somebody said so&amp;rdquo;, then make &lt;em&gt;that&lt;/em&gt; the fact — a named person&amp;rsquo;s
+signature on a named claim — rather than a status somebody sets.&lt;/p&gt;</description></item></channel></rss>
