@@ -1,5 +1,25 @@
-.clj-kondo/.cache/
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.DS_Store
+.claude/settings.local.json
+result
+result-*
+.direnv/
+docs/public/
+docs/resources/
+docs/.hugo_build.lock
 .cpcache/
+.clj-kondo/.cache/
+.lsp/.cache/
+.nrepl-port
 /.eastwood
 .effects-sent
 board.html
@@ -7,7 +27,5 @@ board.html
 /target/
 /.derived-cache.json
 /.derived-cache.edn
-
-# the Hugo build output; the published site is always generated from source
 /docs/public/
 /docs/.hugo_build.lock
