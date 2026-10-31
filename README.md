@@ -147,3 +147,7 @@ From [ADR 0001](kb/decisions/0001-event-log-acceptance-test.md): every
 feature must be new event/attestation types, new pure guard vocabulary, or a
 lens over them. Nothing stores mutable state; nothing moves a ticket;
 verification never leaves the log.
+
+## License
+
+[0BSD](LICENSES/0BSD.txt).
