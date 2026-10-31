@@ -1,3 +1,10 @@
+<!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+-->
+
+# tik
+
 <img src="docs/static/images/lockup.svg" alt="tik" width="285">
 
 A process system, not a ticket system.
@@ -13,7 +20,6 @@ who proved it, and can anyone reproduce the conclusion?"
 **Documentation: [tik.projects.metio.wtf](https://tik.projects.metio.wtf/)**
 
 The elevator version lives in [docs/PITCH.md](docs/PITCH.md).
-Licensed 0BSD, [REUSE](https://reuse.software)-compliant.
 Full design: [docs/PLAN.md](docs/PLAN.md).
 Decisions and concepts live in the OKF bundle under [kb/](kb/index.md);
 unjudged ideas under [docs/IDEAS.md](docs/IDEAS.md).
@@ -147,3 +153,7 @@ From [ADR 0001](kb/decisions/0001-event-log-acceptance-test.md): every
 feature must be new event/attestation types, new pure guard vocabulary, or a
 lens over them. Nothing stores mutable state; nothing moves a ticket;
 verification never leaves the log.
+
+## License
+
+[0BSD](LICENSES/0BSD.txt).
