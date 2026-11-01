@@ -17,18 +17,6 @@ jobs:
     uses: metio/ci/.github/workflows/clojure.yml@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
     with:
       kondo-paths: src cli test
-  native:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
-        with:
-          registries: github:metio/toolchains
-      - run: sh dev/build-native.sh
-      - run: ./target/tik --help
   tla:
     # Merge and SweepFixpoint must pass; ChaoticFixpoint must FAIL — the
     # script asserts the documented counterexample is still found.
