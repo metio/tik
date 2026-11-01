@@ -56,7 +56,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
+      - uses: metio/ci/breto@287dfa682ad90cf769ef29d0b9f9bc2d65d2ddc1 # 2026.11.1194625
         with:
           registries: github:metio/toolchains
       - name: Install the static zlib the native binary links

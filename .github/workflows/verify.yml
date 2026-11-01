@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
+      - uses: metio/ci/breto@287dfa682ad90cf769ef29d0b9f9bc2d65d2ddc1 # 2026.11.1194625
         with:
           registries: github:metio/toolchains
       - run: bash spec/check.sh
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
+      - uses: metio/ci/breto@287dfa682ad90cf769ef29d0b9f9bc2d65d2ddc1 # 2026.11.1194625
         with:
           registries: github:metio/toolchains
       - run: bb tik lint processes/support-request.edn
@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           tik rederive \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/evidence-${VERSION}.tgz"
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
+      - uses: metio/ci/breto@287dfa682ad90cf769ef29d0b9f9bc2d65d2ddc1 # 2026.11.1194625
         with:
           registries: github:metio/toolchains
       - name: Bundle a ticket with the tik in this commit
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
+      - uses: metio/ci/breto@287dfa682ad90cf769ef29d0b9f9bc2d65d2ddc1 # 2026.11.1194625
         with:
           registries: github:metio/toolchains
       - env:
