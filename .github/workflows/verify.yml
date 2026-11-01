@@ -115,7 +115,7 @@ jobs:
           bundle: ${{ runner.temp }}/evidence.tgz
           expect-stage: ":received,:triaged"
           expect-definition: ${{ steps.bundle.outputs.hash }}
-  reuse:
+  lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -125,56 +125,14 @@ jobs:
       - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
         with:
           registries: github:metio/toolchains
-      - run: ci-reuse
-  typos:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
-        with:
-          registries: github:metio/toolchains
-      - run: ci-typos
-  yaml:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
-        with:
-          registries: github:metio/toolchains
-      - run: ci-yaml
-  github-actions:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
-        with:
-          registries: github:metio/toolchains
-      - run: ci-actionlint
-  markdown:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
-        with:
-          registries: github:metio/toolchains
-      - run: ci-markdown
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: breto run ci-lint
   verify:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.
     name: Verify
-    needs: [clojure, tla, process-tests, evidence, reuse, typos, yaml, github-actions, markdown]
+    needs: [clojure, tla, process-tests, evidence, lint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
