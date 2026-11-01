@@ -6,12 +6,14 @@ description: The toolchain, the gate a change passes, and where new code belongs
 ```sh
 git clone https://github.com/metio/tik.git
 cd tik
-nix develop
+eval "$(breto env)"
 ```
 
-The flake carries the whole toolchain — JVM, Clojure, babashka, clj-kondo,
-TLC, GraalVM, ssh-keygen, Hugo — so local and CI resolve identical
-versions. Every command below assumes `nix develop --command`.
+[breto](https://github.com/metio/breto) installs the toolchain `.breto.edn`
+names — GraalVM, Clojure, babashka, clj-kondo, TLC, Hugo and the lint tools —
+in the versions the [metio/toolchains](https://github.com/metio/toolchains)
+groups pin, so local and CI resolve identical versions. Every command below
+assumes that environment.
 
 ## The gate
 

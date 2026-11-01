@@ -19,6 +19,8 @@ nwe = "nwe"
 # the in-toto attestation framework, spelled without the hyphen where it
 # names a command or a var (tik bridge intoto, intoto-claim)
 intoto = "intoto"
+# IMAP verbs used as English verbs ("SELECTs") split into SELEC + Ts
+SELEC = "SELEC"
 
 [files]
 # content-addressed stores and sidecars: filenames and bodies are
@@ -29,10 +31,11 @@ intoto = "intoto"
 extend-exclude = [
   "corpus/*/tickets/**",
   "tickets/**",
+  "processes/by-hash/**",
+  "docs/static/processes/by-hash/**",
   "roots/**",
   # pinned issuer signing keys: base64url moduli and x5c certificate
   # chains, where a run of letters is coincidence rather than prose
   "jwks/**",
-  "flake.lock",
   "docs/themes/",
 ]

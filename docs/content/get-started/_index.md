@@ -8,7 +8,7 @@ the stage derives itself — there is no server to run and no schema to
 migrate.
 
 - [Install](/get-started/install/) — the single binary, babashka from
-  source, or the nix devshell.
+  source, or the breto environment.
 - [Five-minute guide](/get-started/guide/) — from an empty directory to a
   bug tracker with signed events and a personal inbox. Every command on
   that page is executed by the test suite, so it stays true.

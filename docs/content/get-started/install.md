@@ -1,7 +1,7 @@
 ---
 title: Install
-description: Run the native binary or the uberjar, run from source with babashka, or work inside the nix devshell.
-tags: [install, binary, babashka, nix]
+description: Run the native binary or the uberjar, run from source with babashka, or work inside the breto environment.
+tags: [install, binary, babashka, breto]
 ---
 
 Each release publishes two downloads, a `SHA256SUMS` file covering both,
@@ -46,13 +46,14 @@ bb tik --help
 Every command in this documentation is written as `tik`; substitute
 `bb tik` when running this way.
 
-## The nix devshell
+## The breto environment
 
-Contributors get the whole toolchain — JVM, Clojure, babashka, clj-kondo,
-TLC, GraalVM, ssh-keygen — from the flake:
+Contributors get the whole toolchain — GraalVM, Clojure, babashka,
+clj-kondo, TLC — from [breto](https://github.com/metio/breto), which installs
+what `.breto.edn` names:
 
 ```sh
-nix develop --command bb test
+breto run bb test
 ```
 
 [Contributing](/contributing/) describes the gate a change is expected to

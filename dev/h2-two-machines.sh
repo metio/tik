@@ -16,9 +16,9 @@
 #   resolves observing both heads; B pulls and agrees.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# tik + git-daemon run through the flake devshell; podman must run on the
-# host (it cannot start inside the nix-portable sandbox on this machine)
-RUN="${RUN:-nix develop --command}"
+# tik + git-daemon run through RUN, which defaults to breto run so they
+# get the toolchain .breto.edn names
+RUN="${RUN:-breto run}"
 TIK_SRC="$PWD"
 H2="$(mktemp -d)"
 PORT="${PORT:-9418}"

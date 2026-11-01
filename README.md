@@ -41,7 +41,7 @@ working ticket system in under five minutes — and every command on
 that page is executed by the test suite, so it cannot go stale.
 
 ```console
-$ nix develop                     # clojure, babashka, clj-kondo, tlc, jdk, reuse
+$ eval "$(breto env)"            # clojure, babashka, clj-kondo, tlc, jdk, reuse
 
 $ bb tik new support-request --title "login broken for tenant X" --actor seb
 018f2f6e-...

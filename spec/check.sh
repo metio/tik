@@ -14,7 +14,7 @@ fail=0
 
 expect_pass() {
   echo "== $1 (expect: pass)"
-  if tlc -metadir "$meta/$1" -workers auto -deadlock -config "$1.cfg" "$1.tla" >"$meta/$1.log" 2>&1; then
+  if tlc -metadir "$meta/$1" -workers auto -deadlock -config "$PWD/$1.cfg" "$PWD/$1.tla" >"$meta/$1.log" 2>&1; then
     echo "   ok"
   else
     echo "   FAIL — TLC found a violation:"
@@ -25,7 +25,7 @@ expect_pass() {
 
 expect_violation() {
   echo "== $1 (expect: violation)"
-  if tlc -metadir "$meta/$1" -workers auto -deadlock -config "$1.cfg" "$1.tla" >"$meta/$1.log" 2>&1; then
+  if tlc -metadir "$meta/$1" -workers auto -deadlock -config "$PWD/$1.cfg" "$PWD/$1.tla" >"$meta/$1.log" 2>&1; then
     echo "   FAIL — expected TLC to find the order-dependence counterexample"
     fail=1
   elif grep -q "Invariant UniqueFixpoint is violated" "$meta/$1.log"; then

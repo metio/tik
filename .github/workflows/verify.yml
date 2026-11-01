@@ -11,10 +11,10 @@ jobs:
   clojure:
     # Reusable Clojure pipeline (kaocha, clj-kondo at fail-on-warning,
     # eastwood, splint, cljfmt, clj-watson) shared across the metio Clojure
-    # repos; every gate runs through this repo's nix devShell. Pinned to the
+    # repos; every gate runs with the toolchain .breto.edn names. Pinned to the
     # release SHA (Renovate bumps it via the version comment).
     name: Clojure
-    uses: metio/ci/.github/workflows/clojure.yml@fafdce8a81c933131048b4c97d20f7011fcf6d3f # 2026.10.30081152
+    uses: metio/ci/.github/workflows/clojure.yml@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
     with:
       kondo-paths: src cli test
   tla:
@@ -26,8 +26,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command bash spec/check.sh
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: bash spec/check.sh
   process-tests:
     # Scripted process tests: steps in, expected derived stages out,
     # explain printed on failure. The process definitions' own suite.
@@ -37,10 +39,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command bb tik lint processes/support-request.edn
-      - run: nix develop --command bb tik lint processes/sweep-order.edn
-      - run: nix develop --command bb tik test processes/support-request.tests.edn
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: bb tik lint processes/support-request.edn
+      - run: bb tik lint processes/sweep-order.edn
+      - run: bb tik test processes/support-request.tests.edn
   evidence:
     # The evidence path end to end, on every pull request, in the two halves
     # that can actually go wrong independently.
@@ -69,7 +73,9 @@ jobs:
           set -euo pipefail
           tik rederive \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/evidence-${VERSION}.tgz"
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
       - name: Bundle a ticket with the tik in this commit
         id: bundle
         run: |
@@ -79,7 +85,7 @@ jobs:
           root=$(mktemp -d)
           mkdir -p "${root}/processes"
           cp processes/support-request.edn "${root}/processes/"
-          tik() { TIK_ROOT="${root}" TIK_ACTOR=ci nix develop --command bb tik "$@"; }
+          tik() { TIK_ROOT="${root}" TIK_ACTOR=ci bb tik "$@"; }
           # :triaged demands a triager's signature over [:category], and the
           # definition declares somebody else. Putting ci in the role through
           # the store's REGISTER is what makes the expectation below a test of
@@ -101,7 +107,7 @@ jobs:
           set -euo pipefail
           dir="${RUNNER_TEMP}/tik-head"
           mkdir -p "${dir}"
-          printf '#!/bin/sh\nexec nix develop --command bb tik "$@"\n' > "${dir}/tik"
+          printf '#!/bin/sh\nexec bb tik "$@"\n' > "${dir}/tik"
           chmod 0755 "${dir}/tik"
           echo "${dir}" >> "${GITHUB_PATH}"
       - uses: ./.github/actions/verify # zizmor: ignore[self-repository] runs the copy in this commit
@@ -116,8 +122,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command ci-reuse
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: ci-reuse
   typos:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -125,8 +133,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command ci-typos
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: ci-typos
   yaml:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -134,8 +144,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command ci-yaml
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: ci-yaml
   github-actions:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -143,8 +155,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command ci-actionlint
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: ci-actionlint
   markdown:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -152,8 +166,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
-      - run: nix develop --command ci-markdown
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
+      - run: ci-markdown
   verify:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.

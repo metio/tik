@@ -47,10 +47,10 @@ into the plan.
 
 ## Commands
 
-All tooling runs through the nix dev shell (the host has no toolchains):
+All tooling comes from the breto environment `.breto.edn` names (the host has no toolchains):
 
 ```text
-nix develop --command <cmd>       # every command below assumes this
+breto run <cmd>                   # or eval "$(breto env)" once; every command below assumes it
 ```
 
 - `bb tik <cmd> …` — the CLI (babashka). `bb tik` alone prints usage.

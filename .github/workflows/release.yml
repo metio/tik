@@ -56,11 +56,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: metio/nix-devshell@d0c25fdb0d2c08f23bc62c867317a266b6f1a5c1 # 2026.9.12204255
+      - uses: metio/ci/breto@f6c5da232253f67486721f46cf4cd5d488189e04 # 2026.10.31224636
+        with:
+          registries: github:metio/toolchains
       - name: Build the uberjar and native binary
         # The same toolchain developers run locally — produces target/tik.jar
         # (portable, any JDK) and target/tik (glibc-dynamic linux/amd64 native).
-        run: nix develop --command sh dev/build-native.sh
+        run: sh dev/build-native.sh
       - id: image
         name: Build, push and sign the container image
         # container-release builds the Containerfile with buildx, pushes
@@ -122,7 +124,7 @@ jobs:
           # the scan is evidence, not a gate: a finding does not stop the
           # release, it stops the ticket reaching :scanned, so the record
           # says whether this version met the bar either way
-          if nix develop --command bb vuln; then
+          if bb vuln; then
             SCAN=:clean
           else
             SCAN=:findings
