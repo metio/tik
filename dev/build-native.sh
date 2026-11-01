@@ -5,8 +5,9 @@
 # Build the single-binary tik: uberjar, then GraalVM native-image.
 # Run with the toolchain .breto.edn names: breto run sh dev/build-native.sh
 #
-# The result links only the libc family (libc/libdl/libpthread/librt),
-# so it runs on any glibc distro with no JVM and no babashka. Alpine
+# The result links only glibc dynamically, so it runs on any glibc distro
+# with no JVM and no babashka. The build needs a static zlib (libz.a, in
+# zlib1g-dev on Debian and Ubuntu), which GraalVM does not ship. Alpine
 # users run the uberjar with babashka instead.
 set -eu
 cd "$(dirname "$0")/.."
@@ -18,6 +19,7 @@ echo "==> native-image"
 native-image \
   -jar target/tik.jar \
   -o target/tik \
+  --static-nolibc \
   --no-fallback \
   --install-exit-handlers \
   --enable-http --enable-https \

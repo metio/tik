@@ -59,10 +59,18 @@ jobs:
       - uses: metio/ci/breto@d4a165ac035d1fa1a7aee5b27192d0aed9c7a0b0 # 2026.11.1111906
         with:
           registries: github:metio/toolchains
+      - name: Install the static zlib the native binary links
+        run: sudo apt-get install --yes zlib1g-dev
       - name: Build the uberjar and native binary
         # The same toolchain developers run locally — produces target/tik.jar
         # (portable, any JDK) and target/tik (glibc-dynamic linux/amd64 native).
         run: sh dev/build-native.sh
+      - name: Run the container image
+        # The runner has libraries the image may lack, so the binary passing
+        # here says nothing about the image.
+        run: |
+          docker build --tag tik:verify --file Containerfile .
+          docker run --rm tik:verify --help
       - id: image
         name: Build, push and sign the container image
         # container-release builds the Containerfile with buildx, pushes
