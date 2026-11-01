@@ -14,7 +14,7 @@
                               slurp-existing typed-value]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
-                                  cache-flush! die exit! load-process now
+                                  die exit! load-process now
                                   registry-ticket-ids
                                   resolve-id root the-store ticket-ctx]]
             [tik.dag :as dag]

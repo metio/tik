@@ -92,7 +92,7 @@
         (is (= :billing
                (:value (red/fact-status (red/ticket-state [create a r2 b2])
                                         [:category]))))))
-    (is b "chain events built")))
+    (is (map? b) "chain events built")))
 
 (deftest backdated-intermediates-do-not-fake-concurrency
   ;; create -> X -> M -> Y, but claimed times make M fold AFTER Y: an

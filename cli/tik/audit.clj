@@ -123,7 +123,7 @@
       (io/copy b dest))
     (cache-flush!)
     (println (str "imported " (count new-events) " event(s)"
-                  (when-let [dup (- (count found) (count new-events))]
+                  (let [dup (- (count found) (count new-events))]
                     (when (pos? dup)
                       (str "; " dup " already present")))))
     (doseq [tid (distinct (map #(:event/ticket (:event %)) new-events))]
