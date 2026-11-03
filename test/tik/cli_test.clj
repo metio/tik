@@ -204,7 +204,41 @@
     (testing "a different period diverges (no accidental id collision)"
       (let [rootC (h/temp-dir! "tik-recurC")]
         (in rootC "recur" "track" "--period" "2026-W30" "--actor" "tik-backend")
-        (is (not= (first (fingerprint rootA)) (first (fingerprint rootC))))))))
+        (is (not= (first (fingerprint rootA)) (first (fingerprint rootC))))))
+    (testing "a different delegate or title mints a different ticket, never
+              a second create event under the same id"
+      (doseq [args [["--actor" "other-backend"]
+                    ["--actor" "tik-backend" "--title" "weekly sync"]]]
+        (let [root (h/temp-dir! "tik-recurD")]
+          (apply in root "recur" "track" "--period" "2026-W29" args)
+          (is (not= (first (fingerprint rootA)) (first (fingerprint root)))
+              (pr-str args)))))))
+
+(deftest recur_pins_its_id_to_the_definition
+  ;; the create event pins the process hash, so two replicas holding
+  ;; different definitions under one name mint different tickets
+  (System/setProperty "user.name" "tester")
+  (let [[a b] (repeatedly 2 #(h/temp-dir! "tik-recurH"))
+        proc {:process/id :weekly :process/version 1
+              :process/guard-vocab 1 :lint {:runbooks :off}
+              :process/stages [{:stage/id :open :guards []}]}]
+    (doseq [[root p] [[a proc]
+                      [b (assoc proc :process/purpose "a later revision")]]]
+      (.mkdirs (io/file root "processes"))
+      (spit (io/file root "processes" "weekly.edn") (pr-str p))
+      (is (re-find #"created weekly for 2026-W29"
+                   (:out (in root "recur" "weekly" "--period" "2026-W29"
+                             "--actor" "tik-backend")))))
+    (is (not= (first (h/sole-ticket-fingerprint a))
+              (first (h/sole-ticket-fingerprint b))))))
+
+(deftest recur_refuses_a_valueless_option
+  (System/setProperty "user.name" "tester")
+  (let [root (h/temp-dir! "tik-recurV")]
+    (doseq [args [["--period"] ["--period" "2026-W29" "--title"]]]
+      (let [r (apply in root "recur" "track" args)]
+        (is (= 1 (:exit r)) (pr-str args))
+        (is (h/clean-output? (str (:out r) (:err r))) (pr-str args))))))
 
 (deftest recur_derives_a_deterministic_period_start
   ;; porcelain (never the kernel) parses the ISO period forms schedules

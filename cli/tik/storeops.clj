@@ -29,18 +29,17 @@
   (:import (java.io File)
            (java.time Instant LocalDate ZoneOffset)))
 
-(defn- rollout-id
+(defn- minted-id
   "A ticket id that is a pure function of every byte its create event
-  carries — the role (child or parent), the subject, the pinned process
-  hash, the actor and the claimed instant. Two replicas that form the
-  same intent mint the same create event, so a union merge keeps ONE
-  ticket (ADR 0021). Any input that differs yields a different ticket,
-  never a second create event under one id. The parts are stringified
-  before printing, so the encoding is injective (a title may hold spaces)
-  and stable (pr-str of a string, never of an Instant)."
-  [& parts]
+  carries, under a per-verb namespace (`kind`, e.g. \"rollout\"). Two
+  replicas that form the same intent mint the same create event, so a
+  union merge keeps ONE ticket (ADR 0021). Any input that differs yields
+  a different ticket, never a second create event under one id. The parts
+  are stringified before printing, so the encoding is injective (a title
+  may hold spaces) and stable (pr-str of a string, never of an Instant)."
+  [kind & parts]
   (java.util.UUID/nameUUIDFromBytes
-   (.getBytes (pr-str (into ["tik/rollout"] (map str) parts)) "UTF-8")))
+   (.getBytes (pr-str (into [(str "tik/" kind)] (map str) parts)) "UTF-8")))
 
 (defn- write-at
   "The claimed instant of a rollout write onto a log: the run's base
@@ -189,7 +188,7 @@
             (let [track (load-process "track")
                   track-hash (archive-process! track)
                   e (event/create-ticket
-                     {:ticket (rollout-id "parent" parent-title track-hash who base)
+                     {:ticket (minted-id "rollout" "parent" parent-title track-hash who base)
                       :actor who :at base
                       :title parent-title :process :track
                       :version (:process/version track)
@@ -203,7 +202,7 @@
     (doseq [repo repos]
       (let [child-title (str proc-name ": " repo)
             child (or (child-of repo)
-                      (let [id (rollout-id "child" proc-name proc-hash repo who base)
+                      (let [id (minted-id "rollout" "child" proc-name proc-hash repo who base)
                             e (event/create-ticket
                                {:ticket id :actor who :at base
                                 :title child-title
@@ -253,17 +252,6 @@
     (println (str "watch it: tik status " (sid parent-id)))
     (when (seq errors) (exit! 1))))
 
-(defn- recur-id
-  "A ticket id that is a pure function of (process, period): identical on
-  every node, so independent backends firing the same schedule mint the
-  SAME create event — byte-identical, one content address, so a later
-  union merge keeps ONE ticket. This is what makes recurring-ticket
-  creation leaderless: exactly-once without a lock. Namespaced so these
-  ids never collide with random-uuid tickets or across processes/periods."
-  [proc-name period]
-  (java.util.UUID/nameUUIDFromBytes
-   (.getBytes (str "tik/recur " proc-name " " period) "UTF-8")))
-
 (defn- period-start
   "Porcelain-only: the canonical UTC start instant of a recurring PERIOD
   label, so the minted events carry a deterministic `:at` and stay
@@ -307,12 +295,15 @@
   (2026-W29, 2026-Q3) — the kernel supplies no clock. Sibling of rollout:
   the same idempotent-create-what-is-missing shape.
 
-  The minted events are a PURE FUNCTION of (process, period): a
-  deterministic ticket id and a period-start `:at` (derived from the
-  label, or --at for a freeform one). So two backends that cannot see each
-  other yet — firing the same schedule concurrently — mint byte-identical
-  events that union-merge into ONE ticket. That is the leaderless
-  exactly-once path: no lock, no single writer needed to avoid duplicates."
+  The minted events are a PURE FUNCTION of their intent: the ticket id
+  derives from every byte the create event carries (process and its hash,
+  period, title, actor, claimed instant — see `minted-id`) and `:at` is
+  the period start (derived from the label, or --at for a freeform one).
+  So two backends that cannot see each other yet — firing the same
+  schedule concurrently — mint byte-identical events that union-merge
+  into ONE ticket. That is the leaderless exactly-once path: no lock, no
+  single writer needed to avoid duplicates. Backends that differ in
+  delegate or definition mint distinct tickets, each with one create."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
                       (die "usage: tik recur <process> --period <label> [--at <inst>] [--title T]"))
@@ -320,6 +311,10 @@
                    (die (str "recur needs --period <label> (e.g. 2026-W29):"
                              " the kernel has no clock, so the caller names"
                              " the period")))
+        _ (doseq [k [:period :at :title]
+                  :let [v (get opts k)]
+                  :when (and (some? v) (not (string? v)))]
+            (die (str "recur --" (name k) " needs a value")))
         proc (load-process proc-name)
         pk (keyword proc-name)
         s (the-store)
@@ -332,15 +327,17 @@
       (println (str "already have " proc-name " for " period ": " (sid existing)
                     " — nothing recorded"))
       (let [at (period-start period (:at opts))
-            id (recur-id proc-name period)
-            e (event/create-ticket {:ticket id :actor (actor opts) :at at
-                                    :title (or (:title opts)
-                                               (str proc-name " " period))
+            who (actor opts)
+            title (or (:title opts) (str proc-name " " period))
+            proc-hash (archive-process! proc)
+            id (minted-id "recur" proc-name proc-hash period title who at)
+            e (event/create-ticket {:ticket id :actor who :at at
+                                    :title title
                                     :process pk
                                     :version (:process/version proc)
-                                    :process-hash (archive-process! proc)})]
+                                    :process-hash proc-hash})]
         (append!* s e opts)
-        (append!* s (event/assert-fact {:ticket id :actor (actor opts) :at at
+        (append!* s (event/assert-fact {:ticket id :actor who :at at
                                         :parents #{(:event/id e)}
                                         :path [:period] :value period})
                   opts)

@@ -38,10 +38,14 @@ consequences are load-bearing and must stay true:
 3. **Generated events are deterministic.** Any event a replica MINTS on
    its own — `recur`, `probe`, any scheduled or automated create — must
    derive its id and every byte-bearing field, `:at` included, as a pure
-   function of its inputs. `recur` is the worked example: ticket id =
-   `nameUUIDFromBytes(process, period)` and `:at` = the period-start the
-   porcelain parses from the label (or `--at`), so two backends firing the
-   same schedule concurrently mint the same event, and the union keeps one.
+   function of its inputs. `recur` is the worked example: the ticket id is
+   a name-based UUID over every byte the create event carries (process and
+   its hash, period, title, actor, claimed instant) and `:at` = the
+   period-start the porcelain parses from the label (or `--at`), so two
+   backends firing the same schedule concurrently mint the same event, and
+   the union keeps one. An id over fewer inputs than the event carries
+   would let two replicas that differ in one of them write two create
+   events under one ticket id. `rollout` follows the same rule.
 
 ## Context
 
