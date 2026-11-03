@@ -261,7 +261,10 @@
                    :process/facts {[:readme] [:enum :present :absent]}
                    :process/stages [{:stage/id :tracked :guards []}
                                     {:stage/id :holds :after [:tracked]
-                                     :guards [[:fact= [:readme] :present]]}]}))
+                                     :guards [[:fact= [:readme] :present]]}
+                                    {:stage/id :retired :after [:tracked]
+                                     :stage/sticky? true
+                                     :guards [[:fact [:population :left]]]}]}))
     top))
 
 (defn- child-of-repo [top repo]
@@ -342,6 +345,88 @@
         (.delete (io/file top "alpha" "README.md"))
         (is (re-find #"alpha: readme = :absent" (:out (run! "probe"))))
         (is (= "links:  (tracked 3)" (links)))))))
+
+(defn- events-of [top]
+  (reduce + (map count (vals (store-fingerprint top)))))
+
+(deftest rollout_reports_a_departure_and_retires_it_only_on_request
+  (let [top (scoped-store!)
+        run! (fn [& args] (apply tik-at top nil args))]
+    (run! "rollout" "rule" "--period" "2026-W43")
+    (.delete (io/file top "alpha" "go.mod"))
+    (testing "without --retire the departure is reported and nothing is written"
+      (let [before (events-of top)
+            r (run! "rollout" "rule" "--period" "2026-W43")]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"1 ticket\(s\) whose repository left the population \(pass --retire to record it\): alpha \(outside the scope\)"
+                     (:out r)))
+        (is (= before (events-of top)))))
+    (testing "--retire records the reason as a signed fact and settles the child"
+      (let [alpha (child-of-repo top ":alpha")
+            r (run! "rollout" "rule" "--period" "2026-W43" "--retire")]
+        (is (re-find #"alpha: outside the scope — retired" (:out r)))
+        (let [st (:out (run! "status" alpha))]
+          (is (re-find #"\[:population :left\] = \"outside the scope\"" st))
+          (is (re-find #"retired" st)))
+        (is (not (re-find #"rule: alpha" (:out (run! "ls"))))
+            "a settled child leaves the open board")
+        (is (not (re-find #"alpha" (:out (run! "probe"))))
+            "probe sweeps skip it")))
+    (testing "a retired child is retired once"
+      (let [before (events-of top)]
+        (is (not (re-find #"— retired"
+                          (:out (run! "rollout" "rule" "--period" "2026-W43" "--retire")))))
+        (is (= before (events-of top)))))
+    (testing "a deleted repository is retired as absent"
+      (doseq [f (reverse (file-seq (io/file top "group")))] (.delete ^java.io.File f))
+      (is (re-find #"group/gamma: repository absent — retired"
+                   (:out (run! "rollout" "rule" "--period" "2026-W43" "--retire")))))))
+
+(deftest a_returning_repository_gets_a_fresh_ticket
+  (let [top (scoped-store!)
+        run! (fn [& args] (apply tik-at top nil args))]
+    (run! "rollout" "rule" "--period" "2026-W43")
+    (let [old (child-of-repo top ":alpha")]
+      (.delete (io/file top "alpha" "go.mod"))
+      (run! "rollout" "rule" "--period" "2026-W43" "--retire")
+      (spit (io/file top "alpha" "go.mod") "module x\n")
+      (let [r (run! "rollout" "rule" "--period" "2026-W43" "--retire")
+            ids (->> (run! "ls" "--all" "--where" "fact:repo=:alpha")
+                     :out str/split-lines (map #(first (str/split % #"\s+"))) set)]
+        (is (re-find #"1 ticket\(s\) created, 1 already covered" (:out r))
+            "the same period still mints a distinct ticket")
+        (is (= 2 (count ids)) "the old ticket keeps its history beside the new one")
+        (is (contains? ids old))
+        (let [parent (-> (run! "ls") :out str/split-lines
+                         (->> (filter #(re-find #"rule rollout" %)))
+                         first (str/split #"\s+") first)
+              fresh (first (disj ids old))]
+          (is (re-find (re-pattern (str fresh ".*rule: alpha"))
+                       (:out (run! "status" parent)))
+              "the parent's link points at the fresh ticket"))
+        (let [before (events-of top)]
+          (run! "rollout" "rule" "--period" "2026-W43" "--retire")
+          (is (= before (events-of top)) "and the store is converged"))))))
+
+(deftest an_unanswered_scope_never_retires
+  (let [top (scoped-store!)
+        run! (fn [& args] (apply tik-at top nil args))]
+    (run! "rollout" "rule" "--period" "2026-W43")
+    (let [r (run! "rollout" "rule" "--period" "2026-W43" "--retire"
+                  "--scope" "exit 3")]
+      (is (= 1 (:exit r)))
+      (is (not (re-find #"— retired" (:out r))))
+      (is (re-find #"0 repo\(s\) in scope" (:out r))
+          "the run itself completed, so the absence of retirement is a result"))))
+
+(deftest retirement_is_byte_identical_on_independent_stores
+  (let [[a b] (repeatedly 2 scoped-store!)]
+    (doseq [top [a b]]
+      (tik-at top nil "rollout" "rule" "--period" "2026-W43" "--actor" "tik-backend")
+      (.delete (io/file top "alpha" "go.mod"))
+      (tik-at top nil "rollout" "rule" "--period" "2026-W44" "--actor" "tik-backend"
+              "--retire"))
+    (is (= (store-fingerprint a) (store-fingerprint b)))))
 
 (deftest probe_derives_facts_from_the_world
   (let [top (tmpdir)]

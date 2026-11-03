@@ -57,7 +57,7 @@
           base
           events))
 
-(declare period-start rollout-population!)
+(declare period-start rollout-population! rollout-mint!)
 
 (defn- scope-verdict
   "Whether repository `repo` (its path relative to the holder) belongs to
@@ -106,7 +106,14 @@
   (or --scope, which wins): an executable or shell command asked once per
   repo, see `scope-verdict`. A repo whose scope check fails is reported
   and left out of this run, the others still roll out, and the exit code
-  is 1 so a scheduler logs the failure."
+  is 1 so a scheduler logs the failure.
+
+  A child whose repository is gone, or now outside the scope, is reported;
+  with --retire, rollout records it as a signed [:population :left] fact
+  naming the reason. A process that gives that fact a sticky terminal
+  stage settles such tickets, so the inbox and probe sweeps drop them.
+  Retiring is opt-in because a partial checkout looks exactly like
+  deleted repositories."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
                       (die "usage: tik rollout <process> [--parent <id>] [--parent-title T] [--scope C]"))
@@ -135,22 +142,46 @@
             (binding [*out* *err*]
               (println (str r ": " error " — left out of this run"))))
         outside (count (filter #(= :out (val %)) verdicts))
-        repos (filterv #(= :in (verdicts %)) repos)
         scope-note (when scope
                      (str ", " outside " outside the scope"
                           (when (seq errors)
                             (str ", " (count errors) " unanswered"))))]
-    (if (empty? repos)
-      ;; nothing to roll out mints nothing, a parent included: an empty
-      ;; checklist would be a ticket about no subject
-      (do (println (str "0 repo(s) in scope" scope-note " — nothing rolled out"))
-          (when (seq errors) (exit! 1)))
-      (rollout-population! proc-name proc repos opts scope-note errors))))
+    (rollout-population! proc-name proc verdicts opts scope-note)
+    (when (seq errors) (exit! 1))))
+
+(defn- rollout-children
+  "This process's rollout children, read from the store: every ticket of
+  the process carrying a [:repo] fact, with whether it has LEFT the
+  population (a present [:population :left] fact) and whether it is
+  settled. A child that has left no longer covers its repository, so a
+  repository that returns gets a fresh ticket."
+  [all proc-name t]
+  (for [{:keys [id state events process roles]} all
+        :when (= (keyword proc-name) (:process state))
+        :let [r (red/fact-value state [:repo])]
+        :when r]
+    {:id id
+     :repo (safe-name r)
+     :left? (some? (red/fact-value state [:population :left]))
+     :settled? (next-lens/settled? process events t roles)}))
+
+(defn- leave-reason
+  "Why a child's repository is no longer in the population, or nil while
+  it is: the walk did not find it, or the scope answered 1. An unanswered
+  scope check is no answer, so it never retires anything."
+  [verdicts repo]
+  (case (get verdicts repo ::absent)
+    ::absent "repository absent"
+    :out "outside the scope"
+    nil))
 
 (defn- rollout-population!
-  "The minting half of `cmd-rollout`, over the repos already in scope."
-  [proc-name proc repos opts scope-note errors]
-  (let [repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
+  "The writing half of `cmd-rollout`: retire the children whose repository
+  left (only under --retire, otherwise report them), then mint what the
+  repositories in scope lack."
+  [proc-name proc verdicts opts scope-note]
+  (let [repos (filterv #(= :in (verdicts %)) (sort (keys verdicts)))
+        repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
                       (keyword %)
                       ;; spaces, slashes, EDN-hostile characters: the
                       ;; name rides as a string (mint would refuse a
@@ -171,13 +202,47 @@
                    (let [evs (store/events s id)]
                      [(dag/heads evs) (write-at base evs)]))
         all (vec (all-ticket-ctx s))
-        child-of (into {}
-                       (for [{:keys [id state]} all
-                             :when (= (keyword proc-name) (:process state))
-                             :let [r (red/fact-value state [:repo])]
-                             :when r]
-                         [(safe-name r) id]))
-        parent-title (or (:parent-title opts) (str proc-name " rollout"))
+        children (rollout-children all proc-name t)
+        child-of (into {} (for [c children :when (not (:left? c))]
+                            [(:repo c) (:id c)]))
+        ;; how many earlier tickets of a repository have left: part of a
+        ;; returning repository's ticket id, so its new ticket never shares
+        ;; an id with the one that left in the same period
+        episodes (frequencies (map :repo (filter :left? children)))
+        leavers (sort-by :repo
+                         (for [c children
+                               :when (not (or (:left? c) (:settled? c)))
+                               :let [why (leave-reason verdicts (:repo c))]
+                               :when why]
+                           (assoc c :why why)))
+        _ (if (:retire opts)
+            (doseq [{:keys [id repo why]} leavers]
+              (let [[parents at] (heads-at id)]
+                (append!* s (event/assert-fact
+                             {:ticket id :actor who :at at :parents parents
+                              :path [:population :left] :value why})
+                          opts)
+                (println (str repo ": " why " — retired " (sid id)))))
+            (when (seq leavers)
+              (println (str (count leavers) " ticket(s) whose repository left the population"
+                            " (pass --retire to record it): "
+                            (str/join ", " (map #(str (:repo %) " (" (:why %) ")")
+                                                leavers))))))]
+    (if (empty? repos)
+      ;; nothing to roll out mints nothing, a parent included: an empty
+      ;; checklist would be a ticket about no subject
+      (println (str "0 repo(s) in scope" scope-note " — nothing rolled out"))
+      (rollout-mint! {:s s :t t :who who :base base :heads-at heads-at
+                      :all all :child-of child-of :episodes episodes
+                      :repo-value repo-value :proc-name proc-name :proc proc
+                      :repos repos :opts opts :scope-note scope-note}))))
+
+(defn- rollout-mint!
+  "Mint the parent if missing, a child per uncovered repository in scope,
+  and the links that make the parent's checklist."
+  [{:keys [s t who base heads-at all child-of episodes repo-value proc-name
+           proc repos opts scope-note]}]
+  (let [parent-title (or (:parent-title opts) (str proc-name " rollout"))
         parent-id
         (or (when-let [p (:parent opts)] (resolve-id s p))
             (some (fn [{:keys [id state events process roles]}]
@@ -202,7 +267,9 @@
     (doseq [repo repos]
       (let [child-title (str proc-name ": " repo)
             child (or (child-of repo)
-                      (let [id (minted-id "rollout" "child" proc-name proc-hash repo who base)
+                      (let [id (apply minted-id "rollout" "child" proc-name proc-hash
+                                      repo who base
+                                      (when-let [n (episodes repo)] [n]))
                             e (event/create-ticket
                                {:ticket id :actor who :at base
                                 :title child-title
@@ -249,8 +316,7 @@
     (let [{:keys [state]} (ticket-ctx s parent-id)]
       (doseq [line (link-lines s t state)]
         (println "  " line)))
-    (println (str "watch it: tik status " (sid parent-id)))
-    (when (seq errors) (exit! 1))))
+    (println (str "watch it: tik status " (sid parent-id)))))
 
 (defn- period-start
   "Porcelain-only: the canonical UTC start instant of a recurring PERIOD

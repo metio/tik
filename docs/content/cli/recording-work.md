@@ -124,7 +124,9 @@ module has a README", is a process run per repository. The process's
  :process/stages
  [{:stage/id :tracked :guards []}
   {:stage/id :holds :after [:tracked]
-   :guards [[:fact= [:readme] :present]]}]
+   :guards [[:fact= [:readme] :present]]}
+  {:stage/id :retired :after [:tracked] :stage/sticky? true
+   :guards [[:fact [:population :left]]]}]
  ...}
 ```
 
@@ -137,3 +139,15 @@ joins the population gets its own ticket and starts short of `:holds`, and a
 compliant repository falls back from `:holds` when its probe observes the
 README gone, since `:holds` is not sticky. `tik status <parent>` counts the
 children per stage, and `--links holds` lists the compliant ones.
+
+A repository that is deleted, or that the scope now answers 1 for, has left
+the population. `rollout` lists such tickets on every run, and with
+`--retire` it records a signed `[:population :left]` fact naming the reason,
+`repository absent` or `outside the scope`. The `:retired` stage above turns
+that fact into a sticky terminal stage, which settles the ticket: the inbox
+and probe sweeps leave it alone, and its history stays in the log. A
+repository that comes back gets a fresh ticket, and the parent's link points
+at it. An unanswered scope check never retires anything. Retiring is a
+separate flag because a checkout that lacks some repositories looks exactly
+like a store whose repositories were deleted, so a scheduled run passes
+`--retire` only where the checkout is complete.

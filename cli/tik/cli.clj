@@ -198,10 +198,12 @@
   tik rollout <process> [--parent <id>]         one ticket per git repo under the store
               [--parent-title T]                (context-tagged), wired as link facts on
               [--period <label>] [--at <inst>]  a parent: a checklist whose checkmarks
-              [--scope C]                       derive from each child's evidence.
+              [--scope C] [--retire]            derive from each child's evidence.
                                                 Idempotent; re-runs report coverage.
                                                 --scope (or the process's :scope)
                                                 narrows the repos: exit 0 = in, 1 = out.
+                                                Children whose repo left are reported;
+                                                --retire records [:population :left]
                                                 --period/--at pin the claimed instant,
                                                 so schedulers on separate replicas
                                                 mint identical events
@@ -354,7 +356,7 @@
     "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "scope" "serve" "sqlite" "stage" "store" "template"
+    "reason" "registry" "retire" "role" "scope" "serve" "sqlite" "stage" "store" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "user" "verbose" "watch" "where" "withdraw"
     "witness"})

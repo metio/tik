@@ -98,6 +98,11 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   for uncovered repositories, so a scheduled rollout plus `probe` is a
   **standing rule**: new members arrive with their own ticket, and a
   non-sticky goal stage regresses when the probe sees the evidence go.
+  A child whose repository is gone or out of scope is reported; `--retire`
+  records `[:population :left]` with the reason. Give the process a sticky
+  terminal stage guarded on `[:fact [:population :left]]` so retired tickets
+  settle. A returning repository gets a fresh ticket. Pass `--retire` only
+  from a complete checkout: missing repositories read as deleted ones.
 - `tik reprocess <id> <new.edn> [--apply]` — migrate ONE ticket onto a newer
   version of its process. A ticket is judged by the rules it was minted
   under, so a definition that grows (a value added to an enum, a stage
