@@ -25,5 +25,3 @@ board.html
 /target/
 /.derived-cache.json
 /.derived-cache.edn
-/docs/public/
-/docs/.hugo_build.lock
