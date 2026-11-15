@@ -397,7 +397,7 @@
         ;; minted for another service must not become a binding here
         audience (or (:audience opts) (:audience cfg) "tik")
         status (identity-trust/binding-status
-                (root) {:issuer issuer :subject (:sub claims)
+                (root) {:actor who :issuer issuer :subject (:sub claims)
                         :id-token token :at at}
                 {:audience audience})]
     (when-not (= :trusted status)
@@ -408,7 +408,18 @@
                        "  tik bridge jwks --issuer " issuer))
                 (when (= :identity/audience-mismatch (:reason status))
                   (str " — the token names " (pr-str (:token-audience status))
-                       ", not " (pr-str audience))))))
+                       ", not " (pr-str audience)))
+                (when (= :identity/actor-not-permitted (:reason status))
+                  (str " — subject " (pr-str (:sub claims))
+                       " may not bind actor '" who "'; :bindings in"
+                       " oidc.edn names who may"))
+                (when (= :identity/malformed-policy (:reason status))
+                  " — :bindings in oidc.edn does not parse, so it permits nothing"))))
+    (when (nil? (identity-trust/binding-policy (root)))
+      (binding [*out* *err*]
+        (println (str "note: this store declares no :bindings policy in"
+                      " oidc.edn, so any subject of " issuer
+                      " could bind actor '" who "' the same way"))))
     (let [heads (dag/heads (store/events s registry-id))
           e (event/add-attestation {:ticket registry-id :actor who :at at
                                     :parents heads :claim claim})]

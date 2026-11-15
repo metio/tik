@@ -69,19 +69,20 @@
     root))
 
 (defn- registry-events
-  "A registry log carrying one binding for actor `ci`."
-  [{:keys [token at key] :or {key "ssh-ed25519 AAAAC3-ci" at live-at}}]
+  "A registry log carrying one binding, for actor `ci` unless named."
+  [{:keys [token at key actor sub]
+    :or {key "ssh-ed25519 AAAAC3-ci" at live-at actor "ci" sub subject}}]
   (let [create (event/create-ticket {:ticket tid :actor "seb" :at t0
                                      :title "identity registry"
                                      :process :identity-registry})]
     [create
      (event/add-attestation
-      {:ticket tid :actor "ci" :at at :parents #{(:event/id create)}
+      {:ticket tid :actor actor :at at :parents #{(:event/id create)}
        :claim {:claim :identity
                :identity/issuer issuer
-               :identity/subject subject
+               :identity/subject sub
                :identity/username "github-actions"
-               :identity/actor "ci"
+               :identity/actor actor
                :identity/public-key key
                :identity/id-token token}})]))
 
@@ -159,12 +160,12 @@
                               :at (Instant/ofEpochSecond 1782000930)})]
     (is (= :trusted (status root evs)))))
 
-(deftest the-effective-signer-set-adds-rung-two-without-editing-actors
+(deftest the-signer-view-adds-rung-two-without-editing-actors
   (let [root (store-with-pin! {})
         actors (io/file root "actors")
         _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
-        f (trust/effective-signers root evs)
+        f ((trust/signer-view root evs) live-at)
         text (slurp f)]
     (is (re-find #"seb namespaces=\"tik-\*\" ssh-ed25519 AAAAC3-seb" text)
         "rung 1 keeps verifying")
@@ -243,6 +244,123 @@
   (let [root (store-with-pin! {:pin? false})
         _ (spit (io/file root "actors") "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
-        f (trust/effective-signers root evs)]
+        f ((trust/signer-view root evs) live-at)]
     (is (= "actors" (.getName ^java.io.File f))
         "with nothing verified the plain actors registry is what verification uses")))
+
+;; --- which subject may bind which actor ---------------------------------
+
+(def ^:private policy
+  {"ci" [{:issuer issuer :subject subject}]})
+
+(defn- policy-store!
+  "A pinned store whose oidc.edn declares `bindings` verbatim."
+  [bindings-text]
+  (let [root (store-with-pin! {})]
+    (spit (io/file root "oidc.edn") (str "{:audience \"tik\" :bindings "
+                                         bindings-text "}"))
+    root))
+
+(deftest a-policy-admits-the-subject-it-names
+  (let [root (policy-store! (pr-str policy))
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (is (= policy (trust/binding-policy root)))
+    (is (= :trusted (status root evs)))
+    (is (nil? (trust/unconstrained-bindings root evs))
+        "a store with a policy is not told it lacks one")))
+
+(deftest another-repository-cannot-bind-this-actor
+  ;; the attack the policy exists for: a genuine token, from the pinned
+  ;; issuer, with the expected audience, about a subject that is not ours
+  (let [root (policy-store! (pr-str policy))
+        evil "repo:attacker/evil:ref:refs/heads/main"
+        evs (registry-events {:token (jwt (claims-json {:sub evil})) :sub evil})
+        st (status root evs)]
+    (is (= :identity/actor-not-permitted (:reason st)))
+    (is (= ["ci" evil] [(:actor st) (:subject st)]) "the refusal names both")
+    (is (empty? (trust/verified-bindings root evs)) "and it grants nothing")
+    (testing "without a policy the same binding counts, and verify says why"
+      (let [open (store-with-pin! {})]
+        (is (= :trusted (status open evs)))
+        (is (seq (trust/unconstrained-bindings open evs)))))))
+
+(deftest our-subject-cannot-bind-an-actor-the-policy-does-not-grant-it
+  (let [root (policy-store! (pr-str policy))
+        evs (registry-events {:token (jwt (claims-json {})) :actor "seb"})]
+    (is (= :identity/actor-not-permitted (:reason (status root evs))))))
+
+(deftest a-policy-rule-names-its-issuer
+  (let [root (policy-store! (pr-str {"ci" [{:issuer "https://other.example"
+                                            :subject subject}]}))
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (is (= :identity/actor-not-permitted (:reason (status root evs)))
+        "the same subject string from a different issuer is somebody else")))
+
+(deftest a-forged-token-is-reported-as-forged-under-a-policy
+  (let [other (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
+                                  (.initialize 2048)))
+        root (policy-store! (pr-str policy))
+        evil "repo:attacker/evil:ref:refs/heads/main"
+        evs (registry-events {:token (jwt other (claims-json {:sub evil}))
+                              :sub evil})]
+    (is (= :identity/bad-signature (:reason (status root evs))))))
+
+(deftest a-policy-that-does-not-parse-permits-nothing
+  (doseq [[label text] [["a bare string" "\"repo:metio/tik:*\""]
+                        ["rules not a vector" "{\"ci\" {:issuer \"x\" :subject \"y\"}}"]
+                        ["a rule without a subject" (pr-str {"ci" [{:issuer issuer}]})]
+                        ["a blank subject" (pr-str {"ci" [{:issuer issuer :subject " "}]})]
+                        ["a keyword actor" (pr-str {:ci [{:issuer issuer :subject subject}]})]]]
+    (testing label
+      (let [root (policy-store! text)
+            evs (registry-events {:token (jwt (claims-json {}))})]
+        (is (= :identity/malformed-policy (:reason (status root evs)))))))
+  (testing "an oidc.edn that is not EDN at all"
+    (let [root (store-with-pin! {})
+          _ (spit (io/file root "oidc.edn") "{:audience \"tik\" :bindings {")
+          evs (registry-events {:token (jwt (claims-json {}))})]
+      (is (= :identity/malformed-policy (:reason (status root evs)))))))
+
+(deftest a-subject-pattern-is-exact-or-a-spelled-out-prefix
+  (is (trust/subject-matches? "repo:metio/tik:ref:refs/heads/main"
+                              "repo:metio/tik:ref:refs/heads/main"))
+  (is (not (trust/subject-matches? "repo:metio/tik:ref:refs/heads/main"
+                                   "repo:metio/tik:ref:refs/heads/main2")))
+  (is (trust/subject-matches? "repo:metio/tik:*" "repo:metio/tik:environment:release"))
+  (is (not (trust/subject-matches? "repo:metio/tik:*" "repo:metio/tik-fork:ref:x"))
+      "the separator before the wildcard is what keeps a fork out")
+  (is (trust/subject-matches? "repo:metio/tik*" "repo:metio/tik-fork:ref:x")
+      "and leaving it off admits the fork, which is why patterns spell it")
+  (is (trust/subject-matches? "spiffe://example.org/ns/release/*"
+                              "spiffe://example.org/ns/release/sa/tik"))
+  (is (not (trust/subject-matches? "*x" "ax")) "only a trailing wildcard")
+  (is (not (trust/subject-matches? nil "x")))
+  (is (not (trust/permitted? ::nonsense {:actor "ci" :issuer issuer :subject subject}))))
+
+;; --- a bound key speaks only while its token was live --------------------
+
+(deftest a-bound-key-counts-only-inside-its-tokens-window
+  ;; claims-json: iat 1782000000, exp 1782000900; leeway 60s
+  (let [root (store-with-pin! {})
+        actors (io/file root "actors")
+        _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
+        evs (registry-events {:token (jwt (claims-json {}))})
+        view (trust/signer-view root evs)
+        grants? (fn [secs]
+                  (boolean (re-find #"AAAAC3-ci"
+                                    (slurp (view (Instant/ofEpochSecond secs))))))]
+    (is (grants? 1782000300) "inside the window")
+    (is (grants? 1782000950) "inside the leeway after expiry")
+    (is (not (grants? 1782001000)) "after the window the key is a stranger")
+    (is (not (grants? 1790000000)) "years later, a leaked key signs nothing")
+    (is (not (grants? 1781999900)) "before the token existed")
+    (is (= "actors" (.getName ^java.io.File (view (Instant/ofEpochSecond 1790000000))))
+        "outside the window verification falls back to rung 1 alone")
+    (is (identical? (view (Instant/ofEpochSecond 1782000100))
+                    (view (Instant/ofEpochSecond 1782000200)))
+        "one file per distinct grant set, not one per event")))
+
+(deftest a-store-with-nothing-to-verify-against-has-no-view
+  (let [root (store-with-pin! {:pin? false})
+        evs (registry-events {:token (jwt (claims-json {}))})]
+    (is (nil? (trust/signer-view root evs)))))

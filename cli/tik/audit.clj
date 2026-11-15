@@ -731,15 +731,23 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (println (str "  note  " (count unchecked) " binding(s) carry an audience"
                   " this store does not check — declare :audience in oidc.edn"
                   " so a token minted for another service cannot bind here")))
-  (doseq [{:keys [reason issuer]} (identity-trust/refusals (root)
-                                                           (registry-events s))]
+  (when-let [open (identity-trust/unconstrained-bindings (root)
+                                                         (registry-events s))]
+    (println (str "  note  " (count open) " binding(s) count with no :bindings"
+                  " policy in oidc.edn — any subject the issuer vouches for"
+                  " may bind any actor name until the store says which may")))
+  (doseq [{:keys [reason issuer actor subject]}
+          (identity-trust/refusals (root) (registry-events s))]
     (if (uncheckable reason)
       (println (str "  note  identity binding for issuer " issuer
                     " is unverifiable (" (name reason) ") and grants nothing"
                     " — pin its keys with `tik bridge jwks --issuer "
                     issuer "` to make it count"))
       (check false (str "identity binding refused (" (name reason) ")"
-                        (when issuer (str " for issuer " issuer)))))))
+                        (when issuer (str " for issuer " issuer))
+                        (when (= :identity/actor-not-permitted reason)
+                          (str ": subject " subject " may not bind actor '"
+                               actor "' under the :bindings policy")))))))
 
 (defn- verify-one
   "One ticket, plus the definition checks a single-ticket audit runs."
@@ -844,14 +852,14 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                         ") — these sort last and satisfy elapsed-since early"))))
       (println "L1 authenticity")
       ;; Rung 1 (the curated actors registry) plus rung 2: keys a verified
-      ;; identity binding grants. A binding that does NOT verify is named
-      ;; with its reason and FAILS — a store whose trust base cannot be
-      ;; checked must not pass quietly, and "signature does not verify"
-      ;; would be a lie when the truth is that nobody pinned the issuer.
-      (let [signers (or (identity-trust/effective-signers (root)
-                                                          (registry-events s))
-                        (io/file (root) "actors"))]
-        (if-not (.exists ^File signers)
+      ;; identity binding grants, each only for events claimed inside the
+      ;; window of the token that bound it. A binding that does NOT verify
+      ;; is named with its reason and FAILS — a store whose trust base
+      ;; cannot be checked must not pass quietly, and "signature does not
+      ;; verify" would be a lie when the truth is that nobody pinned the
+      ;; issuer.
+      (let [signers-at (identity-trust/signer-view (root) (registry-events s))]
+        (if-not signers-at
           (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
           (let [unsigned (atom 0)]
             (doseq [e (red/ordered evs)
@@ -863,8 +871,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                           :let [sig (store/read-sidecar s id name)]]
                     (check (boolean
                             (and ev-bytes sig
-                                 (sign/verify-bytes signers ev-bytes sig
-                                                    (:event/actor e))))
+                                 (when-let [signers (signers-at (:event/at e))]
+                                   (sign/verify-bytes signers ev-bytes sig
+                                                      (:event/actor e)))))
                            (str (shash (:event/id e)) "… signed by "
                                 (:event/actor e)))))))
             (when (pos? @unsigned)

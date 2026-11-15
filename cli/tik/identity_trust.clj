@@ -9,7 +9,7 @@
   checking a binding's id-token against the issuer's signing keys, and
   assembling an allowed-signers view that `tik.sign` can verify against.
 
-  Three rules decide whether a binding counts, and each closes a way of
+  Four rules decide whether a binding counts, and each closes a way of
   claiming somebody else's name.
 
   **The signature must be the issuer's.** Checked against keys PINNED in
@@ -33,6 +33,21 @@
   is detectable rather than prevented — a witness countersignature over
   the head is what turns that into evidence.
 
+  **The subject must be allowed to bind that actor.** The token says who
+  the IdP thinks the subject is; it says nothing about which actor that
+  subject may speak for, and the actor name is whatever the binding
+  claims. A platform issuer serves every tenant at once — every GitHub
+  repository can obtain a token with the audience a store expects — so
+  without a policy any of them could bind `ci`. `:bindings` in `oidc.edn`
+  names, per actor, the issuers and subjects that may bind it (ADR 0026).
+  A store that declares none is told so by `verify`.
+
+  **A bound key speaks only while its token was live.** The IdP vouched
+  for a window, so the key counts for events whose claimed instant falls
+  inside the token's validity window, never after: one leaked ephemeral
+  key must not sign as the actor for years after the job that held it
+  ended. A job that outlives its token binds again with a fresh one.
+
   **Rotation is additive.** An issuer that rotates signing keys publishes
   the new one alongside the old for a while; re-pinning appends rather
   than replaces, so a token signed by a retired key still verifies. A
@@ -44,7 +59,8 @@
             [tik.identity :as identity]
             [tik.jwks :as jwks]
             [tik.sign :as sign])
-  (:import (java.time Instant)
+  (:import (java.io File)
+           (java.time Instant)
            (java.util Base64)))
 
 (def default-leeway-seconds
@@ -121,6 +137,64 @@
       (try (:audience (edn/read-string (slurp f)))
            (catch Exception _ nil)))))
 
+(defn- policy-rule? [r]
+  (and (map? r)
+       (string? (:issuer r)) (not (str/blank? (:issuer r)))
+       (string? (:subject r)) (not (str/blank? (:subject r)))))
+
+(defn- policy-shape? [p]
+  (and (map? p)
+       (every? (fn [[actor rules]]
+                 (and (string? actor) (sequential? rules)
+                      (every? policy-rule? rules)))
+               p)))
+
+(defn binding-policy
+  "Which issuers and subjects may bind which actor, from `:bindings` in
+  `oidc.edn`, or nil when the store declares none:
+
+      {:bindings {\"ci\" [{:issuer \"https://token.actions.githubusercontent.com\"
+                         :subject \"repo:metio/tik:ref:refs/heads/main\"}]}}
+
+  A file or a policy that does not parse answers `::malformed-policy`,
+  which permits nothing: a typo must not quietly reopen what the policy
+  exists to close."
+  [root]
+  (let [f (io/file root "oidc.edn")]
+    (when (.exists f)
+      (let [cfg (try (edn/read-string (slurp f))
+                     (catch Exception _ ::malformed-policy))]
+        (cond
+          (not (map? cfg)) ::malformed-policy
+          (not (contains? cfg :bindings)) nil
+          (policy-shape? (:bindings cfg)) (:bindings cfg)
+          :else ::malformed-policy)))))
+
+(defn subject-matches?
+  "Does `pattern` admit `subject`? Exactly, unless the pattern ends in
+  `*`, which admits every subject starting with what precedes it.
+
+  Only a trailing wildcard, and nothing inferred about separators: a
+  subject's structure differs per issuer (`:` for GitHub, `/` for a
+  SPIFFE ID), so the pattern spells out the prefix it means —
+  `repo:metio/tik:*`, not `repo:metio/tik*`, which would also admit
+  `repo:metio/tik-fork`."
+  [pattern subject]
+  (and (string? pattern) (string? subject)
+       (if (str/ends-with? pattern "*")
+         (str/starts-with? subject (subs pattern 0 (dec (count pattern))))
+         (= pattern subject))))
+
+(defn permitted?
+  "Does `policy` let this binding's subject, from its issuer, bind the
+  actor it names?"
+  [policy {:keys [actor issuer subject]}]
+  (boolean
+   (when (map? policy)
+     (some (fn [r] (and (= (:issuer r) (str issuer))
+                        (subject-matches? (:subject r) (str subject))))
+           (get policy (str actor))))))
+
 (defn- audience-holds?
   "Does the token's `aud` name the expected audience? The claim is a
   string or an array of them (RFC 7519), so both shapes count."
@@ -172,8 +246,12 @@
    (binding-status root binding (or (:leeway opts) default-leeway-seconds)
                    (if (contains? opts :audience)
                      (:audience opts)
-                     (expected-audience root))))
-  ([root {:keys [issuer subject id-token at] :as binding} leeway audience]
+                     (expected-audience root))
+                   (if (contains? opts :policy)
+                     (:policy opts)
+                     (binding-policy root))))
+  ([root {:keys [actor issuer subject id-token at] :as binding} leeway audience
+    policy]
    (let [jwks (try (pinned-jwks root issuer)
                    (catch Exception _ ::unreadable))]
      (cond
@@ -219,6 +297,16 @@
                 :binding binding :expected audience
                 :token-audience (:aud (:claims parsed))}
 
+               ;; judged last, so a forged token is reported as forged
+               ;; rather than as merely unauthorized
+               (= ::malformed-policy policy)
+               {:reason :identity/malformed-policy :issuer issuer
+                :binding binding}
+
+               (and policy (not (permitted? policy binding)))
+               {:reason :identity/actor-not-permitted :issuer issuer
+                :binding binding :actor actor :subject subject}
+
                :else :trusted))))))))
 
 (defn binding-verifier
@@ -255,24 +343,63 @@
                         (when-not (= :trusted st) st))))
         (identity/bindings registry-events)))
 
-(defn effective-signers
-  "An allowed-signers file naming rung 1 AND every rung-2 key a verified
-  binding grants, or the plain `actors` file when the registry adds
-  nothing.
-
-  Written to a temp file because `ssh-keygen -Y verify` reads a path. The
-  store's own `actors` is never rewritten — rung 2 widens who may verify
-  for one check, it does not edit the registry a human curates."
+(defn unconstrained-bindings
+  "Verified bindings in a store that declares no `:bindings` policy. Not
+  a refusal, but worth saying: until the store names which subjects may
+  bind which actor, any subject the issuer vouches for can claim any
+  actor name."
   [root registry-events]
-  (let [actors (io/file root "actors")
-        base (if (.exists actors) (slurp actors) "")
-        granted (identity/signing-keys (verified-bindings root registry-events))
-        lines (for [[actor keys*] (sort-by key granted)
-                    k (sort keys*)]
-                (sign/allowed-signers-line actor k))]
-    (if (empty? lines)
-      (when (.exists actors) actors)
-      (let [f (java.io.File/createTempFile "tik-signers" ".allowed")]
-        (.deleteOnExit f)
-        (spit f (str base (when (seq base) "\n") (str/join "\n" lines) "\n"))
-        f))))
+  (when (nil? (binding-policy root))
+    (seq (verified-bindings root registry-events))))
+
+(defn- granted-at
+  "actor -> #{public-key} from the verified bindings whose token was
+  live at epoch second `secs`."
+  [verified secs leeway]
+  (identity/signing-keys
+   (filterv #(window-holds? (:claims %) secs leeway) verified)))
+
+(defn signer-view
+  "A function from an event's claimed instant to the allowed-signers file
+  that judges it: rung 1 (`actors`) plus every key a verified binding
+  grants at that instant. Nil when the store has neither, so a caller
+  can say there is nothing to verify against.
+
+  The instant is the CLAIMED one (ADR 0012), so a backdated event is
+  detectable rather than prevented, exactly as for rule 3.
+
+  Bindings are verified once per view and one file is written per
+  distinct set of granted keys, because the ladder asks for every event
+  of every ticket. Temp files because `ssh-keygen -Y verify` reads a
+  path; the store's own `actors` is never rewritten — rung 2 widens who
+  may verify for one check, it does not edit the registry a human
+  curates."
+  ([root registry-events]
+   (signer-view root registry-events default-leeway-seconds))
+  ([root registry-events leeway]
+   (let [actors (io/file root "actors")
+         base (if (.exists actors) (slurp actors) "")
+         verified (into []
+                        (keep #(when-let [c (token-claims (:id-token %))]
+                                 (assoc % :claims c)))
+                        (verified-bindings root registry-events))
+         files (atom {})]
+     (when (or (.exists actors) (seq verified))
+       (fn [at]
+         (let [granted (granted-at verified (epoch-seconds at) leeway)
+               lines (vec (for [[actor keys*] (sort-by key granted)
+                                k (sort keys*)]
+                            (sign/allowed-signers-line actor k)))]
+           (cond
+             (seq lines)
+             (or (get @files lines)
+                 (let [f (File/createTempFile "tik-signers" ".allowed")]
+                   (.deleteOnExit f)
+                   (spit f (str base (when (seq base) "\n")
+                                (str/join "\n" lines) "\n"))
+                   (swap! files assoc lines f)
+                   f))
+
+             (.exists actors) actors
+
+             :else nil)))))))

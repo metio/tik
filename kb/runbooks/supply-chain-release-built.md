@@ -22,3 +22,8 @@ Give `ci` an ephemeral key bound to the pipeline's own workload identity
 rather than a long-lived secret — `tik bridge workload --github` binds a
 per-run keypair to the token the platform already issues, and nothing
 long-lived exists to leak.
+
+Name the subject that may bind `ci` under `:bindings` in `oidc.edn`
+(ADR 0026) — `repo:<org>/<repo>:ref:refs/heads/main` for a workflow on
+the default branch. Every repository on the platform can obtain a token
+from the same issuer, so without that line any of them could bind `ci`.

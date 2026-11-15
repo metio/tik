@@ -41,18 +41,21 @@
          (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
 
 (defn- id-token
-  "A token live right now, the way a real one is when a job presents it."
-  []
-  (let [now (.getEpochSecond (Instant/now))
-        payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject "\","
-                     "\"aud\":\"tik\",\"iat\":" (- now 30) ",\"exp\":" (+ now 300) "}")
-        h (b64url (.getBytes "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"k1\"}" "UTF-8"))
-        p (b64url (.getBytes payload "UTF-8"))
-        si (str h "." p)
-        s (doto (Signature/getInstance "SHA256withRSA")
-            (.initSign (.getPrivate ^java.security.KeyPair @idp))
-            (.update (.getBytes si "US-ASCII")))]
-    (str si "." (b64url (.sign s)))))
+  "A token live right now, the way a real one is when a job presents it,
+  unless the subject or window is named."
+  ([] (id-token {}))
+  ([{:keys [sub iat exp]}]
+   (let [now (.getEpochSecond (Instant/now))
+         payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" (or sub subject) "\","
+                      "\"aud\":\"tik\",\"iat\":" (or iat (- now 30))
+                      ",\"exp\":" (or exp (+ now 300)) "}")
+         h (b64url (.getBytes "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"k1\"}" "UTF-8"))
+         p (b64url (.getBytes payload "UTF-8"))
+         si (str h "." p)
+         s (doto (Signature/getInstance "SHA256withRSA")
+             (.initSign (.getPrivate ^java.security.KeyPair @idp))
+             (.update (.getBytes si "US-ASCII")))]
+     (str si "." (b64url (.sign s))))))
 
 (defn- ssh-keygen! [dir name]
   (let [path (str (io/file dir name))]
@@ -166,3 +169,69 @@
     (is (pos? (:exit r)))
     (is (str/includes? (str (:err r) (:out r)) "token-not-live")
         (str (:err r) (:out r)))))
+
+(defn- bind!
+  "Run `tik bridge workload` for `actor` with `token`; returns the result
+  and the key it bound."
+  [{:keys [root env]} registry actor token]
+  (let [ci-key (ssh-keygen! root (str actor "_key"))
+        token-file (str (io/file root (str actor ".jwt")))]
+    (spit token-file token)
+    {:key ci-key
+     :env (assoc env :actor actor :env {"TIK_KEY" ci-key})
+     :result (h/run-tik! (assoc env :actor actor :env {"TIK_KEY" ci-key})
+                         "bridge" "workload" "--registry" registry
+                         "--token-file" token-file
+                         "--public-key" (str ci-key ".pub") "--actor" actor)}))
+
+(deftest a-token-from-another-repository-cannot-bind-ci-under-a-policy
+  (let [{:keys [root env] :as st} (setup!)
+        _ (spit (io/file root "oidc.edn")
+                (pr-str {:audience "tik"
+                         :bindings {"ci" [{:issuer issuer :subject subject}]}}))
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))]
+    (testing "a genuine token from the same issuer, about somebody else"
+      (let [{r :result} (bind! st registry "ci"
+                               (id-token {:sub "repo:attacker/evil:ref:refs/heads/main"}))
+            out (str (:err r) (:out r))]
+        (is (pos? (:exit r)) out)
+        (is (str/includes? out "actor-not-permitted") out)
+        (is (str/includes? out ":bindings") "the refusal says where the policy lives")))
+    (testing "the subject the policy names binds, and says nothing about a policy"
+      (let [{r :result} (bind! st registry "ci" (id-token))]
+        (is (zero? (:exit r)) (str (:err r) (:out r)))
+        (is (not (str/includes? (str (:err r)) "no :bindings policy")))))))
+
+(deftest a-store-without-a-policy-is-told-at-bind-time
+  (let [{:keys [env] :as st} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))
+        {r :result} (bind! st registry "ci" (id-token))]
+    (is (zero? (:exit r)) (str (:err r) (:out r)))
+    (is (str/includes? (str (:err r)) "no :bindings policy") (:err r))))
+
+(deftest a-bound-key-signing-after-its-token-expired-fails-verify
+  ;; The token expired 45s ago: inside the 60s leeway, so the binding is
+  ;; written, and the window closes 15s from now. An event signed after
+  ;; that is a signature by a key nobody vouches for any more.
+  (let [{:keys [env] :as st} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))
+        now (.getEpochSecond (Instant/now))
+        closes (+ now 15)
+        {r :result ci-env :env} (bind! st registry "ci"
+                                       (id-token {:iat (- now 400) :exp (- now 45)}))]
+    (is (zero? (:exit r)) (str (:err r) (:out r)))
+    (let [inside (ticket-id (:out (h/run-tik! ci-env "new" "identity-registry"
+                                              "--title" "inside the window")))]
+      (Thread/sleep (long (* 1000 (+ 2 (- closes (.getEpochSecond (Instant/now)))))))
+      (let [late (ticket-id (:out (h/run-tik! ci-env "new" "identity-registry"
+                                              "--title" "after the window")))]
+        (testing "the event signed while the token was live verifies"
+          (let [v (h/run-tik! env "verify" inside)]
+            (is (zero? (:exit v)) (str (:out v) (:err v)))))
+        (testing "the event signed after it does not"
+          (let [v (h/run-tik! env "verify" late)]
+            (is (pos? (:exit v)) (str (:out v) (:err v)))
+            (is (str/includes? (:out v) "FAIL") (:out v))))))))

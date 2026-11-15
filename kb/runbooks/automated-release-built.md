@@ -23,5 +23,10 @@ workload identity — `tik bridge workload --github` binds it to the token
 the platform already issues — so nothing long-lived exists to leak and
 the binding is what makes the signatures checkable afterwards.
 
+Name the subject that may bind `ci` under `:bindings` in `oidc.edn`
+(ADR 0026) — `repo:<org>/<repo>:ref:refs/heads/main` for a workflow on
+the default branch. Every repository on the platform can obtain a token
+from the same issuer, so without that line any of them could bind `ci`.
+
 The stage is sticky: a published version is never rebuilt, so "this
 commit produced these bytes" is a fact about a moment that stays true.

@@ -1,10 +1,16 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 ;;
-;; Rung 2 configuration for this store (ADR 0023).
+;; Rung 2 configuration for this store (ADR 0023, ADR 0026).
 ;;
 ;; :audience is the anti-replay control. A token minted for another
 ;; service is a valid token from the same issuer about the same subject,
 ;; and without an expected audience it would bind here just as well —
 ;; declaring one is what makes `verify` refuse it.
-{:audience "tik"}
+;;
+;; :bindings names which subjects may bind which actor. Every GitHub
+;; repository can obtain a token with this audience, so only the release
+;; workflow on this repository's main branch may bind `ci`.
+{:audience "tik"
+ :bindings {"ci" [{:issuer "https://token.actions.githubusercontent.com"
+                   :subject "repo:metio/tik:ref:refs/heads/main"}]}}
