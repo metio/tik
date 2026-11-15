@@ -34,6 +34,7 @@
             [tik.guard :as guard]
             [tik.lint]
             [tik.shape]
+            [tik.stats]
             [tik.oidc :as oidc]
             [tik.plan]
             [tik.process]
@@ -289,6 +290,24 @@
                       0 4)]
       {:process/id :fuzz :process/version 1 :process/stages stages})]))
 
+(def ^:private gen-stats-path (gen/elements [nil [:repo] [:cause] [:x :y]]))
+
+(def ^:private gen-stats-rows
+  "Rows as the stats command builds them, plus hostile ones: values that
+  are not maps, instants that are not integers, extreme longs whose
+  difference overflows."
+  (let [ms (gen/one-of [gen/large-integer
+                        (gen/elements [Long/MAX_VALUE Long/MIN_VALUE 0])
+                        gen/any-equatable])
+        row (gen/hash-map :facts (gen/one-of [(gen/map gen-stats-path gen/any-equatable
+                                                       {:max-elements 3})
+                                              gen/any-equatable])
+                          :created-ms ms
+                          :reached-ms (gen/one-of [(gen/map (gen/elements [:done :open :x]) ms
+                                                            {:max-elements 3})
+                                                   gen/any-equatable]))]
+    (gen/vector (gen/one-of [row gen/any-equatable]) 0 6)))
+
 (def totality-registry
   "The explicit set of PURE boundary functions that promise TOTALITY:
   over their whole domain they return a value or throw ex-info — never
@@ -371,6 +390,13 @@
     :gen (one gen-garbage-definition)}
    {:sym 'tik.shape/state :f tik.shape/state :gen (one gen/any-equatable)}
    {:sym 'tik.shape/roles :f tik.shape/roles :gen (one gen/any-equatable)}
+   {:sym 'tik.stats/group-stats :f tik.stats/group-stats
+    :gen (gen/tuple gen-stats-rows
+                    (gen/hash-map :by gen-stats-path :split gen-stats-path
+                                  :until (gen/elements [nil :done :open :x])))}
+   {:sym 'tik.stats/duration-summary :f tik.stats/duration-summary
+    :gen (one (gen/one-of [(gen/vector gen/large-integer 0 8)
+                           (gen/vector gen/any-equatable 0 4)]))}
    {:sym 'tik.dag/heads :f tik.dag/heads :gen (one gen-hostile-events)}
    {:sym 'tik.dag/roots :f tik.dag/roots :gen (one gen-hostile-events)}
    {:sym 'tik.dag/missing-parents :f tik.dag/missing-parents
@@ -480,15 +506,14 @@
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
      tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template
-     tik.identity tik.link tik.shape})
+     tik.identity tik.link tik.shape tik.stats})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
   the reason. Excluding a whole namespace is itself a recorded verdict —
   the derived check below still forces every kernel namespace into one
   bucket or the other."
-  '{tik.stats "aggregation lens over rows the CLI builds from derived state (facts, create and stage-reached instants); no stored or untrusted bytes reach it, and its own tests pin the arithmetic"
-    tik.work "activity/telemetry drafting porcelain with its own work-test suite; the one untrusted-body boundary (usage-totals) is in the registry, the rest are lenses over drafted telemetry"})
+  '{tik.work "activity/telemetry drafting porcelain with its own work-test suite; the one untrusted-body boundary (usage-totals) is in the registry, the rest are lenses over drafted telemetry"})
 
 (def ^:private totality-exemptions
   "Public kernel fns deliberately NOT in the registry, each with why.
