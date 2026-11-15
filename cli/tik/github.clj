@@ -87,7 +87,7 @@
                        (if (#{401 403} (:status (ex-data e2))) [] (throw e2))))]
         (vals (into {} (map (juxt :full_name identity))
                     (concat (forge/paged get-json (str "/users/" owner "/repos") {:type "owner"}
-                                   identity 50)
+                                         identity 50)
                             own)))))))
 
 (defn targets

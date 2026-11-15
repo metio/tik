@@ -260,7 +260,7 @@
                           :gate/ticket from-id
                           :gate/stage stage
                           :gate/head head}})
-             opts)
+              opts)
     ;; the other direction, while we know it: what this release gated
     (mint from-id [:link :gates] (link/render {:ticket to-id}) at)
     (cache-flush!)

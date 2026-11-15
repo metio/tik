@@ -242,7 +242,7 @@
             (not (contains? deliveries kind)) {:status 204}
             :else
             (if-let [job ((deliveries kind) s get-json-for cfg ctxs opts
-                          (parse (String. ^bytes bytes "UTF-8") true))]
+                                            (parse (String. ^bytes bytes "UTF-8") true))]
               (do (future
                     (locking lock
                       (try
