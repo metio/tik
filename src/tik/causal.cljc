@@ -14,15 +14,17 @@
   event exists."
   (:require [clojure.string :as str]
             [tik.reduce :as red]
+            [tik.shape :as shape]
             [tik.stage :as stage]))
 
 (defn- fact-event [state path]
   (:event (red/fact-entry state path)))
 
 (defn- event-ids-where
-  "Ids of events matching `pred`."
+  "Ids of events matching `pred`. An element that is not an event map
+  matches nothing."
   [events pred]
-  (for [e events :when (pred e)] (:event/id e)))
+  (for [e events :when (and (shape/plain-map? e) (pred e))] (:event/id e)))
 
 (defn- attach-events
   "Ids of :artifact/attach events whose path sits under prefix."
@@ -43,12 +45,14 @@
   events its satisfaction consumes. Combinators descend; :or descends
   every branch (any of them may carry the weight); :not and time
   produce a :note instead of events."
-  [guard {:keys [state events] :as ctx}]
-  (let [op (when (vector? guard) (first guard))]
+  [guard ctx]
+  (let [{:keys [state events]} (shape/plain-map :ctx ctx)
+        _ (shape/plain-coll :events events)
+        op (when (vector? guard) (first guard))]
     (case op
       (:fact :fact=) (when-let [e (fact-event state (second guard))]
                        [{:via guard :events [e]}])
-      :signed-by (when-let [e (fact-event state (nth guard 2))]
+      :signed-by (when-let [e (fact-event state (get guard 2))]
                    [{:via guard :events [e]}])
       :artifact (when-let [es (seq (attach-events events (second guard)))]
                   [{:via guard :events (vec es)}])
@@ -56,7 +60,7 @@
                                            events (second guard)))]
                          [{:via guard :events (vec es)}])
       :different-person (into [] (mapcat #(support [:fact %] ctx))
-                              [(second guard) (nth guard 2)])
+                              [(second guard) (get guard 2)])
       :elapsed-since [{:via guard :note "the clock, not an event"}]
       :stage-reached [{:via guard
                        :note (str "see stage " (second guard))}]

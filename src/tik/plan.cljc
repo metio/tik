@@ -20,18 +20,29 @@
   - `settled` : #{nodes that are done}.
   Prerequisites may be nodes absent from `edges` (dangling): they are
   ordinary nodes with no prerequisites of their own, blocking unless
-  settled.")
+  settled.
 
-(defn nodes
-  "Every node mentioned — as a key or as a prerequisite."
+  Anything else is refused with ex-info (tik.shape): an `edges` that is
+  not a plain map of plain collections, or a `settled` that is not a
+  plain set."
+  (:require [tik.shape :as shape]))
+
+(defn- edges!
   [edges]
+  (shape/plain-map :edges edges)
+  (doseq [[_ ps] edges]
+    (when-not (or (nil? ps) (and (shape/plain-coll? ps) (not (map? ps))))
+      (shape/reject :edges :prerequisites ps)))
+  edges)
+
+(defn- settled! [settled] (shape/plain-set :settled settled))
+
+(defn- nodes* [edges]
   (into (set (keys edges)) cat (vals edges)))
 
-(defn prereqs [edges n] (get edges n #{}))
+(defn- prereqs* [edges n] (get edges n #{}))
 
-(defn dependents
-  "Reverse edges: node -> the set of nodes that depend on it."
-  [edges]
+(defn- dependents* [edges]
   (reduce-kv (fn [m n ps]
                (reduce (fn [m p] (update m p (fnil conj #{}) n)) m ps))
              {}
@@ -41,24 +52,61 @@
   "All prerequisites reachable from `n` (transitive), cycle-safe via a
   seen-set; excludes `n` itself unless a cycle returns to it."
   [edges n]
-  (loop [stack (vec (prereqs edges n)) seen #{}]
+  (loop [stack (vec (prereqs* edges n)) seen #{}]
     (if (empty? stack)
       seen
       (let [x (peek stack) stack (pop stack)]
         (if (contains? seen x)
           (recur stack seen)
-          (recur (into stack (prereqs edges x)) (conj seen x)))))))
+          (recur (into stack (prereqs* edges x)) (conj seen x)))))))
+
+(defn- in-cycle* [edges n]
+  (contains? (reachable edges n) n))
+
+(defn- blocked* [edges settled n]
+  (boolean (some #(not (contains? settled %)) (prereqs* edges n))))
+
+(defn- status* [edges settled n]
+  (cond
+    (contains? settled n)      :done
+    (in-cycle* edges n)        :cyclic
+    (blocked* edges settled n) :blocked
+    :else                      :ready))
+
+(defn- unlocks* [edges settled n]
+  (let [settled' (conj (or settled #{}) n)]
+    (count (for [d (get (dependents* edges) n)
+                 :when (and (not (contains? settled d))
+                            (blocked* edges settled d)
+                            (not (blocked* edges settled' d))
+                            (not (in-cycle* edges d)))]
+             d))))
+
+(defn- cyclic* [edges]
+  (into #{} (filter #(in-cycle* edges %)) (nodes* edges)))
+
+(defn nodes
+  "Every node mentioned — as a key or as a prerequisite."
+  [edges]
+  (nodes* (edges! edges)))
+
+(defn prereqs [edges n] (prereqs* (edges! edges) n))
+
+(defn dependents
+  "Reverse edges: node -> the set of nodes that depend on it."
+  [edges]
+  (dependents* (edges! edges)))
 
 (defn in-cycle?
   "Is `n` part of a dependency cycle — reachable from itself?"
   [edges n]
-  (contains? (reachable edges n) n))
+  (in-cycle* (edges! edges) n))
 
 (defn cyclic-nodes
   "Every node caught in a dependency cycle (a deadlock: none can ever
   proceed). The authoring-lint signal — like stage stratification."
   [edges]
-  (into #{} (filter #(in-cycle? edges %)) (nodes edges)))
+  (cyclic* (edges! edges)))
 
 (defn blocked?
   "Does `n` have a direct prerequisite that is not settled? A settled
@@ -66,37 +114,28 @@
   is exactly why direct-blocking equals transitive-blocking here, and
   why the check is trivially cycle-safe."
   [edges settled n]
-  (boolean (some #(not (contains? settled %)) (prereqs edges n))))
+  (blocked* (edges! edges) (settled! settled) n))
 
 (defn status
   "One node's derived plan status: :done | :cyclic | :blocked | :ready.
   Cycles are reported before blocking so a deadlock is never mislabeled
   as ordinary waiting."
   [edges settled n]
-  (cond
-    (contains? settled n)      :done
-    (in-cycle? edges n)        :cyclic
-    (blocked? edges settled n) :blocked
-    :else                      :ready))
+  (status* (edges! edges) (settled! settled) n))
 
 (defn ready
   "Nodes ready to work now: not settled, not cyclic, no unsettled
   prerequisite."
   [edges settled]
-  (into #{} (filter #(= :ready (status edges settled %))) (nodes edges)))
+  (let [edges (edges! edges) settled (settled! settled)]
+    (into #{} (filter #(= :ready (status* edges settled %))) (nodes* edges))))
 
 (defn unlocks
   "How many currently-not-ready nodes would become ready if `n` were
   settled — the downstream impact that ranks 'what to do next'. A node
   counts if settling `n` removes its LAST unsettled prerequisite."
   [edges settled n]
-  (let [settled' (conj settled n)]
-    (count (for [d (get (dependents edges) n)
-                 :when (and (not (contains? settled d))
-                            (blocked? edges settled d)
-                            (not (blocked? edges settled' d))
-                            (not (in-cycle? edges d)))]
-             d))))
+  (unlocks* (edges! edges) (settled! settled) n))
 
 (defn longest-paths
   "node -> the longest upstream path ending at that node, over ANY graph
@@ -124,6 +163,9 @@
   there, and the callers that allow cycles want a layout, not an
   optimum."
   [parents-of nodes skip?]
+  (shape/function :parents-of parents-of)
+  (shape/plain-coll :nodes nodes)
+  (shape/function :skip? skip?)
   (let [memo (volatile! {})]
     (letfn [(lp [n seen]
               (if-let [hit (get @memo n)]
@@ -132,7 +174,8 @@
                   [[] true]                      ; back-edge: contributes nothing
                   (let [seen' (conj seen n)
                         results (mapv #(lp % seen')
-                                      (remove skip? (parents-of n)))
+                                      (remove skip? (shape/plain-coll
+                                                     :parents (parents-of n))))
                         best (->> results (map first) (sort-by count >) first)
                         truncated? (boolean (some second results))
                         path (conj (vec best) n)]
@@ -146,9 +189,11 @@
   number of sequential steps remaining). Returned deepest-prerequisite
   first. Nodes in cycles are excluded; the walk is therefore over a DAG."
   [edges settled]
-  (let [cyc (cyclic-nodes edges)
+  (let [edges (edges! edges)
+        settled (settled! settled)
+        cyc (cyclic* edges)
         skip? (fn [n] (or (contains? settled n) (contains? cyc n)))]
-    (->> (vals (longest-paths #(prereqs edges %) (nodes edges) skip?))
+    (->> (vals (longest-paths #(prereqs* edges %) (nodes* edges) skip?))
          (sort-by count >)
          first
          vec)))
@@ -157,8 +202,10 @@
   "The whole plan as data — the single derivation every renderer (CLI,
   HTML) draws from. Pure over (edges, settled)."
   [edges settled]
-  (let [ns (nodes edges)
-        status-of (into {} (map (juxt identity #(status edges settled %))) ns)
+  (let [edges (edges! edges)
+        settled (settled! settled)
+        ns (nodes* edges)
+        status-of (into {} (map (juxt identity #(status* edges settled %))) ns)
         by-status (group-by status-of ns)
         cp (critical-path edges settled)]
     {:nodes ns
@@ -168,4 +215,4 @@
      :blocked (set (:blocked by-status))
      :cyclic (set (:cyclic by-status))
      :critical-path cp
-     :unlocks (into {} (map (juxt identity #(unlocks edges settled %))) ns)}))
+     :unlocks (into {} (map (juxt identity #(unlocks* edges settled %))) ns)}))

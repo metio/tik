@@ -17,6 +17,7 @@
   euros. Money is a fold over usage × pricing-table-at-date, supplied
   by the caller; totals are always derived, never stored (a stored
   aggregate can drift from its log; a derived one cannot)."
+  (:require [tik.shape :as shape])
   #?(:clj (:import (java.time Duration Instant))))
 
 (defn- ->instant
@@ -37,6 +38,13 @@
                    "= last - first, floored at 5min. Durations are "
                    "inferences from event points, not measurements.")})
 
+(defn- timed-events!
+  "Events this lens clusters by time: plain maps carrying an instant."
+  [events]
+  (shape/maps :events events)
+  (doseq [e events] (shape/instant :event-at (:event/at e)))
+  events)
+
 (defn sessions
   "Cluster one ticket's events (already filtered to an actor and time
   range) into sessions per the declared method. Pure; every session
@@ -48,7 +56,7 @@
         ;; "10:00:00.500Z" before "10:00:00Z" ('.' < 'Z') and inverts a
         ;; session — start after end, a negative duration the floor
         ;; would launder into a plausible five minutes.
-        sorted (sort-by :event/at events)]
+        sorted (sort-by :event/at (timed-events! events))]
     (reduce
      (fn [acc e]
        (let [t (->instant (:event/at e))
@@ -62,8 +70,9 @@
      []
      sorted)))
 
-(defn session-duration ^Duration [{:keys [^Instant start ^Instant end]}]
-  (let [d (Duration/between start end)
+(defn session-duration ^Duration [session]
+  (let [{:keys [start end]} (shape/plain-map :session session)
+        d (Duration/between (shape/instant :start start) (shape/instant :end end))
         floor (Duration/parse (:floor method))]
     (if (neg? (.compareTo d floor)) floor d)))
 
@@ -73,6 +82,10 @@
   :duration iso :evidence [event-ids]}] :total iso}. A DRAFT — the
   human corrects and signs; nothing here is a claim yet."
   [per-ticket actor from to]
+  (shape/maps :per-ticket per-ticket)
+  (doseq [t per-ticket] (timed-events! (:events t)))
+  (shape/optional-instant :from from)
+  (shape/optional-instant :to to)
   (let [in-range? (fn [e]
                     (let [t (->instant (:event/at e))]
                       (and (= actor (:event/actor e))
@@ -101,7 +114,7 @@
   human-signed records alike. Read from the log (like the v2 guards):
   attestations stay out of ticket-state (ADR 0009)."
   [events]
-  (for [e events
+  (for [e (shape/maps :events events)
         :let [body (:event/body e)]
         :when (and (= :attestation/add (:event/type e))
                    (= :work (:claim body)))]
@@ -118,7 +131,7 @@
   ;; even a map — counts as zero rather than throwing mid-fold.
   (let [add (fnil + 0)
         num (fn [x] (if (number? x) x 0))
-        get* (fn [u k] (num (when (map? u) (get u k))))
+        get* (fn [u k] (num (when (shape/plain-map? u) (get u k))))
         totals (reduce (fn [acc {:keys [usage] :as r}]
                          (let [model (:agent/model r)]
                            (-> acc
@@ -131,8 +144,8 @@
                                (update-in [model :cache-write-tokens] add
                                           (get* usage :cache-write-tokens)))))
                        {}
-                       (filter :usage records))]
-    (if-not pricing
+                       (filter :usage (shape/maps :records records)))]
+    (if-not (shape/plain-map :pricing pricing)
       {:observations totals}
       {:observations totals
        :priced (into {}

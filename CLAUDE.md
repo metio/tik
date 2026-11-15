@@ -177,7 +177,7 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   side-effect *delivery* that cannot be made idempotent — a narrow
   per-pipeline lease may serialize delivery there, never the log.
 
-### The test stack (five independent layers)
+### The test stack (six independent layers)
 
 - Golden byte tests + coreutils checks (`canonical_test.clj`, `verify` L0).
 - The **conformance corpus** (`corpus/`) — event files + expected
@@ -196,6 +196,17 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   rejection, never a raw JVM exception, never a silent pass. Includes
   an exhaustive single-byte-flip sweep over stored event files.
   `TIK_FUZZ_N` scales iterations for soak runs.
+- **Totality** (`test/tik/totality_test.clj`) — the fuzz layer samples;
+  this one enumerates. Every public fn of every `src/tik/*.cljc`
+  namespace, found by reflection rather than registration, meets a fixed
+  corpus of hostile values (odd-length lists, sorted collections, NaN,
+  byte arrays, opaque objects) on every run; each registered boundary
+  also gets every argument position and every inner node replaced by
+  each of them, plus its own randomized run. A new kernel function is
+  covered the moment it exists. Kernel boundaries state what they
+  accept through `tik.shape` (one ex-info,
+  `:kernel/malformed-argument`), and `test/tik/boundary_test.clj` pins
+  each class of escape by name.
 
 Each layer has caught at least one real bug the others missed; when
 touching kernel semantics, extend the layer that would have caught your
@@ -220,6 +231,11 @@ rather than extending it — read PLAN §19 before writing code:
 - kernel code importing from `cli/` or doing I/O
 - English strings in kernel output (the kernel speaks EDN; prose lives in
   lenses)
+- a public kernel fn that destructures, seqs, counts, compares or casts
+  an argument it has not checked: map destructuring of a list throws on
+  an odd count, and a keyword lookup into a sorted collection throws from
+  its comparator. Check at the boundary with `tik.shape`; never wrap a
+  body in a catch-all, which would hide the next bug from the fuzzers
 
 ### Process definitions
 

@@ -13,7 +13,8 @@
   tik.lint, a leaf over this namespace's schema and guard vocabulary."
   (:require [malli.core :as m]
             [malli.error :as me]
-            [tik.canonical :as canonical]))
+            [tik.canonical :as canonical]
+            [tik.shape :as shape]))
 
 (def Guard
   [:and vector? [:cat :keyword [:* :any]]])
@@ -161,7 +162,7 @@
   0015) — the difference is that it is now an explicit input instead of
   one smuggled inside a content hash."
   [pinned register]
-  (merge (or pinned {}) (or register {})))
+  (merge (or (shape/roles pinned) {}) (or (shape/roles register) {})))
 
 (defn roles-gating
   "role -> {:members [...] :stages [stage-ids]} for one definition —
@@ -172,9 +173,11 @@
   The 2-arity takes the memberships derivation actually runs against
   (`resolve-roles`), so an admin view reports who can sign TODAY rather
   than who the definition was pinned with."
-  ([process] (roles-gating process (:process/roles process)))
-  ([{:process/keys [stages]} roles]
-   (let [gated (reduce (fn [acc {:stage/keys [id] :keys [guards]}]
+  ([process] (roles-gating process (:process/roles (shape/process process))))
+  ([process roles]
+   (shape/roles roles)
+   (let [stages (:process/stages (shape/process process))
+         gated (reduce (fn [acc {:stage/keys [id] :keys [guards]}]
                          (reduce (fn [m role] (update m role (fnil conj []) id))
                                  acc
                                  (distinct (mapcat signing-roles guards))))

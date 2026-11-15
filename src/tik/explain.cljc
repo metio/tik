@@ -19,15 +19,32 @@
             [clojure.string :as str]
             [tik.guard :as guard]
             [tik.reduce :as red]
+            [tik.shape :as shape]
             [tik.stage :as stage]))
 
 (defn frontier
   "Stages one step ahead: unreached, prerequisites reached."
   [process reached _ctx]
-  (for [s (:process/stages process)
+  (shape/plain-set :reached reached)
+  (for [s (:process/stages (shape/process process))
         :when (and (not (contains? reached (:stage/id s)))
                    (every? reached (:after s [])))]
     s))
+
+(defn- options-of
+  "The reasons inside an :alternatives, one seq per branch. A branch that
+  is not a collection, and an entry in one that is not a reason map, are
+  skipped: reasons come from tik.guard, which is total over any guard,
+  and a lens reading them back must be as total."
+  [options]
+  (when (shape/plain-coll? options)
+    (for [branch options :when (shape/plain-coll? branch)]
+      (filter shape/plain-map? branch))))
+
+(defn- reason-map
+  "A reason handed to a public lens: nil or a plain map."
+  [r]
+  (shape/plain-map :reason r))
 
 (defn actionability
   "Rank of a reason by who can act on it RIGHT NOW, ascending: values
@@ -41,17 +58,18 @@
   exactly as reachable as its easiest option, and ranking the whole
   tree last would sort a fact anyone can supply below a wait for the
   clock."
-  [{:keys [reason options]}]
-  (case reason
-    (:fact/missing :fact/mismatch :fact/invalid) 0
-    (:fact/retracted :fact/disputed :fact/conflicted) 1
-    :artifact/missing 2
-    (:role/unsatisfied :role/same-person) 3
-    (:attestation/missing :attestation/stale) 4
-    :stage/not-reached 5
-    :time/not-elapsed 6
-    :alternatives (transduce (map actionability) min 9 (apply concat options))
-    9))
+  [r]
+  (let [{:keys [reason options]} (reason-map r)]
+    (case reason
+      (:fact/missing :fact/mismatch :fact/invalid) 0
+      (:fact/retracted :fact/disputed :fact/conflicted) 1
+      :artifact/missing 2
+      (:role/unsatisfied :role/same-person) 3
+      (:attestation/missing :attestation/stale) 4
+      :stage/not-reached 5
+      :time/not-elapsed 6
+      :alternatives (transduce (map actionability) min 9 (apply concat (options-of options)))
+      9)))
 
 (declare permanent?)
 
@@ -81,14 +99,20 @@
 
   An :alternatives is dead only when every branch is: a choice is
   reachable as long as one option is."
-  [{:keys [reason role guard stage options]} {:keys [roles sticky dead] :as ctx}]
-  (case reason
-    :role/unsatisfied (empty? (get-in roles [role :members]))
-    :must-not-hold (and (= :stage-reached (first guard))
-                        (contains? sticky (second guard)))
-    :stage/not-reached (contains? dead stage)
-    :alternatives (every? #(permanent-option? % ctx) options)
-    false))
+  [r ctx]
+  (let [{:keys [reason role guard stage options]} (reason-map r)
+        {:keys [roles sticky dead]} (shape/plain-map :ctx ctx)]
+    (shape/roles roles)
+    (shape/plain-set :sticky sticky)
+    (shape/plain-set :dead dead)
+    (case reason
+      :role/unsatisfied (empty? (get-in roles [role :members]))
+      :must-not-hold (and (vector? guard)
+                          (= :stage-reached (first guard))
+                          (contains? sticky (second guard)))
+      :stage/not-reached (contains? dead stage)
+      :alternatives (every? #(permanent-option? % ctx) (options-of options))
+      false)))
 
 (defn- dead-stages
   "Least fixpoint of stages that can never be reached: a stage is dead
@@ -120,6 +144,10 @@
    (explain process events now roles
             (stage/effective-reached process events now roles)))
   ([process events now roles reached]
+   (shape/process process)
+   (shape/optional-instant :now now)
+   (shape/roles roles)
+   (shape/plain-set :reached reached)
    (let [state (red/ticket-state events)
          ctx {:state state :process process :now now
               :roles roles :reached reached :fact-memo (volatile! {})}
@@ -160,32 +188,49 @@
   very person whose signature already counted); time and other-stage
   waits are nobody's to act on; everything else — facts, corrections,
   artifacts, attestations — is anyone's."
-  [{:keys [reason role by options permanent?]} roles actor]
-  (if permanent?
-    false
-    (case reason
-      :role/unsatisfied
-      (contains? (set (get-in roles [role :members])) actor)
+  [r roles actor]
+  (shape/roles roles)
+  (let [{:keys [reason role by options permanent?]} (reason-map r)]
+    (if permanent?
+      false
+      (case reason
+        :role/unsatisfied
+        (contains? (set (get-in roles [role :members])) actor)
     ;; four-eyes: the two facts were asserted by the SAME person `by`, so
     ;; ANYONE else re-asserting one path breaks the tie. Not role-bound —
     ;; the reason carries no :role (get-in roles [nil …] would be empty).
-      :role/same-person (not= by actor)
+        :role/same-person (not= by actor)
     ;; a choice is this actor's work when ANY branch is; a tree of pure
     ;; waits is a wait, not an option. Descends so that `for-actor`
     ;; counts an all-waiting :or under :hidden rather than showing it as
     ;; something to do — and so the inbox (tik.next/actionable, which
     ;; flattens the same way) and this view cannot disagree.
-      :alternatives (boolean (some #(actionable-by? % roles actor)
-                                   (apply concat options)))
-      (:time/not-elapsed :stage/not-reached) false
-      true)))
+        :alternatives (boolean (some #(actionable-by? % roles actor)
+                                     (apply concat (options-of options))))
+        (:time/not-elapsed :stage/not-reached) false
+        true))))
+
+(defn- blocks!
+  "Explain blocks handed back to a lens: a plain collection of plain maps
+  whose :satisfied, :missing and :blocks are collections, :missing of
+  reason maps, and :hidden a number when present."
+  [blocks]
+  (shape/maps :blocks blocks)
+  (doseq [b blocks]
+    (shape/plain-coll :satisfied (:satisfied b))
+    (shape/maps :missing (:missing b))
+    (shape/plain-coll :blocks (:blocks b))
+    (when-not (or (nil? (:hidden b)) (number? (:hidden b)))
+      (shape/reject :hidden :number (:hidden b))))
+  blocks)
 
 (defn for-actor
   "The capability view of explain: each block's :missing filtered to
   what `actor` can act on, with :hidden counting what was filtered so
   no renderer can silently pretend the rest does not exist."
   [blocks roles actor]
-  (vec (for [b blocks
+  (shape/roles roles)
+  (vec (for [b (blocks! blocks)
              :let [mine (filterv #(actionable-by? % roles actor)
                                  (:missing b))]]
          (assoc b :missing mine
@@ -194,58 +239,59 @@
 (defn reason->text
   "One structured reason -> one English line. The only place guard failures
   become prose."
-  [{:keys [reason path schema by note prefix role stage expected actual
-           since duration due errors value options guard claim within
-           last-at paths]}]
-  (case reason
-    :fact/missing    (str "set fact " path
-                          (cond
-                            expected (str " = " (pr-str expected))
-                            schema (str " (" (pr-str schema) ")")))
-    :fact/invalid    (str "fact " path " = " (pr-str value)
-                          " is invalid: " (pr-str errors))
-    :fact/retracted  (str "fact " path " was retracted by " by
-                          (when note (str " (\"" note "\")"))
-                          " — provide a new value")
-    :fact/disputed   (str "fact " path " was disputed by " by
-                          ": \"" note "\" — provide a corrected value")
-    :fact/conflicted (str "fact " path " has conflicting concurrent"
-                          " assertions — one must supersede (ADR 0003)")
-    :fact/mismatch   (str "set fact " path " = " (pr-str expected)
-                          " (currently " (pr-str actual) ")")
+  [r]
+  (let [{:keys [reason path schema by note prefix role stage expected actual
+                since duration due errors value options guard claim within
+                last-at paths]} (reason-map r)]
+    (case reason
+      :fact/missing    (str "set fact " path
+                            (cond
+                              expected (str " = " (pr-str expected))
+                              schema (str " (" (pr-str schema) ")")))
+      :fact/invalid    (str "fact " path " = " (pr-str value)
+                            " is invalid: " (pr-str errors))
+      :fact/retracted  (str "fact " path " was retracted by " by
+                            (when note (str " (\"" note "\")"))
+                            " — provide a new value")
+      :fact/disputed   (str "fact " path " was disputed by " by
+                            ": \"" note "\" — provide a corrected value")
+      :fact/conflicted (str "fact " path " has conflicting concurrent"
+                            " assertions — one must supersede (ADR 0003)")
+      :fact/mismatch   (str "set fact " path " = " (pr-str expected)
+                            " (currently " (pr-str actual) ")")
     ;; "starts with", not "under": the match is a raw string prefix, and
     ;; directory language would promise a path boundary the operator
     ;; does not enforce (lint pushes prefixes to end at one)
-    :artifact/missing (str "attach an artifact whose path starts with \""
-                           prefix "\"")
-    :role/unsatisfied (str "fact " path " must be asserted by a member of"
-                           " role " role " (currently by " (pr-str by) ")")
-    :stage/not-reached (str "stage " stage " must be reached first")
-    :time/not-elapsed (str duration " since " since " has not elapsed"
-                           (when due (str " (due " due ")")))
-    :schema/unsatisfied (str "facts do not satisfy schema: " (pr-str errors))
-    :schema/unsupported (str "the definition's schema " (pr-str schema)
-                             (when path (str " for " path))
-                             " is not data — a schema that can call a"
-                             " function never evaluates")
-    :alternatives (str "one of: "
-                       (str/join " | " (map #(str/join " + "
-                                                       (map reason->text %))
-                                            options)))
-    :must-not-hold (str "must NOT hold: " (pr-str guard))
-    :attestation/missing (str "attest " (pr-str claim)
-                              " (none on record; needed within " within ")")
-    :attestation/stale (str "re-attest " (pr-str claim)
-                            " (last " last-at ", needed within " within ")")
-    :role/same-person (str "facts " (pr-str paths)
-                           " must come from different people"
-                           " (both by " (pr-str by) ")")
-    (pr-str reason)))
+      :artifact/missing (str "attach an artifact whose path starts with \""
+                             prefix "\"")
+      :role/unsatisfied (str "fact " path " must be asserted by a member of"
+                             " role " role " (currently by " (pr-str by) ")")
+      :stage/not-reached (str "stage " stage " must be reached first")
+      :time/not-elapsed (str duration " since " since " has not elapsed"
+                             (when due (str " (due " due ")")))
+      :schema/unsatisfied (str "facts do not satisfy schema: " (pr-str errors))
+      :schema/unsupported (str "the definition's schema " (pr-str schema)
+                               (when path (str " for " path))
+                               " is not data — a schema that can call a"
+                               " function never evaluates")
+      :alternatives (str "one of: "
+                         (str/join " | " (map #(str/join " + "
+                                                         (map reason->text %))
+                                              (options-of options))))
+      :must-not-hold (str "must NOT hold: " (pr-str guard))
+      :attestation/missing (str "attest " (pr-str claim)
+                                " (none on record; needed within " within ")")
+      :attestation/stale (str "re-attest " (pr-str claim)
+                              " (last " last-at ", needed within " within ")")
+      :role/same-person (str "facts " (pr-str paths)
+                             " must come from different people"
+                             " (both by " (pr-str by) ")")
+      (pr-str reason))))
 
 (defn render
   "Plain-text rendering for the CLI."
   [explanations]
-  (if (empty? explanations)
+  (if (empty? (blocks! explanations))
     "Nothing to provide right now."
     (->> explanations
          (map (fn [{:keys [stage satisfied missing blocks hint hidden

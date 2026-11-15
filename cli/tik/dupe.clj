@@ -8,15 +8,18 @@
   fact ([:duplicate-of] = <id>) like everything else. No new state,
   nothing stored, thresholds are the caller's business."
   (:require [clojure.set :as set]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [tik.shape :as shape]))
 
 (def ^:private stopwords
   #{"the" "a" "an" "and" "or" "of" "to" "in" "for" "with" "on" "is"
     "are" "be" "as" "at" "by" "it" "its" "this" "that" "from" "not"})
 
 (defn tokens
-  "Lowercased word set of a string, stopwords and single letters out."
+  "Lowercased word set of a string, stopwords and single letters out.
+  nil has no words."
   [s]
+  (when-not (or (nil? s) (string? s)) (shape/reject :text :string s))
   (into #{}
         (comp (map str/lower-case)
               (remove stopwords)

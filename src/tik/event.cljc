@@ -18,7 +18,8 @@
   (:require #?(:clj [clojure.edn :as edn]
                :cljs [cljs.reader :as edn])
             [malli.core :as m]
-            [tik.canonical :as canonical]))
+            [tik.canonical :as canonical]
+            [tik.shape :as shape]))
 
 (def event-types
   "Seven types — everything else is expressible: a comment is an
@@ -51,7 +52,7 @@
 (defn event-id
   "Content address of `event`, excluding only :event/id itself."
   [event]
-  (canonical/content-address (dissoc event :event/id)))
+  (canonical/content-address (dissoc (shape/plain-map :event event) :event/id)))
 
 (defn mint
   "Attach the content-addressed :event/id and validate. Enforces ADR 0004:
@@ -93,29 +94,42 @@
                         {:event e}))))
     e))
 
+(defn- spec-map
+  "A constructor's argument: nil or a plain map. Map destructuring of a
+  seq goes through keyword-argument support and throws on an odd count,
+  so a constructor checks before it destructures."
+  [spec]
+  (shape/plain-map :spec spec))
+
+(defn- parent-set [parents]
+  (set (shape/plain-coll :parents parents)))
+
 (defn create-ticket
   "Tickets PIN both the process version label and, more importantly, the
   CONTENT HASH of the process definition (ADR 0002 + 0006): `verify` then
   never depends on trusting file naming — the ruleset is hash-pinned from
   inside the log."
-  [{:keys [ticket actor at title process version process-hash]}]
-  (mint {:event/ticket ticket :event/type :ticket/create
-         :event/actor actor :event/at at :event/parents #{}
-         :event/body (cond-> {:ticket/title title :ticket/process process}
-                       version (assoc :ticket/process-version version)
-                       process-hash (assoc :ticket/process-hash process-hash))}))
+  [spec]
+  (let [{:keys [ticket actor at title process version process-hash]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :ticket/create
+           :event/actor actor :event/at at :event/parents #{}
+           :event/body (cond-> {:ticket/title title :ticket/process process}
+                         version (assoc :ticket/process-version version)
+                         process-hash (assoc :ticket/process-hash process-hash))})))
 
-(defn migrate-process [{:keys [ticket actor at parents version process-hash reason]}]
-  (mint {:event/ticket ticket :event/type :process/migrate
-         :event/actor actor :event/at at :event/parents (set parents)
-         :event/body (cond-> {:process/version version}
-                       process-hash (assoc :process/hash process-hash)
-                       reason (assoc :migrate/reason reason))}))
+(defn migrate-process [spec]
+  (let [{:keys [ticket actor at parents version process-hash reason]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :process/migrate
+           :event/actor actor :event/at at :event/parents (parent-set parents)
+           :event/body (cond-> {:process/version version}
+                         process-hash (assoc :process/hash process-hash)
+                         reason (assoc :migrate/reason reason))})))
 
-(defn assert-fact [{:keys [ticket actor at parents path value]}]
-  (mint {:event/ticket ticket :event/type :fact/assert
-         :event/actor actor :event/at at :event/parents (set parents)
-         :event/body {:fact/path path :fact/value value}}))
+(defn assert-fact [spec]
+  (let [{:keys [ticket actor at parents path value]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :fact/assert
+           :event/actor actor :event/at at :event/parents (parent-set parents)
+           :event/body {:fact/path path :fact/value value}})))
 
 (defn dispute-fact
   "Reject the claim currently standing on `path`, or — with `withdraw`
@@ -123,40 +137,45 @@
   a body flag rather than an eighth event type: it is the same speech
   act by the same speaker about the same path, and only the disputer's
   own disputes are ever cleared."
-  [{:keys [ticket actor at parents path reason withdraw]}]
-  (mint {:event/ticket ticket :event/type :fact/dispute
-         :event/actor actor :event/at at :event/parents (set parents)
+  [spec]
+  (let [{:keys [ticket actor at parents path reason withdraw]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :fact/dispute
+           :event/actor actor :event/at at :event/parents (parent-set parents)
          ;; :dispute/reason stays unconditional — dropping it when nil
          ;; would change the canonical bytes, and therefore the id, of
          ;; every reason-less dispute ever written.
-         :event/body (cond-> {:fact/path path :dispute/reason reason}
-                       withdraw (assoc :dispute/withdraw? true))}))
+           :event/body (cond-> {:fact/path path :dispute/reason reason}
+                         withdraw (assoc :dispute/withdraw? true))})))
 
-(defn retract-fact [{:keys [ticket actor at parents path reason]}]
-  (mint {:event/ticket ticket :event/type :fact/retract
-         :event/actor actor :event/at at :event/parents (set parents)
-         :event/body (cond-> {:fact/path path}
-                       reason (assoc :retract/reason reason))}))
+(defn retract-fact [spec]
+  (let [{:keys [ticket actor at parents path reason]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :fact/retract
+           :event/actor actor :event/at at :event/parents (parent-set parents)
+           :event/body (cond-> {:fact/path path}
+                         reason (assoc :retract/reason reason))})))
 
 (defn attach-artifact
-  [{:keys [ticket actor at parents path hash derived-from]}]
-  (mint {:event/ticket ticket :event/type :artifact/attach
-         :event/actor actor :event/at at :event/parents (set parents)
-         :event/body (cond-> {:artifact/path path :artifact/hash hash}
+  [spec]
+  (let [{:keys [ticket actor at parents path hash derived-from]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :artifact/attach
+           :event/actor actor :event/at at :event/parents (parent-set parents)
+           :event/body (cond-> {:artifact/path path :artifact/hash hash}
                        ;; provenance edge, the attacher's claim (ADR 0014)
-                       derived-from
-                       (assoc :artifact/derived-from derived-from))}))
+                         derived-from
+                         (assoc :artifact/derived-from derived-from))})))
 
-(defn add-attestation [{:keys [ticket actor at parents claim]}]
-  (mint {:event/ticket ticket :event/type :attestation/add
-         :event/actor actor :event/at at :event/parents (set parents)
-         :event/body claim}))
+(defn add-attestation [spec]
+  (let [{:keys [ticket actor at parents claim]} (spec-map spec)]
+    (mint {:event/ticket ticket :event/type :attestation/add
+           :event/actor actor :event/at at :event/parents (parent-set parents)
+           :event/body claim})))
 
 (defn chain
   "Convenience for linear histories (tests, scripts): each step is
   (fn [parents] event); parents thread automatically."
   [& steps]
   (reduce (fn [evs step]
-            (conj evs (step (if (seq evs) #{(:event/id (peek evs))} #{}))))
+            (shape/function :step step)
+            (conj evs (step (if (seq evs) #{(shape/field (peek evs) :event/id)} #{}))))
           []
           steps))

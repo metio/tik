@@ -20,7 +20,8 @@
   - floats, ratios, bigdecimals and everything else are REJECTED: their
     printed forms are not reliably byte-stable across runtimes."
   (:require [clojure.edn :as edn]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [tik.shape :as shape])
   (:import (java.security MessageDigest)
            (java.time Instant)
            (java.time.temporal ChronoUnit)))
@@ -83,8 +84,11 @@
 (defn check-nesting
   "Reject a raw EDN string whose bracket nesting exceeds max-depth
   BEFORE it reaches a recursive reader. Linear scan, aware of string
-  literals and character escapes so brackets inside them don't count."
+  literals and character escapes so brackets inside them don't count.
+  nil reads as empty text."
   [^String s]
+  (when-not (or (nil? s) (string? s))
+    (shape/reject :text :string s))
   (loop [i 0 depth 0 in-string false]
     (when (< i (count s))
       (let [c (.charAt s i)]
@@ -158,6 +162,7 @@
   (str/join (map #(format "%02x" %) b)))
 
 (defn sha256-hex ^String [^String s]
+  (shape/string :text s)
   (bytes->hex (.digest (MessageDigest/getInstance "SHA-256")
                        (.getBytes s "UTF-8"))))
 
@@ -165,6 +170,7 @@
   "For blobs (artifacts). Hash policy — one algorithm per store per
   format-version, self-describing ids, additive migration — is ADR 0006."
   ^String [^bytes b]
+  (when-not (bytes? b) (shape/reject :blob :bytes b))
   (bytes->hex (.digest (MessageDigest/getInstance "SHA-256") b)))
 
 (defn content-address

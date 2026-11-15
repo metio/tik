@@ -29,7 +29,8 @@
 
   Nothing here reads another ticket. A guard on a link reads the local
   fact and stops; whoever minted it is the one who looked."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [tik.shape :as shape]))
 
 (def prefix
   "The reserved path prefix. A missing fact under it means \"waiting on
@@ -59,7 +60,7 @@
                       (catch #?(:clj Exception :cljs :default) _ nil))]
       {:ticket t})
 
-    (map? v)
+    (shape/plain-map? v)
     (let [t (:ticket v)
           t (cond (uuid? t) t
                   (string? t) (try #?(:clj (java.util.UUID/fromString t)
@@ -77,7 +78,8 @@
   "Does this reference name a store other than the one reading it?
   A reference with no `:store` is local by omission."
   [ref here]
-  (boolean (and (:store ref) (not= (:store ref) here))))
+  (let [store (shape/field ref :store)]
+    (boolean (and store (not= store here)))))
 
 (defn describe
   "One reference as a short human string — the only prose here, and it
@@ -85,7 +87,7 @@
   [ref]
   ;; takes a reference, but a lens may hand it anything a log held, so a
   ;; non-reference is declined rather than truncated into an exception
-  (when-let [t (and (map? ref) (:ticket ref))]
+  (when-let [t (shape/field ref :ticket)]
     (let [short (fn [n v] (let [v (str v)]
                             (if (> (count v) n) (str (subs v 0 n) "…") v)))]
       (str (short 8 t)
@@ -114,13 +116,16 @@
 (defn render
   "A reference as the value to assert. Keeps the bare-uuid form when
   there is nothing else to say, so a local link stays as short as it
-  always was."
-  [{:keys [ticket head store]}]
-  (if (or head store)
-    (cond-> {:ticket ticket}
-      head (assoc :head head)
-      store (assoc :store store))
-    ticket))
+  always was. Anything that is not a reference map renders as nil, the
+  way `describe` declines it."
+  [ref]
+  (when (shape/plain-map? ref)
+    (let [{:keys [ticket head store]} ref]
+      (if (or head store)
+        (cond-> {:ticket ticket}
+          head (assoc :head head)
+          store (assoc :store store))
+        ticket))))
 
 (defn parse-cli
   "The value a person types: a uuid, or `<uuid>@<store>`, or

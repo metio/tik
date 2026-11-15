@@ -13,6 +13,7 @@
   reached, must-not-hold) are WAITING, not actionable, and are counted
   rather than listed."
   (:require [tik.explain :as explain]
+            [tik.shape :as shape]
             [tik.stage :as stage]))
 
 (defn- reason->action
@@ -81,6 +82,8 @@
   "settled? over an already-derived reached set — the stage fixpoint is
   the expensive part, so a caller that holds one never re-derives it."
   [process reached]
+  (shape/process process)
+  (shape/plain-set :reached reached)
   (boolean (some #(and (:stage/sticky? %)
                        (contains? reached (:stage/id %))
                        (empty? (stage/downstream process (:stage/id %))))
@@ -123,12 +126,21 @@
      :stale-ms (let [last-at (reduce (fn [acc e]
                                        (max acc (inst-ms (:event/at e))))
                                      0 events)]
-                 (max 0 (- (inst-ms now) last-at)))
+                 (max 0 (- (inst-ms (shape/instant :now now)) last-at)))
      :settled? (settled-reached? process reached)
      :waiting (vec (for [{:keys [stage missing]} blocks
                          r missing
                          :when (empty? (actionable r))]
                      {:ticket ticket-id :stage stage :reason (:reason r)}))}))
+
+(defn- action!
+  "An action's :who is nil, :anyone, or a plain set of actor names."
+  [action]
+  (shape/plain-map :action action)
+  (let [who (:who action)]
+    (when-not (or (nil? who) (= :anyone who) (shape/plain-set? who))
+      (shape/reject :who :set who)))
+  action)
 
 (defn- allowed? [who actor]
   (or (nil? actor) (= :anyone who) (contains? who actor)))
@@ -141,8 +153,23 @@
   definition, so the two renderings of one derivation cannot disagree.
   A nil `actor` (the unfiltered view) admits everything."
   [action actor]
+  (action! action)
   (and (allowed? (:who action) actor)
        (not (and (:not-actor action) (= actor (:not-actor action))))))
+
+(defn- contributions!
+  "What `inbox` reads from each `contributions` result: a plain map whose
+  :actions and :waiting are collections of plain maps, :stale-ms a
+  number when present, and each action's :who either :anyone or a set."
+  [per-ticket]
+  (shape/maps :per-ticket per-ticket)
+  (doseq [c per-ticket]
+    (shape/maps :actions (:actions c))
+    (shape/maps :waiting (:waiting c))
+    (when-not (or (nil? (:stale-ms c)) (number? (:stale-ms c)))
+      (shape/reject :stale-ms :number (:stale-ms c)))
+    (run! action! (:actions c)))
+  per-ticket)
 
 (defn inbox
   "Group contributions from many tickets into the inbox: items sorted by
@@ -157,8 +184,10 @@
            :settled <count of tickets hidden>}."
   ([per-ticket] (inbox per-ticket nil nil))
   ([per-ticket actor] (inbox per-ticket actor nil))
-  ([per-ticket actor {:keys [include-settled? role]}]
-   (let [live (if include-settled?
+  ([per-ticket actor opts]
+   (contributions! per-ticket)
+   (let [{:keys [include-settled? role]} (shape/plain-map :opts opts)
+         live (if include-settled?
                 per-ticket
                 (remove :settled? per-ticket))
          stale-of (into {} (map (juxt :ticket :stale-ms)) live)

@@ -13,7 +13,8 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [tik.canonical :as canonical])
+            [tik.canonical :as canonical]
+            [tik.shape :as shape])
   (:import (java.io File PushbackReader StringReader)))
 
 (defn parse-args [args]
@@ -44,7 +45,7 @@
   (or (:actor opts) (System/getenv "TIK_ACTOR")
       (System/getProperty "user.name")))
 
-(defn parse-key [s] (mapv keyword (str/split s #"\.")))
+(defn parse-key [s] (mapv keyword (str/split (shape/string :key s) #"\.")))
 
 (defn parse-value
   "Forgiving: one complete EDN form is taken as EDN (bare words become

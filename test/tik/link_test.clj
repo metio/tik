@@ -43,6 +43,13 @@
   (is (= {:ticket t :store "releases"}
          (link/render {:ticket t :store "releases"}))))
 
+(deftest render-declines-what-is-not-a-reference
+  (doseq [v [nil 0 "x" :k [] [t] '() '(0 0 0) (list :ticket t :head) #{t}
+             (sorted-set 1 2)]]
+    (is (nil? (link/render v)) (pr-str v)))
+  (is (false? (link/foreign? (sorted-set 1 2) "tik")) "a sorted set is no reference")
+  (is (nil? (link/ref-of (sorted-map 1 2)))))
+
 (deftest what-a-person-types
   (is (= {:ticket t} (link/parse-cli (str t))))
   (is (= {:ticket t :store "releases"} (link/parse-cli (str t "@releases"))))

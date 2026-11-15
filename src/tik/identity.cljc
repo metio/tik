@@ -30,7 +30,8 @@
   written. Nothing here decides whether a key is CURRENT, because
   nothing here knows when the signature it is judging was made — that
   question belongs to the caller holding the event's own timestamp."
-  (:require [tik.reduce :as red]))
+  (:require [tik.reduce :as red]
+            [tik.shape :as shape]))
 
 (def claim-type
   "The attestation body's :claim value that marks a key binding."
@@ -69,7 +70,7 @@
   an odd element count instead of returning nil. A trust base must not
   raise on garbage it is asked to judge; it must decline it."
   [b]
-  (and (map? b)
+  (and (shape/plain-map? b)
        (let [{:keys [actor public-key id-token]} b]
          (and (string? actor) (seq actor)
               (string? public-key) (seq public-key)
@@ -103,7 +104,7 @@
   (reduce (fn [acc b]
             ;; same reason as `usable?`: anything that is not a map is
             ;; declined rather than destructured
-            (if-let [{:keys [actor public-key]} (when (map? b) b)]
+            (if-let [{:keys [actor public-key]} (when (shape/plain-map? b) b)]
               (update acc actor (fnil conj #{}) public-key)
               acc))
           {}

@@ -26,7 +26,8 @@
   computed from the parents DAG — in a single linear history it cannot
   occur."
   (:refer-clojure :exclude [reduce])
-  (:require [clojure.core :as core]))
+  (:require [clojure.core :as core]
+            [tik.shape :as shape]))
 
 (defn dedupe-events
   "Union semantics: duplicates (same content address) collapse to one.
@@ -39,37 +40,29 @@
   two facts. Deduping the pair would keep both and make 'merge is set
   union' hold only for stores that were already well-formed."
   [events]
+  (shape/plain-coll :events events)
   (first
    (core/reduce (fn [[acc seen] e]
-                  (let [id (:event/id e)]
+                  (let [id (shape/field e :event/id)]
                     (if (contains? seen id)
                       [acc seen]
                       [(conj acc e) (conj seen id)])))
                 [[] #{}]
                 events)))
 
-(defn order [events]
-  (sort-by (juxt :event/at :event/id) events))
-
-(defn- well-formed!
-  "The fold's entry contract: whatever claims to be an event must carry
-  the fields ordering and folding depend on. A hostile or corrupted
-  store fails WELL here — one data-carrying rejection naming the
-  offender — instead of a type error deep inside a comparator."
+(defn order
+  "Events sorted by (at, id). The fold's entry contract applies: whatever
+  claims to be an event must carry the fields ordering depends on, so a
+  hostile or corrupted store fails WELL here — one data-carrying
+  rejection naming the offender — instead of a type error deep inside a
+  comparator."
   [events]
-  (doseq [e events]
-    (when-not (and (map? e)
-                   (string? (:event/id e))
-                   (inst? (:event/at e))
-                   (keyword? (:event/type e)))
-      (throw (ex-info "malformed event in the log"
-                      {:reason :event/malformed :event e}))))
-  events)
+  (sort-by (juxt :event/at :event/id) (shape/events events)))
 
 (defn ordered
   "Dedupe, then order — the reducer's canonical input."
   [events]
-  (order (dedupe-events (well-formed! events))))
+  (order (dedupe-events events)))
 
 (def empty-state
   {:facts {} :artifacts {} :log [] :writes {} :parents {} :linear-writes {}})
@@ -184,9 +177,9 @@
 
   :writes  path -> the claims about it, in fold order (which is
            (at, id) order, since the fold consumes `ordered` events)
-  :parents event-id -> its parent ids, or nil when :event/parents is not
-           a collection — a corrupt store must leave the DAG walk total
-           rather than raw-throwing, exactly as tik.dag/parent-ids does.
+  :parents event-id -> its parent ids as a set, or nil when :event/parents
+           is not a collection of strings — a corrupt store must leave the
+           DAG walk total rather than raw-throwing (tik.shape/parent-ids).
   :linear-writes
            path -> whether every write on it so far observed the one
            before, i.e. the history on this path is a chain and no
@@ -199,7 +192,7 @@
            true only when it finds the ancestor."
   [state {:keys [event/id event/type event/at event/actor event/parents
                  event/body]}]
-  (let [state (assoc-in state [:parents id] (when (coll? parents) parents))
+  (let [state (assoc-in state [:parents id] (shape/parent-ids {:event/parents parents}))
         write (case type
                 :fact/assert {:kind :assert :value (:fact/value body)
                               :by actor :at at :event id}
@@ -220,6 +213,8 @@
 (defn apply-event
   "Apply one event (handler if known, identity otherwise), log it, index it."
   [state event]
+  (shape/state state)
+  (shape/event event)
   (let [h (get handlers (:event/type event) (fn [s _] s))]
     (-> (h state event)
         (update :log conj event)
@@ -228,7 +223,7 @@
 (defn ticket-state [events]
   (core/reduce apply-event empty-state (ordered events)))
 
-(defn fact-entry [state path] (get-in state [:facts path]))
+(defn fact-entry [state path] (get-in (shape/state state) [:facts path]))
 
 ;; ---------------------------------------------------------------- conflicts
 ;; ADR 0003/0004: causally concurrent writes (neither an ancestor of the
@@ -283,16 +278,16 @@
   below, quadratic in the writes on ONE path, runs only for histories
   that actually forked."
   [state path]
-  (let [writes (path-writes state path)]
+  (let [writes (path-writes (shape/state state) path)]
     (when (and (< 1 (count writes))
                ;; the fold already proved this path linear one walk at a
                ;; time; a `true` here means exactly one maximal write
                (not (get-in state [:linear-writes path] false)))
       ;; the parents index comes from the fold (see index-event), so it
       ;; is built once per history instead of rebuilt per call. It holds
-      ;; a parents value only when it is a collection, mirroring
-      ;; tik.dag/parent-ids: a corrupt/hostile store whose :event/parents
-      ;; is a scalar folds cleanly (well-formed! does not check the shape),
+      ;; a parents value only when it is a collection of strings (as a
+      ;; set; tik.shape/parent-ids): a corrupt/hostile store whose :event/parents
+      ;; is a scalar folds cleanly (the entry check does not read parents),
       ;; and ancestor?'s contains?/mapcat must stay total over it rather
       ;; than raw-throwing — this walk carries the same guarantee the DAG
       ;; walk does. verify L0's schema check names the malformation.

@@ -28,14 +28,15 @@
   facing surfaces say 'process graph' and 'current stage'."
   (:require [clojure.set :as set]
             [tik.guard :as guard]
-            [tik.reduce :as red]))
+            [tik.reduce :as red]
+            [tik.shape :as shape]))
 
 (defn- stage-index [process]
   (into {} (map (juxt :stage/id identity)) (:process/stages process)))
 
 (defn sticky-ids [process]
   (into #{} (comp (filter :stage/sticky?) (map :stage/id))
-        (:process/stages process)))
+        (:process/stages (shape/process process))))
 
 (defn- guards-ok? [stage ctx]
   (every? #(:satisfied? (guard/eval-guard % ctx)) (:guards stage [])))
@@ -55,6 +56,11 @@
   the correct answer."
   ([process state now roles] (reached-set process state now roles #{}))
   ([process state now roles base]
+   (shape/process process)
+   (shape/state state)
+   (shape/optional-instant :now now)
+   (shape/roles roles)
+   (shape/plain-set :base base)
    (let [memo (volatile! {})]
      (loop [reached base]
        (let [ctx {:state state :process process :now now
@@ -105,6 +111,8 @@
   the event is evaluated at the instant it claims. Logs whose events are
   all dated at or before the read derive exactly as before."
   [process events roles now]
+  (shape/instant :now now)
+  (shape/roles roles)
   (let [sticky (sticky-ids process)]
     (reduce
      (fn [acc e]
@@ -129,6 +137,10 @@
   debugger's data source, and executable documentation of the
   normative synchronous-sweep semantics (ADR 0005/0018)."
   [process state now roles]
+  (shape/process process)
+  (shape/state state)
+  (shape/optional-instant :now now)
+  (shape/roles roles)
   (loop [reached #{} sweeps []]
     (let [ctx {:state state :process process :now now
                :roles roles :reached reached
@@ -170,7 +182,7 @@
 (defn ancestor-closure
   "All stages strictly upstream of stage-id via :after."
   [process stage-id]
-  (let [idx (stage-index process)]
+  (let [idx (stage-index (shape/process process))]
     (loop [frontier (set (get-in idx [stage-id :after])) acc #{}]
       (if (empty? frontier)
         acc
@@ -184,12 +196,14 @@
   (into #{}
         (comp (map :stage/id)
               (filter #(contains? (ancestor-closure process %) stage-id)))
-        (:process/stages process)))
+        (:process/stages (shape/process process))))
 
 (defn current-stages
   "Maximal reached stages — the ticket's current position(s). Conditional
   prerequisites are guards, not edges, so parallel branch tips can both be
   current; display layers may collapse."
   [process reached]
+  (shape/process process)
+  (shape/plain-set :reached reached)
   (let [dominated (into #{} (mapcat #(ancestor-closure process %)) reached)]
     (set/difference reached dominated)))

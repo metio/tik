@@ -33,6 +33,7 @@
             [tik.harness :as h]
             [tik.guard :as guard]
             [tik.lint]
+            [tik.shape]
             [tik.oidc :as oidc]
             [tik.plan]
             [tik.process]
@@ -365,6 +366,11 @@
                    (gen/vector (gen/map gen/keyword gen/any-equatable
                                         {:max-elements 4})
                                0 4))}
+   {:sym 'tik.shape/events :f tik.shape/events :gen (one gen-hostile-events)}
+   {:sym 'tik.shape/process :f tik.shape/process
+    :gen (one gen-garbage-definition)}
+   {:sym 'tik.shape/state :f tik.shape/state :gen (one gen/any-equatable)}
+   {:sym 'tik.shape/roles :f tik.shape/roles :gen (one gen/any-equatable)}
    {:sym 'tik.dag/heads :f tik.dag/heads :gen (one gen-hostile-events)}
    {:sym 'tik.dag/roots :f tik.dag/roots :gen (one gen-hostile-events)}
    {:sym 'tik.dag/missing-parents :f tik.dag/missing-parents
@@ -474,7 +480,7 @@
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
      tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template
-     tik.identity tik.link})
+     tik.identity tik.link tik.shape})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with
@@ -486,10 +492,16 @@
 (def ^:private totality-exemptions
   "Public kernel fns deliberately NOT in the registry, each with why.
   Explicit so the exemption is a decision on the record, not an
-  oversight the sweep silently tolerates."
+  oversight the sweep silently tolerates.
+
+  An exemption excuses a function from a dedicated generator here, never
+  from totality: tik.totality-test meets every public kernel fn, exempt
+  or not, with its hostile corpus on every run. A reason therefore says
+  why no domain-shaped generator is needed, and must not claim more than
+  that corpus can confirm."
   '{tik.canonical/normalize-inst    "total by construction: truncates an Instant, passes everything else through untouched"
-    tik.canonical/sha256-hex        "total by construction: SHA-256 over any string"
-    tik.canonical/sha256-hex-bytes  "total by construction: SHA-256 over any byte array"
+    tik.canonical/sha256-hex        "SHA-256 over a string, ex-info for anything else; the hostile corpus covers it"
+    tik.canonical/sha256-hex-bytes  "SHA-256 over a byte array, ex-info for anything else; the hostile corpus covers it"
     tik.event/valid?                "malli validator over the Event schema: a boolean over any input"
     tik.event/explain-event         "malli explainer over the Event schema: an explanation or nil over any input"
     tik.event/event-id              "content-address of a map; the hashing core of mint (registered)"
@@ -534,15 +546,31 @@
     tik.process/process-hash        "content-address of a definition via canonical/emit (registered)"
     tik.process/roles-gating        "lens over a definition; total, exercised via lint (registered) and process-test"
     tik.process/valid-role-bindings? "malli validator over the RoleBindings schema: a boolean over any input"
-    tik.process/resolve-roles       "merge of two maps; total by construction, and its callers (ticket-ctx) validate the register first"
-    tik.plan/nodes                  "structural: the node set of an edge map; total by construction"
-    tik.plan/prereqs                "structural: one node's prerequisite set; total by construction"
-    tik.plan/dependents             "structural: reverse edges of an edge map; total by construction"
+    tik.process/resolve-roles       "merge of two role maps, ex-info for anything else; its callers (ticket-ctx) validate the register first"
+    tik.plan/nodes                  "structural: the node set of an edge map; exercised via summary (registered)"
+    tik.plan/prereqs                "structural: one node's prerequisite set; exercised via summary (registered)"
+    tik.plan/dependents             "structural: reverse edges of an edge map; exercised via summary (registered)"
     tik.plan/in-cycle?              "per-node cycle check; exercised via cyclic-nodes (registered)"
     tik.plan/blocked?               "per-node predicate over prereqs+settled; exercised via summary (registered)"
     tik.plan/status                 "per-node status; exercised via summary (registered)"
     tik.plan/unlocks                "per-node downstream impact; exercised via summary (registered)"
-    tik.template/template?          "predicate: does a value carry :tik/template; total by construction"})
+    tik.template/template?          "predicate: does a value carry :tik/template; total by construction"
+    tik.shape/reject                "throws ex-info by definition"
+    tik.shape/plain-map?            "predicate over any value"
+    tik.shape/plain-coll?           "predicate over any value"
+    tik.shape/plain-set?            "predicate over any value"
+    tik.shape/instant?              "predicate over any value"
+    tik.shape/plain-map             "argument check: its value or ex-info"
+    tik.shape/plain-coll            "argument check: its value or ex-info"
+    tik.shape/plain-set             "argument check: its value or ex-info"
+    tik.shape/maps                  "argument check: its value or ex-info"
+    tik.shape/instant               "argument check: its value or ex-info"
+    tik.shape/optional-instant      "argument check: its value or ex-info"
+    tik.shape/string                "argument check: its value or ex-info"
+    tik.shape/function              "argument check: its value or ex-info"
+    tik.shape/field                 "keyword lookup guarded by plain-map?"
+    tik.shape/parent-ids            "field read guarded by plain-coll?; exercised via the dag walks (registered)"
+    tik.shape/event                 "per-event core of events (registered)"})
 
 (deftest every_kernel_namespace_is_swept_or_excluded
   ;; the namespace-level forcing function, DERIVED from the source tree:

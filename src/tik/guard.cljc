@@ -39,7 +39,8 @@
   and unrestricted."
   (:require [clojure.string :as str]
             [tik.process :as process]
-            [tik.reduce :as red])
+            [tik.reduce :as red]
+            [tik.shape :as shape])
   #?(:clj (:import (java.time Duration Instant))))
 
 (defn- ->instant
@@ -55,7 +56,7 @@
   (into {}
         (keep (fn [[path _]]
                 (when-some [v (red/fact-value state path)] [path v])))
-        (:facts state)))
+        (:facts (shape/state state))))
 
 (def ^:private ok {:satisfied? true :reasons []})
 (defn- fail [& reasons] {:satisfied? false :reasons (vec reasons)})
