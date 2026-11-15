@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name: Soak
+on:
+  schedule:
+    - cron: 17 3 * * *
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  totality:
+    # The fuzz and totality suites at 100x the per-PR iteration count, every
+    # night: a pull request samples each boundary 50 times, which is enough
+    # to keep the floor and too few to find a rare shape.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: metio/ci/breto@6e8776dc59abdfffa793903f100e89f1aacb9c2e # 2026.11.2023135
+        with:
+          registries: github:metio/toolchains
+      - env:
+          TIK_FUZZ_N: "5000"
+        run: >-
+          clojure -M:test
+          --focus tik.fuzz-test --focus tik.totality-test
+          --focus tik.shape-test --focus tik.boundary-test
