@@ -487,7 +487,8 @@
   the reason. Excluding a whole namespace is itself a recorded verdict —
   the derived check below still forces every kernel namespace into one
   bucket or the other."
-  '{tik.work "activity/telemetry drafting porcelain with its own work-test suite; the one untrusted-body boundary (usage-totals) is in the registry, the rest are lenses over drafted telemetry"})
+  '{tik.stats "aggregation lens over rows the CLI builds from derived state (facts, create and stage-reached instants); no stored or untrusted bytes reach it, and its own tests pin the arithmetic"
+    tik.work "activity/telemetry drafting porcelain with its own work-test suite; the one untrusted-body boundary (usage-totals) is in the registry, the rest are lenses over drafted telemetry"})
 
 (def ^:private totality-exemptions
   "Public kernel fns deliberately NOT in the registry, each with why.

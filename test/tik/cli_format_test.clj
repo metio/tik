@@ -40,6 +40,7 @@
   {"ls" [] "dupes" [] "search" ["fodder"] "next" []
    "explain" [:id] "status" [:id] "log" [:id] "plan" [] "diff" [:id]
    "whatif" [:id "sev=high"] "roles" [] "causal" [:id]
+   "stats" ["--by" "kind" "--until" ":done"]
    "work" ["week" "--actor" "seb"] "agent" ["actions" :id "--actor" "seb"]})
 
 (deftest every_documented_flag_is_accepted

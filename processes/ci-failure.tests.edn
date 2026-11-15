@@ -1,0 +1,54 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "ci-failure.edn"
+ :test/cases
+ [{:case/name "a bridge-signed first run opens the streak"
+   :case/steps [[:actor "github"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]]
+   :case/expect {:includes #{:failing} :excludes #{:triaged :recovered :resolved}}}
+
+  {:case/name "a first run asserted by somebody other than the bridge does not count"
+   :case/steps [[:actor "mallory"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]]
+   :case/expect {:excludes #{:failing}}}
+
+  {:case/name "a green run without a cause recovers but does not resolve"
+   :case/steps [[:actor "github"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]
+                [:set [:forge :green-run] "https://github.com/metio/tik/actions/runs/2"]]
+   :case/expect {:includes #{:recovered} :excludes #{:resolved}}}
+
+  {:case/name "a cause without a green run triages but does not resolve"
+   :case/steps [[:actor "github"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]
+                [:actor "seb"]
+                [:set [:cause] :flaky]]
+   :case/expect {:includes #{:triaged} :excludes #{:recovered :resolved}}}
+
+  {:case/name "a green run claimed by a person does not recover the streak"
+   :case/steps [[:actor "github"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]
+                [:actor "seb"]
+                [:set [:cause] :code]
+                [:set [:forge :green-run] "https://github.com/metio/tik/actions/runs/2"]]
+   :case/expect {:includes #{:triaged} :excludes #{:recovered :resolved}}}
+
+  {:case/name "a cause and a bridge-signed green run resolve the streak"
+   :case/steps [[:actor "github"]
+                [:set [:forge :repo] "metio/tik"]
+                [:set [:forge :workflow] "verify"]
+                [:set [:forge :first-run] "https://github.com/metio/tik/actions/runs/1"]
+                [:set [:forge :green-run] "https://github.com/metio/tik/actions/runs/2"]
+                [:actor "seb"]
+                [:set [:cause] :dependency]]
+   :case/expect {:includes #{:resolved} :current #{:resolved}}}]}

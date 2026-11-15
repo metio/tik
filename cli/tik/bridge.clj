@@ -19,6 +19,7 @@
                                   resolve-id root the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
+            [tik.bridge-sync :as sync]
             [tik.identity-trust :as identity-trust]
             [tik.imap :as imap]
             [tik.jwks :as jwks]
@@ -768,10 +769,16 @@
   (when (= "oid4vci" (first pos)) (cmd-bridge-oid4vci opts))
   (when (= "imap" (first pos)) (cmd-bridge-imap {:opts opts}))
   (when (= "pop3" (first pos)) (cmd-bridge-pop3 {:opts opts}))
+  (when (= "github" (first pos)) (sync/cmd-bridge-github opts))
+  (when (= "gitlab" (first pos)) (sync/cmd-bridge-gitlab opts))
+  (when (= "redmine" (first pos)) (sync/cmd-bridge-redmine opts))
   (when-not (= "email" (first pos))
     (die (str "usage: tik bridge email [--config bridge.edn] < message\n"
               "       tik bridge imap [--config imap.edn]\n"
               "       tik bridge pop3 [--config pop3.edn]\n"
+              "       tik bridge github [--config github.edn] [--webhook [--port N]]\n"
+              "       tik bridge gitlab [--config gitlab.edn]\n"
+              "       tik bridge redmine [--config redmine.edn]\n"
               "       tik bridge jwks --issuer <url>\n"
               "       tik bridge workload --github|--token-file F|--token-env VAR\n"
               "       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]\n"

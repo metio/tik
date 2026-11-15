@@ -23,6 +23,7 @@
             [tik.render :refer [emit-data paint-stage sid tint]]
             [tik.select :as select]
             [tik.stage :as stage]
+            [tik.stats :as stats]
             [tik.store.protocol :as store]))
 
 (defn plan-graph
@@ -266,18 +267,18 @@
     (when-not (emit-data opts
                          (mapv #(select-keys % [:id :title :current :describe :settled?])
                                visible))
-            (doseq [{:keys [id current title describe settled? links error]} visible]
-    (println (tint "2" (sid id))
-             (if error
-               (tint "31" (format "%-24s" "error"))
-               (paint-stage (format "%-24s" (str/join "," (map name current)))
-                            settled? (contains? current :parked)))
-             title)
-    (when (and (:long opts) describe)
-      (println (tint "2" (str "         " describe))))
-    (when (and (:long opts) (seq links))
-      (doseq [line (link-lines s t links)]
-        (println (tint "2" (str "         ↳ " line))))))
+      (doseq [{:keys [id current title describe settled? links error]} visible]
+        (println (tint "2" (sid id))
+                 (if error
+                   (tint "31" (format "%-24s" "error"))
+                   (paint-stage (format "%-24s" (str/join "," (map name current)))
+                                settled? (contains? current :parked)))
+                 title)
+        (when (and (:long opts) describe)
+          (println (tint "2" (str "         " describe))))
+        (when (and (:long opts) (seq links))
+          (doseq [line (link-lines s t links)]
+            (println (tint "2" (str "         ↳ " line))))))
       (when (empty? visible)
         (if (empty? rows)
           (println
@@ -296,6 +297,72 @@
           (println (str "settled: " hidden
                         " finished ticket(s) hidden (--all shows)")))))
     (cache-flush!)))
+
+(defn- stats-row
+  "A selector row plus what tik.stats reads: the create instant and the
+  first instant each stage derived, from the ticket's own timeline."
+  [t {:keys [events process roles] :as ctx}]
+  (let [row (selector-row t ctx)
+        timeline (stage/stage-timeline process events roles t)]
+    (assoc row
+           :created-ms (some #(when (= :ticket/create (:event/type %))
+                                (inst-ms (:event/at %)))
+                             events)
+           :reached-ms (reduce (fn [m {:keys [at reached]}]
+                                 (reduce #(if (contains? %1 %2) %1 (assoc %1 %2 (inst-ms at)))
+                                         m reached))
+                               {} timeline))))
+
+(defn- human-ms [ms]
+  (when ms
+    (let [h (/ (double ms) 3600000.0)]
+      (cond (< h 1.0) (format "%.0fm" (* h 60.0))
+            (< h 48.0) (format "%.1fh" h)
+            :else (format "%.1fd" (/ h 24.0))))))
+
+(defn cmd-stats
+  "stats --by <fact> [--split <fact>] [--until :stage] [--where SEL]
+  Tickets grouped by a fact's value, with a breakdown by a second fact
+  and the time from creation to a stage — e.g. which repository's CI
+  failures cost the most:  tik stats --by github.repo --split cause
+  --until :resolved --where 'fact:github.repo'. Every ticket matching
+  the selector counts, settled or not."
+  [{:keys [opts]}]
+  (let [by (or (:by opts) (die "usage: tik stats --by <fact.path> [--split <fact.path>] [--until :stage] [--where SEL]"))
+        path #(mapv keyword (str/split (str/replace % #"^:" "") #"\."))
+        until (some-> (:until opts) (str/replace #"^:" "") keyword)
+        s (the-store)
+        t (now)
+        pred (compiled-selector (:where opts))
+        rows (keep (fn [ctx]
+                     (try (let [r (stats-row t ctx)] (when (pred r) r))
+                          (catch clojure.lang.ExceptionInfo e
+                            (binding [*out* *err*]
+                              (println (str "skipping " (sid (:id ctx)) ": " (ex-message e))))
+                            nil)))
+                   (all-ticket-ctx s))
+        groups (stats/group-stats rows {:by (path by)
+                                        :split (some-> (:split opts) path)
+                                        :until until})]
+    (when-not (emit-data opts groups)
+      (let [label #(if (nil? %) "(none)" (str %))
+            col (str "%-" (reduce max (count by) (map (comp count label :group) groups)) "s")]
+        (println (tint "1" (str/join "  " (cond-> [(format col by) (format "%7s" "tickets")]
+                                            until (into [(format "%6s" "open")
+                                                         (format "%8s" "median")
+                                                         (format "%8s" "p90")
+                                                         (format "%8s" "mean")])
+                                            (:split opts) (conj (str "by " (:split opts)))))))
+        (doseq [{:keys [group tickets split open duration]} groups]
+          (println (str/join "  " (cond-> [(format col (label group))
+                                           (format "%7d" tickets)]
+                                    until (into [(format "%6d" open)
+                                                 (format "%8s" (or (human-ms (:median-ms duration)) "-"))
+                                                 (format "%8s" (or (human-ms (:p90-ms duration)) "-"))
+                                                 (format "%8s" (or (human-ms (:mean-ms duration)) "-"))])
+                                    split (conj (str/join " " (for [[v n] (sort-by (comp - val) split)]
+                                                                (str (label v) "=" n)))))))))
+      (when (empty? groups) (println "no matching tickets")))))
 
 (defn cmd-search
   "tik search <text…> = ls over everything whose haystack holds every
@@ -364,30 +431,30 @@
          "<h1>tik board</h1><small>derived " (html-escape t)
          " — every line f(events, now); nothing stored</small>"
          (str/join
-                (for [{:keys [id title current facts blocks] :as row} rows]
-                  (str "<div class=\"card\">"
-                       "<span class=\"" (chip row) "\">"
-                       (html-escape (str/join ", " (map name current))) "</span>"
-                       "<b>" (html-escape title) "</b> "
-                       "<span class=\"id\">" (html-escape (sid id)) "</span>"
-                       (when (seq facts)
-                         (str "<ul>"
-                              (str/join (for [[p v] facts]
-                                           (str "<li><code>" (html-escape (pr-str p))
-                                                " = " (html-escape (pr-str v))
-                                                "</code></li>")))
-                              "</ul>"))
-                       (str/join
-                              (for [{:keys [stage missing]} blocks]
-                                (str "<div><small>to reach <b>"
-                                     (html-escape (name stage)) "</b>:</small><ul>"
-                                     (str/join
-                                            (for [r missing]
-                                              (str "<li class=\"miss\">✗ "
-                                                   (html-escape (explain/reason->text r))
-                                                   "</li>")))
-                                     "</ul></div>")))
-                       "</div>")))
+          (for [{:keys [id title current facts blocks] :as row} rows]
+            (str "<div class=\"card\">"
+                 "<span class=\"" (chip row) "\">"
+                 (html-escape (str/join ", " (map name current))) "</span>"
+                 "<b>" (html-escape title) "</b> "
+                 "<span class=\"id\">" (html-escape (sid id)) "</span>"
+                 (when (seq facts)
+                   (str "<ul>"
+                        (str/join (for [[p v] facts]
+                                    (str "<li><code>" (html-escape (pr-str p))
+                                         " = " (html-escape (pr-str v))
+                                         "</code></li>")))
+                        "</ul>"))
+                 (str/join
+                  (for [{:keys [stage missing]} blocks]
+                    (str "<div><small>to reach <b>"
+                         (html-escape (name stage)) "</b>:</small><ul>"
+                         (str/join
+                          (for [r missing]
+                            (str "<li class=\"miss\">✗ "
+                                 (html-escape (explain/reason->text r))
+                                 "</li>")))
+                         "</ul></div>")))
+                 "</div>")))
          "</body></html>")]
     (if-let [out (first pos)]
       (do (spit out html) (println "wrote" out))
@@ -416,7 +483,7 @@
                  :members members :stages stages}))
         by-role (group-by :role rows)]
     (when-not (emit-data opts (vec rows))
-            (doseq [[role entries] (sort-by (comp str key) by-role)]
+      (doseq [[role entries] (sort-by (comp str key) by-role)]
         (println (str (tint "1" (str role)) " — "
                       (let [ms (distinct (mapcat :members entries))]
                         (if (seq ms) (str/join ", " ms)

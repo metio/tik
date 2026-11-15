@@ -918,6 +918,58 @@ system on the other end.
 Build Redmine first as the proof of the generic contract; Jira/GitHub/Linear
 then fall out as config over the same bridge + effect halves.
 
+### GitHub issues, pull requests and discussions as `tik bridge github` sources (unjudged)
+
+`tik bridge github` already ingests failed Actions runs (the `:actions`
+source, `ci-failure` process). Issues, pull requests and discussions would
+be further sources in the same bridge, enabled by `:issues {…}`,
+`:pulls {…}` and `:discussions {…}` config blocks, sharing its repository
+discovery, token, actor, webhook listener and HMAC check. The seams are in
+place: sources are config blocks, the webhook dispatches on
+`X-GitHub-Event` through a table a source registers in, and ticket ids hash
+under a per-source prefix (`tik/github/actions …`), so issue ids
+(`tik/github/issue <repository id> <issue number>`) can never collide with
+streak ids (pull requests and discussions take `tik/github/pull` and
+`tik/github/discussion` the same way). Repository-wide facts keep the shared `[:forge :repo]` /
+`[:forge :owner]` paths, so `tik stats --by forge.repo` counts CI
+failures and issues together, across GitHub, GitLab and Forgejo.
+
+What differs is mutability. A failed run is fixed once complete; an issue
+is edited, labelled, closed and reopened. Under ADR 0021 each change must
+still mint a deterministic event, which GitHub's timeline makes possible:
+each timeline event and comment has a stable id and `created_at`, so the
+bridge mirrors them as bridge-signed facts (`[:forge :state]`,
+`[:forge :labels]`, `[:forge :assignees]`) at the timeline event's own
+`:at`, and comments as artifacts keyed by comment id, like mail. The
+issue's current values are then the latest assertion by `(at, id)`, never a
+stored snapshot.
+
+Pull requests share the issue numbering and timeline, and the REST issues
+endpoints list them too, so they reuse the issue mapping and add their own
+evidence: head SHA, merge commit, review verdicts (each review a
+bridge-signed fact by review id), and the check-run conclusions on the
+head, which link a PR ticket to any `ci-failure` streak on that branch.
+Discussions are reachable only through the GraphQL API as far as we know
+today (no REST listing), and arrive as `discussion` /
+`discussion_comment` webhook deliveries; their comments carry stable node
+ids and timestamps, so the same comment-as-artifact mapping holds, behind
+a GraphQL getter beside the REST one. Its answered state
+(`answerChosenAt`) is the natural closing fact.
+
+Open questions: whether a tik-native fact (`cause`) may be mirrored back
+out as a label (that is an outbound effect and needs the loop guard
+above); one process per kind (`github-issue`, `github-pull`,
+`github-discussion`) or one shared process with a `[:forge :kind]` fact.
+
+`tik bridge redmine` (inbound only) already has the shape these need:
+remote history rebuilt into deterministic events, and each fact chained to
+the previous assertion of its path so successive values are causally
+ordered instead of `:conflicted`. GitLab issues and merge requests
+(resource state, label and assignee events carry ids and `created_at`) and
+Forgejo issues and pull requests (`/issues/{index}/timeline`) fit the same
+mapping. Forgejo Actions runs would join `tik.forge` as a third adapter
+once its runs API is confirmed to list completed runs per workflow.
+
 ## An `idea` / decision process (a shareable process definition)
 
 A committee decides whether an idea is accepted or rejected, then accepted

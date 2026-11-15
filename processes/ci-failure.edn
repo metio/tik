@@ -1,0 +1,51 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; A CI failure streak: one ticket per (repository, workflow, branch) run
+;; of consecutive failed CI runs, opened and closed by `tik bridge github`
+;; or `tik bridge gitlab`. The bridge signs everything it learns from the
+;; forge under the :bridge role; a person supplies the one judgment the
+;; forge cannot, the cause. The repository, workflow and cause facts are the
+;; dimensions `tik stats` groups by, and the time to :recovered or
+;; :resolved derives from the event timestamps.
+{:process/id :ci-failure
+ :process/version 1
+ :process/guard-vocab 2
+
+ :process/roles
+ {:bridge {:members ["github" "gitlab"]}}
+
+ :process/facts
+ {[:forge :host]      [:string {:min 3}]
+  [:forge :repo]      [:string {:min 3}]
+  [:forge :owner]     [:string {:min 1}]
+  [:forge :workflow]  [:string {:min 1}]
+  [:forge :branch]    [:string {:min 1}]
+  [:forge :first-run] [:string {:min 8}]
+  [:forge :head-sha]  [:string {:min 7}]
+  [:forge :green-run] [:string {:min 8}]
+  [:cause]             [:enum :flaky :code :dependency :config :infra :upstream]}
+
+ :process/stages
+ [{:stage/id :failing
+   :hint "kb/runbooks/ci-failure-failing.md"
+   :guards [[:signed-by :bridge [:forge :first-run]]
+            [:fact [:forge :repo]]
+            [:fact [:forge :workflow]]]}
+
+  {:stage/id :triaged
+   :hint "kb/runbooks/ci-failure-triaged.md"
+   :after [:failing]
+   :guards [[:fact [:cause]]]}
+
+  {:stage/id :recovered
+   :hint "kb/runbooks/ci-failure-recovered.md"
+   :after [:failing]
+   :guards [[:signed-by :bridge [:forge :green-run]]]}
+
+  {:stage/id :resolved
+   :hint "kb/runbooks/ci-failure-resolved.md"
+   :after [:triaged :recovered]
+   :stage/sticky? true
+   :guards [[:fact [:cause]]
+            [:signed-by :bridge [:forge :green-run]]]}]}

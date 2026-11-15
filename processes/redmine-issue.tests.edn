@@ -1,0 +1,38 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "redmine-issue.edn"
+ :test/cases
+ [{:case/name "a mirrored open issue is open"
+   :case/steps [[:actor "redmine"]
+                [:set [:redmine :url] "https://redmine.example/issues/1"]
+                [:set [:redmine :state] :open]]
+   :case/expect {:includes #{:mirrored :open} :excludes #{:closed}}}
+
+  {:case/name "a closed issue is closed"
+   :case/steps [[:actor "redmine"]
+                [:set [:redmine :url] "https://redmine.example/issues/1"]
+                [:set [:redmine :state] :closed]]
+   :case/expect {:includes #{:mirrored :closed} :excludes #{:open}}}
+
+  {:case/name "a reopened issue is open again"
+   :case/steps [[:actor "redmine"]
+                [:set [:redmine :url] "https://redmine.example/issues/1"]
+                [:set [:redmine :state] :closed]
+                [:now "+P1D"]
+                [:set [:redmine :state] :open]]
+   :case/expect {:includes #{:mirrored :open} :excludes #{:closed}}}
+
+  {:case/name "a state a person sets locally satisfies neither stage"
+   :case/steps [[:actor "redmine"]
+                [:set [:redmine :url] "https://redmine.example/issues/1"]
+                [:set [:redmine :state] :open]
+                [:actor "seb"]
+                [:now "+P1D"]
+                [:set [:redmine :state] :closed]]
+   :case/expect {:includes #{:mirrored} :excludes #{:open :closed}}}
+
+  {:case/name "an issue nobody mirrored is nowhere"
+   :case/steps [[:actor "seb"]
+                [:set [:redmine :url] "https://redmine.example/issues/1"]
+                [:set [:redmine :state] :open]]
+   :case/expect {:excludes #{:mirrored :open :closed}}}]}

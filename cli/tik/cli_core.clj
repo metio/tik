@@ -549,6 +549,12 @@
   (let [r (.getCanonicalFile (io/file (root)))]
     (if (= ".tik" (.getName r)) (.getParentFile r) r)))
 
+(defn repo-key
+  "The [:repo] value for a repository directory or name: a keyword when the
+  name reads as one, the string otherwise."
+  [n]
+  (if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" n) (keyword n) n))
+
 (defn context-facts
   "Facts a ticket created HERE inherits, as [path value] pairs:
   - repo=<name> from the nearest enclosing git repo strictly below
@@ -567,11 +573,7 @@
                 (->> (iterate #(.getParentFile ^File %) cwd)
                      (take-while #(and % (not= (str %) (str holder))))
                      reverse))                       ; holder-side first
-        repo (some #(when (.exists (io/file % ".git"))
-                      (let [n (.getName ^File %)]
-                        (if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" n)
-                          (keyword n)
-                          n)))
+        repo (some #(when (.exists (io/file % ".git")) (repo-key (.getName ^File %)))
                    (reverse chain))                  ; nearest git wins
         ;; a marker AT the holder applies store-wide; deeper wins
         markers (apply merge

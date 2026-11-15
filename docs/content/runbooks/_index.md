@@ -153,3 +153,15 @@ The same, for a pipeline that ships with no human in the loop.
 | [`:built`](/runbooks/automated-release-built/) | CI signed which commit produced these bytes. |
 | [`:attested`](/runbooks/automated-release-attested/) | An SBOM and provenance, each attested within a day. |
 | [`:scanned`](/runbooks/automated-release-scanned/) | A vulnerability scan came back clean, recently. |
+
+## ci-failure
+
+A failing GitHub Actions workflow, from its first failed run to a green run
+with the cause on record.
+
+| Stage | Reached when |
+| --- | --- |
+| [`:failing`](/runbooks/ci-failure-failing/) | The bridge signed the streak's first failed run. |
+| [`:triaged`](/runbooks/ci-failure-triaged/) | A cause is on record. |
+| [`:recovered`](/runbooks/ci-failure-recovered/) | The bridge signed the first green run after the streak. |
+| [`:resolved`](/runbooks/ci-failure-resolved/) | Sticky — green again, with the cause on record. |

@@ -129,6 +129,16 @@
                                                 IDLE) and ingests the instant mail arrives
   tik bridge pop3 [--config pop3.edn]           same, for POP3 mailboxes (:delete false by
                                                 default — dedup makes a re-fetch harmless)
+  tik bridge github [--config github.edn]       failed GitHub Actions runs -> ci-failure
+                    [--webhook [--port N]]      tickets, one per failure streak of a
+                                                workflow on a branch; a green run closes
+                                                the streak. polls once, or --webhook serves
+                                                workflow_run deliveries (HMAC-checked)
+  tik bridge gitlab [--config gitlab.edn]       failed GitLab pipelines -> the same
+                                                ci-failure tickets; :tunnel holds an SSH
+                                                port forward open for the sweep
+  tik bridge redmine [--config redmine.edn]     Redmine issues -> redmine-issue tickets
+                                                mirroring status, assignee and notes
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U]                    a signed key-binding attestation on the
                   [--password-command C |       registry ticket; verification never
@@ -221,6 +231,9 @@
                                                 fewer inodes and git objects; verify
                                                 checks every packed slice against its
                                                 id; later events land loose and merge
+  tik stats --by <fact> [--split <fact>]        tickets grouped by a fact's value: counts,
+            [--until :stage] [--where SEL]      a breakdown by a second fact, and the time
+                                                from creation to a stage (median/p90/mean)
   tik plan [<file.html>]                        the dependency-link roadmap: ready /
                                                 blocked / done / cyclic, the critical
                                                 path, and each item's unlock impact —
@@ -342,16 +355,17 @@
   `tik probe --help` therefore read as \"probe every ticket\" and wrote
   signed facts nobody asked for. A verb that can write to every ticket
   in the store has earned the stricter reading of its arguments."
-  #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "changed"
+  #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "by" "changed"
     "as" "client-id" "command" "config" "credential" "dry-run" "edn"
     "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "intro" "issuer" "jwks" "jwks-url"
     "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "serve" "sqlite" "stage" "store" "template"
+    "reason" "registry" "role" "serve" "split" "sqlite" "stage" "store" "template"
     "threshold" "title"
-    "to" "token-env" "token-file" "user" "verbose" "watch" "where" "withdraw"
+    "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
+    "withdraw"
     "witness"})
 
 (defn- check-flags!
@@ -395,6 +409,7 @@
       "log"     (inspect/cmd-log parsed)
       "causal"  (inspect/cmd-causal parsed)
       "ls"      (query/cmd-ls parsed)
+      "stats"   (query/cmd-stats parsed)
       "next"    (inspect/cmd-next parsed)
       "search"  (query/cmd-search parsed)
       "dupes"   (query/cmd-dupes parsed)
