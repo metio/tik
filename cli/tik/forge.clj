@@ -31,7 +31,7 @@
             [tik.canonical :as canonical]
             [tik.event :as event])
   (:import (java.net InetSocketAddress ServerSocket Socket URI URLEncoder)
-           (java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers)
+           (java.net.http HttpClient HttpRequest HttpResponse HttpResponse$BodyHandlers)
            (java.time Duration Instant)
            (java.util.concurrent TimeUnit)))
 
@@ -205,10 +205,31 @@
   (str/join "&" (for [[k v] q :when (some? v)]
                   (str (name k) "=" (URLEncoder/encode (str v) "UTF-8")))))
 
+(def ^:dynamic *retry-pauses*
+  "Milliseconds to wait before each repeat of a request the server failed
+  transiently; its length is how many repeats a request gets."
+  [2000 10000])
+
+(def ^:private transient-status #{500 502 503 504})
+
+(defn- send-with-retry
+  "The response to `req`, repeating it after each of `*retry-pauses*` while
+  the server answers with a gateway or internal error. Forges return these
+  for a few requests a week and answer the same request a moment later;
+  every request here is a GET, so a repeat cannot double an effect."
+  ^HttpResponse [req]
+  (loop [pauses (seq *retry-pauses*)]
+    (let [resp (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))]
+      (if (and pauses (transient-status (.statusCode resp)))
+        (do (Thread/sleep (long (first pauses)))
+            (recur (next pauses)))
+        resp))))
+
 (defn json-getter
   "A `get-json` ((path query-map) -> parsed JSON) over the API at `base`,
   sending `headers` with every request. `label` names the API in errors,
-  which carry {:reason :forge/http :status n} or {:reason :forge/json}."
+  which carry {:reason :forge/http :status n} or {:reason :forge/json}.
+  A transient server error is retried before it becomes one."
   [label base headers]
   (let [parse (requiring-resolve 'cheshire.core/parse-string)
         base (str/replace (str base) #"/+$" "")]
@@ -220,7 +241,7 @@
                           b (assoc headers "User-Agent" "tik-bridge"))
                   (.timeout ^java.net.http.HttpRequest$Builder b (Duration/ofSeconds 60))
                   (.build ^java.net.http.HttpRequest$Builder b))
-            resp (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))
+            resp (send-with-retry req)
             status (.statusCode resp)
             body (str (.body resp))]
         (when (>= status 400)
