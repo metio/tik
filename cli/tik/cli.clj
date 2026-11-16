@@ -297,8 +297,9 @@
                                                 stage means something only once you
                                                 pin WHICH definition. Bindings names
                                                 which CI subjects may stand behind a
-                                                bound key, by your policy rather than
-                                                the supplier's. --serve does the same over
+                                                bound key, by your policy and the
+                                                issuer keys in jwks/ beside it rather
+                                                than the supplier's. --serve does the same over
                                                 HTTP, per request, including a badge
                                                 that names the derivation rather than
                                                 grading it

@@ -198,33 +198,40 @@
              (bundle/parse-expected-definition (str "sha256-" hex)))))))
 
 (deftest a_reader_policy_judges_the_bindings_behind_earned_keys
+  ;; the path a permitted, correctly signed binding takes is end to end in
+  ;; workload-identity-test, where a real issuer key signs a real token
   (let [gh "https://token.actions.githubusercontent.com"
         main "repo:metio/tik:ref:refs/heads/main"
         r {:signers [{:actor "seb"}
-                     {:actor "ci" :earned-by {:issuer gh :subject main}}]}
-        policy (fn [subject] {"ci" [{:issuer gh :subject subject}]})]
-    (testing "a binding the reader permits"
-      (let [[c :as cs] (bundle/expectations r {:bindings (policy main)})]
-        (is (= 1 (count cs)) "a key the supplier curated is not a binding")
-        (is (:ok? c))))
+                     {:actor "ci" :earned-by {:issuer gh :subject main
+                                              :id-token "e30.e30.c2ln"}}]}
+        policy (fn [subject] {"ci" [{:issuer gh :subject subject}]})
+        keys* {gh {:keys []}}
+        judge (fn [p ks] (bundle/expectations r {:bindings {:policy p :issuer-keys ks}}))]
     (testing "a binding from a subject the reader does not name"
-      (let [[c] (bundle/expectations
-                 r {:bindings (policy "repo:metio/tik:ref:refs/heads/dev")})]
+      (let [[c :as cs] (judge (policy "repo:metio/tik:ref:refs/heads/dev") keys*)]
+        (is (= 1 (count cs)) "a key the supplier curated is not a binding")
         (is (not (:ok? c)))
         (is (str/includes? (:msg c) main) "the refusal names the subject")))
-    (testing "a wildcard the reader spelled out"
-      (is (every? :ok? (bundle/expectations
-                        r {:bindings (policy "repo:metio/tik:*")}))))
+    (testing "a permitted subject whose issuer the reader pinned no keys for"
+      (let [[c] (judge (policy main) {})]
+        (is (not (:ok? c)))
+        (is (str/includes? (:msg c) "pinned no keys"))))
+    (testing "a permitted subject whose token no key the reader pinned signed"
+      (doseq [p [(policy main) (policy "repo:metio/tik:*")]]
+        (let [[c] (judge p keys*)]
+          (is (not (:ok? c)))
+          (is (str/includes? (:msg c) "signed the token")))))
     (testing "a bundle with no binding says so rather than passing silently"
       (let [[c :as cs] (bundle/expectations {:signers [{:actor "seb"}]}
-                                            {:bindings (policy main)})]
+                                            {:bindings {:policy (policy main)}})]
         (is (= 1 (count cs)))
         (is (:ok? c))
         (is (str/includes? (:msg c) "no signer"))))
     (testing "a policy that declares nothing or does not parse is refused"
       (doseq [p [nil :tik.identity-trust/malformed-policy]]
         (is (thrown-with-msg? clojure.lang.ExceptionInfo #"--expect-bindings"
-                              (bundle/expectations r {:bindings p}))
+                              (judge p keys*))
             (pr-str p))))))
 
 (deftest the_cli_reads_the_reader_policy_from_a_file

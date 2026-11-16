@@ -78,7 +78,10 @@ own release job signs everything within a second of binding.
   exporting store's policy. A recipient applies their own with
   `tik rederive --expect-bindings <oidc.edn>`, which fails unless every
   key earned through a binding was bound by an issuer and subject that
-  file permits for the actor. The bundle's `verify.sh` applies no policy:
+  file permits for the actor, with a token signed by an issuer key in
+  the `jwks/` beside the file. The bundle ships the issuer keys its
+  bindings verified with, so a policy checked against those alone would
+  pass a supplier who signed their own tokens. The bundle's `verify.sh` applies no policy:
   it proves the bytes with coreutils and `ssh-keygen`, and deciding which
   subjects a reader trusts is a judgment, like which stage they expect,
   that belongs with the other expectations in `rederive`.

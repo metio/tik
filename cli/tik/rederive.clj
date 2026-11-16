@@ -245,11 +245,29 @@
     (println "  GET  /badge.svg?bundle=<url>")
     @(promise)))
 
-(defn- read-policy [path]
+(defn- read-policy
+  "The reader's binding policy from `path`, and their issuer keys from
+  the `jwks/` directory beside it: the layout a store root already has,
+  so a reader who runs tik points at their own `oidc.edn`."
+  [path]
   (let [f (io/file (str path))]
     (when-not (.isFile f)
       (die (str "--expect-bindings: no such file: " path)))
-    (identity-trust/parse-binding-policy (slurp f))))
+    {:policy (identity-trust/parse-binding-policy (slurp f))
+     :root (or (.getParentFile (.getAbsoluteFile f)) (io/file "."))}))
+
+(defn- with-issuer-keys
+  "The reader's pinned key set for each issuer a signer was bound by."
+  [{:keys [policy root]} result]
+  {:policy policy
+   :issuer-keys (into {}
+                      (for [{:keys [earned-by]} (:signers result)
+                            :let [iss (:issuer earned-by)]
+                            :when iss
+                            :let [jwks (try (identity-trust/pinned-jwks root iss)
+                                            (catch Exception _ nil))]
+                            :when jwks]
+                        [iss jwks]))})
 
 (defn cmd-rederive
   "rederive <bundle.tgz|dir|https url> [--edn]: check an evidence bundle
@@ -270,17 +288,17 @@
 
   `--expect-bindings <oidc.edn>` adds the reader's own binding policy:
   every key the bundle earned through an identity binding must have
-  been bound by an issuer and subject that file permits."
+  been bound by an issuer and subject that file permits, with a token a
+  key in the `jwks/` beside it signed."
   [{:keys [pos opts]}]
   (if (:serve opts)
     (serve! opts)
     (let [src (or (first pos)
                   (die "usage: tik rederive <bundle.tgz|dir|https url>"))
-          expected (cond-> {:definition (:expect-definition opts)
-                            :stages (when-let [s (:expect-stage opts)]
-                                      (remove str/blank? (str/split (str s) #",")))}
-                     (:expect-bindings opts)
-                     (assoc :bindings (read-policy (:expect-bindings opts))))
+          expected {:definition (:expect-definition opts)
+                    :stages (when-let [s (:expect-stage opts)]
+                              (remove str/blank? (str/split (str s) #",")))}
+          policy (some-> (:expect-bindings opts) read-policy)
           fetched (when (str/starts-with? src "https://")
                     (try (fetch! src)
                          (catch clojure.lang.ExceptionInfo e
@@ -290,6 +308,8 @@
                         (die (str "not a readable evidence bundle: "
                                   (ex-message e))))
                       (finally (some-> ^File fetched .delete)))
+          expected (cond-> expected
+                     policy (assoc :bindings (with-issuer-keys policy result)))
           asserted (try (bundle/expectations result expected)
                         (catch clojure.lang.ExceptionInfo e
                           (die (ex-message e))))]

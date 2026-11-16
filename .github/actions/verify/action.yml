@@ -29,8 +29,9 @@ inputs:
   expect-bindings:
     description: >
       Path to an oidc.edn whose :bindings names which issuer and subject may
-      stand behind each actor's bound key. The bundle carries only bindings
-      the supplier's own policy accepted; this applies yours.
+      stand behind each actor's bound key, with your pinned issuer keys in
+      jwks/ beside it. The bundle carries only bindings the supplier's own
+      policy and keys accepted; this applies yours.
     required: false
     default: ""
 

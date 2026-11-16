@@ -502,7 +502,8 @@
                      b (some (fn [[k v]] (when (str/includes? line (str k)) v))
                              earned)]]
            (cond-> {:actor who}
-             b (assoc :earned-by {:issuer (:issuer b) :subject (:subject b)}))))))
+             b (assoc :earned-by {:issuer (:issuer b) :subject (:subject b)
+                                  :id-token (:id-token b)}))))))
 
 ;; ------------------------------------------------------------ derivation
 
@@ -591,7 +592,14 @@
                     " and pinning is this flag's whole job")))
     (str "sha256-" hex)))
 
-(defn- binding-expectations [signers policy]
+(defn- binding-expectations
+  "Each signer's binding judged by the reader's `policy` and against
+  `issuer-keys`, issuer -> the key set the reader pinned for it. The
+  bundle ships the issuer keys its bindings verified with, and whoever
+  built the bundle chose them; a token signed by a key the supplier made
+  up would name any issuer and subject it liked. So a binding counts for
+  this reader only when a key the reader pinned signed its token."
+  [signers {:keys [policy issuer-keys]}]
   (when-not (map? policy)
     (refuse! (str "--expect-bindings needs a file whose :bindings parses"
                   " (actor names to [{:issuer … :subject …}]); "
@@ -602,11 +610,24 @@
       [(ok "no signer in this bundle rests on a binding")]
       (for [{:keys [actor earned-by]} earned
             :let [{:keys [issuer subject]} earned-by]]
-        (if (identity-trust/permitted? policy {:actor actor :issuer issuer
-                                               :subject subject})
-          (ok (str actor " is bound by " subject ", which your policy permits"))
+        (cond
+          (not (identity-trust/permitted? policy {:actor actor :issuer issuer
+                                                  :subject subject}))
           (bad (str actor " is bound by " subject " per " issuer
-                    ", which your policy does not permit")))))))
+                    ", which your policy does not permit"))
+
+          (nil? (get issuer-keys issuer))
+          (bad (str actor " is bound per " issuer ", and you pinned no keys"
+                    " for that issuer to check its token against"))
+
+          (not (identity-trust/token-signed-by? (get issuer-keys issuer)
+                                                (:id-token earned-by)))
+          (bad (str "no key you pinned for " issuer " signed the token that"
+                    " binds " actor))
+
+          :else
+          (ok (str actor " is bound by " subject ", which your policy permits,"
+                   " with a token your pinned keys verify")))))))
 
 (defn expectations
   "What a consumer asserted about a bundle, checked against what was
@@ -618,11 +639,12 @@
   those rules can reach any stage they like; `:published` is a claim
   about a process only once the reader says WHICH process.
 
-  `:bindings` is the reader's own policy, in the shape `oidc.edn` gives
-  it (ADR 0026). The bundle carries only bindings that verified under the
-  supplier's policy, and the supplier wrote that policy; a key earned
-  through a binding counts for this reader only when their policy
-  permits the issuer and subject behind it."
+  `:bindings` is the reader's own `{:policy :issuer-keys}`, the policy in
+  the shape `oidc.edn` gives it (ADR 0026). The bundle carries only
+  bindings that verified under the supplier's policy and keys, and the
+  supplier chose both; a key earned through a binding counts for this
+  reader only when their policy permits the issuer and subject behind
+  it and their own pinned issuer key signed its token."
   [{:keys [reached process-hash signers]}
    {:keys [stages definition] :as expected}]
   (vec (concat

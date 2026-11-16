@@ -104,6 +104,17 @@
   (let [by-kid (fn [j] (into {} (map (juxt :kid identity)) (:keys j)))]
     {:keys (vec (vals (merge (by-kid old) (by-kid new*))))}))
 
+(defn token-signed-by?
+  "Does a key in the parsed key set `jwks` verify `id-token`'s signature?
+  False for anything malformed rather than an exception."
+  [jwks id-token]
+  (let [[h p sig] (str/split (str id-token) #"\.")]
+    (boolean
+     (when (and (map? jwks) (not (str/blank? (str p))) (not (str/blank? (str sig))))
+       (try ((jwks/verifier jwks) (str h "." p) (b64url sig)
+                                  (json-parse (String. (b64url h) "UTF-8")))
+            (catch Exception _ false))))))
+
 (defn token-claims
   "A token's claims without checking anything — for reporting only.
   Never a basis for trust; `binding-status` is."

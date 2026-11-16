@@ -40,6 +40,15 @@
          (b64url (unsigned (.getModulus pub))) "\",\"e\":\""
          (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
 
+(defn- other-jwks
+  "An RSA key set under the same kid that never signed anything here."
+  []
+  (let [^RSAPublicKey pub (.getPublic (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
+                                                          (.initialize 2048))))]
+    (str "{\"keys\":[{\"kty\":\"RSA\",\"alg\":\"RS256\",\"kid\":\"k1\",\"n\":\""
+         (b64url (unsigned (.getModulus pub))) "\",\"e\":\""
+         (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
+
 (defn- id-token
   "A token live right now, the way a real one is when a job presents it,
   unless the subject or window is named."
@@ -252,16 +261,32 @@
         _ (h/run-tik! ci-env "set" work "description=built by CI" "--actor" "ci")
         tgz (str (io/file root "evidence.tgz"))
         _ (h/run-tik! env "bundle" work "--out" tgz)
-        policy! (fn [n sub]
-                  (let [f (io/file root n)]
+        ;; the reader's own directory: their policy, and the issuer keys
+        ;; THEY pinned, beside it the way a store root holds both
+        reader! (fn [n sub jwks]
+                  (let [dir (io/file root n)
+                        f (io/file dir "oidc.edn")
+                        k (trust/jwks-file dir issuer)]
+                    (io/make-parents k)
+                    (when jwks (spit k jwks))
                     (spit f (pr-str {:bindings {"ci" [{:issuer issuer :subject sub}]}}))
-                    (str f)))]
-    (testing "the subject the reader names"
-      (let [r (h/run-tik! env "rederive" tgz "--expect-bindings" (policy! "ours.edn" subject))]
+                    (str f)))
+        rederive (fn [policy] (h/run-tik! env "rederive" tgz "--expect-bindings" policy))]
+    (testing "the subject the reader names, under the key the reader pinned"
+      (let [r (rederive (reader! "ours" subject (idp-jwks)))]
         (is (zero? (:exit r)) (str (:out r) (:err r)))
         (is (str/includes? (:out r) "which your policy permits") (:out r))))
     (testing "a subject the reader does not name fails the gate"
-      (let [r (h/run-tik! env "rederive" tgz "--expect-bindings"
-                          (policy! "theirs.edn" "repo:metio/tik:ref:refs/heads/dev"))]
+      (let [r (rederive (reader! "dev" "repo:metio/tik:ref:refs/heads/dev" (idp-jwks)))]
         (is (= 1 (:exit r)) (str (:out r) (:err r)))
-        (is (str/includes? (:out r) "does not permit") (:out r))))))
+        (is (str/includes? (:out r) "does not permit") (:out r))))
+    (testing "an issuer key the reader did not pin fails the gate"
+      ;; the bundle ships the key that signed the token; a supplier who
+      ;; made that key up would pass every check that trusts the bundle's
+      (let [r (rederive (reader! "other-key" subject (other-jwks)))]
+        (is (= 1 (:exit r)) (str (:out r) (:err r)))
+        (is (str/includes? (:out r) "signed the token") (:out r))))
+    (testing "no keys pinned for the issuer fails the gate"
+      (let [r (rederive (reader! "no-keys" subject nil))]
+        (is (= 1 (:exit r)) (str (:out r) (:err r)))
+        (is (str/includes? (:out r) "pinned no keys") (:out r))))))

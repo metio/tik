@@ -130,7 +130,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   reader pins WHICH definition (hence the full hash, no prefixes).
   `--expect-bindings <oidc.edn>` applies the reader's own `:bindings`
   policy: every key earned through an identity binding must come from an
-  issuer and subject that file permits for the actor. Exits 1
+  issuer and subject that file permits for the actor, with a token signed
+  by an issuer key in the `jwks/` beside the file (the reader's own pins,
+  never the keys the bundle ships). Exits 1
   when the bundle fails to verify or an expectation is unmet. It never runs the
   bundle's own `verify.sh`, unpacks the archive itself (refusing traversal,
   symlinks and unbounded expansion), and refuses a pinned definition that does

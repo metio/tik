@@ -76,9 +76,11 @@ somebody to collide with deliberately, and the value is pasted into a
 workflow file once.
 
 **Name who may bind a key.** A key the bundle earned through an identity
-binding was accepted under the supplier's binding policy, and the
-supplier wrote that policy. `--expect-bindings` applies yours, in the
-same shape `oidc.edn` uses:
+binding was accepted under the supplier's binding policy and checked
+against issuer keys the supplier shipped, and the supplier chose both. A
+token signed by a key the supplier made up can name any issuer and
+subject. `--expect-bindings` applies your policy and your keys instead.
+The policy has the shape `oidc.edn` uses:
 
 ```clojure
 {:bindings {"ci" [{:issuer "https://token.actions.githubusercontent.com"
@@ -89,9 +91,12 @@ same shape `oidc.edn` uses:
 tik rederive evidence.tgz --expect-bindings reader-oidc.edn
 ```
 
-Every bound key must then come from an issuer and subject your file
-permits for that actor. A subject ending in `*` admits every subject that
-starts with what precedes it. A bundle whose signers are all listed in
+The issuer keys are read from `jwks/` beside that file, the layout a tik
+store root already has, so a reader who runs tik points at their own
+`oidc.edn` and pins issuers with `tik bridge jwks`. Every bound key must
+then come from an issuer and subject your file permits for that actor,
+with a token a key you pinned for that issuer signed. A subject ending in
+`*` admits every subject that starts with what precedes it. A bundle whose signers are all listed in
 its `actors` file passes and says that no signer rests on a binding. A
 file without `:bindings`, or one that does not parse, is refused: a
 policy that says nothing would pass every bundle.
