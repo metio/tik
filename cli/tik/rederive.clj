@@ -22,7 +22,8 @@
             [clojure.string :as str]
             [tik.badge :as badge]
             [tik.bundle :as bundle]
-            [tik.cli-core :refer [die exit! now]])
+            [tik.cli-core :refer [die exit! now]]
+            [tik.identity-trust :as identity-trust])
   (:import (java.io File)
            (java.net InetAddress URI)
            (java.time Instant)))
@@ -244,6 +245,12 @@
     (println "  GET  /badge.svg?bundle=<url>")
     @(promise)))
 
+(defn- read-policy [path]
+  (let [f (io/file (str path))]
+    (when-not (.isFile f)
+      (die (str "--expect-bindings: no such file: " path)))
+    (identity-trust/parse-binding-policy (slurp f))))
+
 (defn cmd-rederive
   "rederive <bundle.tgz|dir|https url> [--edn]: check an evidence bundle
   and recompute what its facts imply. With --serve, the same over HTTP.
@@ -259,15 +266,21 @@
   stages under the definition I pinned. The two belong together — a
   supplier chooses the rules that judge their own ticket, so a stage
   assertion is a claim about a process only once the reader names WHICH
-  process."
+  process.
+
+  `--expect-bindings <oidc.edn>` adds the reader's own binding policy:
+  every key the bundle earned through an identity binding must have
+  been bound by an issuer and subject that file permits."
   [{:keys [pos opts]}]
   (if (:serve opts)
     (serve! opts)
     (let [src (or (first pos)
                   (die "usage: tik rederive <bundle.tgz|dir|https url>"))
-          expected {:definition (:expect-definition opts)
-                    :stages (when-let [s (:expect-stage opts)]
-                              (remove str/blank? (str/split (str s) #",")))}
+          expected (cond-> {:definition (:expect-definition opts)
+                            :stages (when-let [s (:expect-stage opts)]
+                                      (remove str/blank? (str/split (str s) #",")))}
+                     (:expect-bindings opts)
+                     (assoc :bindings (read-policy (:expect-bindings opts))))
           fetched (when (str/starts-with? src "https://")
                     (try (fetch! src)
                          (catch clojure.lang.ExceptionInfo e

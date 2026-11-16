@@ -197,6 +197,59 @@
       (is (= (str "sha256-" hex)
              (bundle/parse-expected-definition (str "sha256-" hex)))))))
 
+(deftest a_reader_policy_judges_the_bindings_behind_earned_keys
+  (let [gh "https://token.actions.githubusercontent.com"
+        main "repo:metio/tik:ref:refs/heads/main"
+        r {:signers [{:actor "seb"}
+                     {:actor "ci" :earned-by {:issuer gh :subject main}}]}
+        policy (fn [subject] {"ci" [{:issuer gh :subject subject}]})]
+    (testing "a binding the reader permits"
+      (let [[c :as cs] (bundle/expectations r {:bindings (policy main)})]
+        (is (= 1 (count cs)) "a key the supplier curated is not a binding")
+        (is (:ok? c))))
+    (testing "a binding from a subject the reader does not name"
+      (let [[c] (bundle/expectations
+                 r {:bindings (policy "repo:metio/tik:ref:refs/heads/dev")})]
+        (is (not (:ok? c)))
+        (is (str/includes? (:msg c) main) "the refusal names the subject")))
+    (testing "a wildcard the reader spelled out"
+      (is (every? :ok? (bundle/expectations
+                        r {:bindings (policy "repo:metio/tik:*")}))))
+    (testing "a bundle with no binding says so rather than passing silently"
+      (let [[c :as cs] (bundle/expectations {:signers [{:actor "seb"}]}
+                                            {:bindings (policy main)})]
+        (is (= 1 (count cs)))
+        (is (:ok? c))
+        (is (str/includes? (:msg c) "no signer"))))
+    (testing "a policy that declares nothing or does not parse is refused"
+      (doseq [p [nil :tik.identity-trust/malformed-policy]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"--expect-bindings"
+                              (bundle/expectations r {:bindings p}))
+            (pr-str p))))))
+
+(deftest the_cli_reads_the_reader_policy_from_a_file
+  (let [store (signed-store! :support-request "category=:billing" "severity=:low")
+        tgz (str (bundle! store))
+        dir (h/temp-dir! "tik-reader-policy")
+        write! (fn [n text] (let [f (io/file dir n)] (spit f text) (str f)))
+        run (fn [& args] (tik.cli/run-argv (into ["rederive" tgz] args)))]
+    (testing "a policy over a bundle whose signers are all curated"
+      (let [r (run "--expect-bindings"
+                   (write! "ok.edn" (pr-str {:audience "tik"
+                                             :bindings {"ci" [{:issuer "https://i"
+                                                               :subject "s"}]}})))]
+        (is (zero? (:exit r)) (str (:out r) (:err r)))
+        (is (str/includes? (:out r) "no signer"))))
+    (testing "a file without :bindings would pass everything, so it is refused"
+      (is (not (zero? (:exit (run "--expect-bindings"
+                                  (write! "none.edn" "{:audience \"tik\"}")))))))
+    (testing "a file that does not parse"
+      (is (not (zero? (:exit (run "--expect-bindings"
+                                  (write! "bad.edn" "{:bindings")))))))
+    (testing "a file that is not there"
+      (is (not (zero? (:exit (run "--expect-bindings"
+                                  (str (io/file dir "missing.edn"))))))))))
+
 (deftest the_cli_exits_nonzero_when_an_expectation_is_unmet
   (let [store (signed-store! :support-request "category=:billing" "severity=:low")
         tgz (str (bundle! store))

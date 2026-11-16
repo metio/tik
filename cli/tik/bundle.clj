@@ -591,6 +591,23 @@
                     " and pinning is this flag's whole job")))
     (str "sha256-" hex)))
 
+(defn- binding-expectations [signers policy]
+  (when-not (map? policy)
+    (refuse! (str "--expect-bindings needs a file whose :bindings parses"
+                  " (actor names to [{:issuer … :subject …}]); "
+                  (if (nil? policy) "it declares none" "it does not parse")
+                  " — and a policy that says nothing would pass every bundle")))
+  (let [earned (filter :earned-by signers)]
+    (if (empty? earned)
+      [(ok "no signer in this bundle rests on a binding")]
+      (for [{:keys [actor earned-by]} earned
+            :let [{:keys [issuer subject]} earned-by]]
+        (if (identity-trust/permitted? policy {:actor actor :issuer issuer
+                                               :subject subject})
+          (ok (str actor " is bound by " subject ", which your policy permits"))
+          (bad (str actor " is bound by " subject " per " issuer
+                    ", which your policy does not permit")))))))
+
 (defn expectations
   "What a consumer asserted about a bundle, checked against what was
   derived — in the same shape as every other check, so one renderer
@@ -599,9 +616,18 @@
   Pinning the definition is what makes a stage assertion mean anything.
   A bundle carries the rules that judged it, so a supplier who chooses
   those rules can reach any stage they like; `:published` is a claim
-  about a process only once the reader says WHICH process."
-  [{:keys [reached process-hash]} {:keys [stages definition]}]
+  about a process only once the reader says WHICH process.
+
+  `:bindings` is the reader's own policy, in the shape `oidc.edn` gives
+  it (ADR 0026). The bundle carries only bindings that verified under the
+  supplier's policy, and the supplier wrote that policy; a key earned
+  through a binding counts for this reader only when their policy
+  permits the issuer and subject behind it."
+  [{:keys [reached process-hash signers]}
+   {:keys [stages definition] :as expected}]
   (vec (concat
+        (when (contains? expected :bindings)
+          (binding-expectations signers (:bindings expected)))
         (when definition
           (let [want (parse-expected-definition definition)]
             [(if (= want process-hash)

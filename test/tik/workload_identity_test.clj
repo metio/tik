@@ -235,3 +235,33 @@
           (let [v (h/run-tik! env "verify" late)]
             (is (pos? (:exit v)) (str (:out v) (:err v)))
             (is (str/includes? (:out v) "FAIL") (:out v))))))))
+
+(deftest a-reader-applies-their-own-policy-to-a-bundled-binding
+  (let [{:keys [root env]} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))
+        ci-key (ssh-keygen! root "ci_key")
+        token-file (str (io/file root "token.jwt"))
+        _ (spit token-file (id-token))
+        ci-env (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
+        _ (h/run-tik! ci-env "bridge" "workload" "--registry" registry
+                      "--token-file" token-file "--public-key" (str ci-key ".pub")
+                      "--actor" "ci")
+        work (ticket-id (:out (h/run-tik! ci-env "new" "identity-registry"
+                                          "--title" "signed by the pipeline")))
+        _ (h/run-tik! ci-env "set" work "description=built by CI" "--actor" "ci")
+        tgz (str (io/file root "evidence.tgz"))
+        _ (h/run-tik! env "bundle" work "--out" tgz)
+        policy! (fn [n sub]
+                  (let [f (io/file root n)]
+                    (spit f (pr-str {:bindings {"ci" [{:issuer issuer :subject sub}]}}))
+                    (str f)))]
+    (testing "the subject the reader names"
+      (let [r (h/run-tik! env "rederive" tgz "--expect-bindings" (policy! "ours.edn" subject))]
+        (is (zero? (:exit r)) (str (:out r) (:err r)))
+        (is (str/includes? (:out r) "which your policy permits") (:out r))))
+    (testing "a subject the reader does not name fails the gate"
+      (let [r (h/run-tik! env "rederive" tgz "--expect-bindings"
+                          (policy! "theirs.edn" "repo:metio/tik:ref:refs/heads/dev"))]
+        (is (= 1 (:exit r)) (str (:out r) (:err r)))
+        (is (str/includes? (:out r) "does not permit") (:out r))))))

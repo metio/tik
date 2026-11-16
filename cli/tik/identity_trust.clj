@@ -149,6 +149,18 @@
                       (every? policy-rule? rules)))
                p)))
 
+(defn parse-binding-policy
+  "The `:bindings` policy in the text of an `oidc.edn`, nil when it
+  declares none, or `::malformed-policy` when it does not parse."
+  [text]
+  (let [cfg (try (edn/read-string (str text))
+                 (catch Exception _ ::malformed-policy))]
+    (cond
+      (not (map? cfg)) ::malformed-policy
+      (not (contains? cfg :bindings)) nil
+      (policy-shape? (:bindings cfg)) (:bindings cfg)
+      :else ::malformed-policy)))
+
 (defn binding-policy
   "Which issuers and subjects may bind which actor, from `:bindings` in
   `oidc.edn`, or nil when the store declares none:
@@ -162,13 +174,7 @@
   [root]
   (let [f (io/file root "oidc.edn")]
     (when (.exists f)
-      (let [cfg (try (edn/read-string (slurp f))
-                     (catch Exception _ ::malformed-policy))]
-        (cond
-          (not (map? cfg)) ::malformed-policy
-          (not (contains? cfg :bindings)) nil
-          (policy-shape? (:bindings cfg)) (:bindings cfg)
-          :else ::malformed-policy)))))
+      (parse-binding-policy (slurp f)))))
 
 (defn subject-matches?
   "Does `pattern` admit `subject`? Exactly, unless the pattern ends in

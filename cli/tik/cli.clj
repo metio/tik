@@ -288,14 +288,17 @@
   tik rederive <bundle.tgz|dir|url> [--edn]     the other half: check a bundle and
               [--expect-stage :a,:b]            recompute what its facts imply under
               [--expect-definition sha256-…]    the rules it pinned. verify.sh proves
-              [--serve [--port N]]              the bytes; this says what they add up
-                                                to, at the instant you ask. The two
+              [--expect-bindings oidc.edn]      the bytes; this says what they add up
+              [--serve [--port N]]              to, at the instant you ask. The
                                                 expectations make it a gate for a
-                                                consumer's CI, and belong together:
-                                                a supplier picks the rules judging
-                                                their own ticket, so a stage means
-                                                something only once you pin WHICH
-                                                definition. --serve does the same over
+                                                consumer's CI. Stage and definition
+                                                belong together: a supplier picks the
+                                                rules judging their own ticket, so a
+                                                stage means something only once you
+                                                pin WHICH definition. Bindings names
+                                                which CI subjects may stand behind a
+                                                bound key, by your policy rather than
+                                                the supplier's. --serve does the same over
                                                 HTTP, per request, including a badge
                                                 that names the derivation rather than
                                                 grading it
@@ -357,7 +360,7 @@
   in the store has earned the stricter reading of its arguments."
   #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "by" "changed"
     "as" "client-id" "command" "config" "credential" "dry-run" "edn"
-    "expect-definition" "expect-stage" "force"
+    "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "intro" "issuer" "jwks" "jwks-url"
     "key"
     "links" "long" "name" "out" "params" "parent" "parent-title"

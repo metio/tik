@@ -75,6 +75,10 @@ own release job signs everything within a second of binding.
 - Event times are claimed (ADR 0012), so a backdated event signed by an
   expired key is detectable rather than prevented, exactly as for rule 3.
 - An evidence bundle carries only bindings that verified under the
-  exporting store's policy. `tik rederive` and the bundle's `verify.sh`
-  do not apply a policy of their own; a recipient reads the subject on
-  the binding. Giving them a consumer-side expectation is open work.
+  exporting store's policy. A recipient applies their own with
+  `tik rederive --expect-bindings <oidc.edn>`, which fails unless every
+  key earned through a binding was bound by an issuer and subject that
+  file permits for the actor. The bundle's `verify.sh` applies no policy:
+  it proves the bytes with coreutils and `ssh-keygen`, and deciding which
+  subjects a reader trusts is a judgment, like which stage they expect,
+  that belongs with the other expectations in `rederive`.

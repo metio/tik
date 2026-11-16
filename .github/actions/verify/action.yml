@@ -26,6 +26,13 @@ inputs:
       WHICH process.
     required: false
     default: ""
+  expect-bindings:
+    description: >
+      Path to an oidc.edn whose :bindings names which issuer and subject may
+      stand behind each actor's bound key. The bundle carries only bindings
+      the supplier's own policy accepted; this applies yours.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -35,6 +42,7 @@ runs:
         BUNDLE: ${{ inputs.bundle }}
         EXPECT_STAGE: ${{ inputs.expect-stage }}
         EXPECT_DEFINITION: ${{ inputs.expect-definition }}
+        EXPECT_BINDINGS: ${{ inputs.expect-bindings }}
       run: |
         set -euo pipefail
         if ! command -v tik > /dev/null 2>&1; then
@@ -52,5 +60,8 @@ runs:
         fi
         if [ -n "${EXPECT_DEFINITION}" ]; then
           args+=(--expect-definition "${EXPECT_DEFINITION}")
+        fi
+        if [ -n "${EXPECT_BINDINGS}" ]; then
+          args+=(--expect-bindings "${EXPECT_BINDINGS}")
         fi
         tik rederive "${BUNDLE}" ${args[@]+"${args[@]}"}

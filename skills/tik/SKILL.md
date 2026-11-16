@@ -127,7 +127,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   same bytes. `--expect-stage :a,:b` and `--expect-definition sha256-<64 hex>`
   make it a gate for a consumer's CI — and belong together, because a bundle
   brings the rules that judged it, so a stage means something only once the
-  reader pins WHICH definition (hence the full hash, no prefixes). Exits 1
+  reader pins WHICH definition (hence the full hash, no prefixes).
+  `--expect-bindings <oidc.edn>` applies the reader's own `:bindings`
+  policy: every key earned through an identity binding must come from an
+  issuer and subject that file permits for the actor. Exits 1
   when the bundle fails to verify or an expectation is unmet. It never runs the
   bundle's own `verify.sh`, unpacks the archive itself (refusing traversal,
   symlinks and unbounded expansion), and refuses a pinned definition that does

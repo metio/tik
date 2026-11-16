@@ -55,7 +55,7 @@ survives its own evidence; a derivation ages with it.
 
 ## Gating on a bundle
 
-Two flags turn re-derivation into a check a consumer's own CI can stand on:
+Three flags turn re-derivation into a check a consumer's own CI can stand on:
 
 ```sh
 tik rederive https://example.com/evidence.tgz \
@@ -74,6 +74,27 @@ supplier who writes those rules can reach any stage they choose —
 and refuses an abbreviation: eight hex characters is thirty-two bits for
 somebody to collide with deliberately, and the value is pasted into a
 workflow file once.
+
+**Name who may bind a key.** A key the bundle earned through an identity
+binding was accepted under the supplier's binding policy, and the
+supplier wrote that policy. `--expect-bindings` applies yours, in the
+same shape `oidc.edn` uses:
+
+```clojure
+{:bindings {"ci" [{:issuer "https://token.actions.githubusercontent.com"
+                   :subject "repo:supplier/proj:ref:refs/heads/main"}]}}
+```
+
+```sh
+tik rederive evidence.tgz --expect-bindings reader-oidc.edn
+```
+
+Every bound key must then come from an issuer and subject your file
+permits for that actor. A subject ending in `*` admits every subject that
+starts with what precedes it. A bundle whose signers are all listed in
+its `actors` file passes and says that no signer rests on a binding. A
+file without `:bindings`, or one that does not parse, is refused: a
+policy that says nothing would pass every bundle.
 
 ## In GitHub Actions
 
