@@ -1421,6 +1421,50 @@ derivation is the same pure function over a different definition.
 Trigger to revisit: a second report of a migration that lost facts, or
 a whatif redesign that generalizes its step vocabulary anyway.
 
+## Probes written in Clojure, run in SCI (unjudged)
+
+A probe is porcelain: `tik probe` runs it, reads `key=value` lines from
+its stdout, and asserts each changed value as an ordinary signed fact.
+The kernel never sees the probe, only the facts, so nothing here touches
+derivation. Today a probe file runs as `sh <file>`
+(`cli/tik/storeops.clj`), which ignores its `#!` line and makes every
+probe file a shell script. A `:probe` value naming no file runs through
+`sh -c`, so `:probe "bb probes/x.clj"` should already work where `bb` is
+on PATH; that has not been tried.
+
+The idea is to run a `.clj` probe in SCI inside tik instead:
+
+- **No `sh` on the host.** A probe would run wherever tik runs, which
+  matters for a container image without a shell.
+- **Facts as data.** The probe returns a map of fact paths to EDN
+  values, and the `key=value` line format with its shell quoting
+  (`krei.config.ref="dotfiles@…"`) goes away. The facts it receives
+  arrive as a map too, in place of `TIK_FACT_<PATH>` variables and their
+  collision rule.
+- **Named capabilities.** SCI exposes only the namespaces tik allows, so
+  the set a probe may use (run a command such as `git`, read files under
+  its repository, fetch over HTTPS) is a list in tik's code, not
+  whatever the host has installed.
+
+Questions to answer before judging it:
+
+- Which capabilities, and whether a probe that shells out to `git` and
+  `krei` anyway (as the metio store's probes do) gains enough from SCI
+  over `bb` on PATH.
+- Whether the native binary can carry SCI, and what it costs in size
+  and build time. Unmeasured.
+- How this sits next to PLAN §5's deferred SCI-sandboxed guard tier.
+  That one would run inside derivation and is reserved on principle;
+  this one runs in porcelain before an event exists, so the two answer
+  different questions, but a shared sandbox would be tempting and
+  should be argued rather than assumed.
+- Shell probes keep working either way; the trigger is the file
+  extension, or an explicit `:probe {:clj "probes/x.clj"}`.
+
+Trigger to revisit: a probe that needs a host tool the target image does
+not have, or a second store whose probes spend most of their lines on
+quoting.
+
 ## tik as the ticket system for the metio cloud self-service portal (unjudged)
 
 A self-service portal is a stream of requests whose whole substance is
