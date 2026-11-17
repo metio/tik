@@ -21,7 +21,7 @@
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
   (:require [clojure.string :as str])
-  (:import (java.security KeyFactory Signature)
+  (:import (java.security KeyFactory MessageDigest Signature)
            (java.security.spec X509EncodedKeySpec)
            (java.util Base64)))
 
@@ -79,6 +79,44 @@
         pkcs1 (der-tlv 0x30 (concat (seq (der-int n)) (seq (der-int e))))
         bit-string (der-tlv 0x03 (cons 0 (map #(bit-and % 0xff) (seq pkcs1))))]
     (der-tlv 0x30 (concat rsa-oid (map #(bit-and % 0xff) (seq bit-string))))))
+
+(defn thumbprint
+  "The RFC 7638 thumbprint of a JWK: base64url SHA-256 over its required
+  members in lexicographic order, so two key sets that spell the same
+  key differently (another `kid`, extra members, other order) agree on
+  it. nil for a key type without a defined member set or with a member
+  missing."
+  [jwk]
+  (let [members (case (:kty jwk)
+                  "RSA" [:e :kty :n]
+                  "OKP" [:crv :kty :x]
+                  "EC" [:crv :kty :x :y]
+                  nil)
+        json (requiring-resolve 'cheshire.core/generate-string)]
+    (when (and members (every? #(string? (get jwk %)) members))
+      (let [canon (str "{"
+                       (str/join "," (for [k members]
+                                       (str "\"" (name k) "\":" (json (get jwk k)))))
+                       "}")
+            digest (.digest (MessageDigest/getInstance "SHA-256")
+                            (.getBytes canon "UTF-8"))]
+        (.encodeToString (.withoutPadding (Base64/getUrlEncoder)) digest)))))
+
+(defn- first-verifying
+  "Whether any of `candidates` verifies, by `check`. Each candidate is a
+  key the operator pinned, so trying several widens nothing; a candidate
+  this build cannot use is skipped while another remains, and its error
+  surfaces only when every candidate failed that way."
+  [check candidates]
+  (loop [[c & more] candidates err nil judged? false]
+    (if (nil? c)
+      (if (and err (not judged?)) (throw err) false)
+      (let [r (try {:ok (boolean (check c))}
+                   (catch clojure.lang.ExceptionInfo e {:err e}))]
+        (cond
+          (:ok r) true
+          (:err r) (recur more (or err (:err r)) judged?)
+          :else (recur more err true))))))
 
 (defn jwk->pem
   "An RSA JWK as a PEM SubjectPublicKeyInfo — what an evidence bundle
@@ -172,30 +210,35 @@
 
 (defn pem-verifier
   "The same verification an evidence bundle's `verify.sh` does with
-  openssl, in process: pick the issuer key by the JWT header's `kid` from
-  a {kid PEM} map and check the signature. A bundle carries PEMs rather
-  than a JWKS because openssl reads one and nothing of ours is needed."
-  [kid->pem]
+  openssl, in process: pick the issuer keys by the JWT header's `kid`
+  from a map of kid to a PEM or several, and check the signature against
+  each. A bundle carries PEMs rather than a JWKS because openssl reads
+  one and nothing of ours is needed."
+  [kid->pems]
   (fn [signing-input sig header]
     (let [kid (str (:kid header))
-          pem (or (get kid->pem kid)
-                  (when (= 1 (count kid->pem)) (val (first kid->pem)))
-                  (fail! (str "no pinned issuer key matches kid " kid)
-                         :reason :oid4vci/no-key))
+          as-seq (fn [v] (if (string? v) [v] (seq v)))
+          pems (or (as-seq (get kid->pems kid))
+                   (when (= 1 (count kid->pems)) (as-seq (val (first kid->pems))))
+                   (fail! (str "no pinned issuer key matches kid " kid)
+                          :reason :oid4vci/no-key))
           alg (:alg header)]
-      (jws-verify alg (pem->key alg pem) signing-input sig))))
+      (first-verifying #(jws-verify alg (pem->key alg %) signing-input sig) pems))))
 
 (defn verifier
   "The verifier `tik.oid4vci/verify` injects, from a parsed JWKS map:
-  pick the key by the JWT header's `kid` (or the sole key) and check the
-  signature per its alg. Total — a missing/unsupported key fails well."
+  pick the keys by the JWT header's `kid` (or the sole key) and check the
+  signature per its alg against each. An issuer that reuses a `kid` for
+  new key material leaves both pinned, and both keep verifying what
+  they signed. Total — a missing/unsupported key fails well."
   [jwks]
   (let [keys* (:keys jwks)
-        by-kid (into {} (map (juxt :kid identity)) keys*)]
+        by-kid (group-by :kid keys*)]
     (fn [signing-input sig header]
-      (let [jwk (or (get by-kid (:kid header))
-                    (when (= 1 (count keys*)) (first keys*))
-                    (fail! (str "no JWKS key matches kid " (:kid header))
-                           :reason :oid4vci/no-key))
-            alg (or (:alg header) (:alg jwk))]
-        (jws-verify alg (jwk->key jwk) signing-input sig)))))
+      (let [jwks* (or (get by-kid (:kid header))
+                      (when (= 1 (count keys*)) keys*)
+                      (fail! (str "no JWKS key matches kid " (:kid header))
+                             :reason :oid4vci/no-key))]
+        (first-verifying #(jws-verify (or (:alg header) (:alg %)) (jwk->key %)
+                                      signing-input sig)
+                         jwks*)))))

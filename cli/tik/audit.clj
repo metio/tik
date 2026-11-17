@@ -403,14 +403,24 @@ if [ -d identity ]; then
     fi
     hdr=${tok%%.*}; rest=${tok#*.}; pay=${rest%%.*}; sig=${rest#*.}
     kid=$(b64url \"$hdr\" | sed -n 's/.*\"kid\":\"\\([^\"]*\\)\".*/\\1/p')
-    pem=identity/keys/$kid.pem
-    if [ ! -f \"$pem\" ]; then
-      echo \"FAIL  no issuer key for kid $kid — cannot check $b\"; fail=1; continue
-    fi
+    # every key pinned under this kid: <kid>.pem, then <kid>~<thumbprint>.pem
+    # for further material an issuer published under the same name
+    have=0; signed=0
     si=$(mktemp); sf=$(mktemp)
     printf '%s.%s' \"$hdr\" \"$pay\" > \"$si\"
     b64url \"$sig\" > \"$sf\"
-    if openssl dgst -sha256 -verify \"$pem\" -signature \"$sf\" \"$si\" >/dev/null 2>&1; then
+    for pem in \"identity/keys/$kid.pem\" \"identity/keys/$kid\"~*.pem; do
+      [ -f \"$pem\" ] || continue
+      have=1
+      if openssl dgst -sha256 -verify \"$pem\" -signature \"$sf\" \"$si\" >/dev/null 2>&1; then
+        signed=1; break
+      fi
+    done
+    if [ \"$have\" = 0 ]; then
+      echo \"FAIL  no issuer key for kid $kid — cannot check $b\"; fail=1
+      rm -f \"$si\" \"$sf\"; continue
+    fi
+    if [ \"$signed\" = 1 ]; then
       sub=$(b64url \"$pay\" | sed -n 's/.*\"sub\":\"\\([^\"]*\\)\".*/\\1/p')
       if grep -qF \"$pub\" actors; then
         echo \"ok    $who is bound to its key by $sub, per the issuer\"
@@ -572,13 +582,22 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
             (doseq [nm (sidecar-names-for s rid ev "sig")]
               (io/copy (store/read-sidecar s rid nm) (io/file idir nm))))
           ;; and the issuer keys, as PEM, so openssl alone can check the
-          ;; tokens those bindings carry
-          (doseq [issuer (distinct (map :issuer granting))
-                  :let [jwks (identity-trust/pinned-jwks (root) issuer)]
-                  jwk (:keys jwks)
-                  :let [pem (jwks/jwk->pem jwk)]
-                  :when pem]
-            (spit (io/file kdir (str (:kid jwk) ".pem")) pem)))))
+          ;; tokens those bindings carry. The first key under a kid is
+          ;; <kid>.pem; another key under the same kid, from a reused kid
+          ;; or another issuer, is <kid>~<thumbprint>.pem beside it, and
+          ;; both verifiers try every file for the token's kid
+          (let [written (atom #{})]
+            (doseq [issuer (distinct (map :issuer granting))
+                    :let [jwks (identity-trust/pinned-jwks (root) issuer)]
+                    jwk (:keys jwks)
+                    :let [pem (jwks/jwk->pem jwk)
+                          kid (str (:kid jwk))]
+                    :when pem]
+              (spit (io/file kdir (if (contains? @written kid)
+                                    (str kid "~" (jwks/thumbprint jwk) ".pem")
+                                    (str kid ".pem")))
+                    pem)
+              (swap! written conj kid))))))
     (when phash
       (doseq [^File f (.listFiles (io/file (root) "processes" "by-hash"))
               :when (str/starts-with? (.getName f) phash)]

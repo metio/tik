@@ -406,12 +406,20 @@
 
 ;; ------------------------------------------------------------ rung 2
 
-(defn- pem-files [{:keys [identity-dir]}]
-  (into {}
-        (map (fn [^File f] [(str/replace (.getName f) #"\.pem$" "") (slurp f)]))
-        (files-under (io/file identity-dir "keys")
-                     (fn [^File f] (and (.isFile f)
-                                        (str/ends-with? (.getName f) ".pem"))))))
+(defn- pem-files
+  "kid -> the issuer PEMs the bundle carries for it: `<kid>.pem`, and
+  `<kid>~<thumbprint>.pem` for each further key under the same kid."
+  [{:keys [identity-dir]}]
+  (reduce (fn [m ^File f]
+            (let [kid (-> (.getName f)
+                          (str/replace #"\.pem$" "")
+                          (str/replace #"~[A-Za-z0-9_-]{43}$" ""))]
+              (update m kid (fnil conj []) (slurp f))))
+          {}
+          (sort-by #(.getName ^File %)
+                   (files-under (io/file identity-dir "keys")
+                                (fn [^File f] (and (.isFile f)
+                                                   (str/ends-with? (.getName f) ".pem")))))))
 
 (defn bindings
   "The key bindings this bundle carries, read from the excerpted registry
@@ -451,16 +459,16 @@
                  parsed (identity-trust/token-claims tok)
                  kid (:kid (try (identity-trust/token-header tok)
                                 (catch Exception _ nil)))
-                 pem (get pems (str kid))]]
+                 kid-pems (get pems (str kid))]]
        (cond
          (or (str/blank? (str p)) (str/blank? (str sig)))
          (bad (str "the binding for " (:actor b) " carries a malformed token"))
 
-         (nil? pem)
+         (empty? kid-pems)
          (note (str "no pinned key for issuer kid " kid
                     " — the binding for " (:actor b) " grants nothing here"))
 
-         (not (try ((jwks/pem-verifier {(str kid) pem})
+         (not (try ((jwks/pem-verifier {(str kid) kid-pems})
                     (str h "." p)
                     (jwks/b64url-bytes sig)
                     (identity-trust/token-header tok))

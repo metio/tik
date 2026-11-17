@@ -41,10 +41,13 @@
          (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
 
 (defn- other-jwks
-  "An RSA key set under the same kid that never signed anything here."
-  []
-  (let [^RSAPublicKey pub (.getPublic (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
-                                                          (.initialize 2048))))]
+  "An RSA key set under the same kid: of `pair`, or of a key that never
+  signed anything here."
+  [& [pair]]
+  (let [^java.security.KeyPair kp (or pair (.generateKeyPair
+                                            (doto (KeyPairGenerator/getInstance "RSA")
+                                              (.initialize 2048))))
+        ^RSAPublicKey pub (.getPublic kp)]
     (str "{\"keys\":[{\"kty\":\"RSA\",\"alg\":\"RS256\",\"kid\":\"k1\",\"n\":\""
          (b64url (unsigned (.getModulus pub))) "\",\"e\":\""
          (b64url (unsigned (.getPublicExponent pub))) "\"}]}")))
@@ -53,7 +56,7 @@
   "A token live right now, the way a real one is when a job presents it,
   unless the subject or window is named."
   ([] (id-token {}))
-  ([{:keys [sub iat exp]}]
+  ([{:keys [sub iat exp pair]}]
    (let [now (.getEpochSecond (Instant/now))
          payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" (or sub subject) "\","
                       "\"aud\":\"tik\",\"iat\":" (or iat (- now 30))
@@ -61,8 +64,9 @@
          h (b64url (.getBytes "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"k1\"}" "UTF-8"))
          p (b64url (.getBytes payload "UTF-8"))
          si (str h "." p)
+         ^java.security.KeyPair kp (or pair @idp)
          s (doto (Signature/getInstance "SHA256withRSA")
-             (.initSign (.getPrivate ^java.security.KeyPair @idp))
+             (.initSign (.getPrivate kp))
              (.update (.getBytes si "US-ASCII")))]
      (str si "." (b64url (.sign s))))))
 
@@ -290,3 +294,50 @@
       (let [r (rederive (reader! "no-keys" subject nil))]
         (is (= 1 (:exit r)) (str (:out r) (:err r)))
         (is (str/includes? (:out r) "pinned no keys") (:out r))))))
+
+(deftest an-issuer-reusing-a-kid-keeps-both-keys-verifying
+  (let [{:keys [root env]} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))
+        bind! (fn [actor token]
+                (let [k (ssh-keygen! root (str actor "_key"))
+                      tf (str (io/file root (str actor ".jwt")))]
+                  (spit tf token)
+                  (h/run-tik! (assoc env :actor actor :env {"TIK_KEY" k})
+                              "bridge" "workload" "--registry" registry
+                              "--token-file" tf "--public-key" (str k ".pub")
+                              "--actor" actor)
+                  (assoc env :actor actor :env {"TIK_KEY" k})))
+        ;; yesterday's binding, under the key pinned in setup!
+        old-env (bind! "ci" (id-token))
+        rotated (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
+                                    (.initialize 2048)))
+        new-jwks (str (io/file root "new-jwks.json"))
+        _ (spit new-jwks (other-jwks rotated))
+        repin (h/run-tik! env "bridge" "jwks" "--issuer" issuer "--jwks" new-jwks)
+        new-env (bind! "ci-next" (id-token {:pair rotated}))
+        work (ticket-id (:out (h/run-tik! old-env "new" "identity-registry"
+                                          "--title" "signed by both")))]
+    (h/run-tik! old-env "set" work "description=old" "--actor" "ci")
+    (h/run-tik! new-env "set" work "summary=new" "--actor" "ci-next")
+    (testing "the re-pin warns and keeps both keys"
+      (is (zero? (:exit repin)) (str (:out repin) (:err repin)))
+      (is (str/includes? (:err repin) "different key material under kid k1") (:err repin))
+      (is (= 2 (count (re-seq #"\"kid\"" (slurp (trust/jwks-file root issuer)))))))
+    (testing "verify credits both bound keys"
+      (let [v (h/run-tik! env "verify" work)]
+        (is (zero? (:exit v)) (str (:out v) (:err v)))
+        (is (re-find #"signed by ci\n" (:out v)) (:out v))
+        (is (str/includes? (:out v) "signed by ci-next") (:out v))))
+    (testing "a bundle carries both keys and its verify.sh checks both bindings"
+      (let [tgz (io/file root "evidence.tgz")
+            dest (h/temp-dir! "tik-rotated-bundle")]
+        (h/run-tik! env "bundle" work "--out" (str tgz))
+        (sh/sh "tar" "xzf" (str tgz) "-C" (str dest))
+        (is (= 2 (count (.listFiles (io/file dest "identity" "keys")))))
+        (let [r (sh/sh "sh" "./verify.sh" :dir (str dest))]
+          (is (zero? (:exit r)) (str (:out r) (:err r)))
+          (is (str/includes? (:out r) "ci is bound") (:out r))
+          (is (str/includes? (:out r) "ci-next is bound") (:out r)))
+        (let [r (h/run-tik! env "rederive" (str tgz))]
+          (is (zero? (:exit r)) (str (:out r) (:err r))))))))

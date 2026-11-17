@@ -52,7 +52,9 @@
   the new one alongside the old for a while; re-pinning appends rather
   than replaces, so a token signed by a retired key still verifies. A
   pinned set that loses a key stops verifying the bindings that key
-  signed — a real consequence, and the reason re-pinning merges."
+  signed — a real consequence, and the reason re-pinning merges. Keys
+  merge by kid and key material (ADR 0027), so new material under a kid
+  already pinned joins the old key instead of replacing it."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -96,13 +98,36 @@
     (when (.exists f)
       (jwks/parse-jwks (slurp f)))))
 
+(defn- key-identity
+  "What makes two pinned keys the same key: the `kid` a token selects by,
+  and the key material by its RFC 7638 thumbprint. A key type without a
+  thumbprint falls back to its whole JSON form."
+  [jwk]
+  [(:kid jwk) (or (jwks/thumbprint jwk) (pr-str (into (sorted-map) jwk)))])
+
 (defn merge-jwks
-  "Union two key sets by `kid`, the newer winning a collision. Re-pinning
-  a rotated issuer must not retire the key that signed yesterday's
-  binding, so this appends rather than replaces."
+  "Union two key sets by kid and key material. Re-pinning a rotated
+  issuer must not retire the key that signed yesterday's binding, so
+  this only appends; an issuer that publishes new material under a `kid`
+  it used before leaves both pinned, and the verifier tries both."
   [old new*]
-  (let [by-kid (fn [j] (into {} (map (juxt :kid identity)) (:keys j)))]
-    {:keys (vec (vals (merge (by-kid old) (by-kid new*))))}))
+  {:keys (first (reduce (fn [[acc seen] k]
+                          (let [id (key-identity k)]
+                            (if (seen id) [acc seen] [(conj acc k) (conj seen id)])))
+                        [[] #{}]
+                        (concat (:keys old) (:keys new*))))})
+
+(defn reused-kids
+  "The kids under which `new*` publishes key material `old` does not hold
+  for that kid: an issuer reusing a name for another key."
+  [old new*]
+  (let [held (set (map key-identity (:keys old)))
+        old-kids (set (keep :kid (:keys old)))]
+    (into (sorted-set)
+          (comp (filter #(contains? old-kids (:kid %)))
+                (remove #(held (key-identity %)))
+                (map (comp str :kid)))
+          (:keys new*))))
 
 (defn token-signed-by?
   "Does a key in the parsed key set `jwks` verify `id-token`'s signature?

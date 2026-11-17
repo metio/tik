@@ -172,8 +172,10 @@
                   [--jwks-url U | --jwks F]     trust anchor. Fetched ONCE and committed,
                                                 so a key binding stays checkable offline
                                                 after the IdP is gone; re-pinning MERGES
-                                                by kid, so a rotated key never retires
-                                                the one that signed an older binding
+                                                by kid and key material, so neither a
+                                                rotated key nor new material under an
+                                                old kid retires the key that signed an
+                                                older binding
   tik bridge workload --github                  identity rung 2 for MACHINES: a pipeline
                  | --token-file F               generates a keypair per run, presents the
                  | --token-env VAR              OIDC token its platform already issues,

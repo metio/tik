@@ -71,3 +71,4 @@ so a checkout and this site carry the same record.
 | [0024](/decisions/0024-link-values-name-foreign-tickets/) | A link's value names its referent; a foreign ticket carries the head observed. |
 | [0025](/decisions/0025-the-evidence-bundle-is-a-versioned-format/) | The evidence bundle is a named, versioned format; a badge names the derivation. |
 | [0026](/decisions/0026-a-binding-policy-names-who-may-bind-which-actor/) | A binding policy names which subject may bind which actor; a bound key speaks only while its token was live. |
+| [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |

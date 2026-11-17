@@ -196,8 +196,10 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
 - `tik bridge jwks --issuer <url>` — pin an issuer's signing keys at
   `<root>/jwks/<issuer>.json`. Rung 2's trust anchor: verification never calls
   the IdP, so the keys must be in the store before a binding can count. Fetched
-  once and committed like `actors`; re-pinning MERGES by `kid`, so a rotated
-  key never retires the one that signed an older binding.
+  once and committed like `actors`; re-pinning MERGES by `kid` and key
+  material (RFC 7638 thumbprint), so neither a rotated key nor new material
+  under an old `kid` retires the one that signed an older binding — the
+  latter is kept beside the old key with a warning to confirm it.
 - `tik bridge workload --github | --token-file F | --token-env VAR
   [--public-key key.pub] [--registry ID]` — identity rung 2 for **machines**.
   A pipeline generates a keypair per run, presents the OIDC token its platform

@@ -277,9 +277,10 @@
   once by an operator, committed like the actors registry, and read
   offline forever after.
 
-  Re-pinning MERGES by `kid` rather than replacing: an issuer that
-  rotates publishes the new key beside the old, and dropping the old one
-  would stop verifying every binding it signed."
+  Re-pinning MERGES by kid and key material rather than replacing: an
+  issuer that rotates publishes the new key beside the old, and dropping
+  the old one would stop verifying every binding it signed. New material
+  under a kid already pinned is kept beside the old and warned about."
   [opts]
   (let [cfg-file (or (:config opts) (str (io/file (root) "oidc.edn")))
         cfg (if (.exists (io/file cfg-file))
@@ -298,7 +299,14 @@
                      (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
         f (identity-trust/jwks-file (root) issuer)
         existing (identity-trust/pinned-jwks (root) issuer)
-        merged (if existing (identity-trust/merge-jwks existing fetched) fetched)]
+        merged (if existing (identity-trust/merge-jwks existing fetched) fetched)
+        reused (when existing (identity-trust/reused-kids existing fetched))]
+    (doseq [kid reused]
+      (binding [*out* *err*]
+        (println (str "warning: " issuer " now publishes different key material"
+                      " under kid " kid " than the key pinned for it; both stay"
+                      " pinned and both verify. Confirm the new key with the"
+                      " issuer before committing."))))
     (io/make-parents f)
     (spit f ((requiring-resolve 'cheshire.core/generate-string) merged))
     (println (str "pinned " (count (:keys merged)) " key(s) for " issuer
