@@ -403,16 +403,45 @@ if [ -d identity ]; then
     fi
     hdr=${tok%%.*}; rest=${tok#*.}; pay=${rest%%.*}; sig=${rest#*.}
     kid=$(b64url \"$hdr\" | sed -n 's/.*\"kid\":\"\\([^\"]*\\)\".*/\\1/p')
-    # every key pinned under this kid: <kid>.pem, then <kid>~<thumbprint>.pem
-    # for further material an issuer published under the same name
+    alg=$(b64url \"$hdr\" | sed -n 's/.*\"alg\":\"\\([^\"]*\\)\".*/\\1/p')
+    # RS256 signs PKCS#1; ES256/ES384 sign the raw r||s pair, which openssl
+    # reads only as DER, so it is rebuilt as SEQUENCE { INTEGER r, INTEGER s }
+    case \"$alg\" in
+      RS256) dgst=-sha256; half=0 ;;
+      ES256) dgst=-sha256; half=32 ;;
+      ES384) dgst=-sha384; half=48 ;;
+      *) echo \"FAIL  the token in $b is signed with $alg, which this script cannot check\"
+         fail=1; continue ;;
+    esac
     have=0; signed=0
     si=$(mktemp); sf=$(mktemp)
     printf '%s.%s' \"$hdr\" \"$pay\" > \"$si\"
     b64url \"$sig\" > \"$sf\"
-    for pem in \"identity/keys/$kid.pem\" \"identity/keys/$kid\"~*.pem; do
+    if [ \"$half\" -gt 0 ]; then
+      hex=$(od -An -v -tx1 \"$sf\" | tr -d ' \\n')
+      if [ \"${#hex}\" -ne $((4 * half)) ]; then
+        echo \"FAIL  the $alg signature in $b has the wrong length\"; fail=1
+        rm -f \"$si\" \"$sf\"; continue
+      fi
+      cf=$(mktemp)
+      printf 'asn1=SEQUENCE:sig\\n[sig]\\nr=INTEGER:0x%s\\ns=INTEGER:0x%s\\n' \\
+        \"$(printf %s \"$hex\" | cut -c1-$((2 * half)))\" \\
+        \"$(printf %s \"$hex\" | cut -c$((2 * half + 1))-)\" > \"$cf\"
+      openssl asn1parse -genconf \"$cf\" -out \"$sf\" -noout >/dev/null 2>&1
+      rm -f \"$cf\"
+    fi
+    # every key pinned under this kid: <kid>.pem, then <kid>~<thumbprint>.pem
+    # for further material an issuer published under the same name. A token
+    # naming no kid, as a SPIFFE JWT-SVID may, is tried against every key.
+    if [ -n \"$kid\" ]; then
+      set -- \"identity/keys/$kid.pem\" \"identity/keys/$kid\"~*.pem
+    else
+      set -- identity/keys/*.pem
+    fi
+    for pem in \"$@\"; do
       [ -f \"$pem\" ] || continue
       have=1
-      if openssl dgst -sha256 -verify \"$pem\" -signature \"$sf\" \"$si\" >/dev/null 2>&1; then
+      if openssl dgst \"$dgst\" -verify \"$pem\" -signature \"$sf\" \"$si\" >/dev/null 2>&1; then
         signed=1; break
       fi
     done
@@ -585,15 +614,16 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
           ;; tokens those bindings carry. The first key under a kid is
           ;; <kid>.pem; another key under the same kid, from a reused kid
           ;; or another issuer, is <kid>~<thumbprint>.pem beside it, and
-          ;; both verifiers try every file for the token's kid
+          ;; both verifiers try every file for the token's kid. A key with
+          ;; no kid is ~<thumbprint>.pem, tried for a token that names none
           (let [written (atom #{})]
             (doseq [issuer (distinct (map :issuer granting))
                     :let [jwks (identity-trust/pinned-jwks (root) issuer)]
-                    jwk (:keys jwks)
+                    jwk (filter jwks/jws-key? (:keys jwks))
                     :let [pem (jwks/jwk->pem jwk)
                           kid (str (:kid jwk))]
                     :when pem]
-              (spit (io/file kdir (if (contains? @written kid)
+              (spit (io/file kdir (if (or (str/blank? kid) (contains? @written kid))
                                     (str kid "~" (jwks/thumbprint jwk) ".pem")
                                     (str kid ".pem")))
                     pem)

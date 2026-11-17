@@ -295,12 +295,20 @@
                          (die (str "the issuer's discovery document names no"
                                    " jwks_uri; pass --jwks-url or --jwks")))
                        (oidc/http-get uri)))
-        fetched (try (jwks/parse-jwks json)
-                     (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        parsed (try (jwks/parse-jwks json)
+                    (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        ;; a SPIFFE bundle also lists its x509-svid CA keys; pinning one as a
+        ;; token key would let a certificate authority's key sign bindings
+        fetched {:keys (filterv jwks/jws-key? (:keys parsed))}
+        skipped (- (count (:keys parsed)) (count (:keys fetched)))
         f (identity-trust/jwks-file (root) issuer)
         existing (identity-trust/pinned-jwks (root) issuer)
         merged (if existing (identity-trust/merge-jwks existing fetched) fetched)
         reused (when existing (identity-trust/reused-kids existing fetched))]
+    (when (pos? skipped)
+      (binding [*out* *err*]
+        (println (str "skipped " skipped " key(s) published for another use"
+                      " than signing tokens (such as x509-svid)"))))
     (doseq [kid reused]
       (binding [*out* *err*]
         (println (str "warning: " issuer " now publishes different key material"
@@ -390,8 +398,8 @@
         token (workload-token opts)
         claims (try (oidc/decode-jwt-payload token)
                     (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
-        issuer (or (:iss claims)
-                   (die "the token carries no issuer (iss)"))
+        issuer (or (identity-trust/token-issuer claims)
+                   (die "the token carries no issuer (iss), and its subject is not a SPIFFE ID"))
         s s0
         registry-id (resolve-id s registry-ref)
         at (now)

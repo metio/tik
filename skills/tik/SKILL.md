@@ -211,6 +211,11 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   TIK_KEY=./ci_key tik set <ticket> commit=$GITHUB_SHA --actor ci
   ```
 
+  A SPIFFE JWT-SVID binds the same way (`--token-file`): it may omit `iss`,
+  and its trust domain (`spiffe://example.org`) is then the issuer, pinned
+  with `tik bridge jwks --issuer spiffe://example.org --jwks bundle.json`,
+  which skips the bundle's `x509-svid` keys. ES256/ES384 tokens and tokens
+  without a `kid` verify (ADR 0028).
   A binding counts only when its token's signature is the issuer's, its `sub`
   and `iss` match what the attestation claims, and it was LIVE when the binding
   was written — so a leaked expired token cannot mint one (ADR 0023). The token
@@ -218,7 +223,7 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
 - `tik bridge oid4vci --credential vc.jwt --registry ID [--jwks-url U |
   --jwks FILE]` — ingest a **verifiable credential** (a VC is an attestation
   with an external issuer): verify the issuer signature against its JWKS
-  (JWT-VC and SD-JWT-VC; EdDSA today, RS256/ES256 planned), then mint it as
+  (JWT-VC and SD-JWT-VC; EdDSA, RS256, ES256 and ES384), then mint it as
   a bridge-signed attestation carrying the credential. A process gates on it
   with the guards that already exist — `[:signed-by :bridge [:credential]]`,
   `[:fact= [:credential :type] :kyc]`, `[:attested-within [:credential] "P90D"]`.

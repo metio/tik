@@ -480,7 +480,7 @@
          (bad (str "the binding for " (:actor b)
                    " names a subject the token does not"))
 
-         (not= (str (:issuer b)) (str (:iss parsed)))
+         (not= (str (:issuer b)) (str (identity-trust/token-issuer parsed)))
          (bad (str "the binding for " (:actor b)
                    " names an issuer the token does not"))
 

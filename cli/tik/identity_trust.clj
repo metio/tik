@@ -140,6 +140,19 @@
                                   (json-parse (String. (b64url h) "UTF-8")))
             (catch Exception _ false))))))
 
+(defn token-issuer
+  "The issuer a token's `claims` speak for: `iss`, or for a SPIFFE JWT-SVID
+  that omits it, the trust domain its `sub` names (`spiffe://example.org`
+  for `spiffe://example.org/ns/ci`). The SPIFFE JWT-SVID format makes
+  `iss` optional because the trust domain already identifies who signs."
+  [claims]
+  (let [iss (:iss claims)
+        sub (:sub claims)]
+    (cond
+      (and (string? iss) (not (str/blank? iss))) iss
+      (string? sub) (some->> (re-matches #"(spiffe://[^/?#]+)(/.*)?" sub) second)
+      :else nil)))
+
 (defn token-claims
   "A token's claims without checking anything — for reporting only.
   Never a basis for trust; `binding-status` is."
@@ -324,9 +337,9 @@
                {:reason :identity/subject-mismatch :issuer issuer :binding binding
                 :claimed subject :token-subject (:sub (:claims parsed))}
 
-               (not= (str issuer) (str (:iss (:claims parsed))))
+               (not= (str issuer) (str (token-issuer (:claims parsed))))
                {:reason :identity/issuer-mismatch :issuer issuer :binding binding
-                :token-issuer (:iss (:claims parsed))}
+                :token-issuer (token-issuer (:claims parsed))}
 
                (not (window-holds? (:claims parsed) (epoch-seconds at) leeway))
                {:reason :identity/token-not-live :issuer issuer :binding binding

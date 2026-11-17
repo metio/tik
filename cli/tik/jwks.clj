@@ -4,19 +4,19 @@
   "JWS signature verification against a JWKS — the credential-verifying
   half of the oid4vci bridge.
 
-  Scope: EdDSA (Ed25519) and RS256 (RSA). Both reconstruct their public
-  key through `X509EncodedKeySpec`, the ONE key spec babashka exposes, so
-  this namespace loads identically on bb, the JVM, and the GraalVM native
-  binary with a plain static require. Ed25519 wraps 32 raw bytes in a
-  fixed SubjectPublicKeyInfo prefix; RSA has no fixed prefix because the
-  modulus length varies, so `rsa-spki` encodes the DER by hand for the
-  same reason — `RSAPublicKeySpec` is not on bb's allowlist and would
-  need GraalVM reflect-config besides.
+  Scope: EdDSA (Ed25519), RS256 (RSA), and ES256/ES384 (EC P-256/P-384).
+  Every key is reconstructed through `X509EncodedKeySpec`, the ONE key
+  spec babashka exposes, so this namespace loads identically on bb, the
+  JVM, and the GraalVM native binary with a plain static require.
+  Ed25519 wraps 32 raw bytes in a fixed SubjectPublicKeyInfo prefix; RSA
+  and EC have their DER encoded by hand (`rsa-spki`, `ec-spki`) because
+  `RSAPublicKeySpec` and `ECPublicKeySpec` are not on bb's allowlist and
+  would need GraalVM reflect-config besides.
 
-  RS256 is not an optional extra: it is what GitHub Actions and a stock
-  Keycloak sign ID tokens with, so rung-2 bindings from either are
-  uncheckable without it. ES256 still needs `ECPublicKeySpec` and is
-  declined with a clear message, never a crash.
+  RS256 is what GitHub Actions and a stock Keycloak sign ID tokens with;
+  SPIRE's default JWT key type is EC P-256, which signs as ES256. PS256 is declined
+  with a clear message: RSASSA-PSS needs `PSSParameterSpec`, which
+  babashka does not expose.
 
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
@@ -118,15 +118,50 @@
           (:err r) (recur more (or err (:err r)) judged?)
           :else (recur more err true))))))
 
+(def ^:private ec-public-key-oid
+  "OID 1.2.840.10045.2.1 (id-ecPublicKey)"
+  [0x06 0x07 0x2a 0x86 0x48 0xce 0x3d 0x02 0x01])
+
+(def ^:private curves
+  "The curves a JWS names, with the OID a SubjectPublicKeyInfo carries for
+  each, the byte length of one coordinate, and the one alg that signs
+  with it."
+  {"P-256" {:oid [0x06 0x08 0x2a 0x86 0x48 0xce 0x3d 0x03 0x01 0x07]
+            :len 32 :alg "ES256"}
+   "P-384" {:oid [0x06 0x05 0x2b 0x81 0x04 0x00 0x22]
+            :len 48 :alg "ES384"}})
+
+(defn- ec-spki
+  "A SubjectPublicKeyInfo for an EC key from JWK `crv`/`x`/`y`: the
+  uncompressed point 04||x||y under the curve's OID, encoded by hand for
+  the same reason `rsa-spki` is. nil for a curve or coordinate length
+  that does not fit."
+  [crv x-b64 y-b64]
+  (let [{:keys [oid len]} (get curves crv)
+        x (map #(bit-and % 0xff) (seq (b64url-decode x-b64)))
+        y (map #(bit-and % 0xff) (seq (b64url-decode y-b64)))]
+    (when (and oid (= len (count x)) (= len (count y)))
+      (der-tlv 0x30 (concat (seq (der-tlv 0x30 (concat ec-public-key-oid oid)))
+                            (seq (der-tlv 0x03 (concat [0 4] x y))))))))
+
+(defn jws-key?
+  "May this JWK verify a JWS at all? A key set can also publish keys for
+  another purpose, such as a SPIFFE bundle's `x509-svid` CA keys, and a
+  token signed by one of those must not count as signed by the issuer."
+  [jwk]
+  (contains? #{nil "sig" "jwt-svid"} (:use jwk)))
+
 (defn jwk->pem
-  "An RSA JWK as a PEM SubjectPublicKeyInfo — what an evidence bundle
-  carries so a recipient can check a binding's token with openssl and
-  nothing of ours. nil for a key type no shell verifier could use
+  "An RSA or EC JWK as a PEM SubjectPublicKeyInfo — what an evidence
+  bundle carries so a recipient can check a binding's token with openssl
+  and nothing of ours. nil for a key type no shell verifier could use
   anyway, which the bundle reports rather than hides."
-  [{:keys [kty n e]}]
-  (when (and (= "RSA" kty) n e)
-    (let [der (rsa-spki n e)
-          b64 (.encodeToString (Base64/getEncoder) der)]
+  [{:keys [kty crv n e x y]}]
+  (when-let [der (try (cond
+                        (and (= "RSA" kty) n e) (rsa-spki n e)
+                        (and (= "EC" kty) x y) (ec-spki crv x y))
+                      (catch Exception _ nil))]
+    (let [b64 (.encodeToString (Base64/getEncoder) der)]
       (str "-----BEGIN PUBLIC KEY-----\n"
            (str/join "\n" (map str/join (partition-all 64 b64)))
            "\n-----END PUBLIC KEY-----\n"))))
@@ -150,8 +185,21 @@
 (defn- jwk->key
   "A JWK map -> a java.security.PublicKey, or a fail-well ex-info for an
   algorithm this build does not support."
-  [{:keys [kty crv x n e] :as jwk}]
+  [{:keys [kty crv x y n e] :as jwk}]
   (cond
+    (and (= "EC" kty) (string? x) (string? y))
+    (let [spki (try (ec-spki crv x y)
+                    (catch clojure.lang.ExceptionInfo ex (throw ex))
+                    (catch Throwable t (fail! "JWK key material is malformed"
+                                              :cause (.getMessage t))))]
+      (when-not spki
+        (fail! (str "unsupported EC JWK (crv=" crv "); this build verifies"
+                    " P-256 and P-384")
+               :reason :oid4vci/unsupported-alg :jwk (dissoc jwk :d)))
+      (try (.generatePublic (KeyFactory/getInstance "EC") (X509EncodedKeySpec. spki))
+           (catch Throwable t (fail! "JWK key material is malformed"
+                                     :cause (.getMessage t)))))
+
     (and (= "OKP" kty) (= "Ed25519" crv))
     (try (ed25519-key x)
          (catch clojure.lang.ExceptionInfo e (throw e))
@@ -165,9 +213,19 @@
                                    :cause (.getMessage t))))
 
     :else (fail! (str "unsupported JWK (kty=" kty " crv=" crv
-                      "); this build verifies OKP/Ed25519 and RSA (ES256"
-                      " is a planned addition)")
+                      "); this build verifies OKP/Ed25519, RSA, and EC"
+                      " P-256/P-384")
                  :reason :oid4vci/unsupported-alg :jwk (dissoc jwk :d))))
+
+(def ^:private signature-algorithms
+  "JWS alg -> the JCA signature that checks it. ECDSA in a JWS is the raw
+  r||s pair (IEEE P1363), not the DER the plain ECDSA names expect.
+  PS256 is absent: RSASSA-PSS needs PSSParameterSpec, which babashka
+  does not expose."
+  {"EdDSA" "Ed25519"
+   "RS256" "SHA256withRSA"
+   "ES256" "SHA256withECDSAinP1363Format"
+   "ES384" "SHA384withECDSAinP1363Format"})
 
 (defn- jws-verify
   "Verify a JWS `signing-input`/`sig` against `pubkey` for `alg`. Returns
@@ -176,12 +234,12 @@
   untrusted input, so any failure processing it means it does not verify.
   An unsupported alg is a clean ex-info."
   [alg pubkey ^String signing-input ^bytes sig]
-  (when-not (#{"EdDSA" "RS256"} alg)
+  (when-not (contains? signature-algorithms alg)
     (fail! (str "unsupported JWS alg: " alg
-                " (this build verifies EdDSA and RS256)")
+                " (this build verifies EdDSA, RS256, ES256 and ES384)")
            :reason :oid4vci/unsupported-alg))
   (try
-    (let [v (Signature/getInstance (if (= "RS256" alg) "SHA256withRSA" "Ed25519"))]
+    (let [v (Signature/getInstance ^String (get signature-algorithms alg))]
       (.initVerify v ^java.security.PublicKey pubkey)
       (.update v (.getBytes signing-input "US-ASCII"))
       (.verify v sig))
@@ -203,7 +261,7 @@
                          (str/replace #"-----[A-Z ]+-----" "")
                          (str/replace #"\s" "")))]
     (.generatePublic (KeyFactory/getInstance
-                      (case alg "RS256" "RSA" "EdDSA" "Ed25519"
+                      (case alg "RS256" "RSA" "EdDSA" "Ed25519" ("ES256" "ES384") "EC"
                             (fail! (str "unsupported JWS alg: " alg)
                                    :reason :oid4vci/unsupported-alg)))
                      (X509EncodedKeySpec. der))))
@@ -216,29 +274,47 @@
   one and nothing of ours is needed."
   [kid->pems]
   (fn [signing-input sig header]
-    (let [kid (str (:kid header))
+    (let [kid (:kid header)
           as-seq (fn [v] (if (string? v) [v] (seq v)))
-          pems (or (as-seq (get kid->pems kid))
-                   (when (= 1 (count kid->pems)) (as-seq (val (first kid->pems))))
+          pems (or (if (nil? kid)
+                     (seq (mapcat (comp as-seq val) kid->pems))
+                     (or (as-seq (get kid->pems (str kid)))
+                         (when (= 1 (count kid->pems))
+                           (as-seq (val (first kid->pems))))))
                    (fail! (str "no pinned issuer key matches kid " kid)
                           :reason :oid4vci/no-key))
           alg (:alg header)]
       (first-verifying #(jws-verify alg (pem->key alg %) signing-input sig) pems))))
 
+(defn- alg-fits-key?
+  "An ECDSA alg names its curve, and a key on another curve must not be
+  asked to verify it. Other algs are checked by the key type the JCA
+  signature accepts, and an alg this build lacks is reported as such."
+  [alg jwk]
+  (if (contains? #{"ES256" "ES384"} alg)
+    (and (= "EC" (:kty jwk)) (= alg (:alg (get curves (:crv jwk)))))
+    true))
+
 (defn verifier
   "The verifier `tik.oid4vci/verify` injects, from a parsed JWKS map:
-  pick the keys by the JWT header's `kid` (or the sole key) and check the
-  signature per its alg against each. An issuer that reuses a `kid` for
+  pick the keys by the JWT header's `kid` (or the sole key; every key
+  when the header names none, as a JWT-SVID may) and check the signature
+  per its alg against each. An issuer that reuses a `kid` for
   new key material leaves both pinned, and both keep verifying what
   they signed. Total — a missing/unsupported key fails well."
   [jwks]
-  (let [keys* (:keys jwks)
+  (let [keys* (filterv jws-key? (:keys jwks))
         by-kid (group-by :kid keys*)]
     (fn [signing-input sig header]
-      (let [jwks* (or (get by-kid (:kid header))
-                      (when (= 1 (count keys*)) keys*)
-                      (fail! (str "no JWKS key matches kid " (:kid header))
-                             :reason :oid4vci/no-key))]
-        (first-verifying #(jws-verify (or (:alg header) (:alg %)) (jwk->key %)
-                                      signing-input sig)
+      (let [jwks* (cond
+                    (nil? (:kid header)) (or (seq keys*)
+                                             (fail! "the JWKS holds no signing key"
+                                                    :reason :oid4vci/no-key))
+                    (contains? by-kid (:kid header)) (get by-kid (:kid header))
+                    (= 1 (count keys*)) keys*
+                    :else (fail! (str "no JWKS key matches kid " (:kid header))
+                                 :reason :oid4vci/no-key))]
+        (first-verifying #(let [alg (or (:alg header) (:alg %))]
+                            (and (alg-fits-key? alg %)
+                                 (jws-verify alg (jwk->key %) signing-input sig)))
                          jwks*)))))

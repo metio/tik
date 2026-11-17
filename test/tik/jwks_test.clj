@@ -48,11 +48,12 @@
                               (vc/verify jwt wrong)))))))
 
 (deftest verifier_declines_unsupported_alg
-  (testing "a curve this build cannot verify (ES256 needs ECPublicKeySpec)"
+  (testing "a curve this build cannot verify"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"unsupported"
-         ((jwks/verifier {:keys [{:kid "k1" :kty "EC" :crv "P-256" :x "x" :y "y"}]})
-          "a.b" (byte-array 8) {:alg "ES256" :kid "k1"}))))
+         ((jwks/verifier {:keys [{:kid "k1" :kty "EC" :crv "P-521" :alg "ES512"
+                                  :x "AAAA" :y "AAAA"}]})
+          "a.b" (byte-array 8) {:alg "ES512" :kid "k1"}))))
   (testing "an alg this build does not verify, on a key that builds fine"
     (let [{:keys [jwk]} (gen-ed25519-jwt)]
       (is (thrown-with-msg?

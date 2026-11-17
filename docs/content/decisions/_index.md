@@ -72,3 +72,4 @@ so a checkout and this site carry the same record.
 | [0025](/decisions/0025-the-evidence-bundle-is-a-versioned-format/) | The evidence bundle is a named, versioned format; a badge names the derivation. |
 | [0026](/decisions/0026-a-binding-policy-names-who-may-bind-which-actor/) | A binding policy names which subject may bind which actor; a bound key speaks only while its token was live. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
+| [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |

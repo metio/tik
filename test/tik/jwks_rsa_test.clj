@@ -87,4 +87,11 @@
          ((jwks/verifier (jwks/parse-jwks (jwks-json "k1")))
           (str h "." p)
           (.decode (Base64/getUrlDecoder) ^String sig)
-          {:alg "ES256" :kid "k1"})))))
+          {:alg "PS256" :kid "k1"}))))
+  (testing "an ECDSA alg on an RSA key is a failure, not a verification"
+    (let [jwt (sign-jwt "k1" "{\"sub\":\"x\"}")
+          [h p sig] (str/split jwt #"\.")]
+      (is (false? (boolean ((jwks/verifier (jwks/parse-jwks (jwks-json "k1")))
+                            (str h "." p)
+                            (.decode (Base64/getUrlDecoder) ^String sig)
+                            {:alg "ES256" :kid "k1"})))))))
