@@ -138,6 +138,23 @@
       (is (empty? (sync! st history)))
       (is (= before (event-ids (:store st)))))))
 
+(defn- roots [s id]
+  (count (filter #(empty? (:event/parents %)) (store/events s id))))
+
+(deftest a_changed_definition_keeps_the_tickets_the_bridge_opened
+  (let [st (store-with-process!)
+        def-file (io/file (:root st) "processes" "ci-failure.edn")
+        history [(run 1 "success") (run 2 "failure")]]
+    (sync! st history)
+    (spit def-file (str/replace-first (slurp def-file) ":process/version 1"
+                                      ":process/version 1\n :process/purpose \"a later purpose\""))
+    (let [before (event-ids (:store st))
+          [id] (store/ticket-ids (:store st))]
+      (is (empty? (sync! st history)) "a resync after the change mints nothing")
+      (is (= before (event-ids (:store st))))
+      (is (= [:update] (map :outcome (sync! st (conj history (run 3 "failure"))))))
+      (is (= 1 (roots (:store st) id)) "the streak grows on its one root"))))
+
 (deftest github_rewriting_updated_at_mints_nothing_new
   (let [st (store-with-process!)
         history [(run 1 "success") (run 2 "failure") (run 3 "failure")]]

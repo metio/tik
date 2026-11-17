@@ -169,6 +169,16 @@
       (is (= #{:open} (:stages (view st id))))
       (is (every? (event-ids (:store st)) before) "nothing earlier is re-minted"))))
 
+(deftest a_changed_definition_keeps_the_issues_the_bridge_mirrored
+  (let [st (store-with-process!)
+        def-file (io/file (:root st) "processes" "redmine-issue.edn")]
+    (poll! st [4711] {4711 issue})
+    (spit def-file (str/replace-first (slurp def-file) ":process/version 1"
+                                      ":process/version 1\n :process/purpose \"a later purpose\""))
+    (let [before (event-ids (:store st))]
+      (poll! st [4711] {4711 issue})
+      (is (= before (event-ids (:store st))) "a resync after the change mints nothing"))))
+
 (deftest an_issue_that_leaves_the_query_keeps_being_mirrored
   (let [st (store-with-process!)
         id (rm/ticket-id "redmine.example" 4711)

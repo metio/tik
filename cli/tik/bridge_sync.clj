@@ -31,6 +31,21 @@
   (some #(when (= :ticket/create (:event/type %)) (:event/id %))
         (store/events s id)))
 
+(defn- pinned-ctx
+  "`ctx` with the process the store's ticket `id` was created under, when
+  the store holds that ticket. A bridge rebuilds a ticket's whole event
+  chain on every sync and relies on identical events colliding, so the
+  rebuilt create event has to repeat the existing one byte for byte: one
+  that named a later definition would start a second root."
+  [s ctx id]
+  (if-let [body (some #(when (= :ticket/create (:event/type %)) (:event/body %))
+                      (store/events s id))]
+    (assoc ctx
+           :process (:ticket/process body)
+           :version (:ticket/process-version body)
+           :process-hash (:ticket/process-hash body))
+    ctx))
+
 (defn- append-fresh!
   "Append the events this store lacks, in order; returns how many."
   [s events opts]
@@ -110,7 +125,8 @@
                       :workflow-id (:workflow-id ctx) :oldest (:url (first (:failed st)))}
 
                      :else
-                     (let [{:keys [id events blobs]} (forge/streak-events ctx st)
+                     (let [ctx (pinned-ctx s ctx (forge/streak-ticket-id ctx (first (:failed st))))
+                           {:keys [id events blobs]} (forge/streak-events ctx st)
                            created? (nil? (create-id s id))]
                        (doseq [[h t] blobs] (forge/write-blob! (root) id h t))
                        (let [n (append-fresh! s events opts)]
@@ -363,7 +379,8 @@
   "Mirror one issue (with its journal) into the store; returns an outcome
   map or nil when nothing was new."
   [s ctx issue opts]
-  (let [{:keys [id events blobs]} (rm/issue-events ctx issue)
+  (let [ctx (pinned-ctx s ctx (rm/ticket-id (:host ctx) (:id issue)))
+        {:keys [id events blobs]} (rm/issue-events ctx issue)
         created? (nil? (create-id s id))]
     (doseq [[h t] blobs] (forge/write-blob! (root) id h t))
     (let [n (append-fresh! s events opts)]
