@@ -105,7 +105,7 @@
       (str/replace #"&#(\d+);" (fn [[_ d]] (str (char (Integer/parseInt d)))))
       (str/replace #"&([a-zA-Z]+|#\d+);" (fn [[m e]] (get entities e m)))))
 
-(defn- html->text
+(defn html->text
   "A readable plaintext rendering of an HTML part — block tags become
   newlines, list items get a bullet, tags are stripped, entities decoded.
   Not a browser: a legible fallback when a sender offered only text/html."

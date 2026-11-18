@@ -21,3 +21,5 @@ agent's authorization boundary.
   on its own host.
 - [Redmine](/integrations/redmine/) — Redmine issues mirrored as tickets,
   with their history, so local work and remote tickets sit in one store.
+- [Odoo](/integrations/odoo/) — Odoo project tasks mirrored as tickets,
+  with their history from the chatter.

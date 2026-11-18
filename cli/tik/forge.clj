@@ -31,7 +31,8 @@
             [tik.canonical :as canonical]
             [tik.event :as event])
   (:import (java.net InetSocketAddress ServerSocket Socket URI URLEncoder)
-           (java.net.http HttpClient HttpRequest HttpResponse HttpResponse$BodyHandlers)
+           (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse
+                          HttpResponse$BodyHandlers)
            (java.time Duration Instant)
            (java.util.concurrent TimeUnit)))
 
@@ -216,7 +217,8 @@
   "The response to `req`, repeating it after each of `*retry-pauses*` while
   the server answers with a gateway or internal error. Forges return these
   for a few requests a week and answer the same request a moment later;
-  every request here is a GET, so a repeat cannot double an effect."
+  every request here reads (a GET, or an RPC call to a read-only method),
+  so a repeat cannot double an effect."
   ^HttpResponse [req]
   (loop [pauses (seq *retry-pauses*)]
     (let [resp (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))]
@@ -252,6 +254,45 @@
              (catch Exception _
                (throw (ex-info (str label " returned non-JSON for " path)
                                {:reason :forge/json :path path}))))))))
+
+;; HTTP 200 carries both results and errors in JSON-RPC, so `json-rpc-caller`
+;; reads the error member itself.
+(defn json-rpc-caller
+  "A `call` ((service method & args) -> result) over the JSON-RPC 2.0
+  endpoint at `url`, Odoo's `/jsonrpc` shape: params {:service :method
+  :args}. `label` names the API in errors, which carry {:reason
+  :forge/http :status n}, {:reason :forge/json} or {:reason :forge/rpc}.
+  Only read-only methods may go through it, because a transient server
+  error is retried."
+  [label url]
+  (let [parse (requiring-resolve 'cheshire.core/parse-string)
+        render (requiring-resolve 'cheshire.core/generate-string)
+        uri (require-tls! url)]
+    (fn [service method & args]
+      (let [req (-> (HttpRequest/newBuilder uri)
+                    (.header "Content-Type" "application/json")
+                    (.header "User-Agent" "tik-bridge")
+                    (.timeout (Duration/ofSeconds 60))
+                    (.POST (HttpRequest$BodyPublishers/ofString
+                            (render {:jsonrpc "2.0" :method "call" :id 1
+                                     :params {:service service :method method :args args}})))
+                    (.build))
+            resp (send-with-retry req)
+            status (.statusCode resp)
+            body (str (.body resp))
+            _ (when (>= status 400)
+                (throw (ex-info (str label " " status " for " method ": "
+                                     (subs body 0 (min 200 (count body))))
+                                {:reason :forge/http :status status :method method})))
+            r (try (parse body true)
+                   (catch Exception _
+                     (throw (ex-info (str label " returned non-JSON for " method)
+                                     {:reason :forge/json :method method}))))]
+        (if-let [e (:error r)]
+          (let [msg (str (or (get-in e [:data :message]) (:message e)))]
+            (throw (ex-info (str label " refused " method ": " (subs msg 0 (min 300 (count msg))))
+                            {:reason :forge/rpc :method method})))
+          (:result r))))))
 
 (def per-page 100)
 

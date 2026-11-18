@@ -21,6 +21,9 @@ nwe = "nwe"
 intoto = "intoto"
 # IMAP verbs used as English verbs ("SELECTs") split into SELEC + Ts
 SELEC = "SELEC"
+# Odoo shows field labels in the language of whoever made a change; the
+# Odoo tests use the German label of the title field
+Titel = "Titel"
 
 [files]
 # content-addressed stores and sidecars: filenames and bodies are

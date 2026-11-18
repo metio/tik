@@ -1,0 +1,41 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; An Odoo project task mirrored by `tik bridge odoo`. The bridge signs what
+;; it reads from Odoo under the :bridge role: the task's stage and whether
+;; the bridge's config counts that stage as closed, its assignee, project
+;; and title. The stages derive from that mirrored state, so a task moved
+;; back to an open stage regresses to :open on the next sync. Facts a person
+;; adds locally (links to repositories, notes) never reach Odoo and never
+;; move these stages.
+{:process/id :odoo-task
+ :process/version 1
+ :process/guard-vocab 2
+ ;; every stage mirrors Odoo; the judgments behind them are made there
+ :lint {:runbooks :off}
+
+ :process/roles
+ {:bridge {:members ["odoo"]}}
+
+ :process/facts
+ {[:odoo :id]       [:int {:min 1}]
+  [:odoo :url]      [:string {:min 8}]
+  [:odoo :stage]    [:string {:min 1}]
+  [:odoo :state]    [:enum :open :closed]
+  [:odoo :assignee] [:string {:min 1}]
+  [:odoo :project]  [:string {:min 1}]
+  [:odoo :title]    [:string {:min 1}]}
+
+ :process/stages
+ [{:stage/id :mirrored
+   :guards [[:signed-by :bridge [:odoo :url]]]}
+
+  {:stage/id :open
+   :after [:mirrored]
+   :guards [[:signed-by :bridge [:odoo :state]]
+            [:fact= [:odoo :state] :open]]}
+
+  {:stage/id :closed
+   :after [:mirrored]
+   :guards [[:signed-by :bridge [:odoo :state]]
+            [:fact= [:odoo :state] :closed]]}]}

@@ -139,6 +139,8 @@
                                                 port forward open for the sweep
   tik bridge redmine [--config redmine.edn]     Redmine issues -> redmine-issue tickets
                                                 mirroring status, assignee and notes
+  tik bridge odoo [--config odoo.edn]           Odoo project tasks -> odoo-task tickets
+                                                mirroring stage, assignee and messages
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U]                    a signed key-binding attestation on the
                   [--password-command C |       registry ticket; verification never

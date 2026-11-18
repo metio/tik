@@ -19,8 +19,8 @@
   which adds assertions under the new name beside the old ones; the latest
   entry still decides the current value."
   (:require [clojure.string :as str]
-            [tik.event :as event]
-            [tik.forge :as forge])
+            [tik.forge :as forge]
+            [tik.mirror :as mirror])
   (:import (java.time Instant)))
 
 (def mirrored
@@ -141,40 +141,16 @@
        step))))
 
 (defn issue-events
-  "The events and blobs one issue contributes. `ctx` carries the Redmine
-  :host and :url, the bridge :actor, the pinned :process, :version and
-  :process-hash, :names (see `names`), and a :clamp applied to every :at.
-
-  Each fact event names the previous event on the same path as its parent
-  (the create, for the first): successive values of a path are causally
-  ordered, so a change of status supersedes the old one where sibling
-  assertions would derive as :conflicted. The chains are per path, so an
-  edited note or a renamed status moves only its own path's events."
-  [{:keys [host url actor process version process-hash clamp] :as ctx} issue]
-  (let [id (ticket-id host (:id issue))
-        at-of #(clamp (Instant/parse (str %)))
-        create (event/create-ticket
-                {:ticket id :actor actor :at (at-of (:created_on issue))
-                 :title (str "#" (:id issue) " " (get (initial-values issue) "subject"))
-                 :process process :version version :process-hash process-hash})
-        cid (:event/id create)
-        step->event
-        (fn [{:keys [last] :as acc} {:keys [fact attach value text at]}]
-          (if fact
-            (let [base {:ticket id :actor actor :at at :parents #{(get last fact cid)} :path fact}
-                  e (if (some? value)
-                      (event/assert-fact (assoc base :value value))
-                      (event/retract-fact base))]
-              (-> acc (update :events conj e) (assoc-in [:last fact] (:event/id e))))
-            (let [h (forge/blob-hash text)]
-              (-> acc
-                  (update :events conj (event/attach-artifact
-                                        {:ticket id :actor actor :at at :parents #{cid}
-                                         :path attach :hash h}))
-                  (assoc-in [:blobs h] text)))))
-        {:keys [events blobs]} (reduce step->event {:events [create] :blobs {} :last {}}
-                                       (issue-steps (:names ctx) url issue at-of))]
-    {:id id :create-id cid :blobs blobs :events events}))
+  "The events and blobs one issue contributes (see `tik.mirror`). `ctx`
+  carries the Redmine :host and :url, the bridge :actor, the pinned
+  :process, :version and :process-hash, :names (see `names`), and a
+  :clamp applied to every :at."
+  [{:keys [host url clamp] :as ctx} issue]
+  (let [at-of #(clamp (Instant/parse (str %)))]
+    (mirror/ticket-events ctx (ticket-id host (:id issue))
+                          (str "#" (:id issue) " " (get (initial-values issue) "subject"))
+                          (at-of (:created_on issue))
+                          (issue-steps (:names ctx) url issue at-of))))
 
 (defn json-getter
   "A `get-json` over the Redmine REST API at `url` with API key `key`."

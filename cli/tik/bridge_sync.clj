@@ -2,8 +2,9 @@
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.bridge-sync
   "The polling bridges that mirror another system into the store:
-  `bridge github` and `bridge gitlab` (CI failure streaks, tik.forge) and
-  `bridge redmine` (issues, tik.redmine). Each mints events that are a
+  `bridge github` and `bridge gitlab` (CI failure streaks, tik.forge),
+  `bridge redmine` (issues, tik.redmine) and `bridge odoo` (project tasks,
+  tik.odoo). Each mints events that are a
   pure function of the remote history and appends the ones the store
   lacks, so a re-poll writes nothing and replicas converge by union
   (ADR 0021). The remote enters as an injected `get-json`, which keeps the
@@ -16,6 +17,7 @@
             [tik.forge :as forge]
             [tik.github :as gh]
             [tik.gitlab :as gl]
+            [tik.odoo :as od]
             [tik.redmine :as rm]
             [tik.render :refer [sid]]
             [tik.secret :as secret]
@@ -361,19 +363,27 @@
 
 ;; ---------------------------------------------------------------- redmine
 
+(defn- mirrored-ids
+  "Ids of the records this store already mirrors, read from the bridge's
+  URL facts at `path`: each value `pattern` matches yields its first group.
+  A record that leaves the bridge's query (reassigned, moved) therefore
+  keeps being mirrored."
+  [s path pattern]
+  (set (for [id (store/ticket-ids s)
+             e (store/events s id)
+             :when (and (= :fact/assert (:event/type e))
+                        (= path (get-in e [:event/body :fact/path])))
+             :let [[_ n] (re-matches pattern (str (get-in e [:event/body :fact/value])))]
+             :when n]
+         (parse-long n))))
+
 (defn- mirrored-issue-ids
-  "Ids of the issues from the Redmine at `url` this store already holds,
-  read from the bridge's [:redmine :url] facts, so an issue that leaves
-  the query (reassigned, moved) keeps being mirrored."
+  "Ids of the issues from the Redmine at `url` this store already holds."
   [s url]
-  (let [prefix (str (str/replace (str url) #"/+$" "") "/issues/")]
-    (set (for [id (store/ticket-ids s)
-               e (store/events s id)
-               :when (and (= :fact/assert (:event/type e))
-                          (= [:redmine :url] (get-in e [:event/body :fact/path])))
-               :let [v (str (get-in e [:event/body :fact/value]))]
-               :when (str/starts-with? v prefix)]
-           (parse-long (subs v (count prefix)))))))
+  (mirrored-ids s [:redmine :url]
+                (re-pattern (str (java.util.regex.Pattern/quote
+                                  (str (str/replace (str url) #"/+$" "") "/issues/"))
+                                 "(\\d+)"))))
 
 (defn sync-issue!
   "Mirror one issue (with its journal) into the store; returns an outcome
@@ -423,3 +433,76 @@
                    :url (:url cfg))
         key (secret/resolve1 "API key" (or (:key cfg) {:env "REDMINE_API_KEY"}))]
     (finish! "redmine" (redmine-poll! s (rm/json-getter (:url cfg) key) cfg ctx opts))))
+
+;; ---------------------------------------------------------------- odoo
+
+(defn- mirrored-task-ids
+  "Ids of the tasks from the Odoo at `url` this store already holds."
+  [s url]
+  (let [[pre post] (str/split (od/task-url url "ID") #"ID")]
+    (mirrored-ids s [:odoo :url]
+                  (re-pattern (str (java.util.regex.Pattern/quote pre) "(\\d+)"
+                                   (java.util.regex.Pattern/quote post))))))
+
+(defn sync-task!
+  "Mirror one task (with its chatter) into the store; returns an outcome
+  map or nil when nothing was new."
+  [s ctx task messages opts]
+  (let [ctx (pinned-ctx s ctx (od/ticket-id (:host ctx) (:id task)))
+        {:keys [id events blobs]} (od/task-events ctx task messages)
+        created? (nil? (create-id s id))]
+    (doseq [[h t] blobs] (forge/write-blob! (root) id h t))
+    (let [n (append-fresh! s events opts)]
+      (when (pos? n)
+        {:outcome (if created? :ticket :update) :id id :events n}))))
+
+(defn odoo-poll!
+  "One sweep: every task the :domain selects (by default the tasks
+  assigned to the bridge's Odoo user) plus every task already mirrored,
+  each fetched with its chatter and synced in isolation."
+  [s x cfg ctx opts]
+  (let [{:keys [tally bump report]} (tallying)
+        listed (od/list-tasks x (or (:domain cfg) [["user_id" "=" (:uid ctx)]]))
+        known (remove (set (map :id listed)) (mirrored-task-ids s (:url cfg)))
+        tasks (into listed (when (seq known) (od/tasks-by-id x (sort known))))
+        ctx (assoc ctx :labels (od/fetch-labels x))]
+    (doseq [task (sort-by :id tasks)]
+      (try
+        (when-let [r (sync-task! s ctx task (od/task-messages x (:id task)) opts)]
+          (bump (:outcome r))
+          (println (str (outcome-line r) " #" (:id task))))
+        (catch Exception e
+          (report (str "#" (:id task)) e))))
+    @tally))
+
+(defn cmd-bridge-odoo
+  "bridge odoo [--config odoo.edn]
+  Odoo project tasks become odoo-task tickets mirroring the task's title,
+  stage, assignee and project, with its conversation as artifacts. Polls
+  once and exits."
+  [opts]
+  (let [cfg (read-config opts "odoo.edn"
+                         (str "need {:url \"https://odoo.example\" :db \"…\" :user \"…\""
+                              " :password <secret spec> :closed-stages [\"Done\" …]}"))
+        _ (doseq [k [:url :db :user :closed-stages]]
+            (when-not (get cfg k) (die (str "the odoo config needs " k))))
+        s (the-store)
+        call (forge/json-rpc-caller "Odoo API" (str (str/replace (:url cfg) #"/+$" "") "/jsonrpc"))
+        user (secret/resolve1 "user" (:user cfg))
+        password (secret/resolve1 "password" (or (:password cfg) {:env "ODOO_PASSWORD"}))
+        uid (or (od/login call (:db cfg) user password)
+                (die (str "Odoo refused the login of " user " to database " (:db cfg))))
+        x (od/executor call (:db cfg) uid password)
+        names (od/user-names x (keys (:users cfg)))
+        ctx (assoc (bridge-ctx {:process (or (:process cfg) :odoo-task)
+                                :actor (or (:actor cfg) "odoo")}
+                               opts)
+                   :host (od/host-of (:url cfg))
+                   :url (:url cfg)
+                   :uid uid
+                   :closed (set (:closed-stages cfg))
+                   :users (into {} (for [[id actor] (:users cfg)
+                                         :let [n (get names id)]
+                                         :when n]
+                                     [n actor])))]
+    (finish! "odoo" (odoo-poll! s x cfg ctx opts))))

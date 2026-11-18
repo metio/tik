@@ -1,0 +1,38 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+{:test/process "odoo-task.edn"
+ :test/cases
+ [{:case/name "a mirrored open task is open"
+   :case/steps [[:actor "odoo"]
+                [:set [:odoo :url] "https://odoo.example/web#id=1&model=project.task"]
+                [:set [:odoo :state] :open]]
+   :case/expect {:includes #{:mirrored :open} :excludes #{:closed}}}
+
+  {:case/name "a task in a closed stage is closed"
+   :case/steps [[:actor "odoo"]
+                [:set [:odoo :url] "https://odoo.example/web#id=1&model=project.task"]
+                [:set [:odoo :state] :closed]]
+   :case/expect {:includes #{:mirrored :closed} :excludes #{:open}}}
+
+  {:case/name "a task moved back to an open stage is open again"
+   :case/steps [[:actor "odoo"]
+                [:set [:odoo :url] "https://odoo.example/web#id=1&model=project.task"]
+                [:set [:odoo :state] :closed]
+                [:now "+P1D"]
+                [:set [:odoo :state] :open]]
+   :case/expect {:includes #{:mirrored :open} :excludes #{:closed}}}
+
+  {:case/name "a state a person sets locally satisfies neither stage"
+   :case/steps [[:actor "odoo"]
+                [:set [:odoo :url] "https://odoo.example/web#id=1&model=project.task"]
+                [:set [:odoo :state] :open]
+                [:actor "seb"]
+                [:now "+P1D"]
+                [:set [:odoo :state] :closed]]
+   :case/expect {:includes #{:mirrored} :excludes #{:open :closed}}}
+
+  {:case/name "a task nobody mirrored is nowhere"
+   :case/steps [[:actor "seb"]
+                [:set [:odoo :url] "https://odoo.example/web#id=1&model=project.task"]
+                [:set [:odoo :state] :open]]
+   :case/expect {:excludes #{:mirrored :open :closed}}}]}
