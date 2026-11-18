@@ -1156,6 +1156,22 @@ merely waiting.
   easy one. Neither direction reopens §11's identity verdict: VC-DM 2.0
   states plainly that DIDs are not necessary, so an issuer stays an
   https URL and nothing resolves at verification time.
+- **X509-SVIDs as a binding credential.** A workload that receives
+  only certificates, such as one served by cert-manager's
+  csi-driver-spiffe, could bind its key with its certificate the way a
+  JWT-SVID binds one today (ADR 0028). The laws allow it: the binding
+  stays a signed event, and a reader years later checks the stored leaf
+  and intermediates against the bundle's `x509-svid` roots pinned in
+  the store, at the instant the binding was written, the liveness rule
+  ADR 0023 applies to a token. The runtime is what blocks it. Checking a
+  certificate is RFC 5280 path validation, and `CertPathValidator`
+  cannot be resolved under babashka 1.13, which every tik runtime must
+  support. babashka parses a certificate and checks its signature, so
+  the alternative is hand-written path validation (basic constraints,
+  key usage, name constraints), security-critical code tik would then
+  own for good. Trigger: a consumer whose workloads cannot obtain a
+  JWT-SVID, together with either a babashka that resolves
+  `CertPathValidator` or a decision to own path validation.
 
 **Rejected on principle, with the reason written down — not
 provisional:**
@@ -1238,6 +1254,20 @@ provisional:**
   achievement about a learner in the sense OB means, and OB 3.0 is the
   right rendering for it. That is a process definition plus a porcelain
   lens, not a change to what tik says about tickets in general.
+- **mTLS as a source of trust for events.** A client certificate
+  authenticates a connection, and the connection leaves nothing in the
+  log a reader can check later: the handshake ends with the socket.
+  Crediting an event because it arrived over an authenticated channel
+  would make whether it counts depend on transport state that no other
+  replica and no later reader shares. ADR 0011 places trust in guards
+  and the verify ladder, over signatures that travel with the event,
+  and a workload that should sign events binds its key with a JWT-SVID
+  (ADR 0028). Client certificates on an endpoint stay welcome as what
+  ADR 0011 calls store and transport policy, which decides who may
+  write at all and lives outside derivation. `tik serve` is read-only
+  and `rederive --serve` writes to no store, so a mesh sidecar that
+  authorizes callers by SPIFFE ID gives either one mTLS without tik
+  code.
 
 **Proven by implementation — verdicts that graduated to evidence:**
 structured reasons made explain a product surface instead of an error
