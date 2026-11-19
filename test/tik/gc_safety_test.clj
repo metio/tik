@@ -90,3 +90,33 @@
 
         (testing "a second gc finds nothing — v2 is live"
           (is (re-find #"no orphaned definitions" (:out (tik store "gc")))))))))
+
+(deftest the_current_version_of_a_named_definition_is_never_collected
+  (let [store (h/temp-dir! "tik-gc-current")
+        procs (doto (io/file store "processes") .mkdirs)
+        by-hash (io/file store "processes" "by-hash")
+        key (io/file store "publisher")
+        sign! #(h/tik! {:root store :dir store :actor "seb"}
+                       "process" "sign" "gct" "--key" key)
+        names #(sort (map (fn [^java.io.File f] (.getName f)) (.listFiles by-hash)))]
+    (.mkdirs (io/file store "tickets"))
+    (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "seb" "-f" (str key))
+    (spit (io/file store "actors")
+          (str "seb namespaces=\"tik-*\" "
+               (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str key))))
+               "\n"))
+    (spit (io/file procs "gct.edn") v1)
+    (sign!)
+    (testing "a published definition no ticket pins yet stays, with its signature"
+      (let [before (names)]
+        (is (= 2 (count before)) "v1 and its signature are archived")
+        (is (re-find #"no orphaned definitions" (:out (tik store "gc"))))
+        (tik store "gc" "--apply")
+        (is (= before (names)))))
+    (testing "once the named file moves on, the unpinned old version goes"
+      (spit (io/file procs "gct.edn") v2)
+      (sign!)
+      (let [r (tik store "gc" "--apply")]
+        (is (re-find #"removed 1 definition\(s\) and 1 signature" (:out r))))
+      (is (= 2 (count (names))) "only v2 and its signature remain")
+      (is (re-find #"verify: PASS" (:out (tik store "verify")))))))

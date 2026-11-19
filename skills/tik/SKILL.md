@@ -140,7 +140,8 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   `POST /rederive`, `GET /derivation?bundle=<url>`, `GET /badge.svg?bundle=<url>`
   — deriving per request and caching only on `[content-hash, minute]`.
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
-  (versions every ticket has been moved off with `reprocess`), with their
+  and no named definition is at (versions every ticket has been moved off
+  with `reprocess`), with their
   publication signatures. Dry-run by
   default; `verify` stays PASS, only historical `--at` degrades. Tidiness,
   not disk.

@@ -11,7 +11,8 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
-            [tik.cli-core :refer [all-ticket-ctx append!* archive-process! cache-flush!
+            [tik.cli-core :refer [all-ticket-ctx append!* archive-process! available-processes
+                                  cache-flush!
                                   db-path die display-title exit! git-tracked? link-lines
                                   load-process load-ticket now parse-instant process-file
                                   process-name resolve-file resolve-id root store-holder
@@ -19,6 +20,7 @@
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.next :as next-lens]
+            [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
             [tik.sign :as sign]
@@ -451,7 +453,8 @@
 (defn cmd-gc
   "gc [--apply]: collect ORPHANED archived process definitions — files
   in processes/by-hash/ that NO ticket currently pins (every ticket that
-  once used one has since migrated away), together with their
+  once used one has since migrated away) and that are not the current
+  version of a named definition in processes/, together with their
   publication signatures, which sign nothing once the bytes they cover
   are gone. Dry-run BY DEFAULT (ADR 0002 caution): lists candidates and
   states the one cost.
@@ -467,10 +470,15 @@
   a few KB."
   [{:keys [opts]}]
   (let [s (the-store)
-        ;; live = every process-hash a ticket currently pins
-        live (into #{}
-                   (keep #(:process-hash (red/ticket-state (store/events s %))))
-                   (store/ticket-ids s))
+        ;; live = every process-hash a ticket currently pins, and the
+        ;; current version of every named definition: a published
+        ;; definition nobody has minted a ticket against yet is the one
+        ;; the next `tik new` pins, and its archive carries the signature
+        live (into (into #{}
+                         (keep #(:process-hash (red/ticket-state (store/events s %))))
+                         (store/ticket-ids s))
+                   (map #(process/process-hash (read-edn-file (process-file %))))
+                   (available-processes))
         dir (io/file (root) "processes" "by-hash")
         archives (when (.isDirectory dir)
                    (filter #(str/ends-with? (.getName ^File %) ".edn")
@@ -480,10 +488,11 @@
                         archives)]
     (if (empty? orphans)
       (println (str "gc: no orphaned definitions — every archived process"
-                    " is currently pinned by a ticket"))
+                    " is pinned by a ticket or is a named definition's"
+                    " current version"))
       (do
         (println (str (count orphans) " orphaned definition(s), pinned by no"
-                      " ticket:"))
+                      " ticket and current in no named definition:"))
         (doseq [^File f (sort-by #(.getName ^File %) orphans)]
           (println (str "  " (str/replace (.getName f) #"\.edn$" ""))))
         (println (str "removing these keeps `verify` PASS and every current"

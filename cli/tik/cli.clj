@@ -244,8 +244,10 @@
                                                 derived, never stale. .html arg writes
                                                 the fancy self-contained page
   tik gc [--apply]                              remove archived process definitions no
-                                                ticket pins (versions every ticket has
-                                                been moved off with `tik reprocess`);
+                                                ticket pins and no named definition is
+                                                at (versions every ticket has been moved
+                                                off with `tik reprocess`), with their
+                                                signatures;
                                                 dry-run by default, verify stays PASS,
                                                 only historical --at degrades
   tik verify [<id>] [--changed]                 the verify ladder; no id = whole store

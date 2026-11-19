@@ -76,7 +76,8 @@ events in one file. Migration is lossless in both directions — events and
 their detached signatures travel together. `export` materializes any store
 as the file format. `pack` consolidates settled tickets into one
 content-addressed pack each, and `gc` removes archived definitions no
-ticket pins any more, together with their publication signatures.
+ticket pins any more and no named definition is at, together with their
+publication signatures.
 
 ## Handing a ticket to someone else
 
