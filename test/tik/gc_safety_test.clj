@@ -15,6 +15,7 @@
   the possibility of GC is now a tested contract."
   (:require [tik.harness :as h]
             [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
@@ -42,6 +43,15 @@
     ;; a ticket under v1, then the named file moves on to v2 and the
     ;; ticket migrates — exactly the metio renovate flow that orphaned v1
     (spit (io/file procs "gct.edn") v1)
+    ;; v1 is published, so collecting it must take its signature along
+    (let [key (io/file store "publisher")]
+      (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "seb" "-f" (str key))
+      (spit (io/file store "actors")
+            (str "seb namespaces=\"tik-*\" "
+                 (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str key))))
+                 "\n"))
+      (h/tik! {:root store :dir store :actor "seb"}
+              "process" "sign" "gct" "--key" key))
     (let [id (str/trim (:out (tik store "new" "gct" "--title" "x")))]
       (spit (io/file procs "gct.edn") v2)
       (is (zero? (:exit (tik store "reprocess" id "processes/gct.edn" "--apply")))
@@ -55,17 +65,21 @@
       (let [verify-before (:out (tik store "verify"))
             status-before (:out (tik store "status" id))
             by-hash (io/file store "processes" "by-hash")
-            archives-before (count (.listFiles by-hash))]
+            archives-before (count (filter #(str/ends-with? (.getName ^java.io.File %) ".edn")
+                                           (.listFiles by-hash)))]
         (is (re-find #"verify: PASS" verify-before))
         (is (= 2 archives-before) "both v1 and v2 are archived")
+        (is (= 1 (count (filter #(str/includes? (.getName ^java.io.File %) ".sig.")
+                                (.listFiles by-hash))))
+            "v1 carries its publication signature")
 
         (testing "gc --apply removes the orphan"
           (let [r (tik store "gc" "--apply")]
-            (is (re-find #"removed 1 definition" (:out r)))
+            (is (re-find #"removed 1 definition\(s\) and 1 signature" (:out r)))
             (is (re-find #"NOT version-controlled" (:out r))
                 "a non-git store must not promise git recovery it cannot give"))
           (is (= 1 (count (.listFiles by-hash)))
-              "one archive (the live v2) remains"))
+              "one archive (the live v2) remains, without v1's signature"))
 
         (testing "verify is UNCHANGED after collecting the orphan"
           (is (re-find #"verify: PASS" (:out (tik store "verify")))))

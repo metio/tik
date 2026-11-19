@@ -21,6 +21,7 @@
             [tik.next :as next-lens]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
+            [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store]
@@ -450,8 +451,10 @@
 (defn cmd-gc
   "gc [--apply]: collect ORPHANED archived process definitions — files
   in processes/by-hash/ that NO ticket currently pins (every ticket that
-  once used one has since migrated away). Dry-run BY DEFAULT (ADR 0002
-  caution): lists candidates and states the one cost.
+  once used one has since migrated away), together with their
+  publication signatures, which sign nothing once the bytes they cover
+  are gone. Dry-run BY DEFAULT (ADR 0002 caution): lists candidates and
+  states the one cost.
 
   Removing an orphan is safe for the load-bearing surfaces: `verify`
   stays PASS and every CURRENT derivation is unchanged — the pinned hash
@@ -489,13 +492,19 @@
                       " warning + current-"))
         (println "rules fallback for tickets that once used them.")
         (if (:apply opts)
-          (do (doseq [^File f orphans] (io/delete-file f))
-              (println (str "removed " (count orphans) " definition(s)."
-                            (if (git-tracked? (root))
-                              " Recoverable from git history if needed."
-                              (str " This store is NOT version-controlled —"
-                                   " back up first (or `git init` the store)"
-                                   " if you might ever need the old rules.")))))
+          (let [sigs (mapcat #(sign/sidecars dir (str/replace (.getName ^File %)
+                                                              #"\.edn$" ""))
+                             orphans)]
+            (doseq [^File f (concat orphans sigs)] (io/delete-file f))
+            (println (str "removed " (count orphans) " definition(s)"
+                          (when (seq sigs)
+                            (str " and " (count sigs) " signature(s)"))
+                          "."
+                          (if (git-tracked? (root))
+                            " Recoverable from git history if needed."
+                            (str " This store is NOT version-controlled —"
+                                 " back up first (or `git init` the store)"
+                                 " if you might ever need the old rules.")))))
           (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
 
 (defn cmd-init
