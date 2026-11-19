@@ -25,6 +25,7 @@
             [tik.linting :as linting]
             [tik.query :as query]
             [tik.rederive :as rederive]
+            [tik.review :as review]
             [tik.serve :as serve]
             [tik.storeops :as storeops]
             [tik.workcmd :as workcmd]
@@ -258,6 +259,10 @@
                                                 --anchor adds a third-party timestamp
                                                 (needs the external ots tool; optional)
   tik process sign <name> [--key K]             publish: sign the archived definition
+  tik review [k=v ...] [<process>|<id> ...]     sign in one batch what waits on you alone:
+         [--list] [--yes]                       unpublished definitions, and tickets whose
+                                                next stage needs only your signature on
+                                                recorded facts plus the k=v you pass
   tik agent actions|set|attest <id> --actor A   the GATED agent surface: only what the
                                                 frontier admits for the role; everything
                                                 else is refused with the derived reason
@@ -370,13 +375,13 @@
     "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "intro" "issuer" "jwks" "jwks-url"
     "key"
-    "links" "long" "name" "out" "params" "parent" "parent-title"
+    "links" "list" "long" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
     "reason" "registry" "role" "serve" "split" "sqlite" "stage" "store" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
-    "witness"})
+    "witness" "yes"})
 
 (defn- check-flags!
   "Refuse flags nothing reads, naming them, before any command runs."
@@ -456,6 +461,7 @@
       "witness" (audit/cmd-witness parsed)
       "agent"   (agent/cmd-agent parsed)
       "process" (admin/cmd-process parsed)
+      "review"  (review/cmd-review parsed)
       "sign"    (admin/cmd-sign parsed)
       "reprocess" (admin/cmd-reprocess parsed)
       "export"  (audit/cmd-export parsed)

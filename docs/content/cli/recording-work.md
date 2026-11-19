@@ -78,6 +78,31 @@ interpret. Lenses read it, and the `:attested-within` guard checks that a
 fresh-enough one exists — a replayed "CI green" from last month is
 cryptographically valid and fails that guard honestly.
 
+## Review in one batch
+
+```sh
+tik review review.verdict=approved --list
+tik review review.verdict=approved
+```
+
+A reviewer's queue is mostly signatures over work somebody else already
+recorded: a merge commit an agent asserted, a definition nobody has
+published yet. `tik review` lists everything that waits on you alone and
+signs it after one confirmation, or without asking when you pass `--yes`.
+
+A ticket is offered when every reason its next stage gives is either your
+signature on a fact already on record or a fact you pass as `k=v`.
+Approving re-asserts each recorded value exactly as it stands, so the
+signature names the commit or hash it covers, and the list shows every
+value before you confirm. A dry run must show the stage landing and no
+reached stage lost, otherwise the ticket is left for a manual `tik set`.
+A fact the ticket's process does not declare is ignored, so one verdict
+can serve several processes at once.
+
+Arguments without `=` narrow the batch to a process name or a ticket id
+prefix. Publishing a definition needs a key, given with `--key` or
+`TIK_KEY`.
+
 ## Derive facts from the world
 
 ```sh

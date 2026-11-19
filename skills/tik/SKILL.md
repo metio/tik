@@ -145,6 +145,12 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   publication signatures. Dry-run by
   default; `verify` stays PASS, only historical `--at` degrades. Tidiness,
   not disk.
+- `tik review [k=v …] [PROCESS|ID …] [--list] [--yes]` — the reviewer's
+  batch: definitions you have not published, and tickets whose next stage
+  misses nothing but your signature on recorded facts plus the `k=v` you
+  pass (`tik review review.verdict=approved`). Recorded values are
+  re-asserted exactly as they stand, and a ticket is offered only when a
+  dry run lands the stage without losing one. `--list` signs nothing.
 
 ### Bringing the outside world in — the bridges
 
