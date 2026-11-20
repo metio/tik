@@ -136,6 +136,23 @@
     (is (str/includes? (:out (run root "seb" "review" "review.verdict=approved" "--list"))
                        "nothing waits for seb"))))
 
+(deftest yes_before_an_id_keeps_the_id_as_the_filter
+  (let [[root key] (store-with-key!)
+        _ (run root "seb" "review" "--yes" "--key" key)
+        mint (fn [title]
+               (let [id (str/trim (first (str/split-lines (:out (run root "claude" "new" "change" "--title" title)))))]
+                 (h/tik! {:root root :dir root :actor "claude"} "set" id "merge.commit=46db877")
+                 id))
+        a (mint "first change")
+        b (mint "second change")
+        r (run root "seb" "review" "review.verdict=approved" "--yes" (subs a 0 8) "--key" key)]
+    (is (zero? (:exit r)) (:err r))
+    (is (str/includes? (:out r) (str "approved change " (subs a 0 8) " → reviewed")))
+    (is (not (str/includes? (:out r) (subs b 0 8))))
+    (is (str/includes? (:out (run root "seb" "status" a)) "stage:   reviewed"))
+    (is (str/includes? (:out (run root "seb" "status" b)) "stage:   merged")
+        "the ticket the filter left out stays unsigned")))
+
 (deftest review_without_the_verdict_offers_only_the_definition
   (let [[root _] (store-with-key!)
         id (str/trim (first (str/split-lines (:out (run root "claude" "new" "change" "--title" "a change")))))

@@ -17,6 +17,16 @@
             [tik.shape :as shape])
   (:import (java.io File PushbackReader StringReader)))
 
+(def switch-flags
+  "Flags that are on or off and never carry a value. A switch is true when
+  present and leaves the next token alone, so `review --yes 00c050ab` keeps
+  00c050ab as a positional. Read as a valued flag, it would bind :yes to
+  the id, drop the id from the filter, and widen the batch to everything
+  else that waits. A switch still takes the --flag=value form."
+  #{"all" "anchor" "apply" "changed" "dry-run" "edn" "force" "github" "help"
+    "hidden" "list" "long" "serve" "sqlite" "verbose" "watch" "webhook"
+    "withdraw" "witness" "yes"})
+
 (defn parse-args [args]
   (loop [args args pos [] opts {}]
     (if (empty? args)
@@ -34,9 +44,9 @@
           (let [i (str/index-of a "=")]
             (recur more pos
                    (assoc opts (keyword (subs a 2 i)) (subs a (inc i)))))
-          ;; a flag with no value (end of args, or another option next)
-          ;; is boolean true — e.g. --apply
-          (or (empty? more) (str/starts-with? (first more) "--"))
+          ;; a switch, or a flag with no value (end of args, or another
+          ;; option next), is boolean true — e.g. --apply
+          (or (contains? switch-flags (subs a 2)) (empty? more) (str/starts-with? (first more) "--"))
           (recur more pos (assoc opts (keyword (subs a 2)) true))
           :else
           (recur (rest more) pos (assoc opts (keyword (subs a 2)) (first more))))))))

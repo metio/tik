@@ -36,6 +36,27 @@
   (testing "an empty value (--flag=) is the empty string, not a junk key"
     (is (= {:title ""} (:opts (parse-args ["new" "--title="]))))))
 
+(deftest switches_never_take_the_next_token
+  (testing "a switch before a positional leaves the positional alone"
+    (is (= {:pos ["review" "00c050ab" "10c97fae"] :opts {:yes true}}
+           (parse-args ["review" "--yes" "00c050ab" "10c97fae"])))
+    (is (= {:pos ["review" "review.verdict=approved" "00c050ab"] :opts {:list true}}
+           (parse-args ["review" "review.verdict=approved" "--list" "00c050ab"])))
+    (is (= {:pos ["verify" "0a52622f"] :opts {:changed true}}
+           (parse-args ["verify" "--changed" "0a52622f"])))
+    (is (= {:pos ["ls" "x"] :opts {:all true :long true}}
+           (parse-args ["ls" "--all" "--long" "x"]))))
+  (testing "a switch keeps the equals form"
+    (is (= {:yes "true"} (:opts (parse-args ["review" "--yes=true"])))))
+  (testing "a valued flag still takes the next token"
+    (is (= {:pos ["review" "00c050ab"] :opts {:yes true :key "/k"}}
+           (parse-args ["review" "--yes" "--key" "/k" "00c050ab"])))
+    (is (= {:actor "bob"} (:opts (parse-args ["next" "--actor" "bob"]))))
+    (is (= {:links ":stage"} (:opts (parse-args ["status" "--links" ":stage"])))
+        "--links takes an optional value, so it is no switch"))
+  (testing "every switch is a flag some command reads"
+    (is (empty? (remove (set @#'cli/known-flags) args/switch-flags)))))
+
 (deftest values_people_actually_type
   (testing "one complete EDN form stays EDN"
     (is (= 120 (parse-value "120")))
