@@ -4,13 +4,21 @@
   "tik serve: the live board over HTTP, read-only. Serves the board HTML
   (query/cmd-board), /tickets.edn (query/cmd-ls), and /explain/<id>.edn
   (inspect/cmd-explain) for tools — every response is a rendering of the
-  same derivation, so nothing here is authoritative. httpkit is resolved
-  lazily so the namespace loads on babashka."
-  (:require [tik.cli-core :refer [die resolve-id-soft the-store]]
+  same derivation, so nothing here is authoritative. With
+  --mcp-token-file it also speaks MCP on /mcp (tik.mcp/http-response), the
+  one writing surface, gated by the frontier like `tik mcp`. httpkit is
+  resolved lazily so the namespace loads on babashka."
+  (:require [clojure.string]
+            [tik.cli-core :refer [die resolve-id-soft the-store]]
             [tik.inspect :as inspect]
             [tik.query :as query]))
 (defn cmd-serve
-  "serve [--port N]: the live board over HTTP, read-only. GET / renders
+  "serve [--port N] [--host H] [--mcp-token-file F] [--surfaces http,mcp]:
+  the live board over HTTP, and MCP on /mcp. --surfaces names what to
+  serve: http (the board and its EDN) unless given, plus mcp when a token
+  file is; a surface left out answers 404. --host is the address it
+  listens on (0.0.0.0 unless given); bind 127.0.0.1 when the port should
+  stay on this machine. GET / renders
   the same HTML as `tik board` — freshly derived per request, because
   derivation is cheap and caches lie eventually. /tickets.edn and
   /explain/<id>.edn expose the ADR 0016 data for tools. httpkit ships
@@ -23,14 +31,37 @@
                (or (parse-long (str p))
                    (die (str "serve --port must be a number, got " p)))
                7777)
+        host (or (:host opts) "0.0.0.0")
+        token-file (:mcp-token-file opts)
+        surfaces (if-let [given (:surfaces opts)]
+                   (set (clojure.string/split (str given) #","))
+                   (cond-> #{"http"} token-file (conj "mcp")))
+        _ (when-let [unknown (seq (remove #{"http" "mcp"} surfaces))]
+            (die (str "serve --surfaces knows http and mcp, not "
+                      (clojure.string/join "," unknown))))
+        _ (when (and (surfaces "mcp") (not token-file))
+            (die "serve --surfaces mcp needs --mcp-token-file"))
+        board? (contains? surfaces "http")
+        mcp (when-let [f (when (surfaces "mcp") token-file)]
+              (let [token (clojure.string/trim (slurp (str f)))]
+                (when (< (count token) 32)
+                  (die "serve --mcp-token-file must hold a token of at least 32 characters"))
+                {:token token :port port}))
+        mcp-response (when mcp (requiring-resolve 'tik.mcp/http-response))
         handler
         ;; a server request must NEVER reach a die/System-exit path —
         ;; one hostile GET would take the board down for everyone. Ids
         ;; resolve softly (404, not exit) and everything else that
         ;; raises answers 500 with words, request-scoped
-        (fn [{:keys [uri]}]
+        (fn [{:keys [uri] :as request}]
           (try
             (cond
+              (and mcp (= uri "/mcp"))
+              (mcp-response mcp request)
+
+              (not board?)
+              {:status 404 :body "tik: not found\n"}
+
               (= uri "/")
               {:status 200
                :headers {"Content-Type" "text/html; charset=utf-8"}
@@ -61,7 +92,10 @@
                :headers {"Content-Type" "text/plain; charset=utf-8"}
                :body (str "tik: " (or (ex-message e)
                                       (.getName (class e))) "\n")})))]
-    (run-server handler {:port port})
-    (println (str "tik board live at http://127.0.0.1:" port
-                  "  (read-only; ctrl-c stops)"))
+    (run-server handler {:port port :ip host})
+    (println (str "tik serves on http://" host ":" port ":"
+                  (when board? " the board (read-only)")
+                  (when (and board? mcp) " and")
+                  (when mcp " MCP on /mcp")
+                  "; ctrl-c stops"))
     @(promise)))

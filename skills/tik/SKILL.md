@@ -252,6 +252,13 @@ which admits exactly the actions its actor may take on a ticket right now.
   identity; with `TIK_KEY` set each accepted call is signed. It runs from the
   shipped binary (`tik mcp`) — the enforcement is the derivation, so it holds
   whatever the client sends.
+- `tik serve --mcp-token-file F` — the same MCP surface over HTTP on `/mcp`,
+  so one long-running server serves every client instead of one process
+  per session: `claude mcp add --transport http tik http://127.0.0.1:7777/mcp
+  --header "Authorization: Bearer $(cat F)"`. Calls write as `TIK_ACTOR`;
+  the bearer token gates them and a foreign `Origin` is refused. Bind it
+  with `--host 127.0.0.1`, and pick what to serve with
+  `--surfaces http,mcp` (the read-only board, MCP, or both).
 - `tik backend [--config pipelines.edn]` — the supervised server that runs
   your **pipelines** as a delegate: continuous ones (`:watch true` — `serve`,
   `bridge imap --watch`) each get a restart-on-exit thread, scheduled ones

@@ -111,8 +111,9 @@
                                                 instead, and says so when they differ)
   tik board [<file.html>]                       the whole board as ONE dependency-free
                                                 HTML file — mail it, archive it
-  tik serve [--port N]                          the live board over HTTP (read-only;
-                                                /tickets.edn + /explain/<id>.edn for tools)
+  tik serve [--port N] [--host H]               the live board over HTTP (read-only;
+            [--mcp-token-file F]                /tickets.edn + /explain/<id>.edn for tools),
+            [--surfaces http,mcp]               and MCP on /mcp behind a bearer token
   tik mcp                                        MCP server over stdio: the frontier as an
                                                 agent's gated tool surface (TIK_ACTOR/TIK_KEY)
   tik backend [--config pipelines.edn]          the supervised server: run your pipelines as
@@ -373,11 +374,11 @@
   #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "by" "changed"
     "as" "client-id" "command" "config" "credential" "dry-run" "edn"
     "expect-bindings" "expect-definition" "expect-stage" "force"
-    "format" "from" "github" "help" "hidden" "intro" "issuer" "jwks" "jwks-url"
+    "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"
     "key"
-    "links" "list" "long" "name" "out" "params" "parent" "parent-title"
+    "links" "list" "long" "mcp-token-file" "name" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "serve" "split" "sqlite" "stage" "store" "template"
+    "reason" "registry" "role" "serve" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
