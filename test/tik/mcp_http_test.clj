@@ -39,7 +39,7 @@
 
 (deftest only-post-carries-messages
   (is (= 405 (:status (mcp/http-response config {:request-method :get
-                                                  :headers {"authorization" (str "Bearer " (:token config))}})))))
+                                                 :headers {"authorization" (str "Bearer " (:token config))}})))))
 
 (deftest unreadable-input-answers-a-parse-error
   (is (str/includes? (:body (post "not json")) "-32700")))
