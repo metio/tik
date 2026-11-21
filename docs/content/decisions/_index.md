@@ -73,3 +73,4 @@ so a checkout and this site carry the same record.
 | [0026](/decisions/0026-a-binding-policy-names-who-may-bind-which-actor/) | A binding policy names which subject may bind which actor; a bound key speaks only while its token was live. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
+| [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |
