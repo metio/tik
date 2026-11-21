@@ -103,6 +103,82 @@ richer fact records what they actually agreed to. The linter warns about
 bare booleans for this reason, and the warning is opt-out per definition
 when a flag genuinely is the whole truth.
 
+## Exits
+
+No verb closes or discards a ticket. A ticket is settled once it reaches a
+sticky stage with no stage after it, and stays on the board until then. A
+process whose work can stop before its goal therefore declares the way
+out as stages, with guards that say why the work stopped and who decided:
+
+```clojure
+{:stage/id :abandon-proposed
+ :guards [[:fact [:abandoned :reason]]
+          [:not [:fact [:merge :commit]]]]}
+
+{:stage/id :abandoned
+ :after [:abandon-proposed]
+ :stage/sticky? true
+ :guards [[:signed-by :maintainer [:abandoned :reason]]]}
+```
+
+The proposal has no `:after`, so it applies from any point of the
+process. It is a stage of its own because the gated agent surface admits
+a write to a path only to the roles a stage asks to sign it: were the
+reason guarded by the maintainer's signature alone, an agent could not
+record it at all. Split in two, an agent records the reason, the ticket
+derives `abandon-proposed`, and `tik review` lists the reason for the
+maintainer to sign unchanged. What the exit requires is the process's own
+decision: dropping a change needs a signed reason, while "not affected" in
+a vulnerability process is an outcome with evidence of its own.
+
+### Cleanup after an exit
+
+Work stopped halfway can leave something behind: a server provisioned but
+never deployed, a DNS record, a bucket. Follow the exit with a cleanup
+stage, and the ticket stays unsettled, and in `tik next`, until the
+evidence shows the leftovers are gone:
+
+```clojure
+{:stage/id :abandon-proposed
+ :guards [[:fact [:abandoned :reason]]
+          [:not [:fact= [:deploy :env] :prod]]]}
+
+{:stage/id :abandoned
+ :after [:abandon-proposed]
+ :stage/sticky? true
+ :guards [[:signed-by :maintainer [:abandoned :reason]]]}
+
+{:stage/id :cleaned-up
+ :after [:abandoned]
+ :stage/sticky? true
+ :guards [[:or [:not [:fact [:server :id]]] [:fact= [:server :state] :deleted]]
+          [:or [:not [:fact [:dns :record]]] [:fact= [:dns :state] :removed]]]}
+```
+
+Each cleanup guard is an implication over what the work recorded: if a
+server was provisioned, it must be deleted. One exit therefore covers every
+point at which the work can stop. Abandoned before anything existed, the
+ticket settles at once; abandoned after provisioning, it waits for the
+server to go. A separate exit per stage would multiply with every stage
+added.
+
+The cleanup is most trustworthy when a [probe](/cli/recording-work/)
+observes it: one that asks the provider for the server records
+`server.state=deleted` because the server is gone, and records it running
+again if it comes back.
+
+Write these guards over facts rather than stages. A stage may negate only
+a stage from a strictly earlier stratum (ADR 0005), and a proposal without
+`:after` sits in the first one, so `[:not [:stage-reached :merged]]` on it
+fails lint where `[:not [:fact [:merge :commit]]]` does not.
+
+Two limits remain. The stages before the exit stay on the frontier: after
+`abandoned`, `tik next` still offers the facts of the next forward stage,
+and a `[:not [:fact [:abandoned :reason]]]` guard on that stage does not
+remove them. And `:elapsed-since` measures only from the ticket's
+creation, so no guard can say a cleanup has waited too long since the
+exit.
+
 ## Versions and pinning
 
 A ticket pins the definition's content hash at creation. Editing a

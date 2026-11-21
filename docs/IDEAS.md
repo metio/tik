@@ -1421,6 +1421,53 @@ derivation is the same pure function over a different definition.
 Trigger to revisit: a second report of a migration that lost facts, or
 a whatif redesign that generalizes its step vocabulary anyway.
 
+## Exit stages withhold the forward work (unjudged)
+
+A process can declare an exit, a proposed and a signed `:abandoned`
+stage, followed by a cleanup stage (Writing a definition, "Exits").
+Once the exit derives, the forward stages are dead in practice, yet
+they stay on the frontier: in a test store, an abandoned ticket made
+`tik next` offer `set [:software :version]` as unlocking `:installed`
+next to the real cleanup work. Guarding the forward stage with
+`[:not [:fact [:abandoned :reason]]]` changes nothing, because explain
+reports a negated fact as `:must-not-hold`, which is not permanent (the
+fact could be retracted), so the inbox still lists the stage's other
+facts as work.
+
+Two shapes, both in derivation output rather than new stored state:
+
+- The inbox treats an unmet `:must-not-hold` as gating the stage: the
+  other reasons of that stage unlock nothing while it fails, so next
+  reports the stage under `:waiting` and offers none of its facts. This
+  is a change to `tik.next`, which is kernel code, and it changes what
+  the inbox says about every process that negates a fact, so it needs
+  the soundness and completeness properties of the inbox re-checked.
+- Explain marks a forward stage as unreachable when a sticky stage that
+  shares no path to it has been reached and the stage negates that
+  stage's evidence. Narrower, but it needs a precise notion of "the
+  exit's evidence" that the definition does not state today.
+
+Trigger to revisit: a second process with an exit, or an agent that
+works a forward stage of an abandoned ticket because `tik next` offered
+it.
+
+## Elapsed since a stage was reached (unjudged)
+
+`[:elapsed-since :ticket/create "P14D"]` is the only time reference a
+guard has. A cleanup after an exit wants "fourteen days after
+`:abandoned` was reached", so an overdue cleanup can derive a stage of
+its own and surface through the effects pipeline. The instant a stage
+was reached is derivable from the log, since the fold already orders
+events by `(at, id)`, so a reference such as
+`[:elapsed-since [:stage :abandoned] "P14D"]` stays a pure function of
+`(state, now, reached)`. It is still a change to the closed guard
+vocabulary: a new reference form for an existing operator, which needs a
+version bump and a PLAN §19 verdict, and a definition of "reached" for a
+non-sticky stage that is reached, lost and reached again.
+
+Trigger to revisit: a cleanup that was forgotten for longer than the
+process intended, in a store that would have flagged it.
+
 ## Probes written in Clojure, run in SCI (unjudged)
 
 A probe is porcelain: `tik probe` runs it, reads `key=value` lines from
