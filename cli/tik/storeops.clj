@@ -363,7 +363,10 @@
         blocked (swap! skipped inc)
         :else
         (let [^File f (resolve-file probe)
-              argv (if (.exists f) ["sh" (str f)] ["sh" "-c" probe])
+              ;; the probe runs with cwd in the repository, so a file
+              ;; found relative to tik's own working directory travels
+              ;; as an absolute path
+              argv (if (.exists f) ["sh" (.getPath (.getAbsoluteFile f))] ["sh" "-c" probe])
               {facts :env collisions :collisions} (fact-env state)
               _ (doseq [[n paths] collisions]
                   (binding [*out* *err*]

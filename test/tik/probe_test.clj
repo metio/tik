@@ -160,3 +160,18 @@
         (is (re-find #"0 fact\(s\) derived" (:out again)))
         (is (re-find #"1 probe\(s\) ran" (:out again))
             "the probe ran — which is what separates this from the skip case")))))
+
+(deftest a_probe_file_relative_to_the_working_directory_runs_from_the_repository
+  (let [{:keys [root id]} (store-with-ticket! "tik-probe-relative" "repo=widget")
+        _ (.mkdirs (io/file root "widget"))
+        dir (io/file "target" (str "probe-relative-" (System/nanoTime)))
+        script (io/file dir "probe.sh")]
+    (.mkdirs dir)
+    (spit script "echo gate=green\n")
+    (try
+      (let [r (in root "probe" id "--command" (.getPath script))]
+        (is (zero? (:exit r)) (:err r))
+        (is (re-find #"gate = :green" (:out r))))
+      (finally
+        (io/delete-file script true)
+        (io/delete-file dir true)))))
