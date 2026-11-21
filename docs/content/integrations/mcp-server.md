@@ -13,6 +13,25 @@ store as a tool surface. The tools an agent is offered are exactly the
 steps the frontier admits for its role at that moment, so the tool list
 *is* the authorization boundary.
 
+## One shared server over HTTP
+
+```sh
+TIK_ACTOR=bot TIK_KEY=~/.config/tik/bot_ed25519 \
+  tik serve --host 127.0.0.1 --port 7777 --mcp-token-file ~/.local/state/tik/mcp-token
+```
+
+`tik serve` also speaks MCP on `/mcp` when given a token file, so every
+client shares one long-running server instead of starting its own
+process. It answers one JSON-RPC message per POST with JSON and opens no
+event stream. A request needs the token as `Authorization: Bearer …`, and
+one whose `Origin` is not the server's own is refused, which keeps a web
+page from driving the server through DNS rebinding. The token must be at
+least 32 characters; `openssl rand -hex 32` makes one.
+
+`--surfaces` picks what the server offers: `http` for the read-only board
+and its EDN, `mcp` for the tools, or `http,mcp`. Without it, the server
+offers `http`, and `mcp` too when a token file is given.
+
 ## Why the boundary holds
 
 An agent's permission to act is derived from the same guards a person's
