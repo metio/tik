@@ -360,6 +360,18 @@ and you author clean the first time):
 - **Every stage after the first needs ≥1 requirement**, or it derives
   instantly and says nothing. **3–6 stages** is almost always right.
 - **Prefer a `:choice` over a yes/no fact; prefer facts over flags.**
+- **Give work that can stop an exit.** No verb closes a ticket; a sticky stage
+  with no stage after it settles one. Declare the way out as two stages: an
+  `abandon-proposed` stage anyone reaches by recording `abandoned.reason`,
+  then a sticky `abandoned` stage after it that needs the maintainer's
+  signature on that reason (one stage would keep agents from recording the
+  reason, since the gate admits a path only to the role that must sign it).
+  When stopping halfway leaves something behind,
+  follow it with a cleanup stage whose guards read what exists
+  (`[:or [:not [:fact [:server :id]]] [:fact= [:server :state] :deleted]]`),
+  so the ticket stays in `tik next` until the cleanup is proven. Negate facts,
+  not stages, in an exit: stratified negation rejects a stage without `:after`
+  negating a later one.
 
 Design in prose and requirements first; let `tik author`/`check` produce and
 validate the EDN. A definition changes its hash, so a sample process pinned by
