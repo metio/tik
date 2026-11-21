@@ -38,6 +38,7 @@ so a checkout and this site carry the same record.
 | [0016](/decisions/0016-explain-stability-contract/) | Explain's structured reasons are the stable API; the prose is not. |
 | [0018](/decisions/0018-conformance/) | Conformance is the corpus, the laws, and the normative sweep semantics. |
 | [0019](/decisions/0019-effects-observe-derivation/) | Effects observe derivation; transport is not a domain concept. |
+| [0030](/decisions/0030-a-notebook-enters-a-ticket-through-a-probe/) | What a kajero notebook knows about a ticket enters it through a probe, as facts its guards read like any other. |
 
 ## Time
 
