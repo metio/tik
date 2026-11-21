@@ -12,6 +12,22 @@
             [tik.cli-core :refer [die resolve-id-soft the-store]]
             [tik.inspect :as inspect]
             [tik.query :as query]))
+(defn loopback-refusal
+  "A refusal for a request a loopback-bound server must not answer, else
+  nil. A web page can reach 127.0.0.1 by making its own host name resolve
+  there (DNS rebinding); the browser then sends that name as Host and lets
+  the page read the answer, which here is a private store's board. A server
+  bound to loopback answers only requests that name it by a loopback
+  address; one bound elsewhere was meant for other hosts and is not judged."
+  [host port {:keys [headers]}]
+  (let [loopback #{"127.0.0.1" "localhost" "::1" "[::1]"}]
+    (when (and (loopback host)
+               (not (contains? (set (for [h ["127.0.0.1" "localhost" "[::1]"]] (str h ":" port)))
+                               (get headers "host"))))
+      {:status 421
+       :headers {"Content-Type" "text/plain; charset=utf-8"}
+       :body "tik: this server answers only to its own loopback address\n"})))
+
 (defn cmd-serve
   "serve [--port N] [--host H] [--mcp-token-file F] [--surfaces http,mcp]:
   the live board over HTTP, and MCP on /mcp. --surfaces names what to
@@ -59,6 +75,9 @@
         (fn [{:keys [uri] :as request}]
           (try
             (cond
+              (loopback-refusal host port request)
+              (loopback-refusal host port request)
+
               (and mcp (= uri "/mcp"))
               (mcp-response mcp request)
 
