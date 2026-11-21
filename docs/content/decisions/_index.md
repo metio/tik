@@ -72,6 +72,7 @@ so a checkout and this site carry the same record.
 | [0024](/decisions/0024-link-values-name-foreign-tickets/) | A link's value names its referent; a foreign ticket carries the head observed. |
 | [0025](/decisions/0025-the-evidence-bundle-is-a-versioned-format/) | The evidence bundle is a named, versioned format; a badge names the derivation. |
 | [0026](/decisions/0026-a-binding-policy-names-who-may-bind-which-actor/) | A binding policy names which subject may bind which actor; a bound key speaks only while its token was live. |
+| [0031](/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/) | A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
 | [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |
