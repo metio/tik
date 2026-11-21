@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Redmine on tik</title><link href="https://tik.projects.metio.wtf/tags/redmine/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/redmine/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/redmine/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-21T16:33:09+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/redmine/</id><entry><title type="html">Redmine</title><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><id>https://tik.projects.metio.wtf/integrations/redmine/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-15T11:40:37+01:00</updated><content type="html"><![CDATA[<blockquote>Redmine issues mirrored as redmine-issue tickets, with their history.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge redmine --config redmine.edn   <span class="c1"># poll once</span>
+</span></span></code></pre></div><p><code>tik bridge redmine</code> mirrors Redmine issues into the store as tickets
+under the <code>redmine-issue</code> process. Each ticket carries the issue&rsquo;s
+status, assignee, priority, tracker, project, subject and due date as
+facts signed by the bridge, its description and notes as artifacts, and
+its URL as <code>redmine.url</code>. The stage follows the mirrored status: <code>:open</code>,
+or <code>:closed</code> when Redmine counts the status as closed. Reopening the issue
+in Redmine brings the ticket back to <code>:open</code> on the next sync.</p>
+<p>Redmine stays the place where the issue is worked on. Facts you add
+locally (a <code>link.*</code> to another ticket, notes for yourself) stay in tik and
+never move the mirrored stages.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:url</span>     <span class="s">&#34;https://redmine.example&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:key</span>     <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;REDMINE_API_KEY&#34;</span><span class="p">}</span>         <span class="c1">; your API key (My account → API access key)</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:query</span>   <span class="p">{</span><span class="ss">:assigned_to_id</span> <span class="s">&#34;me&#34;</span><span class="p">}</span>           <span class="c1">; issues.json filters; all statuses are included</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:users</span>   <span class="p">{</span><span class="mi">11</span> <span class="s">&#34;seb&#34;</span><span class="p">}</span>                       <span class="c1">; Redmine user id -&gt; tik actor</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>   <span class="s">&#34;redmine&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process</span> <span class="ss">:redmine-issue</span><span class="p">}</span>
+</span></span></code></pre></div><p>Each sweep syncs every issue the query selects, plus every issue the store
+already mirrors, so an issue that is reassigned or moved keeps its ticket
+current. <code>:users</code> renders a Redmine user as a tik actor in
+<code>redmine.assignee</code>; other users appear under the name Redmine shows.</p>
+<h2 id="history">History</h2>
+<p>Every event is a function of the issue and its journal. The ticket is
+dated by the issue&rsquo;s creation and carries the values the issue was opened
+with, recovered by undoing each journal entry from the current values.
+Each journal entry then adds its changes at its own time, and its note as
+a <code>redmine/journal/&lt;id&gt;</code> artifact. A re-sync adds only the entries that
+are new, and two machines syncing the same Redmine write identical events.</p>
+<p>Statuses, priorities and trackers are rendered by name from Redmine&rsquo;s
+current configuration. Renaming one in Redmine adds assertions under the
+new name on the next sync; the latest journal entry still decides the
+current value.</p>
+<h2 id="open-work">Open work</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls --all --where <span class="s1">&#39;stage=:open and fact:redmine.assignee=seb&#39;</span>
+</span></span><span class="line"><span class="cl">tik stats --by redmine.project --until :closed
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/redmine" term="redmine" label="redmine"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/sync" term="sync" label="sync"/></entry></feed>

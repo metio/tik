@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Ssh on tik</title><link href="https://tik.projects.metio.wtf/tags/ssh/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/ssh/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/ssh/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-21T16:33:09+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/ssh/</id><entry><title type="html">GitLab pipelines</title><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><id>https://tik.projects.metio.wtf/integrations/gitlab-pipelines/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-15T11:40:37+01:00</updated><content type="html"><![CDATA[<blockquote>Failed GitLab pipelines as ci-failure tickets, one per failure streak, optionally through an SSH port forward.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge gitlab --config gitlab.edn   <span class="c1"># poll once</span>
+</span></span></code></pre></div><p><code>tik bridge gitlab</code> turns failed GitLab pipelines into <code>ci-failure</code>
+tickets, with the same streak rules, facts and metrics as
+<a href="/integrations/github-actions/">GitHub Actions</a>
+. A pipeline has no
+workflow id; its source (<code>push</code>, <code>schedule</code>, <code>web</code>, …) takes that place,
+so a failing nightly schedule and green push pipelines on the same branch
+are separate streaks, titled <code>push pipeline</code>, <code>schedule pipeline</code> and so
+on. Pipelines with any status other than <code>failed</code> and <code>success</code> (canceled,
+skipped, manual) neither extend nor end a streak.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:url</span>        <span class="s">&#34;https://gitlab.example&#34;</span>   <span class="c1">; the web URL; the API is &lt;url&gt;/api/v4</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:membership</span> <span class="nv">true</span>                       <span class="c1">; every project the token&#39;s account is a member of</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:groups</span>     <span class="p">[</span><span class="s">&#34;team/platform&#34;</span><span class="p">]</span>          <span class="c1">; every project of a group and its subgroups</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:projects</span>   <span class="p">[</span><span class="s">&#34;team/app&#34;</span> <span class="p">{</span><span class="ss">:project</span> <span class="s">&#34;team/lib&#34;</span> <span class="ss">:branches</span> <span class="p">[</span><span class="s">&#34;main&#34;</span> <span class="s">&#34;next&#34;</span><span class="p">]}]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:exclude</span>    <span class="p">[</span><span class="s">&#34;team/platform/scratch&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:token</span>      <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;GITLAB_TOKEN&#34;</span><span class="p">}</span>      <span class="c1">; or {:command …} / {:file …} / {:credential …}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:tunnel</span>     <span class="p">{</span><span class="ss">:ssh</span> <span class="s">&#34;admin@gitlab.example&#34;</span> <span class="ss">:target</span> <span class="s">&#34;127.0.0.1:8080&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>      <span class="s">&#34;gitlab&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:pipelines</span>  <span class="p">{</span><span class="ss">:process</span>   <span class="ss">:ci-failure</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:lookback</span>  <span class="s">&#34;P14D&#34;</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:max-pages</span> <span class="mi">5</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:failing</span>   <span class="o">#</span><span class="p">{</span><span class="s">&#34;failed&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:green</span>     <span class="o">#</span><span class="p">{</span><span class="s">&#34;success&#34;</span><span class="p">}}}</span>
+</span></span></code></pre></div><p>The token needs read access to the API (<code>read_api</code>). Archived projects
+are left out, and a project without <code>:branches</code> watches its default branch.
+A failure listing one group or project is reported and skips it only.</p>
+<h2 id="ssh-port-forward">SSH port forward</h2>
+<p>Some GitLab instances only serve their API on the host itself. With
+<code>:tunnel</code>, the bridge runs <code>ssh -N -L 127.0.0.1:&lt;free port&gt;:&lt;target&gt; &lt;ssh&gt;</code> for the duration of the sweep and sends the API requests to the
+local end. The forwarded target speaks plain HTTP; the connection that
+leaves the machine is the SSH one. Outside a tunnel, the bridge refuses a
+non-HTTPS API URL. The SSH destination must be an account allowed to
+forward ports, and ssh runs with <code>BatchMode=yes</code>, so its key must be
+usable without a prompt (an agent or an unencrypted key).</p>
+<h2 id="retried-pipelines">Retried pipelines</h2>
+<p>A retried pipeline keeps its id and shows only its latest outcome, so the
+bridge checks every green pipeline for a ticket opened on it and records
+the recovery there. GitLab&rsquo;s pipeline list carries no start time, so such
+a recovery is dated by the pipeline&rsquo;s creation and its time to
+<code>:recovered</code> reads as zero.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/gitlab" term="gitlab" label="gitlab"/><category scheme="https://tik.projects.metio.wtf/tags/ci" term="ci" label="ci"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/metrics" term="metrics" label="metrics"/><category scheme="https://tik.projects.metio.wtf/tags/ssh" term="ssh" label="ssh"/></entry></feed>

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Bridge on tik</title><link href="https://tik.projects.metio.wtf/tags/bridge/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/bridge/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/bridge/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-21T16:33:09+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/bridge/</id><entry><title type="html">GitHub Actions</title><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><id>https://tik.projects.metio.wtf/integrations/github-actions/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-15T11:40:37+01:00</updated><content type="html"><![CDATA[<blockquote>Failed workflow runs as ci-failure tickets, one per failure streak.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge github --config github.edn             <span class="c1"># poll once</span>
+</span></span><span class="line"><span class="cl">tik bridge github --config github.edn --webhook   <span class="c1"># serve workflow_run deliveries</span>
+</span></span></code></pre></div><p><code>tik bridge github</code> turns failed GitHub Actions runs into tickets under the
+<code>ci-failure</code> process. One ticket covers one failure streak: the consecutive
+failed runs of one workflow on one branch, from the first failure after a
+green run up to the next green run. Further failures attach to the open
+ticket as <code>ci/run/&lt;id&gt;/&lt;attempt&gt;</code> artifacts, the next green run is
+recorded as <code>forge.green-run</code>, and a failure after that opens a new ticket.
+Cancelled, skipped and neutral runs neither extend nor end a streak.
+<a href="/integrations/gitlab-pipelines/">GitLab pipelines</a>
+ feed the same process
+with the same facts, so the metrics below cover both forges.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:repos</span>   <span class="p">[</span><span class="s">&#34;metio/tik&#34;</span> <span class="p">{</span><span class="ss">:repo</span> <span class="s">&#34;metio/jaas&#34;</span> <span class="ss">:branches</span> <span class="p">[</span><span class="s">&#34;main&#34;</span> <span class="s">&#34;next&#34;</span><span class="p">]}]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:orgs</span>    <span class="p">[</span><span class="s">&#34;metio&#34;</span> <span class="s">&#34;sebhoss&#34;</span><span class="p">]</span>       <span class="c1">; every non-archived repository, default branch</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:exclude</span> <span class="p">[</span><span class="s">&#34;metio/scratch&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:token</span>   <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;GITHUB_TOKEN&#34;</span><span class="p">}</span>     <span class="c1">; or {:command …} / {:file …} / {:credential …}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:tokens</span>  <span class="p">{</span><span class="s">&#34;sebhoss&#34;</span> <span class="p">{</span><span class="ss">:command</span> <span class="p">[</span><span class="s">&#34;pass&#34;</span> <span class="s">&#34;show&#34;</span> <span class="s">&#34;github/sebhoss&#34;</span><span class="p">]}}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:api</span>     <span class="s">&#34;https://api.github.com&#34;</span>  <span class="c1">; a GitHub Enterprise Server URL also works</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>   <span class="s">&#34;github&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actions</span> <span class="p">{</span><span class="ss">:process</span>   <span class="ss">:ci-failure</span>
+</span></span><span class="line"><span class="cl">           <span class="ss">:lookback</span>  <span class="s">&#34;P14D&#34;</span>        <span class="c1">; streaks with no run newer than this are left alone</span>
+</span></span><span class="line"><span class="cl">           <span class="ss">:max-pages</span> <span class="mi">5</span>             <span class="c1">; history pages fetched to find a streak&#39;s first run</span>
+</span></span><span class="line"><span class="cl">           <span class="ss">:failing</span>   <span class="o">#</span><span class="p">{</span><span class="s">&#34;failure&#34;</span> <span class="s">&#34;timed_out&#34;</span> <span class="s">&#34;startup_failure&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">           <span class="ss">:green</span>     <span class="o">#</span><span class="p">{</span><span class="s">&#34;success&#34;</span><span class="p">}}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:webhook</span> <span class="p">{</span><span class="ss">:secret</span> <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;GITHUB_WEBHOOK_SECRET&#34;</span><span class="p">}</span> <span class="ss">:port</span> <span class="mi">8787</span><span class="p">}}</span>
+</span></span></code></pre></div><p>Each source is enabled by its block; <code>:actions</code> is the only source so far.
+A token needs read access to Actions and metadata on the repositories it
+covers. <code>:tokens</code> maps a repository owner to its own token, because a
+fine-grained GitHub token is scoped to one resource owner; owners without
+an entry use <code>:token</code>, then <code>$GITHUB_TOKEN</code>. An <code>:orgs</code> entry may also name
+a user account: its public repositories are listed, plus its private ones
+when that owner&rsquo;s token belongs to the user. A failure listing one owner is
+reported and skips that owner only.</p>
+<p>The bridge actor (<code>github</code> by default) must be registered in <code>actors</code> with
+the key in <code>TIK_KEY</code>. The <code>ci-failure</code> process&rsquo;s <code>:bridge</code> role holds only
+the forge bridges (<code>github</code>, <code>gitlab</code>), so nobody else can open or recover
+a streak.</p>
+<p>Each ticket records <code>forge.host</code>, <code>forge.repo</code>, <code>forge.owner</code>,
+<code>forge.workflow</code>, <code>forge.branch</code>, <code>forge.first-run</code> and <code>forge.head-sha</code>,
+plus <code>repo</code>, the repository&rsquo;s name as a keyword (<code>:tik</code>): the value <code>tik new</code> records for a ticket made inside the checkout. A store above many
+checkouts therefore shows a repository&rsquo;s CI failures next to its other
+tickets (<code>tik ls --all --where 'fact:repo=:tik'</code>).</p>
+<h2 id="polling-and-webhooks">Polling and webhooks</h2>
+<p>Both drivers run the same sync and are idempotent, so they can run side by
+side and on several replicas. A ticket id hashes the repository id,
+workflow, branch and first failed run. A ticket is dated by the creation
+time of its first failed run, and each later event by the start time of
+the run attempt it records. GitHub never changes either timestamp, whereas
+it does rewrite <code>updated_at</code> on old runs. Two replicas syncing the same
+history therefore write identical events, and a re-poll writes nothing.
+Time to <code>:recovered</code> runs from the first failed run&rsquo;s creation to the
+start of the green run.</p>
+<p>Run both from <code>tik backend</code> (<code>pipelines.edn</code>):</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:pipelines</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:id</span> <span class="ss">:github-poll</span>    <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;github&#34;</span><span class="p">]</span> <span class="ss">:as</span> <span class="s">&#34;github&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="ss">:github-webhook</span> <span class="ss">:watch</span> <span class="nv">true</span>    <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;github&#34;</span> <span class="s">&#34;--webhook&#34;</span><span class="p">]</span> <span class="ss">:as</span> <span class="s">&#34;github&#34;</span><span class="p">}]}</span>
+</span></span></code></pre></div><p>For the webhook, point a repository or organization webhook at the
+listener with content type <code>application/json</code>, the shared secret, and the
+<em>Workflow runs</em> event. Deliveries without a valid <code>X-Hub-Signature-256</code> are
+refused with 401. A delivery only names the workflow; the bridge then reads
+that workflow&rsquo;s history from the API, so a lost delivery is repaired by the
+next poll.</p>
+<p>A streak whose first run lies beyond <code>:max-pages</code> of history is skipped
+with a message instead of being opened on a guessed start, because a
+guessed start would give replicas different ticket ids.</p>
+<h2 id="triage">Triage</h2>
+<p>The cause is the one fact the forge cannot supply:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik <span class="nb">set</span> &lt;id&gt; <span class="nv">cause</span><span class="o">=</span>dependency   <span class="c1"># flaky | code | dependency | config | infra | upstream</span>
+</span></span></code></pre></div><p>A ticket reaches <code>:resolved</code> once it has both a cause and a bridge-signed
+green run.</p>
+<h2 id="metrics">Metrics</h2>
+<p><code>tik stats</code> groups any tickets by a fact and derives the counts and the time
+from creation to a stage:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik stats --by forge.repo --split cause --until :resolved --where <span class="s1">&#39;fact:forge.workflow&#39;</span>
+</span></span><span class="line"><span class="cl">tik stats --by forge.host --until :recovered
+</span></span><span class="line"><span class="cl">tik stats --by forge.repo --format json
+</span></span></code></pre></div><p>The columns are the ticket count, how many have not reached the stage, and
+the median, 90th-percentile and mean time to reach it. The
+<code>fact:forge.workflow</code> term restricts the count to CI-failure tickets. Every number is recomputed
+from the ticket logs on each run.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/github" term="github" label="github"/><category scheme="https://tik.projects.metio.wtf/tags/ci" term="ci" label="ci"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/metrics" term="metrics" label="metrics"/></entry><entry><title type="html">GitLab pipelines</title><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><id>https://tik.projects.metio.wtf/integrations/gitlab-pipelines/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-15T11:40:37+01:00</updated><content type="html"><![CDATA[<blockquote>Failed GitLab pipelines as ci-failure tickets, one per failure streak, optionally through an SSH port forward.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge gitlab --config gitlab.edn   <span class="c1"># poll once</span>
+</span></span></code></pre></div><p><code>tik bridge gitlab</code> turns failed GitLab pipelines into <code>ci-failure</code>
+tickets, with the same streak rules, facts and metrics as
+<a href="/integrations/github-actions/">GitHub Actions</a>
+. A pipeline has no
+workflow id; its source (<code>push</code>, <code>schedule</code>, <code>web</code>, …) takes that place,
+so a failing nightly schedule and green push pipelines on the same branch
+are separate streaks, titled <code>push pipeline</code>, <code>schedule pipeline</code> and so
+on. Pipelines with any status other than <code>failed</code> and <code>success</code> (canceled,
+skipped, manual) neither extend nor end a streak.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:url</span>        <span class="s">&#34;https://gitlab.example&#34;</span>   <span class="c1">; the web URL; the API is &lt;url&gt;/api/v4</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:membership</span> <span class="nv">true</span>                       <span class="c1">; every project the token&#39;s account is a member of</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:groups</span>     <span class="p">[</span><span class="s">&#34;team/platform&#34;</span><span class="p">]</span>          <span class="c1">; every project of a group and its subgroups</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:projects</span>   <span class="p">[</span><span class="s">&#34;team/app&#34;</span> <span class="p">{</span><span class="ss">:project</span> <span class="s">&#34;team/lib&#34;</span> <span class="ss">:branches</span> <span class="p">[</span><span class="s">&#34;main&#34;</span> <span class="s">&#34;next&#34;</span><span class="p">]}]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:exclude</span>    <span class="p">[</span><span class="s">&#34;team/platform/scratch&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:token</span>      <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;GITLAB_TOKEN&#34;</span><span class="p">}</span>      <span class="c1">; or {:command …} / {:file …} / {:credential …}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:tunnel</span>     <span class="p">{</span><span class="ss">:ssh</span> <span class="s">&#34;admin@gitlab.example&#34;</span> <span class="ss">:target</span> <span class="s">&#34;127.0.0.1:8080&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>      <span class="s">&#34;gitlab&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:pipelines</span>  <span class="p">{</span><span class="ss">:process</span>   <span class="ss">:ci-failure</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:lookback</span>  <span class="s">&#34;P14D&#34;</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:max-pages</span> <span class="mi">5</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:failing</span>   <span class="o">#</span><span class="p">{</span><span class="s">&#34;failed&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:green</span>     <span class="o">#</span><span class="p">{</span><span class="s">&#34;success&#34;</span><span class="p">}}}</span>
+</span></span></code></pre></div><p>The token needs read access to the API (<code>read_api</code>). Archived projects
+are left out, and a project without <code>:branches</code> watches its default branch.
+A failure listing one group or project is reported and skips it only.</p>
+<h2 id="ssh-port-forward">SSH port forward</h2>
+<p>Some GitLab instances only serve their API on the host itself. With
+<code>:tunnel</code>, the bridge runs <code>ssh -N -L 127.0.0.1:&lt;free port&gt;:&lt;target&gt; &lt;ssh&gt;</code> for the duration of the sweep and sends the API requests to the
+local end. The forwarded target speaks plain HTTP; the connection that
+leaves the machine is the SSH one. Outside a tunnel, the bridge refuses a
+non-HTTPS API URL. The SSH destination must be an account allowed to
+forward ports, and ssh runs with <code>BatchMode=yes</code>, so its key must be
+usable without a prompt (an agent or an unencrypted key).</p>
+<h2 id="retried-pipelines">Retried pipelines</h2>
+<p>A retried pipeline keeps its id and shows only its latest outcome, so the
+bridge checks every green pipeline for a ticket opened on it and records
+the recovery there. GitLab&rsquo;s pipeline list carries no start time, so such
+a recovery is dated by the pipeline&rsquo;s creation and its time to
+<code>:recovered</code> reads as zero.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/gitlab" term="gitlab" label="gitlab"/><category scheme="https://tik.projects.metio.wtf/tags/ci" term="ci" label="ci"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/metrics" term="metrics" label="metrics"/><category scheme="https://tik.projects.metio.wtf/tags/ssh" term="ssh" label="ssh"/></entry><entry><title type="html">Odoo</title><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><id>https://tik.projects.metio.wtf/integrations/odoo/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-18T09:05:25+01:00</updated><content type="html"><![CDATA[<blockquote>Odoo project tasks mirrored as odoo-task tickets, with their history.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge odoo --config odoo.edn   <span class="c1"># poll once</span>
+</span></span></code></pre></div><p><code>tik bridge odoo</code> mirrors Odoo project tasks into the store as tickets
+under the <code>odoo-task</code> process. Each ticket carries the task&rsquo;s title,
+stage, assignee and project as facts signed by the bridge, its
+conversation as artifacts, and its URL as <code>odoo.url</code>. The stage follows
+the mirrored Odoo stage: <code>:closed</code> when the configuration names that stage
+as closed, <code>:open</code> for every other stage. Moving the task back to an open
+stage in Odoo brings the ticket back to <code>:open</code> on the next sync.</p>
+<p>Odoo stays the place where the task is worked on. Facts you add locally
+(a <code>link.*</code> to another ticket, notes for yourself) stay in tik and never
+move the mirrored stages.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:url</span>           <span class="s">&#34;https://odoo.example&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:db</span>            <span class="s">&#34;odoo&#34;</span>                     <span class="c1">; the database name</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:user</span>          <span class="s">&#34;you@example.com&#34;</span>          <span class="c1">; a string or a secret spec</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:password</span>      <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;ODOO_PASSWORD&#34;</span><span class="p">}</span>     <span class="c1">; a secret spec</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:closed-stages</span> <span class="p">[</span><span class="s">&#34;Done&#34;</span> <span class="s">&#34;Cancelled&#34;</span><span class="p">]</span>       <span class="c1">; stage names that count as closed</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:users</span>         <span class="p">{</span><span class="mi">45</span> <span class="s">&#34;seb&#34;</span><span class="p">}</span>                 <span class="c1">; Odoo user id -&gt; tik actor</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:domain</span>        <span class="p">[[</span><span class="s">&#34;user_id&#34;</span> <span class="s">&#34;=&#34;</span> <span class="mi">45</span><span class="p">]]</span>       <span class="c1">; optional; default: tasks assigned to :user</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>         <span class="s">&#34;odoo&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process</span>       <span class="ss">:odoo-task</span><span class="p">}</span>
+</span></span></code></pre></div><p>The bridge talks to Odoo&rsquo;s JSON-RPC endpoint, <code>/jsonrpc</code>. Odoo 12 has no
+API keys, so it logs in with the user&rsquo;s password and sends it with every
+call; a user with read access to the tasks is enough. Odoo often refuses to
+list its databases, in which case the database name shows after logging in
+through the web interface (<code>/web/session/get_session_info</code> reports it as
+<code>db</code>).</p>
+<p>Odoo 12 stages carry no closed flag. Folding a stage only hides its column,
+and a folded backlog is still open work, so <code>:closed-stages</code> names the
+closed stages explicitly.</p>
+<p>Each sweep syncs every task the domain selects, plus every task the store
+already mirrors, so a task that is reassigned or archived keeps its ticket
+current. <code>:users</code> renders an Odoo user as a tik actor in <code>odoo.assignee</code>;
+other users appear under the name Odoo shows.</p>
+<h2 id="history">History</h2>
+<p>Every event is a function of the task and its chatter. Odoo records each
+change of a tracked field as a tracking value in the chatter, with the old
+and new value as Odoo displays them. The ticket is dated by the task&rsquo;s
+creation and carries the values the task was created with, recovered by
+undoing each tracked change from the current values. Each message then
+adds its changes at its own time, and a comment or email as an
+<code>odoo/message/&lt;id&gt;</code> artifact. A re-sync adds only the messages that are
+new, and two machines syncing the same Odoo write identical events.</p>
+<p>Only the title, stage, assignee and project are mirrored, because those
+are the fields Odoo tracks. A tracking value names its field by the label
+the field had at the time, in the language of whoever made the change; the
+bridge reads every field&rsquo;s label in every installed language and leaves
+out a label two fields share.</p>
+<h2 id="open-work">Open work</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls --all --where <span class="s1">&#39;stage=:open and fact:odoo.assignee=seb&#39;</span>
+</span></span><span class="line"><span class="cl">tik stats --by odoo.project --until :closed
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/odoo" term="odoo" label="odoo"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/sync" term="sync" label="sync"/></entry><entry><title type="html">Redmine</title><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><id>https://tik.projects.metio.wtf/integrations/redmine/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-15T11:40:37+01:00</updated><content type="html"><![CDATA[<blockquote>Redmine issues mirrored as redmine-issue tickets, with their history.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge redmine --config redmine.edn   <span class="c1"># poll once</span>
+</span></span></code></pre></div><p><code>tik bridge redmine</code> mirrors Redmine issues into the store as tickets
+under the <code>redmine-issue</code> process. Each ticket carries the issue&rsquo;s
+status, assignee, priority, tracker, project, subject and due date as
+facts signed by the bridge, its description and notes as artifacts, and
+its URL as <code>redmine.url</code>. The stage follows the mirrored status: <code>:open</code>,
+or <code>:closed</code> when Redmine counts the status as closed. Reopening the issue
+in Redmine brings the ticket back to <code>:open</code> on the next sync.</p>
+<p>Redmine stays the place where the issue is worked on. Facts you add
+locally (a <code>link.*</code> to another ticket, notes for yourself) stay in tik and
+never move the mirrored stages.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:url</span>     <span class="s">&#34;https://redmine.example&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:key</span>     <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;REDMINE_API_KEY&#34;</span><span class="p">}</span>         <span class="c1">; your API key (My account → API access key)</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:query</span>   <span class="p">{</span><span class="ss">:assigned_to_id</span> <span class="s">&#34;me&#34;</span><span class="p">}</span>           <span class="c1">; issues.json filters; all statuses are included</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:users</span>   <span class="p">{</span><span class="mi">11</span> <span class="s">&#34;seb&#34;</span><span class="p">}</span>                       <span class="c1">; Redmine user id -&gt; tik actor</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>   <span class="s">&#34;redmine&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process</span> <span class="ss">:redmine-issue</span><span class="p">}</span>
+</span></span></code></pre></div><p>Each sweep syncs every issue the query selects, plus every issue the store
+already mirrors, so an issue that is reassigned or moved keeps its ticket
+current. <code>:users</code> renders a Redmine user as a tik actor in
+<code>redmine.assignee</code>; other users appear under the name Redmine shows.</p>
+<h2 id="history">History</h2>
+<p>Every event is a function of the issue and its journal. The ticket is
+dated by the issue&rsquo;s creation and carries the values the issue was opened
+with, recovered by undoing each journal entry from the current values.
+Each journal entry then adds its changes at its own time, and its note as
+a <code>redmine/journal/&lt;id&gt;</code> artifact. A re-sync adds only the entries that
+are new, and two machines syncing the same Redmine write identical events.</p>
+<p>Statuses, priorities and trackers are rendered by name from Redmine&rsquo;s
+current configuration. Renaming one in Redmine adds assertions under the
+new name on the next sync; the latest journal entry still decides the
+current value.</p>
+<h2 id="open-work">Open work</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls --all --where <span class="s1">&#39;stage=:open and fact:redmine.assignee=seb&#39;</span>
+</span></span><span class="line"><span class="cl">tik stats --by redmine.project --until :closed
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/redmine" term="redmine" label="redmine"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/sync" term="sync" label="sync"/></entry></feed>
