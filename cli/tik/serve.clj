@@ -17,8 +17,8 @@
   the live board over HTTP, and MCP on /mcp. --surfaces names what to
   serve: http (the board and its EDN) unless given, plus mcp when a token
   file is; a surface left out answers 404. --host is the address it
-  listens on (0.0.0.0 unless given); bind 127.0.0.1 when the port should
-  stay on this machine. GET / renders
+  listens on: 127.0.0.1 unless given when MCP is served, since /mcp writes
+  over plain HTTP, else 0.0.0.0. GET / renders
   the same HTML as `tik board` — freshly derived per request, because
   derivation is cheap and caches lie eventually. /tickets.edn and
   /explain/<id>.edn expose the ADR 0016 data for tools. httpkit ships
@@ -31,7 +31,6 @@
                (or (parse-long (str p))
                    (die (str "serve --port must be a number, got " p)))
                7777)
-        host (or (:host opts) "0.0.0.0")
         token-file (:mcp-token-file opts)
         surfaces (if-let [given (:surfaces opts)]
                    (set (clojure.string/split (str given) #","))
@@ -42,6 +41,10 @@
         _ (when (and (surfaces "mcp") (not token-file))
             (die "serve --surfaces mcp needs --mcp-token-file"))
         board? (contains? surfaces "http")
+        ;; /mcp writes as TIK_ACTOR over plain HTTP, so without an explicit
+        ;; --host it stays on this machine; the read-only board alone keeps
+        ;; listening everywhere, as it always did.
+        host (or (:host opts) (if (surfaces "mcp") "127.0.0.1" "0.0.0.0"))
         mcp (when-let [f (when (surfaces "mcp") token-file)]
               (let [token (clojure.string/trim (slurp (str f)))]
                 (when (< (count token) 32)

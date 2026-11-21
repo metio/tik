@@ -28,6 +28,10 @@ one whose `Origin` is not the server's own is refused, which keeps a web
 page from driving the server through DNS rebinding. The token must be at
 least 32 characters; `openssl rand -hex 32` makes one.
 
+Without `--host`, a server offering MCP listens on 127.0.0.1 only, because
+`/mcp` writes over plain HTTP; put a TLS proxy in front before offering it
+beyond the machine. The board alone keeps listening on every address.
+
 `--surfaces` picks what the server offers: `http` for the read-only board
 and its EDN, `mcp` for the tools, or `http,mcp`. Without it, the server
 offers `http`, and `mcp` too when a token file is given.
