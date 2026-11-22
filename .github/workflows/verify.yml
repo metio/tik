@@ -15,7 +15,7 @@ jobs:
     # repos; every gate runs with the toolchain .breto.edn names. Pinned to the
     # release SHA (Renovate bumps it via the version comment).
     name: Clojure
-    uses: metio/ci/.github/workflows/clojure.yml@d1d58ce5b2b4dbac322bedd78203810def514bcc # 2026.11.15184511
+    uses: metio/ci/.github/workflows/clojure.yml@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
     with:
       kondo-paths: src cli test
   tla:
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d1d58ce5b2b4dbac322bedd78203810def514bcc # 2026.11.15184511
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
           registries: github:metio/toolchains
       - run: bash spec/check.sh
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d1d58ce5b2b4dbac322bedd78203810def514bcc # 2026.11.15184511
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
           registries: github:metio/toolchains
       - run: bb tik lint processes/support-request.edn
@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           tik rederive \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/evidence-${VERSION}.tgz"
-      - uses: metio/ci/breto@d1d58ce5b2b4dbac322bedd78203810def514bcc # 2026.11.15184511
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
           registries: github:metio/toolchains
       - name: Bundle a ticket with the tik in this commit
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: metio/ci/breto@d1d58ce5b2b4dbac322bedd78203810def514bcc # 2026.11.15184511
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
           registries: github:metio/toolchains
       - env:
