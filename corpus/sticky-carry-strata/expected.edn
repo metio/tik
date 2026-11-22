@@ -1,0 +1,1 @@
+{:current #{:a :b :c} :facts {} :now #inst "2026-07-08T10:00:00Z" :process :sticky-carry :reached #{:a :b :c}}

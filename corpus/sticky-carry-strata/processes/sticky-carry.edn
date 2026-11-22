@@ -1,0 +1,21 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;;
+;; The sticky carry enters the sweeps by stratum. :c is sticky and reached
+;; by the ticket's first event, so every later read carries it. :d waits on
+;; :c and negates :a, which sits in an earlier stratum (depth 0 against
+;; :d's 1), as the stratification lint requires. Were the carry seeded into
+;; the first snapshot, :d would see :c reached before :a had entered and
+;; fire beside :a, reached with its own guard false. The carry joins in
+;; :c's stratum instead, :a is in the snapshot when :d is judged, and :d
+;; stays out.
+{:process/id :sticky-carry
+ :process/version 1
+ :process/guard-vocab 2
+ :lint {:runbooks :off}
+
+ :process/stages
+ [{:stage/id :a :guards []}
+  {:stage/id :b :guards []}
+  {:stage/id :c :stage/sticky? true :guards []}
+  {:stage/id :d :after [:c] :guards [[:not [:stage-reached :a]]]}]}

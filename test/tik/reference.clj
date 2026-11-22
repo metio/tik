@@ -12,13 +12,27 @@
             [tik.reduce :as red]
             [tik.stage :as stage]))
 
+(defn- depth-of
+  "A stage's depth along :after, by plain recursion: 0 without :after, else
+  one more than its deepest prerequisite; 0 on a cycle."
+  ([process id] (depth-of process id #{}))
+  ([process id seen]
+   (let [s (first (filter #(= id (:stage/id %)) (:process/stages process)))
+         after (:after s [])]
+     (if (or (empty? after) (contains? seen id))
+       0
+       (inc (apply max (map #(depth-of process % (conj seen id)) after)))))))
+
 (defn reached-fixpoint
-  "Naive fixpoint: rescan every stage until nothing changes."
+  "Naive fixpoint: rescan every stage until nothing changes. The sticky
+  carry `seed` is history: guards see it as reached from the first sweep,
+  and :after waits for a carried stage of depth d until sweep d, where it
+  would enter had it derived again."
   [process state now roles seed]
-  (loop [reached seed]
+  (loop [reached #{} sweep 0]
     (let [ctx {:state state :process process :now now
-               :roles roles :reached reached}
-          r' (into reached
+               :roles roles :reached (into reached seed)}
+          r' (into (into reached (filter #(<= (depth-of process %) sweep)) seed)
                    (keep (fn [s]
                            (when (and (not (contains? reached (:stage/id s)))
                                       (every? reached (:after s []))
@@ -27,7 +41,9 @@
                                               (:guards s [])))
                              (:stage/id s))))
                    (:process/stages process))]
-      (if (= r' reached) reached (recur r')))))
+      (if (and (= r' reached) (every? #(contains? reached %) seed))
+        reached
+        (recur r' (inc sweep))))))
 
 (defn- sticky-seen [timeline sticky]
   (into #{} (mapcat #(set/intersection (:reached %) sticky)) timeline))
