@@ -15,7 +15,19 @@ tik explain 3184 --actor alice
 ```
 
 `next` ranks by how much downstream work each step unlocks, with quiet
-tickets rising. `explain` is the per-ticket answer: what is missing, whose
+tickets rising. A step that would replace a fact already settled, such as
+offering `:declined` on a request whose decision is `:accepted`, is marked
+`(overrides a settled fact)`, names the value it replaces on each ticket,
+and ranks after every step that only adds evidence:
+
+```text
+set [:outcome :evidence]  (claude, seb)    unlocks 5
+    7087c27e -> :delivered  (see: kb/runbooks/request-delivered.md)
+set [:handling :reason]  (claude, seb)     unlocks 6  (overrides a settled fact)
+    7087c27e -> :declined  replacing [:handling :decision] = :accepted
+```
+
+ `explain` is the per-ticket answer: what is missing, whose
 signature it needs, and which stages it blocks. See
 [Explain](/concepts/explain/) for the model behind them.
 

@@ -47,7 +47,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   The same grammar drives `tik search <words>` (sugar for `--all --where '~w
   …'`). `tik dupes` reports near-title lookalikes. Any lens takes `--edn` /
   `--format json` for machine output.
-- `tik next [--actor A]` — your inbox: what you can act on now.
+- `tik next [--actor A]` — your inbox: what you can act on now. An item
+  marked `(overrides a settled fact)` would replace a value already set
+  (`replacing [:decision] = :accepted`), the branch the ticket did not
+  take; it ranks after the forward steps and is rarely the next work.
 - `tik new <process> --title "…"` — mint a ticket against a process
   (pins the process definition's hash).
 - `tik set <id> k=v [k=v …]` — **record facts**; the stage re-derives
