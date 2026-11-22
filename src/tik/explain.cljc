@@ -114,6 +114,12 @@
       :alternatives (every? #(permanent-option? % ctx) (options-of options))
       false)))
 
+(defn- role-members
+  "The members of `role` in the register, sorted: who may assert a fact
+  a [:signed-by role …] guard reads. Empty for a role nobody holds."
+  [roles role]
+  (vec (sort (map str (get-in roles [role :members])))))
+
 (defn- dead-stages
   "Least fixpoint of stages that can never be reached: a stage is dead
   when a prerequisite is dead, or when its own guards fail for a
@@ -170,7 +176,9 @@
                                                (distinct)
                                                (map #(cond-> %
                                                        (permanent? % pctx)
-                                                       (assoc :permanent? true))))
+                                                       (assoc :permanent? true)
+                                                       (:role %)
+                                                       (assoc :members (role-members roles (:role %))))))
                                          evaluated)))]
             :when (seq missing)]
         (cond-> {:stage (:stage/id s)
@@ -186,8 +194,9 @@
   "Can this actor act on this reason right now? Role-bound reasons
   need membership (for :role/same-person, membership minus being the
   very person whose signature already counted); time and other-stage
-  waits are nobody's to act on; everything else — facts, corrections,
-  artifacts, attestations — is anyone's."
+  waits are nobody's to act on; a fact reason carrying :role (a
+  [:signed-by] guard's fact) is a member's; everything else — facts,
+  corrections, artifacts, attestations — is anyone's."
   [r roles actor]
   (shape/roles roles)
   (let [{:keys [reason role by options permanent?]} (reason-map r)]
@@ -208,7 +217,10 @@
         :alternatives (boolean (some #(actionable-by? % roles actor)
                                      (apply concat (options-of options))))
         (:time/not-elapsed :stage/not-reached) false
-        true))))
+        ;; a fact a [:signed-by] guard reads counts only from a member
+        (if role
+          (contains? (set (get-in roles [role :members])) actor)
+          true)))))
 
 (defn- blocks!
   "Explain blocks handed back to a lens: a plain collection of plain maps
@@ -227,27 +239,44 @@
 (defn for-actor
   "The capability view of explain: each block's :missing filtered to
   what `actor` can act on, with :hidden counting what was filtered so
-  no renderer can silently pretend the rest does not exist."
+  no renderer can silently pretend the rest does not exist, and
+  :waiting-on naming the roles (with their members) whose assertions
+  the hidden steps wait for."
   [blocks roles actor]
   (shape/roles roles)
   (vec (for [b (blocks! blocks)
-             :let [mine (filterv #(actionable-by? % roles actor)
-                                 (:missing b))]]
-         (assoc b :missing mine
-                :hidden (- (count (:missing b)) (count mine))))))
+             :let [{mine true theirs false}
+                   (group-by #(boolean (actionable-by? % roles actor)) (:missing b))
+                   waiting (into (sorted-set) (keep :role) theirs)]]
+         (cond-> (assoc b :missing (vec mine) :hidden (count theirs))
+           (seq waiting)
+           (assoc :waiting-on (vec (for [r waiting]
+                                     {:role r :members (role-members roles r)})))))))
+
+(defn- members-text [members]
+  (if (seq members)
+    (str " (" (str/join ", " members) ")")
+    " (nobody holds it)"))
+
+(defn- signer-text
+  "Who may assert a role-bound fact, or nothing for a fact anyone may set."
+  [role members]
+  (when role
+    (str " — by a member of " role (members-text members))))
 
 (defn reason->text
   "One structured reason -> one English line. The only place guard failures
   become prose."
   [r]
-  (let [{:keys [reason path schema by note prefix role stage expected actual
+  (let [{:keys [reason path schema by note prefix role members stage expected actual
                 since duration due errors value options guard claim within
                 last-at paths]} (reason-map r)]
     (case reason
       :fact/missing    (str "set fact " path
                             (cond
                               expected (str " = " (pr-str expected))
-                              schema (str " (" (pr-str schema) ")")))
+                              schema (str " (" (pr-str schema) ")"))
+                            (signer-text role members))
       :fact/invalid    (str "fact " path " = " (pr-str value)
                             " is invalid: " (pr-str errors))
       :fact/retracted  (str "fact " path " was retracted by " by
@@ -258,7 +287,8 @@
       :fact/conflicted (str "fact " path " has conflicting concurrent"
                             " assertions — one must supersede (ADR 0003)")
       :fact/mismatch   (str "set fact " path " = " (pr-str expected)
-                            " (currently " (pr-str actual) ")")
+                            " (currently " (pr-str actual) ")"
+                            (signer-text role members))
     ;; "starts with", not "under": the match is a raw string prefix, and
     ;; directory language would promise a path boundary the operator
     ;; does not enforce (lint pushes prefixes to end at one)
@@ -295,7 +325,7 @@
     "Nothing to provide right now."
     (->> explanations
          (map (fn [{:keys [stage satisfied missing blocks hint hidden
-                           impossible?]}]
+                           waiting-on impossible?]}]
                 (str "To reach " stage
                      (when impossible? " (unreachable)") ":\n"
                      (str/join (map #(str "  ✓ " (pr-str %) "\n") satisfied))
@@ -306,7 +336,12 @@
                                           "\n")
                                     missing))
                      (when (and hidden (pos? hidden))
-                       (str "  … " hidden " step(s) waiting on others or time\n"))
+                       (str "  … " hidden " step(s) waiting on "
+                            (if (seq waiting-on)
+                              (str/join ", " (for [{:keys [role members]} waiting-on]
+                                               (str role (members-text members))))
+                              "others or time")
+                            "\n"))
                      (when (seq blocks)
                        (str "  blocks: " (str/join ", " (map str (sort-by str blocks))) "\n"))
                      (when hint (str "  (see: " hint ")\n")))))

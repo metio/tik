@@ -110,3 +110,12 @@
     (is (explain/actionable-by? r roles "seb"))
     (is (not (explain/actionable-by? r roles "rando"))
         "a branch only its role can take is not everyone's work")))
+
+(deftest a-role-bound-fact-is-its-role's-work
+  (let [roles {:handlers {:members ["seb"]}}
+        r {:reason :fact/missing :path [:evidence] :role :handlers}]
+    (is (explain/actionable-by? r roles "seb"))
+    (is (not (explain/actionable-by? r roles "rando"))
+        "a fact only a member's assertion counts for is not everyone's work")
+    (is (explain/actionable-by? (dissoc r :role) roles "rando")
+        "a fact without a role stays anyone's")))
