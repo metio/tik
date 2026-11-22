@@ -18,9 +18,11 @@ The linter enforces what the kernel cannot:
   `:process/guard-vocab` admits.
 - **Graph sanity** — every `:after` names a stage that exists, and no
   cycles.
-- **Stratified negation** — `[:not [:stage-reached …]]` may only name a
-  stage in a strictly earlier stratum, which is what makes the fixpoint
-  provably deterministic.
+- **Stratified negation** — a negated `[:stage-reached …]`, however deep
+  inside `:and`, `:or` and `:not`, may only name a stage that has entered
+  for good before the negating stage is judged: a strictly earlier
+  stratum, counting the stages its own guards wait on. That is what makes
+  the fixpoint provably deterministic.
 - **Facts over flags** — a warning where a bare boolean stands in for
   information worth recording.
 - **Prefix boundaries** — an `:artifact` prefix that does not end at a path

@@ -241,7 +241,9 @@ negation inside a fixpoint — non-monotone, the classic Datalog problem.
 of the composite form, and the linter had to police both.) The linter
 enforces
 the classic Datalog answer: negate only strata that have finished deciding
-(stratum = longest `:after` depth; targets must be strictly earlier).
+(stratum = longest `:after` depth; a target's latest entry, counting the
+stages its guards wait on, must come strictly before the negating stage's
+stratum — ADR 0033).
 Determinism becomes provable rather than incidental. The rule immediately
 earned its keep by catching our own sample process, whose "escalated =
 48h and not triaged" was remodeled to fact-level negation
@@ -374,9 +376,8 @@ resolving an override chain.
 
 `tik lint` enforces what the kernel cannot: unknown stage references
 (error), unreachable stages (error), stratified negation (error, ADR
-0005, on the single `[:not [:stage-reached …]]` spelling — v6's removal
-of `:not-stage` halved what the lint must police; arbitrary
-negation-parity nesting is a documented lint TODO), and
+0005 and 0033, reading negation by parity through `:and`, `:or` and
+`:not`), and
 facts-over-flags (warning: a bare boolean fact is a checkbox with extra
 steps; per-process opt-out via `{:lint {:boolean-facts :off}}` keeps the
 lint honest rather than dogmatic).

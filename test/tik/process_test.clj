@@ -38,6 +38,63 @@
                                :guards [[:not [:stage-reached :a]]]}]}]
       (is (not-any? #(re-find #"stratified negation" (:msg %)) (errors p))))))
 
+(defn- strat-errors [stages]
+  (filter #(re-find #"stratified negation" (:msg %))
+          (errors {:process/id :p :process/version 1 :process/stages stages})))
+
+(deftest negation-is-seen-through-and-or-and-not
+  (testing "an odd number of :not negates the reference wherever it sits"
+    (doseq [g [[:not [:and [:stage-reached :a]]]
+               [:not [:or [:fact [:f]] [:stage-reached :a]]]
+               [:or [:fact [:f]] [:not [:stage-reached :a]]]
+               [:and [:not [:and [:fact [:f]] [:not [:not [:stage-reached :a]]]]]]
+               [:not [:not [:not [:stage-reached :a]]]]]]
+      (is (seq (strat-errors [{:stage/id :a :guards []} {:stage/id :b :guards [g]}])) (pr-str g))))
+  (testing "an even number reads it positively"
+    (doseq [g [[:not [:not [:stage-reached :a]]]
+               [:not [:or [:fact [:f]] [:not [:stage-reached :a]]]]
+               [:and [:stage-reached :a] [:fact [:f]]]]]
+      (is (empty? (strat-errors [{:stage/id :a :guards []} {:stage/id :b :guards [g]}])) (pr-str g)))))
+
+(deftest a-positive-stage-reference-holds-the-target-back
+  (testing ":c lies at depth 0 but waits for :b, so :d at depth 1 is judged before :c can enter"
+    (let [[e :as es] (strat-errors [{:stage/id :a :guards []}
+                                    {:stage/id :b :after [:a] :guards []}
+                                    {:stage/id :c :guards [[:stage-reached :b]]}
+                                    {:stage/id :d :after [:a] :guards [[:not [:stage-reached :c]]]}])]
+      (is (= 1 (count es)))
+      (is (re-find #"stage :d negates stage :c, which its stage references can hold back until sweep 2" (:msg e)))))
+  (testing "the same reference inside :or holds it back too"
+    (is (seq (strat-errors [{:stage/id :a :guards []}
+                            {:stage/id :b :after [:a] :guards []}
+                            {:stage/id :c :guards [[:or [:fact [:f]] [:stage-reached :b]]]}
+                            {:stage/id :d :after [:a] :guards [[:not [:stage-reached :c]]]}]))))
+  (testing "a negator one stratum above the held-back entry is fine"
+    (is (empty? (strat-errors [{:stage/id :a :guards []}
+                               {:stage/id :b :after [:a] :guards []}
+                               {:stage/id :c :guards [[:stage-reached :b]]}
+                               {:stage/id :x :after [:a] :guards []}
+                               {:stage/id :y :after [:x] :guards []}
+                               {:stage/id :d :after [:y] :guards [[:not [:stage-reached :c]]]}]))))
+  (testing "a negated reference does not hold its stage back"
+    (is (empty? (strat-errors [{:stage/id :a :guards []}
+                               {:stage/id :b :after [:a] :guards []}
+                               {:stage/id :c :after [:b] :guards [[:not [:stage-reached :a]]]}
+                               {:stage/id :d :after [:c] :guards [[:not [:stage-reached :b]]]}])))))
+
+(deftest a-negated-stage-on-a-reference-cycle-has-no-stratum
+  (let [[e :as es] (strat-errors [{:stage/id :a :guards [[:stage-reached :b]]}
+                                  {:stage/id :b :guards [[:stage-reached :a]]}
+                                  {:stage/id :z :guards []}
+                                  {:stage/id :d :after [:z] :guards [[:not [:stage-reached :a]]]}])]
+    (is (= 1 (count es)))
+    (is (re-find #"waits on a cycle of stage references" (:msg e)))))
+
+(deftest one-error-per-negated-target-and-guard
+  (is (= 1 (count (strat-errors [{:stage/id :a :guards []}
+                                 {:stage/id :b :guards [[:and [:not [:stage-reached :a]]
+                                                         [:not [:stage-reached :a]]]]}])))))
+
 (deftest contradiction-detection-groups-by-path-not-value
   ;; [:fact= p v1] and [:fact= p v2] on the SAME path can never both hold —
   ;; a real contradiction. Two DIFFERENT paths at the same value is

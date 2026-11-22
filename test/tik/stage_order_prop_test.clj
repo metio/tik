@@ -31,30 +31,35 @@
 ;; ------------------------------------------------------------ generators
 
 (defn- gen-guard
-  "A guard over the facts, the signer and earlier stages, negated or not.
-   A negated :stage-reached is the form whose result the stratification lint
-   (ADR 0005) has to make order-free, so the generated process is kept only
-   when the real linter reports no error: the properties hold for exactly
-   the definitions tik accepts."
-  [earlier]
+  "A guard over the facts, the signer and any stage of the process, negated
+   or not, and nested through :and, :or and :not. A stage reference whose
+   negation parity is odd is the form whose result the stratification lint
+   (ADR 0005) has to make order-free, and a positive one can hold a stage
+   back past its :after depth, so the generated process is kept only when
+   the real linter reports no error: the properties hold for exactly the
+   definitions tik accepts."
+  [all-stages]
   (let [leaf (gen/one-of
-              (cond-> [(gen/fmap (fn [p] [:fact p]) (gen/elements paths))
-                       (gen/fmap (fn [[p v]] [:fact= p v])
-                                 (gen/tuple (gen/elements paths) (gen/elements [:a :b])))
-                       (gen/fmap (fn [p] [:not [:fact p]]) (gen/elements paths))
-                       (gen/fmap (fn [[p v]] [:not [:fact= p v]])
-                                 (gen/tuple (gen/elements paths) (gen/elements [:a :b])))
-                       (gen/fmap (fn [p] [:signed-by :r p]) (gen/elements paths))]
-                (seq earlier) (conj (gen/fmap (fn [s] [:stage-reached s]) (gen/elements earlier))
-                                    (gen/fmap (fn [s] [:not [:stage-reached s]]) (gen/elements earlier)))))]
-    (gen/frequency [[6 leaf]
-                    [1 (gen/fmap (fn [gs] (into [:or] gs)) (gen/vector leaf 2 3))]
-                    [1 (gen/fmap (fn [gs] (into [:and] gs)) (gen/vector leaf 2 3))]])))
+              [(gen/fmap (fn [p] [:fact p]) (gen/elements paths))
+               (gen/fmap (fn [[p v]] [:fact= p v])
+                         (gen/tuple (gen/elements paths) (gen/elements [:a :b])))
+               (gen/fmap (fn [p] [:not [:fact p]]) (gen/elements paths))
+               (gen/fmap (fn [p] [:signed-by :r p]) (gen/elements paths))
+               (gen/fmap (fn [s] [:stage-reached s]) (gen/elements all-stages))
+               (gen/fmap (fn [s] [:not [:stage-reached s]]) (gen/elements all-stages))])
+        compound (gen/recursive-gen
+                  (fn [inner]
+                    (gen/one-of [(gen/fmap (fn [gs] (into [:or] gs)) (gen/vector inner 2 3))
+                                 (gen/fmap (fn [gs] (into [:and] gs)) (gen/vector inner 2 3))
+                                 (gen/fmap (fn [g] [:not g]) inner)]))
+                  leaf)]
+    (gen/frequency [[5 leaf] [2 compound]])))
 
-(defn- gen-stage [i]
-  (let [earlier (mapv #(keyword (str "s" %)) (range i))]
+(defn- gen-stage [n i]
+  (let [earlier (mapv #(keyword (str "s" %)) (range i))
+        all-stages (mapv #(keyword (str "s" %)) (range n))]
     (gen/let [after (if (seq earlier) (gen/fmap set (gen/vector (gen/elements earlier) 0 3)) (gen/return #{}))
-              guards (gen/vector (gen-guard earlier) 0 3)
+              guards (gen/vector (gen-guard all-stages) 0 3)
               sticky? (gen/frequency [[3 (gen/return false)] [1 (gen/return true)]])]
       (cond-> {:stage/id (keyword (str "s" i)) :guards guards}
         (seq after) (assoc :after (vec (sort after)))
@@ -67,7 +72,7 @@
   (gen/such-that
    lint-clean?
    (gen/let [n (gen/choose 1 7)
-             stages (apply gen/tuple (map gen-stage (range n)))]
+             stages (apply gen/tuple (map #(gen-stage n %) (range n)))]
      {:process/id :generated
       :process/version 1
       :process/guard-vocab 2

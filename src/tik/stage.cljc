@@ -41,8 +41,9 @@
 (defn strata
   "Each stage's depth along :after: 0 for a stage with no :after, else one
   more than its deepest prerequisite. A stage on an :after cycle has no
-  depth. The stratification lint (ADR 0005) judges negation by these
-  depths, and the sweep admits the sticky carry by them."
+  depth. A stage is first judged in the sweep of its depth, which the
+  stratification lint (ADR 0005, 0033) holds every negated target to
+  precede, and the sweep admits the sticky carry by these depths."
   [process]
   (let [afters (into {} (map (fn [s] [(:stage/id s) (vec (:after s []))]))
                      (:process/stages (shape/process process)))]
