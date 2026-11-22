@@ -22,7 +22,8 @@
             [tik.sshsig :as sshsig]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [tik.canonical :as canonical])
+            [tik.canonical :as canonical]
+            [tik.identity :as identity])
   (:import (java.util Base64)))
 
 (def namespace-event
@@ -224,6 +225,17 @@
 
 (defn allowed-signers-line
   "One `actors` registry line binding `actor` to a public key, namespace
-  restricted so the binding cannot endorse anything but tik signatures."
+  restricted so the binding cannot endorse anything but tik signatures.
+  Refuses an actor that is not a plain principal and a key that is not one
+  OpenSSH public key (tik.identity/principal?, public-key-line?): this is
+  the one place either reaches an allowed-signers file, and a line break
+  or a pattern there grants keys to other actors."
   [actor pubkey-line]
+  (when-not (identity/principal? actor)
+    (throw (ex-info (str "an actor in an allowed-signers line is letters, digits and ._@+- only: "
+                         (pr-str actor))
+                    {:reason :sign/bad-actor :actor actor})))
+  (when-not (identity/public-key-line? pubkey-line)
+    (throw (ex-info (str "not one OpenSSH public key: " (pr-str pubkey-line))
+                    {:reason :sign/bad-public-key})))
   (str actor " namespaces=\"tik-*\" " pubkey-line))

@@ -54,3 +54,23 @@
               sig2 (sign/sign! eve-key f2 "other")]
           (is (not (sign/verify signers f sig2 "seb")))
           (is (not (sign/verify signers f2 sig2 "seb"))))))))
+
+(deftest an-allowed-signers-line-is-exactly-one-line-for-one-principal
+  (is (= "ci namespaces=\"tik-*\" ssh-ed25519 AAAAC3ci comment here"
+         (sign/allowed-signers-line "ci" "ssh-ed25519 AAAAC3ci comment here")))
+  (testing "a key that would add a second line is refused"
+    (doseq [k ["ssh-ed25519 AAAAC3ci\nseb ssh-ed25519 AAAAC3evil"
+               "ssh-ed25519 AAAAC3ci\rseb ssh-ed25519 AAAAC3evil"
+               "ssh-ed25519 AAAA\u0000C3"
+               "ssh-ed25519"
+               "ssh-ed25519 not*base64"
+               "cert-authority ssh-ed25519 AAAAC3ci"
+               "nonsense-type AAAAC3ci"]]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"public key"
+                            (sign/allowed-signers-line "ci" k))
+          (pr-str k))))
+  (testing "an actor that is a principal pattern or carries options is refused"
+    (doseq [a ["*" "s?b" "seb,ci" "!seb" "se b" "seb\nci" "\"seb\"" ""]]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"actor"
+                            (sign/allowed-signers-line a "ssh-ed25519 AAAAC3ci"))
+          (pr-str a)))))

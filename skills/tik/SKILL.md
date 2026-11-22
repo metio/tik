@@ -21,7 +21,8 @@ A directory is a store if it (or an ancestor) holds `tickets/`, a `tik.db`,
 or `.tik/`. Commands find it git-style: `TIK_ROOT` env wins, else the
 nearest ancestor with such a marker, else the current directory. Signing
 needs `TIK_KEY` (a path to an ed25519 private key) and `TIK_ACTOR` (your
-actor name, registered in the store's `actors` file). Confirm with `tik ls`.
+actor name, registered in the store's `actors` file: letters, digits and
+`._@+-` only). Confirm with `tik ls`.
 
 A store's **backend** is derived from its own shape, never a global
 setting: a `tickets/` tree is the file/git store (sha256sum-auditable, the

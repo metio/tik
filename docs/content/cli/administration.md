@@ -12,7 +12,13 @@ tik sign 3184
 tik witness 3184
 ```
 
-`actor add` registers a signer in the store's allowed-signers registry.
+`actor add` registers a signer in the store's allowed-signers registry. An
+actor name is letters, digits and `._@+-`, and the key file holds one
+OpenSSH public key on one line; anything else is refused, because the name
+and key are written verbatim into the registry, where `*`, `?`, `!` and `,`
+are principal patterns and a line break starts another grant. A rung-2
+binding (`tik bridge oidc`, `tik bridge workload`) whose actor or key fails
+the same check grants nothing.
 Exporting `TIK_KEY` signs every write as it happens; `sign` catches up on
 your own earlier events, and only your own — signing somebody else's would
 assert something false. `witness` countersigns a ticket's head, and one

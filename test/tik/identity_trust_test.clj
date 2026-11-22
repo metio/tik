@@ -71,7 +71,7 @@
 (defn- registry-events
   "A registry log carrying one binding, for actor `ci` unless named."
   [{:keys [token at key actor sub]
-    :or {key "ssh-ed25519 AAAAC3-ci" at live-at actor "ci" sub subject}}]
+    :or {key "ssh-ed25519 AAAAC3ci" at live-at actor "ci" sub subject}}]
   (let [create (event/create-ticket {:ticket tid :actor "seb" :at t0
                                      :title "identity registry"
                                      :process :identity-registry})]
@@ -93,7 +93,7 @@
   (let [root (store-with-pin! {})
         evs (registry-events {:token (jwt (claims-json {}))})]
     (is (= :trusted (status root evs)))
-    (is (= {"ci" #{"ssh-ed25519 AAAAC3-ci"}}
+    (is (= {"ci" #{"ssh-ed25519 AAAAC3ci"}}
            (identity/signing-keys (trust/verified-bindings root evs))))))
 
 (deftest an-issuer-nobody-pinned-is-named-rather-than-called-a-bad-signature
@@ -163,17 +163,17 @@
 (deftest the-signer-view-adds-rung-two-without-editing-actors
   (let [root (store-with-pin! {})
         actors (io/file root "actors")
-        _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
+        _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
         f ((trust/signer-view root evs) live-at)
         text (slurp f)]
-    (is (re-find #"seb namespaces=\"tik-\*\" ssh-ed25519 AAAAC3-seb" text)
+    (is (re-find #"seb namespaces=\"tik-\*\" ssh-ed25519 AAAAC3seb" text)
         "rung 1 keeps verifying")
-    (is (re-find #"ci namespaces=\"tik-\*\" ssh-ed25519 AAAAC3-ci" text)
+    (is (re-find #"ci namespaces=\"tik-\*\" ssh-ed25519 AAAAC3ci" text)
         "rung 2 is added for this check")
     (is (not= (.getCanonicalPath ^java.io.File f) (.getCanonicalPath actors))
         "the curated registry is never rewritten")
-    (is (= "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n" (slurp actors)))))
+    (is (= "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n" (slurp actors)))))
 
 (deftest inability-to-judge-is-distinguishable-from-evidence-of-forgery
   ;; verify fails on the second and only notes the first, so the reasons
@@ -242,7 +242,7 @@
 
 (deftest an-untrusted-binding-grants-nothing
   (let [root (store-with-pin! {:pin? false})
-        _ (spit (io/file root "actors") "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
+        _ (spit (io/file root "actors") "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
         f ((trust/signer-view root evs) live-at)]
     (is (= "actors" (.getName ^java.io.File f))
@@ -343,11 +343,11 @@
   ;; claims-json: iat 1782000000, exp 1782000900; leeway 60s
   (let [root (store-with-pin! {})
         actors (io/file root "actors")
-        _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3-seb\n")
+        _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
         view (trust/signer-view root evs)
         grants? (fn [secs]
-                  (boolean (re-find #"AAAAC3-ci"
+                  (boolean (re-find #"AAAAC3ci"
                                     (slurp (view (Instant/ofEpochSecond secs))))))]
     (is (grants? 1782000300) "inside the window")
     (is (grants? 1782000950) "inside the leeway after expiry")
@@ -364,3 +364,18 @@
   (let [root (store-with-pin! {:pin? false})
         evs (registry-events {:token (jwt (claims-json {}))})]
     (is (nil? (trust/signer-view root evs)))))
+
+(deftest a-binding-key-cannot-add-a-signer-line-for-another-actor
+  (let [root (store-with-pin! {})
+        evs (registry-events {:token (jwt (claims-json {}))
+                              :key "ssh-ed25519 AAAAC3ci\nseb ssh-ed25519 AAAAC3evil"})]
+    (spit (io/file root "actors") "ci namespaces=\"tik-*\" ssh-ed25519 AAAAC3ci\n")
+    (is (empty? (trust/verified-bindings root evs)) "a malformed key is no binding")
+    (is (not (re-find #"AAAAC3evil" (slurp ((trust/signer-view root evs) live-at))))
+        "and grants nothing")))
+
+(deftest a-binding-actor-cannot-be-a-principal-pattern
+  (doseq [actor ["*" "ci,seb" "s?b"]]
+    (let [root (store-with-pin! {})
+          evs (registry-events {:token (jwt (claims-json {})) :actor actor})]
+      (is (empty? (trust/verified-bindings root evs)) actor))))

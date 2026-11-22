@@ -144,7 +144,7 @@
   (let [root (h/temp-dir! "tik-actorname")]
     (with-redefs-fn {#'tik.cli-core/root (constantly (str root))}
       (fn []
-        (doseq [bad ["evil namespaces=\"*\"" "two words" "line\nbreak" "quote\"x"]]
+        (doseq [bad ["evil namespaces=\"*\"" "two words" "line\nbreak" "quote\"x" "*" "seb,ci" "!seb"]]
           (let [r (cli/run-argv ["actor" "add" bad "k.pub"])]
             (is (= 1 (:exit r)) (pr-str bad))
             (is (re-find #"invalid actor name" (str (:out r) (:err r)))
