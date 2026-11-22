@@ -110,10 +110,16 @@
     ok
     (fail {:reason :artifact/missing :prefix prefix})))
 
-(defn- eval-signed-by [[_ role path] {:keys [roles] :as ctx}]
+(defn- eval-signed-by
+  "The fact must be present and asserted by a member of `role`. A fact
+  that is not yet usable reports its own reasons, each carrying :role,
+  because only a member's assertion can discharge them: a lens that
+  offered the step to anyone would send a non-member to set a fact that
+  can never count."
+  [[_ role path] {:keys [roles] :as ctx}]
   (let [base (eval-fact [:fact path] ctx)]
     (if-not (:satisfied? base)
-      base
+      (update base :reasons (fn [rs] (mapv #(assoc % :role role) rs)))
       (let [members (set (get-in roles [role :members]))
             by (:by (fact-status* ctx path))]
         (if (contains? members by)

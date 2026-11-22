@@ -58,7 +58,11 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   blocked until that upstream ticket is settled (`status` names the blocker).
 - `tik explain <id> [--actor A]` — what evidence is missing to advance,
   and who can act. This is the product surface; read it before asking a
-  human anything. A step marked `⊘ … — nobody can ever do this` and a
+  human anything. A fact a `[:signed-by]` guard reads names its role and
+  members (`— by a member of :handlers (claude, seb)`); with `--actor`,
+  steps only another role can take are counted as `waiting on :handlers
+  (claude, seb)` instead of offered, and `--edn` carries them as
+  `:waiting-on`. A step marked `⊘ … — nobody can ever do this` and a
   stage headed `(unreachable)` mean waiting is pointless: an empty role,
   a negation over a sticky stage already reached, or a prerequisite that
   is itself dead. Fix the definition or the register — do not wait.

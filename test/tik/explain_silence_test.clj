@@ -105,3 +105,39 @@
       (is (zero? (:exit r)))
       (is (re-find #"done" (:out r)))
       (is (not (re-find #"no stage is reachable" (:out r)))))))
+
+(defn- role-bound-store!
+  "A store whose one stage needs [:evidence] asserted by a :handlers member."
+  []
+  (System/setProperty "user.name" "tester")
+  (let [root (h/temp-dir! "tik-explain-roles")]
+    (.mkdirs (io/file root "processes"))
+    (spit (io/file root "processes" "handled.edn")
+          (pr-str {:process/id :handled :process/version 1
+                   :process/roles {:handlers {:members ["seb"]}}
+                   :process/stages [{:stage/id :open}
+                                    {:stage/id :delivered :after [:open]
+                                     :guards [[:signed-by :handlers [:evidence]]]}]}))
+    (in root "new" "handled" "--title" "a role-bound step")
+    {:root root
+     :id (->> (str/split (:out (in root "ls" "--edn")) #"[^0-9a-f-]")
+              (filter #(= 36 (count %)))
+              first)}))
+
+(deftest explain_names_who_may_set_a_role_bound_fact
+  (let [{:keys [root id]} (role-bound-store!)]
+    (testing "without --actor the step names its role and members"
+      (is (re-find #"set fact \[:evidence\] — by a member of :handlers \(seb\)"
+                   (:out (in root "explain" id)))))
+    (testing "a member is offered the step"
+      (is (re-find #"set fact \[:evidence\] — by a member of :handlers \(seb\)"
+                   (:out (in root "explain" id "--actor" "seb")))))
+    (testing "anyone else is told whom the ticket waits on, never offered the step"
+      (let [out (:out (in root "explain" id "--actor" "rando"))]
+        (is (re-find #"1 step\(s\) waiting on :handlers \(seb\)" out))
+        (is (not (re-find #"set fact \[:evidence\]" out)))))
+    (testing "the EDN carries the same answer"
+      (let [[b] (read-string (:out (in root "explain" id "--actor" "rando" "--edn")))]
+        (is (= [] (:missing b)))
+        (is (= 1 (:hidden b)))
+        (is (= [{:role :handlers :members ["seb"]}] (:waiting-on b)))))))
