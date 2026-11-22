@@ -624,3 +624,191 @@
     (let [r (tik-at top nil "rollout" "--retire" "rule" "--period" "2026-W43")]
       (is (zero? (:exit r)) (:err r))
       (is (re-find #"alpha: outside the scope — retired" (:out r))))))
+
+(defn- population-store!
+  "A hidden store over no git repository at all, with a plain directory
+  `aro`, a `proj` process without :subject, a `patch` process whose
+  :subject is [:host] and whose :population is `hosts`, and the given
+  populations.edn."
+  [populations]
+  (let [top (tmpdir)]
+    (.mkdirs (io/file top "aro"))
+    (tik-at top nil "init" "--hidden")
+    (.mkdirs (io/file top ".tik" "processes"))
+    (spit (io/file top ".tik" "populations.edn") (pr-str populations))
+    (spit (io/file top ".tik" "processes" "proj.edn")
+          (pr-str {:process/id :proj :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :process/stages [{:stage/id :tracked :guards []}
+                                    {:stage/id :retired :after [:tracked]
+                                     :stage/sticky? true
+                                     :guards [[:fact [:population :left]]]}]}))
+    (spit (io/file top ".tik" "processes" "patch.edn")
+          (pr-str {:process/id :patch :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :subject [:host] :population :hosts
+                   :probe "echo seen=$TIK_SUBJECT; echo where=$(basename \"$PWD\")"
+                   :process/facts {[:seen] [:string] [:where] [:string]}
+                   :process/stages [{:stage/id :tracked :guards []}
+                                    {:stage/id :seen :after [:tracked]
+                                     :guards [[:fact [:seen]]]}]}))
+    top))
+
+(def ^:private products
+  {:products {:list ["klimpi" "Sales training" {:subject "aro" :dir "aro"}]}
+   :hosts {:command "printf 'n1.example.org\\nn2.example.org\\n'"}})
+
+(deftest a_listed_population_needs_no_git_repository
+  (let [top (population-store! products)
+        r (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43")]
+    (is (zero? (:exit r)) (:err r))
+    (is (re-find #"3 ticket\(s\) created, 0 already covered, 3 subject\(s\) total" (:out r)))
+    (testing "the subject fact defaults to [:project], strings stay strings"
+      (let [id (-> (tik-at top nil "ls" "--where" "~training") :out str/split-lines first
+                   (str/split #"\s+") first)
+            st (:out (tik-at top nil "status" id))]
+        (is (re-find #"\[:project\] = \"Sales training\"" st))
+        (is (not (re-find #"\[:repo\]" st)) "a member without a directory has no repository")))
+    (testing "a member with a directory below the holder also gets [:repo]"
+      (let [id (-> (tik-at top nil "ls" "--where" "fact:repo=:aro") :out str/split-lines first
+                   (str/split #"\s+") first)
+            st (:out (tik-at top nil "status" id))]
+        (is (re-find #"\[:project\] = \"aro\"" st))
+        (is (re-find #"\[:repo\] = :aro" st))))
+    (testing "a re-run writes nothing"
+      (let [before (store-fingerprint top)]
+        (is (re-find #"0 ticket\(s\) created, 3 already covered"
+                     (:out (tik-at top nil "rollout" "proj" "--population" "products"
+                                   "--period" "2026-W43"))))
+        (is (= before (store-fingerprint top)))))))
+
+(deftest a_command_population_feeds_the_definitions_subject
+  (let [top (population-store! products)
+        r (tik-at top nil "rollout" "patch" "--period" "2026-W43")]
+    (is (zero? (:exit r)) (:err r))
+    (is (re-find #"2 ticket\(s\) created, 0 already covered, 2 subject\(s\) total" (:out r)))
+    (is (re-find #"patch: n1.example.org" (:out r)))
+    (let [id (-> (tik-at top nil "ls" "--where" "~n2.example.org") :out str/split-lines first
+                 (str/split #"\s+") first)]
+      (is (re-find #"\[:host\] = \"n2.example.org\"" (:out (tik-at top nil "status" id))))
+      (testing "probe runs a subject ticket at the holder, told its subject"
+        (let [p (tik-at top nil "probe" id)]
+          (is (zero? (:exit p)) (:err p))
+          (is (re-find #"n2.example.org: seen = \"n2.example.org\"" (:out p)))
+          (is (re-find (re-pattern (str "where = \"" (.getName ^java.io.File top) "\""))
+                       (:out p))))))))
+
+(deftest a_population_question_without_an_answer_never_reads_as_empty
+  (testing "a failing command dies and writes nothing"
+    (let [top (population-store! {:hosts {:command "echo boom >&2; exit 3"}})
+          before (store-fingerprint top)
+          r (tik-at top nil "rollout" "patch" "--period" "2026-W43" "--retire")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"population hosts: command exited 3 — boom" (:err r)))
+      (is (= before (store-fingerprint top)))))
+  (testing "a line with more fields than subject and dir is refused, naming the fix"
+    (let [top (population-store! {:hosts {:command "printf 'a\\tplain\\tmain\\t/x\\n'"}})
+          r (tik-at top nil "rollout" "patch")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"line 1 has 4 tab-separated fields.*aro list \| cut -f1,4" (:err r)))))
+  (testing "an undeclared population names the declared ones"
+    (let [r (tik-at (population-store! products) nil "rollout" "proj" "--population" "nope")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"population nope is not declared.*declared: hosts, products" (:err r)))))
+  (testing "a declaration with both sources is refused"
+    (let [r (tik-at (population-store! {:x {:list ["a"] :command "echo a"}}) nil
+                    "rollout" "proj" "--population" "x")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"exactly one of :list or :command" (:err r)))))
+  (testing "a subject listed twice with different directories is refused"
+    (let [r (tik-at (population-store! {:x {:list [{:subject "a" :dir "aro"} "a"]}}) nil
+                    "rollout" "proj" "--population" "x")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"lists a more than once with different directories" (:err r))))))
+
+(deftest an_unusable_directory_leaves_its_member_out_and_fails_the_run
+  (let [top (population-store! {:x {:list ["ok" {:subject "gone" :dir "missing"}
+                                          {:subject "far" :dir "/"}]}})
+        r (tik-at top nil "rollout" "proj" "--population" "x")]
+    (is (= 1 (:exit r)))
+    (is (re-find #"gone: no such directory: .*missing — left out of this run" (:err r)))
+    (is (re-find #"far: / is outside .* — left out of this run" (:err r)))
+    (is (re-find #"1 ticket\(s\) created, 0 already covered, 1 subject\(s\) total, 2 unanswered"
+                 (:out r)))))
+
+(deftest a_repo_subject_needs_a_directory
+  (let [top (population-store! products)]
+    (spit (io/file top ".tik" "processes" "repo.edn")
+          (pr-str {:process/id :repo :process/version 1
+                   :process/guard-vocab 1 :lint {:runbooks :off}
+                   :subject :repo
+                   :process/stages [{:stage/id :tracked :guards []}]}))
+    (let [r (tik-at top nil "rollout" "repo" "--population" "products")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"klimpi: no directory, and the subject fact is \[:repo\]" (:err r)))
+      (is (re-find #"1 ticket\(s\) created.*1 subject\(s\) total" (:out r)))
+      (is (re-find #"repo: aro" (:out r))))))
+
+(deftest a_member_leaving_a_population_is_retired_on_request
+  (let [top (population-store! products)]
+    (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43")
+    (spit (io/file top ".tik" "populations.edn")
+          (pr-str (assoc-in products [:products :list] ["klimpi" "aro"])))
+    (let [r (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43")]
+      (is (re-find #"1 ticket\(s\) whose subject left the population \(pass --retire to record it\): Sales training \(no longer in population products\)"
+                   (:out r))))
+    (let [r (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43"
+                    "--retire")]
+      (is (zero? (:exit r)) (:err r))
+      (is (re-find #"Sales training: no longer in population products — retired" (:out r))))))
+
+(deftest a_population_rollout_is_byte_identical_on_independent_stores
+  (let [[a b] (repeatedly 2 #(population-store! products))]
+    (doseq [top [a b]]
+      (tik-at top nil "rollout" "patch" "--period" "2026-W43" "--actor" "tik-backend")
+      (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43"
+              "--actor" "tik-backend"))
+    (is (= 7 (count (store-fingerprint a))) "two parents, two hosts, three projects")
+    (is (= (store-fingerprint a) (store-fingerprint b)))))
+
+(deftest a_probe_still_skips_a_ticket_with_neither_repository_nor_subject
+  (let [top (population-store! products)]
+    (tik-at top nil "new" "patch" "--title" "loose")
+    (let [r (tik-at top nil "probe")]
+      (is (zero? (:exit r)) (:err r))
+      (is (re-find #"0 probe\(s\) ran, 1 ticket\(s\) had nothing to probe" (:out r))))))
+
+(deftest a_git_walk_mints_the_ids_it_always_minted
+  ;; the ids a scheduled git-walk rollout of `mig` mints for alpha, beta
+  ;; and group/delta: a replica on an older tik must keep converging with
+  ;; one that knows populations
+  (let [top (rollout-store!)]
+    (tik-at top nil "rollout" "mig" "--period" "2026-W43" "--actor" "tik-backend")
+    (is (= ["5b07636d-f36b-3af4-b9db-93afc81da282" "865aa3b8-9870-3686-a074-6db6c1396226"
+            "96418bca-bc0d-3db2-b9ee-85e8c4bba8c9" "f40a69ae-7bf3-393f-9cfa-e17b9d6c9165"]
+           (vec (keys (store-fingerprint top)))))))
+
+(deftest one_subject_under_two_subject_facts_is_two_tickets
+  ;; proj declares no :subject, so the git walk files aro under [:repo]
+  ;; and the population under [:project]: the same name about different
+  ;; facts must never merge into one ticket
+  (let [top (population-store! products)]
+    (.mkdirs (io/file top "aro" ".git"))
+    (tik-at top nil "rollout" "proj" "--period" "2026-W43" "--parent-title" "walk")
+    (tik-at top nil "rollout" "proj" "--population" "products" "--period" "2026-W43"
+            "--parent-title" "listed")
+    (let [aros (filter #(re-find #"proj: aro" %)
+                       (str/split-lines (:out (tik-at top nil "ls" "--all"))))]
+      (is (= 2 (count aros))))))
+
+(deftest a_member_whose_directory_vanished_is_unanswered_never_retired
+  (let [top (population-store! {:x {:list ["ok" {:subject "d" :dir "aro"}]}})]
+    (tik-at top nil "rollout" "proj" "--population" "x" "--period" "2026-W43")
+    (.delete (io/file top "aro"))
+    (let [before (store-fingerprint top)
+          r (tik-at top nil "rollout" "proj" "--population" "x" "--period" "2026-W43"
+                    "--retire")]
+      (is (= 1 (:exit r)))
+      (is (re-find #"d: no such directory" (:err r)))
+      (is (not (re-find #"retired" (:out r))))
+      (is (= before (store-fingerprint top))))))

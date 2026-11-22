@@ -2,8 +2,9 @@
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.storeops
   "Whole-store operations, beyond any single ticket: rollout (one ticket
-  per git repo under the store, wired as a parent checklist), probe
-  (auto-derive facts by running each repo's probe), pack (consolidate
+  per member of a population — the git repos under the store, or one
+  declared in populations.edn — wired as a parent checklist), probe
+  (auto-derive facts by running each ticket's probe), pack (consolidate
   settled tickets), gc (drop unpinned archived definitions), init (mark a
   directory a store), and store migrate (convert the backend in place).
   Porcelain over tik.cli-core."
@@ -15,8 +16,8 @@
                                   cache-flush!
                                   db-path die display-title exit! git-tracked? link-lines
                                   load-process load-ticket now parse-instant process-file
-                                  process-name resolve-file resolve-id root store-holder
-                                  the-store ticket-ctx]]
+                                  process-name repo-key resolve-file resolve-id root
+                                  store-holder the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.next :as next-lens]
@@ -62,20 +63,162 @@
 
 (declare period-start rollout-population! rollout-mint!)
 
+(defn subject-path
+  "The fact path that names a rollout child's subject: the definition's
+  :subject (a keyword or a vector of keywords), else [:repo] for the git
+  walk and [:project] for a declared population. {:path p}, or {:error
+  msg} when :subject has another shape."
+  [proc population?]
+  (let [p (:subject proc)]
+    (cond
+      (nil? p) {:path (if population? [:project] [:repo])}
+      (keyword? p) {:path [p]}
+      (and (vector? p) (seq p) (every? keyword? p)) {:path p}
+      :else {:error (str ":subject must be a keyword or a vector of keywords, got "
+                         (pr-str p))})))
+
+(defn- git-members
+  "Every git repository under the store holder, found RECURSIVELY
+  (GitLab-style group/subgroup/repo trees work). Descent stops at each
+  repository and skips hidden directories. A member's subject and
+  directory are both its path relative to the holder."
+  [^File holder]
+  (let [walk (fn walk [^File d rel]
+               (cond
+                 (str/starts-with? (.getName d) ".") []
+                 (.exists (io/file d ".git")) [rel]
+                 :else (mapcat #(walk % (str rel "/" (.getName ^File %)))
+                               (filter #(.isDirectory ^File %)
+                                       (or (.listFiles d) [])))))]
+    (vec (for [r (sort (mapcat #(walk % (.getName ^File %))
+                               (filter #(.isDirectory ^File %)
+                                       (or (.listFiles holder) []))))]
+           {:subject r :repo r}))))
+
+(defn- member-repo
+  "Where a declared member's work happens, as a path relative to the
+  holder: {:repo rel}, {} for a member without a directory, or {:error
+  msg}. A relative directory is read against the holder. A directory
+  outside the holder, or one that does not exist, is an error, since a
+  probe could never run there."
+  [^File holder dir]
+  (if (nil? dir)
+    {}
+    (let [f (io/file dir)
+          ^File c (.getCanonicalFile (if (.isAbsolute f) f (io/file holder dir)))
+          h (str (.getCanonicalFile holder) File/separator)]
+      (cond
+        (not (str/starts-with? (str c File/separator) h))
+        {:error (str dir " is outside " holder)}
+        (= (str c File/separator) h)
+        {:error (str dir " is the store holder itself, not a directory below it")}
+        (not (.isDirectory c))
+        {:error (str "no such directory: " c)}
+        :else {:repo (subs (str c) (count h))}))))
+
+(defn- command-entries
+  "The entries a population's :command prints: one member per line, as
+  `subject` or `subject<TAB>dir`; blank lines are skipped. The command
+  runs with cwd at the holder. A failing command dies: an unanswered
+  question about who belongs must never read as an empty population,
+  which --retire would act on."
+  [pop-name command ^File holder]
+  (let [r (try (sh/sh "sh" "-c" command :dir (str holder))
+               (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
+    (when-not (zero? (long (:exit r)))
+      (die (str "population " (name pop-name) ": command exited " (:exit r)
+                (when-let [e (not-empty (str/trim (str (:err r))))]
+                  (str " — " e)))))
+    (vec (for [[n line] (map-indexed vector (str/split-lines (:out r)))
+               :when (not (str/blank? line))
+               :let [fields (str/split line #"\t" -1)]]
+           (case (count fields)
+             1 {:subject (first fields)}
+             2 {:subject (first fields) :dir (second fields)}
+             (die (str "population " (name pop-name) ": line " (inc n) " has "
+                       (count fields) " tab-separated fields; print `subject` or"
+                       " `subject<TAB>dir`, e.g. `aro list | cut -f1,4`")))))))
+
+(defn- list-entries
+  "The entries of a population's :list: strings, or maps of :subject and
+  an optional :dir."
+  [pop-name entries]
+  (when-not (sequential? entries)
+    (die (str "population " (name pop-name) ": :list must be a vector, got "
+              (pr-str entries))))
+  (vec (for [e entries]
+         (cond
+           (string? e) {:subject e}
+           (and (map? e) (string? (:subject e))
+                (or (nil? (:dir e)) (string? (:dir e))))
+           (select-keys e [:subject :dir])
+           :else (die (str "population " (name pop-name)
+                           ": an entry is a string or {:subject \"…\" :dir \"…\"}, got "
+                           (pr-str e)))))))
+
+(defn population-members
+  "The members of population `pop-name`, declared in the store's
+  populations.edn as {name {:list [...]}} or {name {:command \"…\"}}.
+  A member is {:subject s} plus :repo when it names a directory below
+  the holder. Returns {:members [...] :errors [[subject msg] ...]}: a
+  member whose directory is unusable is an error for that member alone.
+  A missing file, an undeclared name, a malformed declaration and a
+  subject listed twice with different directories die."
+  [^File holder pop-name]
+  (let [f (io/file (root) "populations.edn")
+        decls (or (read-edn-file f)
+                  (die (str "no populations.edn in " (root)
+                            " — declare the population there first")))
+        _ (when-not (map? decls)
+            (die (str f " must hold a map of population names to declarations")))
+        spec (or (get decls (keyword (safe-name pop-name)))
+                 (die (str "population " (safe-name pop-name) " is not declared in " f
+                           (when (seq decls)
+                             (str " — declared: "
+                                  (str/join ", " (sort (map safe-name (keys decls)))))))))
+        _ (when-not (and (map? spec) (= 1 (count (select-keys spec [:list :command]))))
+            (die (str "population " (safe-name pop-name)
+                      " must declare exactly one of :list or :command, got " (pr-str spec))))
+        _ (when (and (contains? spec :command)
+                     (not (and (string? (:command spec)) (seq (:command spec)))))
+            (die (str "population " (safe-name pop-name)
+                      ": :command must be a shell command string")))
+        entries (if (contains? spec :list)
+                  (list-entries pop-name (:list spec))
+                  (command-entries pop-name (:command spec) holder))
+        resolved (for [{:keys [subject dir]} entries
+                       :let [subject (str/trim subject)]]
+                   (do (when (or (str/blank? subject) (re-find #"[\r\n]" subject))
+                         (die (str "population " (safe-name pop-name)
+                                   ": a subject must be a non-blank single line, got "
+                                   (pr-str subject))))
+                       (assoc (member-repo holder dir) :subject subject)))
+        by-subject (group-by :subject resolved)]
+    (doseq [[subject ms] by-subject
+            :when (< 1 (count (distinct ms)))]
+      (die (str "population " (safe-name pop-name) " lists " subject
+                " more than once with different directories")))
+    {:members (vec (for [[_ [m]] (sort-by key by-subject) :when (not (:error m))]
+                     (select-keys m [:subject :repo])))
+     :errors (vec (for [[subject [m]] (sort-by key by-subject) :when (:error m)]
+                    [subject (:error m)]))}))
+
 (defn- scope-verdict
-  "Whether repository `repo` (its path relative to the holder) belongs to
-  a rollout's population: run `scope` — a script resolved like a probe, or
-  a shell command — with cwd in the repository and TIK_REPO set. Exit 0
-  is :in and exit 1 is :out, the convention `test` and `grep -q` follow.
-  Any other exit is an unanswered question, returned as {:error msg}, so
-  a broken scope script never reads as an empty population."
-  [scope ^File holder repo]
+  "Whether a member belongs to a rollout's population: run `scope` — a
+  script resolved like a probe, or a shell command — with cwd in the
+  member's repository (the holder for a member without one), TIK_SUBJECT
+  set, and TIK_REPO set when the member has a repository. Exit 0 is :in
+  and exit 1 is :out, the convention `test` and `grep -q` follow. Any
+  other exit is an unanswered question, returned as {:error msg}, so a
+  broken scope script never reads as an empty population."
+  [scope ^File holder {:keys [subject repo]}]
   (let [^File f (resolve-file scope)
         argv (if (.exists f) ["sh" (str f)] ["sh" "-c" scope])
         r (try (apply sh/sh (concat argv
-                                    [:dir (str (io/file holder repo))
-                                     :env (assoc (into {} (System/getenv))
-                                                 "TIK_REPO" repo)]))
+                                    [:dir (str (if repo (io/file holder repo) holder))
+                                     :env (cond-> (assoc (into {} (System/getenv))
+                                                         "TIK_SUBJECT" subject)
+                                            repo (assoc "TIK_REPO" repo))]))
                (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
     (case (long (:exit r))
       0 :in
@@ -85,13 +228,24 @@
                      (str " — " e)))})))
 
 (defn cmd-rollout
-  "rollout <process> [--parent <id>] [--parent-title T] [--period L] [--at I]
-  One ticket per git repository under the store holder, each carrying
-  its repo=<name> fact, all wired as link.<repo> facts on a parent —
-  a checklist whose checkmarks DERIVE from each child's evidence.
-  Idempotent: re-runs create only uncovered repos and missing links,
-  and report coverage. The parent's own completion stays a human
-  signature; guards never query across tickets (ADR 0004 scope).
+  "rollout <process> [--population P] [--parent <id>] [--parent-title T]
+          [--period L] [--at I] [--scope C] [--retire]
+  One ticket per member of a population, each carrying its subject fact,
+  all wired as link facts on a parent — a checklist whose checkmarks
+  DERIVE from each child's evidence. Idempotent: re-runs create only
+  uncovered members and missing links, and report coverage. The parent's
+  own completion stays a human signature; guards never query across
+  tickets (ADR 0004 scope).
+
+  Without a population the members are the git repositories under the
+  store holder, and the subject fact is [:repo]: a nested repository's
+  identity is its relative path, so the [:repo] fact and queries use the
+  string \"group/repo\", flat repos keep the keyword. --population (or the
+  definition's :population) names a population declared in the store's
+  populations.edn instead (see `population-members`); its members need no
+  git repository and no directory at all. The definition's :subject names
+  their fact, [:project] by default, and a member with a directory below
+  the holder also gets [:repo], where its probe runs.
 
   The minted events are a pure function of their intent: ticket ids
   derive from (role, subject, process hash, actor, base instant) and every
@@ -100,18 +254,14 @@
   passes --period, so two backends running the same rollout concurrently
   mint byte-identical events that union-merge to one set (ADR 0021).
 
-  Repos are found RECURSIVELY (GitLab-style group/subgroup/repo trees
-  work); descent stops at each repo, hidden directories are skipped.
-  A nested repo's identity is its relative path: the [:repo] fact and
-  queries use the string \"group/repo\", flat repos keep the keyword.
+  The process's :scope (or --scope, which wins) narrows the population:
+  an executable or shell command asked once per member, see
+  `scope-verdict`. A member whose scope check fails, or whose declared
+  directory is unusable, is reported and left out of this run, the
+  others still roll out, and the exit code is 1 so a scheduler logs the
+  failure.
 
-  The population is every repo found, narrowed by the process's :scope
-  (or --scope, which wins): an executable or shell command asked once per
-  repo, see `scope-verdict`. A repo whose scope check fails is reported
-  and left out of this run, the others still roll out, and the exit code
-  is 1 so a scheduler logs the failure.
-
-  A child whose repository is gone, or now outside the scope, is reported;
+  A child whose member is gone, or now outside the scope, is reported;
   with --retire, rollout records it as a signed [:population :left] fact
   naming the reason. A process that gives that fact a sticky terminal
   stage settles such tickets, so the inbox and probe sweeps drop them.
@@ -119,77 +269,84 @@
   deleted repositories."
   [{:keys [pos opts]}]
   (let [proc-name (or (first pos)
-                      (die "usage: tik rollout <process> [--parent <id>] [--parent-title T] [--scope C]"))
+                      (die "usage: tik rollout <process> [--population P] [--parent <id>] [--parent-title T] [--scope C]"))
         proc (load-process proc-name)
         holder (store-holder)
-        walk (fn walk [^File d rel]
-               (cond
-                 (str/starts-with? (.getName d) ".") []
-                 (.exists (io/file d ".git")) [rel]
-                 :else (mapcat #(walk % (str rel "/" (.getName ^File %)))
-                               (filter #(.isDirectory ^File %)
-                                       (or (.listFiles d) [])))))
-        repos (sort (mapcat #(walk % (.getName ^File %))
-                            (filter #(.isDirectory ^File %)
-                                    (or (.listFiles holder) []))))
-        _ (when (empty? repos)
+        pop-name (or (:population opts) (:population proc))
+        _ (when (and (some? pop-name)
+                     (not (or (and (string? pop-name) (seq pop-name)) (keyword? pop-name))))
+            (die (str "rollout population must be a name, got " (pr-str pop-name))))
+        {path :path path-error :error} (subject-path proc (some? pop-name))
+        _ (when path-error (die (str "process " proc-name " " path-error)))
+        {:keys [members errors]} (if pop-name
+                                   (population-members holder pop-name)
+                                   {:members (git-members holder) :errors []})
+        _ (when (and (nil? pop-name) (empty? members))
             (die (str "no git repositories directly under " holder)))
+        ;; [:repo] is a member's directory, so a member without one cannot
+        ;; be a [:repo] subject
+        dirless (when (= path [:repo])
+                  (for [m members :when (nil? (:repo m))]
+                    [(:subject m) "no directory, and the subject fact is [:repo]"]))
+        errors (into errors dirless)
+        members (if (seq dirless) (filterv :repo members) members)
         scope (or (:scope opts) (:scope proc))
         _ (when (and (some? scope) (not (and (string? scope) (seq scope))))
             (die (str "rollout scope must be a script path or shell command, got "
                       (pr-str scope))))
-        verdicts (into {} (for [r repos]
-                            [r (if scope (scope-verdict scope holder r) :in)]))
-        errors (filterv (comp map? val) verdicts)
-        _ (doseq [[r {:keys [error]}] errors]
+        verdicts (into {} (for [m members]
+                            [(:subject m) (if scope (scope-verdict scope holder m) :in)]))
+        errors (into errors (for [[subject v] verdicts :when (map? v)] [subject (:error v)]))
+        _ (doseq [[subject error] errors]
             (binding [*out* *err*]
-              (println (str r ": " error " — left out of this run"))))
+              (println (str subject ": " error " — left out of this run"))))
+        unanswered (set (map first errors))
         outside (count (filter #(= :out (val %)) verdicts))
-        scope-note (when scope
-                     (str ", " outside " outside the scope"
-                          (when (seq errors)
-                            (str ", " (count errors) " unanswered"))))]
-    (rollout-population! proc-name proc verdicts opts scope-note)
+        noun (if pop-name "subject" "repo")
+        scope-note (str (when scope (str ", " outside " outside the scope"))
+                        (when (seq errors) (str ", " (count errors) " unanswered")))]
+    (rollout-population! {:proc-name proc-name :proc proc :path path :noun noun
+                          :pop-name pop-name :members members :verdicts verdicts
+                          :unanswered unanswered :opts opts :scope-note scope-note})
     (when (seq errors) (exit! 1))))
 
 (defn- rollout-children
   "This process's rollout children, read from the store: every ticket of
-  the process carrying a [:repo] fact, with whether it has LEFT the
-  population (a present [:population :left] fact) and whether it is
-  settled. A child that has left no longer covers its repository, so a
-  repository that returns gets a fresh ticket."
-  [all proc-name t]
+  the process carrying the subject fact at `path`, with whether it has
+  LEFT the population (a present [:population :left] fact) and whether it
+  is settled. A child that has left no longer covers its subject, so a
+  subject that returns gets a fresh ticket."
+  [all proc-name t path]
   (for [{:keys [id state events process roles]} all
         :when (= (keyword proc-name) (:process state))
-        :let [r (red/fact-value state [:repo])]
-        :when r]
+        :let [v (red/fact-value state path)]
+        :when (some? v)]
     {:id id
-     :repo (safe-name r)
+     :subject (safe-name v)
      :left? (some? (red/fact-value state [:population :left]))
      :settled? (next-lens/settled? process events t roles)}))
 
 (defn- leave-reason
-  "Why a child's repository is no longer in the population, or nil while
-  it is: the walk did not find it, or the scope answered 1. An unanswered
-  scope check is no answer, so it never retires anything."
-  [verdicts repo]
-  (case (get verdicts repo ::absent)
-    ::absent "repository absent"
-    :out "outside the scope"
-    nil))
+  "Why a child's subject is no longer in the population, or nil while it
+  is: the walk or the declaration no longer lists it, or the scope
+  answered 1. An unanswered question — a failed scope check, an unusable
+  directory — is no answer, so it never retires anything."
+  [{:keys [verdicts unanswered pop-name]} subject]
+  (cond
+    (contains? unanswered subject) nil
+    :else (case (get verdicts subject ::absent)
+            ::absent (if pop-name
+                       (str "no longer in population " (safe-name pop-name))
+                       "repository absent")
+            :out "outside the scope"
+            nil)))
 
 (defn- rollout-population!
-  "The writing half of `cmd-rollout`: retire the children whose repository
+  "The writing half of `cmd-rollout`: retire the children whose subject
   left (only under --retire, otherwise report them), then mint what the
-  repositories in scope lack."
-  [proc-name proc verdicts opts scope-note]
-  (let [repos (filterv #(= :in (verdicts %)) (sort (keys verdicts)))
-        repo-value #(if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" %)
-                      (keyword %)
-                      ;; spaces, slashes, EDN-hostile characters: the
-                      ;; name rides as a string (mint would refuse a
-                      ;; keyword that cannot round-trip)
-                      %)
+  members in scope lack."
+  [{:keys [proc-name path noun verdicts opts scope-note] :as run}]
+  (let [in-scope (filterv #(= :in (verdicts (:subject %))) (:members run))
         s (the-store)
         t (now)
         who (actor opts)
@@ -205,46 +362,49 @@
                    (let [evs (store/events s id)]
                      [(dag/heads evs) (write-at base evs)]))
         all (vec (all-ticket-ctx s))
-        children (rollout-children all proc-name t)
+        children (rollout-children all proc-name t path)
         child-of (into {} (for [c children :when (not (:left? c))]
-                            [(:repo c) (:id c)]))
-        ;; how many earlier tickets of a repository have left: part of a
-        ;; returning repository's ticket id, so its new ticket never shares
+                            [(:subject c) (:id c)]))
+        ;; how many earlier tickets of a subject have left: part of a
+        ;; returning subject's ticket id, so its new ticket never shares
         ;; an id with the one that left in the same period
-        episodes (frequencies (map :repo (filter :left? children)))
-        leavers (sort-by :repo
+        episodes (frequencies (map :subject (filter :left? children)))
+        leavers (sort-by :subject
                          (for [c children
                                :when (not (or (:left? c) (:settled? c)))
-                               :let [why (leave-reason verdicts (:repo c))]
+                               :let [why (leave-reason run (:subject c))]
                                :when why]
                            (assoc c :why why)))
         _ (if (:retire opts)
-            (doseq [{:keys [id repo why]} leavers]
+            (doseq [{:keys [id subject why]} leavers]
               (let [[parents at] (heads-at id)]
                 (append!* s (event/assert-fact
                              {:ticket id :actor who :at at :parents parents
                               :path [:population :left] :value why})
                           opts)
-                (println (str repo ": " why " — retired " (sid id)))))
+                (println (str subject ": " why " — retired " (sid id)))))
             (when (seq leavers)
-              (println (str (count leavers) " ticket(s) whose repository left the population"
+              (println (str (count leavers) " ticket(s) whose "
+                            (if (= noun "repo") "repository" "subject")
+                            " left the population"
                             " (pass --retire to record it): "
-                            (str/join ", " (map #(str (:repo %) " (" (:why %) ")")
+                            (str/join ", " (map #(str (:subject %) " (" (:why %) ")")
                                                 leavers))))))]
-    (if (empty? repos)
+    (if (empty? in-scope)
       ;; nothing to roll out mints nothing, a parent included: an empty
       ;; checklist would be a ticket about no subject
-      (println (str "0 repo(s) in scope" scope-note " — nothing rolled out"))
-      (rollout-mint! {:s s :t t :who who :base base :heads-at heads-at
-                      :all all :child-of child-of :episodes episodes
-                      :repo-value repo-value :proc-name proc-name :proc proc
-                      :repos repos :opts opts :scope-note scope-note}))))
+      (println (str "0 " noun "(s) in scope" scope-note " — nothing rolled out"))
+      (rollout-mint! (assoc run :s s :t t :who who :base base :heads-at heads-at
+                            :all all :child-of child-of :episodes episodes
+                            :members in-scope)))))
 
 (defn- rollout-mint!
-  "Mint the parent if missing, a child per uncovered repository in scope,
-  and the links that make the parent's checklist."
-  [{:keys [s t who base heads-at all child-of episodes repo-value proc-name
-           proc repos opts scope-note]}]
+  "Mint the parent if missing, a child per uncovered member in scope, and
+  the links that make the parent's checklist. A [:repo] subject keeps the
+  id inputs it always had; any other subject path joins them, so the same
+  string under two subject facts names two different tickets."
+  [{:keys [s t who base heads-at all child-of episodes proc-name proc path
+           noun members opts scope-note]}]
   (let [parent-title (or (:parent-title opts) (str proc-name " rollout"))
         parent-id
         (or (when-let [p (:parent opts)] (resolve-id s p))
@@ -266,55 +426,49 @@
                             " \"" parent-title "\""))
               (:event/ticket e)))
         proc-hash (archive-process! proc)
+        repo-subject? (= path [:repo])
+        assert! (fn [id fpath value]
+                  (let [[parents at] (heads-at id)]
+                    (append!* s (event/assert-fact
+                                 {:ticket id :actor who :at at :parents parents
+                                  :path fpath :value value})
+                              opts)))
         created (atom 0)]
-    (doseq [repo repos]
-      (let [child-title (str proc-name ": " repo)
-            child (or (child-of repo)
+    (doseq [{:keys [subject repo]} members]
+      (let [child-title (str proc-name ": " subject)
+            child (or (child-of subject)
                       (let [id (apply minted-id "rollout" "child" proc-name proc-hash
-                                      repo who base
-                                      (when-let [n (episodes repo)] [n]))
+                                      (concat (when-not repo-subject? [path])
+                                              [subject who base]
+                                              (when-let [n (episodes subject)] [n])))
                             e (event/create-ticket
                                {:ticket id :actor who :at base
                                 :title child-title
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
-                                :process-hash proc-hash})
-                            _ (append!* s e opts)
-                            [parents at] (heads-at id)]
-                        (append!* s (event/assert-fact
-                                     {:ticket id :actor who :at at
-                                      :parents parents
-                                      :path [:repo] :value (repo-value repo)})
-                                  opts)
+                                :process-hash proc-hash})]
+                        (append!* s e opts)
+                        (assert! id path (if repo-subject? (repo-key subject) subject))
+                        (when (and repo (not repo-subject?))
+                          (assert! id [:repo] (repo-key repo)))
                         (swap! created inc)
                         id))
             {:keys [state]} (ticket-ctx s parent-id)]
         ;; re-runs converge names too: retitling is a superseding fact
         (let [cstate (:state (ticket-ctx s child))]
           (when-not (= child-title (display-title cstate))
-            (let [[parents at] (heads-at child)]
-              (append!* s (event/assert-fact
-                           {:ticket child :actor who :at at
-                            :parents parents
-                            :path [:title] :value child-title})
-                        opts))))
-        ;; the link rel is the repo's OWN identity (repo-value: a keyword
-        ;; for a flat repo, the "group/repo" string for a nested one) — an
-        ;; injective key, so a flat `a.b` and a nested `a/b` never collapse
-        ;; to the same [:link] path and drop a child from the checklist.
-        (let [rel (repo-value repo)]
+            (assert! child [:title] child-title)))
+        ;; the link rel is the subject's OWN identity (a keyword when it
+        ;; reads as one, the string otherwise) — an injective key, so a
+        ;; flat `a.b` and a nested `a/b` never collapse to the same [:link]
+        ;; path and drop a child from the checklist.
+        (let [rel (repo-key subject)]
           (when-not (= (str child)
                        (red/fact-value state [:link rel]))
-            (let [[parents at] (heads-at parent-id)]
-              (append!* s (event/assert-fact
-                           {:ticket parent-id :actor who :at at
-                            :parents parents
-                            :path [:link rel]
-                            :value (str child)})
-                        opts))))))
+            (assert! parent-id [:link rel] (str child))))))
     (println (str @created " ticket(s) created, "
-                  (- (count repos) @created) " already covered, "
-                  (count repos) " repo(s) total" scope-note
+                  (- (count members) @created) " already covered, "
+                  (count members) " " noun "(s) total" scope-note
                   " — the living checklist:"))
     (let [{:keys [state]} (ticket-ctx s parent-id)]
       (doseq [line (link-lines s t state)]
@@ -472,10 +626,11 @@
 (defn cmd-probe
   "probe [<id>] [--command C]
   Auto-derive facts from the world: for every open ticket carrying a
-  [:repo] fact (or just <id>), run the probe — an executable printing
-  key=value lines — with cwd set to that ticket's repository under the
-  store holder, and assert each CHANGED value as an ordinary signed
-  fact. The probe comes from --command or the :probe field of the
+  [:repo] fact or the :subject fact its definition declares (or just
+  <id>), run the probe — an executable printing key=value lines — with
+  cwd set to that ticket's repository under the store holder, or the
+  holder itself for a ticket whose subject has no repository, and assert
+  each CHANGED value as an ordinary signed fact. The probe comes from --command or the :probe field of the
   ticket's process definition (looked up by name — a porcelain
   convenience, never derivation semantics). Idempotent by
   construction: unchanged values assert nothing; stages derive from
@@ -484,11 +639,15 @@
   The sweep skips what it cannot probe and counts it; naming an id
   refuses instead, because \"0 fact(s) derived\" for a probe that never
   ran is an unperformed measurement wearing the shape of a clean one.
-  A ticket is unprobeable when it carries no [:repo] fact, when its
-  process declares no :probe and no --command supplies one, or when the
-  repository is absent under the store holder.
+  A ticket is unprobeable when it carries neither a [:repo] fact nor its
+  definition's :subject fact, when its process declares no :probe and no
+  --command supplies one, or when the repository is absent under the
+  store holder. A ticket without either fact stays unprobeable on
+  purpose: a change minted with --no-repo has nowhere its probe means
+  anything.
 
-  The probe's environment carries TIK_TICKET, TIK_REPO, and every
+  The probe's environment carries TIK_TICKET, TIK_REPO when the ticket
+  has a repository, TIK_SUBJECT when it has a declared subject, and every
   present fact as TIK_FACT_<PATH> (see `fact-env`) — the facts are the
   ergonomic path, the id the escape hatch for a probe that needs more
   than them (`tik status \"$TIK_TICKET\" --format json`)."
@@ -513,22 +672,30 @@
             :let [repo (red/fact-value state [:repo])
                   repo-name (when repo (safe-name repo))
                   ^File dir (when repo-name (io/file holder repo-name))
-                  probe (or (:command opts)
-                            (let [f (process-file (process-name state))]
-                              (when (.exists f)
-                                (:probe (read-edn-file f)))))
+                  definition (let [f (process-file (process-name state))]
+                               (when (.exists f) (read-edn-file f)))
+                  probe (or (:command opts) (:probe definition))
+                  ;; only a :subject the definition declares lets a ticket
+                  ;; without a repository be probed
+                  spath (when (some? (:subject definition))
+                          (:path (subject-path definition true)))
+                  subject (when (and spath (not= spath [:repo]))
+                            (some-> (red/fact-value state spath) safe-name))
+                  label (or repo-name subject)
                   ;; why this ticket cannot be probed AT ALL, or nil when
                   ;; it can. Distinct from "probed and nothing changed":
                   ;; conflating the two reports an unperformed measurement
                   ;; as a clean one.
                   blocked
                   (cond
-                    (nil? repo)
-                    "no [:repo] fact — a probe runs with cwd in the ticket's repository"
+                    (and (nil? repo) (nil? subject))
+                    (str "no [:repo] fact"
+                         (when spath (str " and no " (pr-str spath) " subject"))
+                         " — a probe runs for a ticket's repository or declared subject")
                     (nil? probe)
                     (str "process " (process-name state)
                          " declares no :probe — pass --command to run one")
-                    (not (.isDirectory dir))
+                    (and dir (not (.isDirectory dir)))
                     (str "no such directory under " holder ": " repo-name)
                     :else nil)]]
       (cond
@@ -545,23 +712,24 @@
               {facts :env collisions :collisions} (fact-env state)
               _ (doseq [[n paths] collisions]
                   (binding [*out* *err*]
-                    (println (str (sid id) " " repo-name ": " n
+                    (println (str (sid id) " " label ": " n
                                   " is ambiguous between "
                                   (str/join " and " (map pr-str paths))
                                   " — exported for neither"))))
               r (apply sh/sh (concat argv
-                                     [:dir (str dir)
+                                     [:dir (str (or dir holder))
                                       ;; the reserved names land LAST: a
                                       ;; fact can add to the probe's world,
                                       ;; never rewrite which ticket it is
-                                      :env (merge (into {} (System/getenv))
-                                                  facts
-                                                  {"TIK_TICKET" (str id)
-                                                   "TIK_REPO" repo-name})]))
+                                      :env (cond-> (merge (into {} (System/getenv))
+                                                          facts
+                                                          {"TIK_TICKET" (str id)})
+                                             repo-name (assoc "TIK_REPO" repo-name)
+                                             subject (assoc "TIK_SUBJECT" subject))]))
               before (stage/effective-reached process events t roles)]
           (swap! ran inc)
           (if-not (zero? (:exit r))
-            (do (println (str (sid id) " " repo-name ": probe failed — "
+            (do (println (str (sid id) " " label ": probe failed — "
                               (str/trim (:err r))))
                 ;; one bad repo must not abort a store sweep, but a named
                 ;; ticket whose probe failed did not measure anything
@@ -581,13 +749,13 @@
                               :path path :value value})
                           opts)
                 (swap! changed inc)
-                (println (str (sid id) " " repo-name ": " k " = "
+                (println (str (sid id) " " label ": " k " = "
                               (pr-str value))))
               (let [evs (store/events s id)
                     after (stage/effective-reached process evs (now) roles)
                     gained (sort-by str (remove before after))]
                 (when (seq gained)
-                  (println (str (sid id) " " repo-name " -> "
+                  (println (str (sid id) " " label " -> "
                                 (tint "32" (str/join ", " (map name gained))))))))))))
     ;; the count of facts alone cannot separate "every probe ran and the
     ;; world had not moved" from "no probe ran"; both are 0, and only one

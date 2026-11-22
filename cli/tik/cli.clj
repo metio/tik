@@ -219,7 +219,13 @@
               [--parent-title T]                (context-tagged), wired as link facts on
               [--period <label>] [--at <inst>]  a parent: a checklist whose checkmarks
               [--scope C] [--retire]            derive from each child's evidence.
-                                                Idempotent; re-runs report coverage.
+              [--population P]                  Idempotent; re-runs report coverage.
+                                                --population (or the process's
+                                                :population) takes the members from
+                                                populations.edn instead: a :list, or a
+                                                :command printing subject[<TAB>dir]
+                                                lines; the process's :subject names
+                                                their fact ([:project] by default).
                                                 --scope (or the process's :scope)
                                                 narrows the repos: exit 0 = in, 1 = out.
                                                 Children whose repo left are reported;
@@ -388,7 +394,7 @@
     "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"
     "key"
     "links" "list" "long" "mcp-token-file" "name" "no-repo" "out" "params" "parent" "parent-title"
-    "password" "password-command" "password-file" "period" "port" "public-key" "published-only"
+    "password" "password-command" "password-file" "period" "population" "port" "public-key" "published-only"
     "reason" "registry" "repo" "retire" "role" "scope" "serve" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
