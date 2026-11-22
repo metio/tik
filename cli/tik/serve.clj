@@ -23,9 +23,8 @@
   readable through 127.0.0.1 by such a page: bind loopback to keep it
   private."
   [host port {:keys [headers]}]
-  (let [loopback? (try (.isLoopbackAddress (java.net.InetAddress/getByName
-                                            (clojure.string/replace (str host) #"^\[|\]$" "")))
-                       (catch java.net.UnknownHostException _ false))]
+  (let [loopback? (or (contains? #{"localhost" "::1" "[::1]"} (str host))
+                       (some? (re-matches #"127\.\d{1,3}\.\d{1,3}\.\d{1,3}" (str host))))]
     (when (and loopback?
                (not (contains? (set (for [h ["127.0.0.1" "localhost" "[::1]" (str host)]] (str h ":" port)))
                                (get headers "host"))))
