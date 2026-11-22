@@ -728,7 +728,7 @@
 
 (deftest an_unusable_directory_leaves_its_member_out_and_fails_the_run
   (let [top (population-store! {:x {:list ["ok" {:subject "gone" :dir "missing"}
-                                          {:subject "far" :dir "/"}]}})
+                                           {:subject "far" :dir "/"}]}})
         r (tik-at top nil "rollout" "proj" "--population" "x")]
     (is (= 1 (:exit r)))
     (is (re-find #"gone: no such directory: .*missing — left out of this run" (:err r)))
