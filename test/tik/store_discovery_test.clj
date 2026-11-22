@@ -616,3 +616,11 @@
           (tik-at top nil "pack" id)
           (let [r (tik-at top nil "verify" id)]
             (is (re-find #"verify: PASS" (:out r)))))))))
+
+(deftest rollout_retire_is_a_switch_before_the_process
+  (let [top (scoped-store!)]
+    (tik-at top nil "rollout" "rule" "--period" "2026-W43")
+    (.delete (io/file top "alpha" "go.mod"))
+    (let [r (tik-at top nil "rollout" "--retire" "rule" "--period" "2026-W43")]
+      (is (zero? (:exit r)) (:err r))
+      (is (re-find #"alpha: outside the scope — retired" (:out r))))))
