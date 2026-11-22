@@ -654,6 +654,15 @@
                                      :guards [[:fact [:seen]]]}]}))
     top))
 
+(defn- child-titled
+  "The id of the ticket titled exactly `title` — a text search would
+  also match the parent, whose links carry the children's titles."
+  [top title]
+  (some (fn [line]
+          (when (str/ends-with? (str/trim line) title)
+            (first (str/split (str/trim line) #"\s+"))))
+        (str/split-lines (:out (tik-at top nil "ls" "--all")))))
+
 (def ^:private products
   {:products {:list ["klimpi" "Sales training" {:subject "aro" :dir "aro"}]}
    :hosts {:command "printf 'n1.example.org\\nn2.example.org\\n'"}})
@@ -664,8 +673,7 @@
     (is (zero? (:exit r)) (:err r))
     (is (re-find #"3 ticket\(s\) created, 0 already covered, 3 subject\(s\) total" (:out r)))
     (testing "the subject fact defaults to [:project], strings stay strings"
-      (let [id (-> (tik-at top nil "ls" "--where" "~training") :out str/split-lines first
-                   (str/split #"\s+") first)
+      (let [id (child-titled top "proj: Sales training")
             st (:out (tik-at top nil "status" id))]
         (is (re-find #"\[:project\] = \"Sales training\"" st))
         (is (not (re-find #"\[:repo\]" st)) "a member without a directory has no repository")))
@@ -688,8 +696,7 @@
     (is (zero? (:exit r)) (:err r))
     (is (re-find #"2 ticket\(s\) created, 0 already covered, 2 subject\(s\) total" (:out r)))
     (is (re-find #"patch: n1.example.org" (:out r)))
-    (let [id (-> (tik-at top nil "ls" "--where" "~n2.example.org") :out str/split-lines first
-                 (str/split #"\s+") first)]
+    (let [id (child-titled top "patch: n2.example.org")]
       (is (re-find #"\[:host\] = \"n2.example.org\"" (:out (tik-at top nil "status" id))))
       (testing "probe runs a subject ticket at the holder, told its subject"
         (let [p (tik-at top nil "probe" id)]
