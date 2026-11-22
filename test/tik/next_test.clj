@@ -262,3 +262,59 @@
     (is (every? #(= [:set [:category]] (:action %)) triager))
     (is (= #{"seb"} (:who (first triager))))
     (is (empty? nobody))))
+
+(def ^:private decision-process
+  {:process/id :decide :process/version 1
+   :process/stages [{:stage/id :asked :guards []}
+                    {:stage/id :accepted :after [:asked]
+                     :guards [[:fact= [:decision] :accepted]]}
+                    {:stage/id :declined :after [:asked]
+                     :guards [[:fact= [:decision] :declined]
+                              [:fact [:reason]]]}
+                    {:stage/id :delivered :after [:accepted]
+                     :guards [[:fact [:evidence]]]}]})
+
+(defn- decide [n & builders]
+  (let [evs (apply ticket n builders)]
+    (next-lens/contributions (:event/ticket (first evs))
+                             decision-process evs now ge/roles)))
+
+(deftest a-step-replacing-a-settled-fact-names-the-fact
+  (let [accepted (decide 21 (assert-step [:decision] :accepted))
+        by-stage (group-by :stage (:actions accepted))]
+    (testing "every action toward the other branch carries what it replaces"
+      (is (= #{[:set [:decision]] [:set [:reason]]}
+             (set (map :action (:declined by-stage)))))
+      (is (every? #(= {[:decision] :accepted} (:overwrites %))
+                  (:declined by-stage))))
+    (testing "the forward step carries no overwrite"
+      (is (= [[:set [:evidence]]] (map :action (:delivered by-stage))))
+      (is (not-any? :overwrites (:delivered by-stage))))))
+
+(deftest an-undecided-ticket-offers-no-overwrite
+  (is (not-any? :overwrites (:actions (decide 22)))))
+
+(deftest overwriting-items-rank-after-every-forward-item
+  ;; all three accepted tickets offer the declined branch (unlocks 3),
+  ;; two still lack the forward :evidence step (unlocks 2): unlock count
+  ;; alone would put the overwrites first
+  (let [a (decide 23 (assert-step [:decision] :accepted)
+                  (assert-step [:evidence] "x"))
+        b (decide 24 (assert-step [:decision] :accepted))
+        c (decide 25 (assert-step [:decision] :accepted))
+        {:keys [items]} (next-lens/inbox [a b c])]
+    (is (= [false true true] (mapv :overwrites? items)))
+    (is (= [:set [:evidence]] (:action (first items))))
+    (is (= 3 (count (:unlocks (second items)))))))
+
+(deftest one-action-forward-here-and-overwriting-there-is-two-items
+  ;; [:decision] is forward on an undecided ticket and an overwrite on a
+  ;; decided one; merging them would hide one reading behind the other
+  (let [undecided (decide 26)
+        decided (decide 27 (assert-step [:decision] :accepted))
+        decision-items (filter #(= [:set [:decision]] (:action %))
+                               (:items (next-lens/inbox [undecided decided])))]
+    (is (= [false true] (map :overwrites? decision-items)))
+    (is (not-any? :overwrites (:unlocks (first decision-items))))
+    (is (every? #(= {[:decision] :accepted} (:overwrites %))
+                (:unlocks (second decision-items))))))

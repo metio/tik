@@ -254,9 +254,9 @@
         (println "Nothing actionable"
                  (if (:actor opts) (str "for " (:actor opts)) "right now")
                  "right now.")
-        (doseq [{:keys [action who unlocks stale-ms]} items
+        (doseq [{:keys [action who unlocks stale-ms overwrites?]} items
                 :let [days (quot (or stale-ms 0) 86400000)]]
-          (println (format "%-42s unlocks %d%s"
+          (println (format "%-42s unlocks %d%s%s"
                            (str (tint "1" (str (name (first action)) " "
                                                (pr-str (second action))))
                                 (when (not= :anyone who)
@@ -266,9 +266,18 @@
                            (count unlocks)
                            (if (>= days 2)
                              (tint "33" (str "  (quiet " days "d)"))
+                             "")
+                           (if overwrites?
+                             (tint "31" "  (overrides a settled fact)")
                              "")))
-          (doseq [{:keys [ticket stage hint]} unlocks]
+          (doseq [{:keys [ticket stage hint overwrites]} unlocks]
             (println (str "    " (sid ticket) " -> " stage
+                          (when (seq overwrites)
+                            (str "  replacing "
+                                 (str/join ", "
+                                           (for [[p v] (sort-by (comp pr-str key)
+                                                                overwrites)]
+                                             (str p " = " (pr-str v))))))
                           (when hint (str "  (see: " hint ")")))))))
       ;; waiting and blocked are reported whether or not anything is
       ;; actionable — a fully dependency-blocked store must still say so

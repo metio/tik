@@ -62,7 +62,9 @@ tik next --role :triager
 
 The inbox ranks by unlock impact, so the step that frees the most
 downstream work comes first, and it holds back tickets whose dependency
-links point at unsettled upstream work.
+links point at unsettled upstream work. Steps toward a stage that needs a
+present fact changed, the branch a ticket did not take, are labelled with
+the fact they would replace and listed after the forward steps.
 
 ## Waiting versus impossible
 

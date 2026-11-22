@@ -78,6 +78,18 @@
     (mapcat actionable (apply concat (:options r)))
     (if (reason->action r) [r] [])))
 
+(defn- overwrites
+  "path -> value for every fact a stage needs CHANGED: a :fact/mismatch
+  reason names a fact that already holds a different value. Every action
+  toward such a stage belongs to a branch that replaces a settled
+  decision (a request already accepted, offered :declined), so the inbox
+  labels it and ranks it after the steps that only add evidence."
+  [missing]
+  (into {} (comp (mapcat actionable)
+                 (filter #(= :fact/mismatch (:reason %)))
+                 (map (juxt :path :actual)))
+        missing))
+
 (defn settled-reached?
   "settled? over an already-derived reached set — the stage fixpoint is
   the expensive part, so a caller that holds one never re-derives it."
@@ -105,7 +117,8 @@
   (let [reached (stage/effective-reached process events now roles)
         blocks (explain/explain process events now roles reached)
         actions (for [{:keys [stage missing hint]} blocks
-                      :let [restrictions (signed-by-restrictions process stage)]
+                      :let [restrictions (signed-by-restrictions process stage)
+                            overwrites (overwrites missing)]
                       r (distinct (mapcat actionable missing))]
                   (cond-> {:ticket ticket-id
                            :stage stage
@@ -113,6 +126,7 @@
                            :who (reason->who r roles restrictions)}
                     (reason->role r restrictions)
                     (assoc :role (reason->role r restrictions))
+                    (seq overwrites) (assoc :overwrites overwrites)
                     ;; four-eyes is anyone's EXCEPT the person who asserted
                     ;; both facts — carry that exclusion for the inbox filter
                     (= :role/same-person (:reason r))
@@ -179,7 +193,11 @@
   Settled tickets (sticky terminal reached) are dropped unless
   `include-settled?` — finished work's escape hatches are not next work.
 
-  Returns {:items [{:action :who :unlocks [{:ticket :stage :hint?}]}]
+  Items that would replace a settled fact (see `overwrites`) carry
+  :overwrites? and sort after every item that only adds evidence.
+
+  Returns {:items [{:action :who :overwrites?
+                    :unlocks [{:ticket :stage :hint? :overwrites {path value}?}]}]
            :waiting [{:ticket :stage :reason}]
            :settled <count of tickets hidden>}."
   ([per-ticket] (inbox per-ticket nil nil))
@@ -196,8 +214,14 @@
          actions (cond->> (filter #(admissible? % actor)
                                   (mapcat :actions live))
                    role (filter #(= role (:role %))))
-         items (for [[action contribs] (group-by :action actions)]
+         ;; an action that adds evidence on one ticket and replaces a
+         ;; settled fact on another is two items, so neither reads as
+         ;; the other
+         items (for [[[action overwrites?] contribs]
+                     (group-by (juxt :action (comp boolean :overwrites))
+                               actions)]
                  {:action action
+                  :overwrites? overwrites?
                   ;; the quietest ticket this action unlocks — silence
                   ;; is debt, and debt breaks unlock-count ties
                   :stale-ms (reduce max 0 (keep (comp stale-of :ticket)
@@ -208,9 +232,11 @@
                          :anyone
                          (reduce into #{} (map :who contribs)))
                   :unlocks (vec (distinct
-                                 (map #(select-keys % [:ticket :stage :hint])
+                                 (map #(select-keys % [:ticket :stage :hint
+                                                       :overwrites])
                                       contribs)))})]
-     {:items (vec (sort-by (juxt #(- (count (:unlocks %)))
+     {:items (vec (sort-by (juxt :overwrites?
+                                 #(- (count (:unlocks %)))
                                  #(- (:stale-ms %))
                                  #(pr-str (:action %)))
                            items))
