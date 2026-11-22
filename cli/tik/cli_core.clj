@@ -140,8 +140,13 @@
 
 (defn process-exit!
   "The one true process boundary: really terminate. Bound as the default
-  *exit-fn* for the binary entry point."
+  *exit-fn* for the binary entry point. *out* and *err* are flushed
+  first: System/exit does not flush them on the JVM or in the native
+  binary, so a report written with `print` rather than `println` would
+  vanish with exit 0."
   [code]
+  (flush)
+  (binding [*out* *err*] (flush))
   (System/exit code))
 
 (def ^:dynamic *exit-fn*

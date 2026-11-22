@@ -11,6 +11,7 @@
             [org.httpkit.server]
             [tik.backend]
             [tik.cli :as cli]
+            [tik.cli-core :refer [process-exit!]]
             [tik.mcp]
             [tik.store.sqlite-jdbc])
   (:gen-class))
@@ -19,5 +20,6 @@
   (apply cli/-main args)
   ;; httpkit's thread pool (tik serve) is non-daemon; every other
   ;; command must exit when -main returns instead of hanging on it
-  (when-not (= "serve" (first args))
-    (System/exit 0)))
+  (if (= "serve" (first args))
+    (flush)
+    (process-exit! 0)))
