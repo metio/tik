@@ -11,8 +11,9 @@
             [tik.args :refer [actor parse-key typed-value]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! cache-flush! context-facts
-                                  die load-process load-ticket now open-ticket-rows
-                                  resolve-id root stage-delta the-store ticket-ctx]]
+                                  definition-publishers die load-process load-ticket now
+                                  open-ticket-rows repo-dir resolve-id root stage-delta store-holder
+                                  the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.dupe :as dupe]
             [tik.event :as event]
@@ -22,9 +23,40 @@
             [tik.stage :as stage]
             [tik.store.protocol :as store]))
 
-(defn cmd-new [{:keys [pos opts]}]
+(defn- refuse-unpublished!
+  "Dies unless the definition carries a tik-process signature by a
+  registered actor other than `minter`: an actor that could publish the
+  rules it then mints under would approve its own work."
+  [proc-name hash minter]
+  (let [others (disj (definition-publishers hash) minter)]
+    (when (empty? others)
+      (die (str "refused: " proc-name " @ " hash " is not published by anyone but "
+                minter " - the maintainer signs it with `tik process sign " proc-name "`")))))
+
+(defn cmd-new
+  "new <process> [--title T] [--repo R | --no-repo] [--published-only]:
+  mint a ticket. --repo collects context as if run from the git
+  repository R directly below the store holder, and --no-repo as if run
+  from the holder itself, so the ticket has no repository - both for a
+  caller whose working directory says nothing about the ticket (a shared
+  server). --published-only refuses a
+  definition nobody but the minting actor has signed."
+  [{:keys [pos opts]}]
   (let [[proc-name] pos
         proc (load-process proc-name)
+        start (cond
+                (and (:repo opts) (:no-repo opts))
+                (die "--repo and --no-repo exclude each other")
+
+                (some? (:repo opts))
+                (or (repo-dir (str (:repo opts)))
+                    (die (str "no git repository " (pr-str (:repo opts)) " directly below the store holder")))
+
+                (:no-repo opts) (store-holder)
+                :else (io/file "."))
+        _ (when (:published-only opts)
+            (refuse-unpublished! proc-name (archive-process! proc) (actor opts)))
+        ctx (context-facts start)
         s (the-store)
         t (now)
         similar (when-let [title (:title opts)]
@@ -39,7 +71,7 @@
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]
     (append!* s e opts)
-    (doseq [[path value] (context-facts)]
+    (doseq [[path value] ctx]
       (append!* s (event/assert-fact
                    {:ticket id :actor (actor opts) :at (now)
                     :parents (dag/heads (store/events s id))
@@ -48,7 +80,13 @@
       (binding [*out* *err*]
         (println (str "context: " (str/join "." (map name path)) "="
                       (pr-str value)))))
-    (println (str id))
+    (when-not (emit-data opts {:id (str id)
+                               :process proc-name
+                               :facts (into {} (for [[path value] ctx]
+                                                 [(str/join "." (map name path)) value]))
+                               :similar (vec (for [{existing :id :keys [title score]} similar]
+                                               {:id (str existing) :title title :score score}))})
+      (println (str id)))
     (let [{:keys [events process roles]} (ticket-ctx s id)
           current (stage/current-stages
                    process (stage/effective-reached process events (now) roles))]

@@ -555,6 +555,34 @@
   [n]
   (if (re-matches #"[a-zA-Z][a-zA-Z0-9_.-]*" n) (keyword n) n))
 
+(declare context-facts*)
+
+(defn repo-dir
+  "The directory of the git repository `name` directly below the store
+  holder, or nil when `name` is not a plain directory name or no such
+  repository exists - a named repository stands in for the working
+  directory, so it must never reach outside the holder."
+  ^File [name]
+  (when (and (string? name) (re-matches #"[A-Za-z0-9][A-Za-z0-9_.-]*" name) (not= ".." name))
+    (let [holder (store-holder)
+          d (.getCanonicalFile (io/file holder name))]
+      (when (and (= holder (.getParentFile d)) (.isDirectory (io/file d ".git")))
+        d))))
+
+(defn definition-publishers
+  "The registered actors whose tik-process signature over the archived
+  definition `hash` verifies; empty when it is unarchived or unsigned."
+  [hash]
+  (let [f (by-hash-file hash)
+        signers (io/file (root) "actors")]
+    (if (and (.isFile f) (.isFile signers))
+      (into (sorted-set)
+            (for [sig (sign/sidecars (.getParentFile f) hash)
+                  who (sign/find-principals signers f sig sign/namespace-process)
+                  :when (sign/verify signers f sig who sign/namespace-process)]
+              who))
+      (sorted-set))))
+
 (defn context-facts
   "Facts a ticket created HERE inherits, as [path value] pairs:
   - repo=<name> from the nearest enclosing git repo strictly below
@@ -564,10 +592,15 @@
     winning per key; keys are keywords (single-segment paths) or
     vectors (explicit paths); explicit keys beat the automatic repo.
   Pure context collection at WRITE time: everything lands as ordinary
-  signed events, the kernel never reads a marker file."
-  []
+  signed events, the kernel never reads a marker file. `start` is the
+  directory the ticket is created from, the working directory unless a
+  caller names one (see repo-dir)."
+  ([] (context-facts (io/file ".")))
+  ([start]
+   (context-facts* (.getCanonicalFile (io/file start)))))
+
+(defn- context-facts* [^File cwd]
   (let [holder (store-holder)
-        cwd (.getCanonicalFile (io/file "."))
         below? (str/starts-with? (str cwd) (str holder "/"))
         chain (when below?
                 (->> (iterate #(.getParentFile ^File %) cwd)

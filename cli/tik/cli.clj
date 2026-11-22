@@ -61,7 +61,11 @@
                                                 context as signed facts: repo=<name>
                                                 from the enclosing git repo, plus any
                                                 .tik-facts.edn maps on the way down
-                                                (nearest wins; explicit beats auto)
+                                                (nearest wins; explicit beats auto);
+                                                --repo R / --no-repo name the context
+                                                instead of the working directory;
+                                                --published-only refuses a definition
+                                                no other actor has signed
   tik set <id> k=v [k=v ...] [--actor A]        assert facts (dotted keys nest)
   tik retract <id> <k> [--reason R]             withdraw a fact (no replacement)
   tik dispute <id> <k> [--reason R]             reject a fact; stage regresses by derivation
@@ -376,9 +380,9 @@
     "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"
     "key"
-    "links" "list" "long" "mcp-token-file" "name" "out" "params" "parent" "parent-title"
-    "password" "password-command" "password-file" "period" "port" "public-key"
-    "reason" "registry" "role" "serve" "split" "sqlite" "stage" "store" "surfaces" "template"
+    "links" "list" "long" "mcp-token-file" "name" "no-repo" "out" "params" "parent" "parent-title"
+    "password" "password-command" "password-file" "period" "port" "public-key" "published-only"
+    "reason" "registry" "repo" "role" "serve" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
