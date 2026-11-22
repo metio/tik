@@ -246,8 +246,8 @@ which admits exactly the actions its actor may take on a ticket right now.
 - `tik agent set <id> k=v --actor A` / `tik agent attest <id> <claim> --actor A`
   — assert or attest, **refused** unless the frontier admits it (exit 3, with
   the admissible set printed). Every accepted action lands as a signed event.
-- `tik mcp` — the same board / explain / actions / gated assert+attest surface
-  spoken over stdio as an MCP server, for an LLM client. Tool payloads are JSON
+- `tik mcp` — the same board / explain / actions / mint / gated assert+attest
+  surface spoken over stdio as an MCP server, for an LLM client. Tool payloads are JSON
   (the verbs route through `--format json`). `TIK_ACTOR` is the agent's
   identity; with `TIK_KEY` set each accepted call is signed. It runs from the
   shipped binary (`tik mcp`) — the enforcement is the derivation, so it holds
@@ -258,7 +258,20 @@ which admits exactly the actions its actor may take on a ticket right now.
   --header "Authorization: Bearer $(cat F)"`. Calls write as `TIK_ACTOR`;
   the bearer token gates them and a foreign `Origin` is refused. Bind it
   with `--host 127.0.0.1`, and pick what to serve with
-  `--surfaces http,mcp` (the read-only board, MCP, or both).
+  `--surfaces http,mcp` (the read-only board, MCP, or both). When such a
+  server is registered in your session (its `tik_*` tools are listed), use
+  it rather than shelling out: every call is signed as the server's actor.
+- `tik_new` mints a ticket over MCP: `{"process": "change", "title": "…",
+  "repo": "kajero"}`. Name the git repository directly below the store
+  that the work happens in as `repo`, or omit it for work without one: the
+  server's own working directory says nothing about your ticket and is
+  never read, so a ticket can never inherit the wrong repository. It
+  refuses a process definition that nobody other than the agent has
+  signed (`tik process sign`), so an agent cannot publish the rules it
+  then mints under. The answer carries the new id, the context facts the
+  ticket inherited and similar open tickets — read those before carrying
+  on, in case the ticket already existed. The same checks are on the CLI
+  as `tik new --repo R | --no-repo --published-only`.
 - `tik backend [--config pipelines.edn]` — the supervised server that runs
   your **pipelines** as a delegate: continuous ones (`:watch true` — `serve`,
   `bridge imap --watch`) each get a restart-on-exit thread, scheduled ones

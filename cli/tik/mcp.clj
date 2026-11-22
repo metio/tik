@@ -5,7 +5,11 @@
   definition as the agent's authorization boundary, spoken in the Model
   Context Protocol.
 
-  Tools: tik_board, tik_explain, tik_actions, tik_assert, tik_attest.
+  Tools: tik_board, tik_explain, tik_actions, tik_new, tik_assert,
+  tik_attest. tik_new mints only under a definition somebody other than
+  the agent published, and takes the ticket's repository as an argument:
+  the server's working directory says nothing about the ticket, so it is
+  never read.
   tik_assert/tik_attest are GATED — an action outside what the frontier
   admits for the agent's actor is refused with the admissible set, so
   boundary enforcement never depends on the prompt (H7's kill criterion
@@ -50,6 +54,13 @@
     :inputSchema {:type "object"
                   :properties {:ticket {:type "string"}}
                   :required ["ticket"]}}
+   {:name "tik_new"
+    :description "Mint a ticket of a process, signed as this agent. Refused unless the process definition is published (signed) by somebody other than this agent. Name the git repository directly below the store that the work happens in as repo; omit it for work without one. Returns the new id, the context facts it inherited and similar open tickets (JSON)."
+    :inputSchema {:type "object"
+                  :properties {:process {:type "string"}
+                               :title {:type "string"}
+                               :repo {:type "string"}}
+                  :required ["process" "title"]}}
    {:name "tik_assert"
     :description "Assert a fact (dotted key, EDN value). Refused unless the frontier admits it for this agent."
     :inputSchema {:type "object"
@@ -80,8 +91,16 @@
 
 ;; every tool speaks JSON: an MCP client is a JSON transport, so the tool
 ;; payload is JSON too (--format json), not tik's native EDN.
-(defn- call-tool [name {:strs [ticket key value claim] :as args}]
+(defn- call-tool [name {:strs [ticket key value claim process title repo] :as args}]
   (case name
+    "tik_new" (or (need args ["process" "title"])
+                  (when (and (some? repo) (not (string? repo)))
+                    {:err "repo must be a string"})
+                  (apply tik "new" process "--title" title
+                         (concat (if (and (string? repo) (not (str/blank? repo)))
+                                   ["--repo" repo]
+                                   ["--no-repo"])
+                                 ["--published-only" "--actor" (actor) "--format" "json"])))
     "tik_board" (tik "ls" "--format" "json")
     "tik_explain" (or (need args ["ticket"])
                       (tik "explain" ticket "--format" "json"))
