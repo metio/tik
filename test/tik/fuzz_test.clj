@@ -550,6 +550,7 @@
     tik.guard/fact-map              "internal to eval-guard (registered)"
     tik.stage/sticky-ids            "internal to the fixpoint; exercised via effective-reached (registered)"
     tik.stage/reached-set           "internal to the fixpoint; exercised via effective-reached (registered)"
+    tik.stage/strata                "internal to the fixpoint; exercised via effective-reached (registered)"
     tik.stage/evolve                "internal to the fixpoint; exercised via effective-reached (registered)"
     tik.stage/trace-sweeps          "internal to the fixpoint; exercised via effective-reached (registered)"
     tik.stage/stage-timeline        "lens over derived stages, driven by the stage property tests"

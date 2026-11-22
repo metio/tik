@@ -38,6 +38,26 @@
   (into #{} (comp (filter :stage/sticky?) (map :stage/id))
         (:process/stages (shape/process process))))
 
+(defn strata
+  "Each stage's depth along :after: 0 for a stage with no :after, else one
+  more than its deepest prerequisite. A stage on an :after cycle has no
+  depth. The stratification lint (ADR 0005) judges negation by these
+  depths, and the sweep admits the sticky carry by them."
+  [process]
+  (let [afters (into {} (map (fn [s] [(:stage/id s) (vec (:after s []))]))
+                     (:process/stages (shape/process process)))]
+    (loop [depth {} remaining (set (keys afters))]
+      (let [ready (filter (fn [id] (every? depth (afters id))) remaining)]
+        (if (empty? ready)
+          depth
+          (recur (into depth
+                       (map (fn [id]
+                              [id (if (empty? (afters id))
+                                    0
+                                    (inc (apply max (map depth (afters id)))))]))
+                       ready)
+                 (reduce disj remaining ready)))))))
+
 (defn- guards-ok? [stage ctx]
   (every? #(:satisfied? (guard/eval-guard % ctx)) (:guards stage [])))
 
@@ -53,7 +73,19 @@
   order-dependent even on linter-clean processes (a later stratum
   negating an earlier one can jump the queue) — spec/ChaoticFixpoint.tla
   exhibits the counterexample; the corpus case sweep-order-negation pins
-  the correct answer."
+  the correct answer.
+
+  The sticky carry `base` is history, and the sweeps read it two ways.
+  Guards see it as reached from the first sweep, so negating a carried
+  stage is false at once and a reference to one true at once. :after waits
+  for it by stratum: a carried stage of depth d joins the snapshot in sweep
+  d, together with the stages that derive there, the sweep it would enter
+  in had it derived again. Seeding every carried stage into the first
+  snapshot instead would let a stage whose :after is carried fire before an
+  earlier stratum has entered, so a stage negating that stratum would fire
+  ahead of its target and stay reached with its guard false. A stage
+  without a depth, on an :after cycle the lint rejects, joins in the first
+  sweep."
   ([process state now roles] (reached-set process state now roles #{}))
   ([process state now roles base]
    (shape/process process)
@@ -61,17 +93,21 @@
    (shape/optional-instant :now now)
    (shape/roles roles)
    (shape/plain-set :base base)
-   (let [memo (volatile! {})]
-     (loop [reached base]
+   (let [memo (volatile! {})
+         depth (strata process)]
+     (loop [reached #{} sweep 0]
        (let [ctx {:state state :process process :now now
-                  :roles roles :reached reached :fact-memo memo}
-             r' (into reached
-                      (for [s (:process/stages process)
-                            :when (and (not (contains? reached (:stage/id s)))
-                                       (every? reached (:after s []))
-                                       (guards-ok? s ctx))]
-                        (:stage/id s)))]
-         (if (= r' reached) reached (recur r')))))))
+                  :roles roles :reached (into reached base) :fact-memo memo}
+             r' (-> reached
+                    (into (filter #(<= (get depth % 0) sweep)) base)
+                    (into (for [s (:process/stages process)
+                                :when (and (not (contains? reached (:stage/id s)))
+                                           (every? reached (:after s []))
+                                           (guards-ok? s ctx))]
+                            (:stage/id s))))]
+         (if (and (= r' reached) (every? #(contains? reached %) base))
+           reached
+           (recur r' (inc sweep))))))))
 
 (defn- not-after
   "The earlier of a claimed instant and the read's now. Instants are

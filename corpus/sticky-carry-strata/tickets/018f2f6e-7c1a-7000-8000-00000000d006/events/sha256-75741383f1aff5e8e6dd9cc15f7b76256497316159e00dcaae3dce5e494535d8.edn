@@ -1,0 +1,1 @@
+{:event/actor "seb" :event/at #inst "2026-07-08T10:00:00Z" :event/body {:ticket/process :sticky-carry :ticket/process-hash "sha256-993623b0597afea3d3acb2f06344dfe1dcc30ca0b9221728118c36eaabb299b9" :ticket/process-version 1 :ticket/title "the sticky carry enters by stratum"} :event/parents #{} :event/ticket #uuid "018f2f6e-7c1a-7000-8000-00000000d006" :event/type :ticket/create}
