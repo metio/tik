@@ -176,3 +176,42 @@ at it. An unanswered scope check never retires anything. Retiring is a
 separate flag because a checkout that lacks some repositories looks exactly
 like a store whose repositories were deleted, so a scheduled run passes
 `--retire` only where the checkout is complete.
+
+### Populations without git
+
+A rollout's members do not have to be git repositories. Declare a population
+in `populations.edn` in the store root, beside `actors`, and name it with
+`--population`, or with `:population` in the definition:
+
+```clojure
+{:products {:list ["klimpi" "cloud-portal" "Sales training"
+                   {:subject "aro" :dir "aro"}]}
+ :repos    {:command "aro list | cut -f1,4"}
+ :staging  {:command "netbox-hosts --cluster staging"}}
+```
+
+A `:list` names its members directly, as strings or as maps of `:subject` and
+an optional `:dir`. A `:command` runs in the directory that holds the store and
+prints one member per line, as `subject` or `subject<TAB>dir`. A command that
+fails stops the rollout before anything is written, so `--retire` never acts on
+a population nobody could read.
+
+The definition's `:subject` names the fact each child carries, such as
+`:host` or `[:project]`; it defaults to `[:project]` for a population and
+`[:repo]` for the git walk. A member whose directory lies below the store's
+holder also gets `[:repo]`, so its probe runs there. A member without a
+directory is probed from the holder, with `TIK_SUBJECT` naming it. A member
+whose directory is missing or outside the holder is reported and left out of
+the run, and `rollout` exits 1.
+
+```clojure
+{:process/id :host-patch
+ :subject :host
+ :population :staging
+ :probe "probes/kernel-version.sh"   ; reads $TIK_SUBJECT
+ ...}
+```
+
+`tik rollout host-patch --period 2026-W47` then mints one ticket per host of
+the staging cluster. A member that drops out of the population is reported
+as `no longer in population staging`, and `--retire` records it.

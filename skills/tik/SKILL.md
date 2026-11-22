@@ -82,7 +82,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   derived, never stale. A `.html` argument writes a fancy self-contained page.
 - `tik probe [<id>] [--command C]` — re-derive facts from the world instead of
   remembering them: run the process's `:probe` (an executable printing
-  `key=value` lines) with cwd in the ticket's `[:repo]` repository, and assert
+  `key=value` lines) with cwd in the ticket's `[:repo]` repository (or the
+  store's holder for a ticket that has only its definition's `:subject`
+  fact, with `TIK_SUBJECT` set), and assert
   each **changed** value as an ordinary signed fact, so a ticket regresses on
   its own when reality does. The probe's environment carries `TIK_TICKET`,
   `TIK_REPO`, and every present fact as `TIK_FACT_<PATH>` (`[:candidate :repo]`
@@ -103,6 +105,16 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   terminal stage guarded on `[:fact [:population :left]]` so retired tickets
   settle. A returning repository gets a fresh ticket. Pass `--retire` only
   from a complete checkout: missing repositories read as deleted ones.
+  `--population P` (or the definition's `:population`) takes the members
+  from `populations.edn` in the store root instead, so a subject needs no
+  git repository: `{:hosts {:command "…"}}` prints `subject[<TAB>dir]`
+  lines (`aro list | cut -f1,4` for aro's repositories), `{:products
+  {:list ["klimpi" {:subject "aro" :dir "aro"}]}}` names them. The
+  definition's `:subject` (`:host`, default `[:project]`) is the fact each
+  child carries; a member with a directory below the holder also gets
+  `[:repo]`. `probe` runs a subject ticket without a repository from the
+  holder with `TIK_SUBJECT` set. A failing population command stops the
+  run before anything is written.
 - `tik reprocess <id> <new.edn> [--apply]` — migrate ONE ticket onto a newer
   version of its process. A ticket is judged by the rules it was minted
   under, so a definition that grows (a value added to an enum, a stage
