@@ -17,12 +17,17 @@
   nil. A web page can reach 127.0.0.1 by making its own host name resolve
   there (DNS rebinding); the browser then sends that name as Host and lets
   the page read the answer, which here is a private store's board. A server
-  bound to loopback answers only requests that name it by a loopback
-  address; one bound elsewhere was meant for other hosts and is not judged."
+  bound to a loopback address (any of 127.0.0.0/8, ::1 or localhost) answers
+  only requests that name it by a loopback name; one bound elsewhere was
+  meant for other hosts and is not judged, so a board on 0.0.0.0 stays
+  readable through 127.0.0.1 by such a page: bind loopback to keep it
+  private."
   [host port {:keys [headers]}]
-  (let [loopback #{"127.0.0.1" "localhost" "::1" "[::1]"}]
-    (when (and (loopback host)
-               (not (contains? (set (for [h ["127.0.0.1" "localhost" "[::1]"]] (str h ":" port)))
+  (let [loopback? (try (.isLoopbackAddress (java.net.InetAddress/getByName
+                                            (clojure.string/replace (str host) #"^\[|\]$" "")))
+                       (catch java.net.UnknownHostException _ false))]
+    (when (and loopback?
+               (not (contains? (set (for [h ["127.0.0.1" "localhost" "[::1]" (str host)]] (str h ":" port)))
                                (get headers "host"))))
       {:status 421
        :headers {"Content-Type" "text/plain; charset=utf-8"}
