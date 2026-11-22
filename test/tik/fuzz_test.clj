@@ -358,6 +358,8 @@
    {:sym 'tik.identity/verified :f identity/verified
     :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)]
            [bs (constantly true)])}
+   {:sym 'tik.identity/public-key-line? :f identity/public-key-line? :gen (one gen/any-equatable)}
+   {:sym 'tik.identity/principal? :f identity/principal? :gen (one gen/any-equatable)}
    {:sym 'tik.identity/signing-keys :f identity/signing-keys
     :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)] [bs])}
    {:sym 'tik.reduce/ticket-state :f red/ticket-state

@@ -60,9 +60,39 @@
                         :at (:event/at e)}))))
         (red/ordered events)))
 
+(def ^:private key-types
+  "The OpenSSH public key types a binding may name."
+  #{"ssh-ed25519" "sk-ssh-ed25519@openssh.com" "ecdsa-sha2-nistp256"
+    "ecdsa-sha2-nistp384" "ecdsa-sha2-nistp521" "sk-ecdsa-sha2-nistp256@openssh.com"
+    "ssh-rsa"})
+
+(defn public-key-line?
+  "Whether `s` is one OpenSSH public key and nothing else: a known type,
+  a base64 blob and an optional comment, on one line without control
+  characters. The value lands verbatim in an allowed-signers file, where a
+  line break starts a new grant and a leading option such as
+  cert-authority changes what the key may sign, so anything else is
+  refused rather than escaped."
+  [s]
+  (boolean
+   (and (string? s)
+        (not (re-find #"[\x00-\x1f\x7f]" s))
+        (when-let [[_ type blob] (re-matches #"(\S+) ([A-Za-z0-9+/]+={0,2})(?: [^\x00-\x1f\x7f]*)?" s)]
+          (and (contains? key-types type) (seq blob))))))
+
+(defn principal?
+  "Whether `s` may stand as the principal of an allowed-signers line. The
+  field is a comma-separated list of patterns there, so `*`, `?`, `,` and
+  `!` would grant other principals, and whitespace or quotes would start
+  the options field."
+  [s]
+  (boolean (and (string? s) (re-matches #"[A-Za-z0-9._@+-]+" s))))
+
 (defn- usable?
-  "A binding missing any of the three fields a trust decision needs is
-  not a weak claim, it is not a claim: there is nothing to check.
+  "A binding missing any of the three fields a trust decision needs, or
+  whose actor or key could not stand in an allowed-signers line as one
+  principal and one key, is not a weak claim, it is not a claim: there is
+  nothing to check.
 
   The `map?` guard is load-bearing rather than defensive noise. These
   functions are public and take whatever a caller hands them, and map
@@ -72,8 +102,8 @@
   [b]
   (and (shape/plain-map? b)
        (let [{:keys [actor public-key id-token]} b]
-         (and (string? actor) (seq actor)
-              (string? public-key) (seq public-key)
+         (and (principal? actor)
+              (public-key-line? public-key)
               (string? id-token) (seq id-token)))))
 
 (defn verified

@@ -36,11 +36,11 @@
 (def ^:private all (constantly true))
 
 (deftest a-binding-is-read-off-the-registry-log
-  (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAA-ci" :token "jwt"})
+  (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAci" :token "jwt"})
         [b :as bs] (identity/bindings evs)]
     (is (= 1 (count bs)))
     (is (= "ci" (:actor b)))
-    (is (= "ssh-ed25519 AAAA-ci" (:public-key b)))
+    (is (= "ssh-ed25519 AAAAci" (:public-key b)))
     (is (= "https://idp.example" (:issuer b)))
     (is (some? (:event b)) "a trust decision must name the event it rests on")))
 
@@ -53,17 +53,17 @@
 
 (deftest an-unverified-binding-does-not-grant-a-key
   (let [evs (-> base
-                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAA-good" :token "good"})
-                (bind! 2 {:actor "ci" :key "ssh-ed25519 AAAA-forged" :token "bad"}))
+                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAAgood" :token "good"})
+                (bind! 2 {:actor "ci" :key "ssh-ed25519 AAAAforged" :token "bad"}))
         trusted? #(= "good" (:id-token %))
         keys* (identity/signing-keys
                (identity/verified (identity/bindings evs) trusted?))]
-    (is (= {"ci" #{"ssh-ed25519 AAAA-good"}} keys*)
+    (is (= {"ci" #{"ssh-ed25519 AAAAgood"}} keys*)
         "appending a binding must not be enough to sign as that actor")))
 
 (deftest a-binding-without-a-token-is-not-a-claim-at-all
   (testing "there is nothing for a verifier to check, so it cannot count"
-    (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAA-ci"})]
+    (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAci"})]
       (is (empty? (identity/verified (identity/bindings evs) all))))))
 
 (deftest a-binding-missing-an-actor-or-key-is-refused
@@ -81,18 +81,18 @@
 
 (deftest rotation-accumulates-rather-than-replaces
   (let [evs (-> base
-                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAA-old" :token "jwt"})
-                (bind! 2 {:actor "ci" :key "ssh-ed25519 AAAA-new" :token "jwt"}))
+                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAAold" :token "jwt"})
+                (bind! 2 {:actor "ci" :key "ssh-ed25519 AAAAnew" :token "jwt"}))
         keys* (identity/signing-keys (identity/verified (identity/bindings evs) all))]
-    (is (= {"ci" #{"ssh-ed25519 AAAA-old" "ssh-ed25519 AAAA-new"}} keys*)
+    (is (= {"ci" #{"ssh-ed25519 AAAAold" "ssh-ed25519 AAAAnew"}} keys*)
         "an old key keeps verifying what it signed while it was current")))
 
 (deftest distinct-actors-keep-distinct-keys
   (let [evs (-> base
-                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAA-ci" :token "jwt"})
-                (bind! 2 {:actor "seb" :key "ssh-ed25519 AAAA-seb" :token "jwt"}))
+                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAAci" :token "jwt"})
+                (bind! 2 {:actor "seb" :key "ssh-ed25519 AAAAseb" :token "jwt"}))
         keys* (identity/signing-keys (identity/verified (identity/bindings evs) all))]
-    (is (= #{"ssh-ed25519 AAAA-ci"} (get keys* "ci")))
-    (is (= #{"ssh-ed25519 AAAA-seb"} (get keys* "seb")))
+    (is (= #{"ssh-ed25519 AAAAci"} (get keys* "ci")))
+    (is (= #{"ssh-ed25519 AAAAseb"} (get keys* "seb")))
     (is (nil? (get keys* "nobody"))
         "an actor nobody vouched for is absent, not empty")))

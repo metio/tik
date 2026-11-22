@@ -19,6 +19,7 @@
             [tik.dag :as dag]
             [tik.event :as event]
             [tik.explain :as explain]
+            [tik.identity :as identity]
             [tik.lint :as lint]
             [tik.process :as process]
             [tik.render :refer [print-problems shash]]
@@ -129,11 +130,15 @@
     ;; or a newline would split it into a second, attacker-shaped line
     ;; (binding a victim principal to a stray key) or widen the namespace
     ;; restriction — reject it rather than corrupt the trust base
-    (when (re-find #"[\s\"\\]" actor-name)
+    (when-not (identity/principal? actor-name)
       (die (str "invalid actor name " (pr-str actor-name)
-                ": no whitespace, quotes, or backslashes (the name is"
-                " written verbatim into the allowed-signers registry)")))
+                ": letters, digits and ._@+- only (the name is written"
+                " verbatim into the allowed-signers registry, where *, ?,"
+                " ! and , are principal patterns)")))
     (let [pubkey (str/trim (slurp-existing "public key" pubkey-file))
+          _ (when-not (identity/public-key-line? pubkey)
+              (die (str pubkey-file " is not one OpenSSH public key"
+                        " (type, base64 blob, optional comment, one line)")))
           line (sign/allowed-signers-line actor-name pubkey)
           f (io/file (root) "actors")]
       (spit f (str line "
