@@ -39,9 +39,10 @@ inputs to the fixpoint, not derived by it.
   "escalated = 48h and not yet triaged" became "48h and no category fact" —
   a fact-level negation, monotone-safe, and arguably the more honest claim.
 - Cost: one linter check. The kernel's fixpoint is unchanged.
-- Lint currently detects the direct `[:not [:stage-reached X]]` spelling;
-  arbitrarily nested negation parity is a known lint TODO, documented here
-  so it is a tracked gap rather than a silent one.
+- ADR 0033 sharpens the rule: the target's latest entry counts positive
+  `[:stage-reached …]` waits as well as `:after`, and negation is read by
+  parity through `:and`, `:or` and `:not`, which closes the nested-parity
+  gap this record left open.
 - **Stratification is necessary but not sufficient** — model checking
   (`spec/ChaoticFixpoint.tla`) exhibits a linter-clean process (`:d` in a
   later stratum negating `:c`) whose result is order-dependent under

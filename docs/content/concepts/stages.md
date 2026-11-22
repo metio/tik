@@ -36,8 +36,10 @@ correct answer.
 
 Because `[:not [:stage-reached …]]` is negation inside a fixpoint, the
 linter enforces **stratified negation**: a definition may only negate
-stages in a strictly earlier stratum. That is what makes determinism
-provable rather than incidental.
+stages in a strictly earlier stratum, and a stage whose guards wait on
+another through `[:stage-reached …]` counts as late as that wait makes it.
+Negation is read through `:and`, `:or` and nested `:not`. That is what
+makes determinism provable rather than incidental.
 
 ## Regression is by derivation
 

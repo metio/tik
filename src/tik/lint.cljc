@@ -92,15 +92,26 @@
   (collect #(when (and (vector? %) (= :malli (first %))) [(nth % 1 nil)])
            guard))
 
-(defn- negated-stage-refs
-  "Targets of the direct [:not [:stage-reached X]] spelling. Arbitrary
-  negation-parity nesting is a documented lint TODO (ADR 0005)."
+(defn- stage-ref-polarities
+  "Every [:stage-reached X] in a guard as [X negated?], negated? true when
+  an odd number of :not wrap it. :and and :or keep the polarity, so
+  [:not [:or [:stage-reached x] ...]] negates x and [:not [:not
+  [:stage-reached x]]] reads x positively."
   [guard]
-  (collect #(when (and (vector? %) (= :not (first %))
-                       (vector? (second %))
-                       (= :stage-reached (first (second %))))
-              (second (second %)))
-           guard))
+  (letfn [(walk [g negated?]
+            (when (vector? g)
+              (case (first g)
+                :stage-reached [[(second g) negated?]]
+                :not (walk (second g) (not negated?))
+                (:and :or) (mapcat #(walk % negated?) (rest g))
+                nil)))]
+    (vec (walk guard false))))
+
+(defn- negated-stage-refs [guard]
+  (into [] (comp (filter second) (map first)) (stage-ref-polarities guard)))
+
+(defn- positive-stage-refs [guard]
+  (into [] (comp (remove second) (map first)) (stage-ref-polarities guard)))
 
 (defn- strata
   "stage-id -> longest :after path depth. Stages caught in cycles never get
@@ -117,6 +128,33 @@
                               [id (if (empty? (afters id))
                                     0
                                     (inc (apply max (map depth (afters id)))))]))
+                       ready)
+                 (reduce disj remaining ready)))))))
+
+(defn- entry-bounds
+  "stage-id -> the latest sweep the stage can enter in: one more than the
+  latest of the stages it waits for, through :after or through a positive
+  [:stage-reached X] in its guards, since a guard reads the snapshot the
+  sweep started from. A negated reference only ever blocks, so it does not
+  delay entry. A stage on a cycle of such waits has no bound."
+  [process]
+  (let [waits (into {} (map (fn [s]
+                              [(:stage/id s)
+                               (into (set (:after s []))
+                                     (mapcat positive-stage-refs)
+                                     (all-guards s))]))
+                    (:process/stages process))
+        known (set (keys waits))
+        waits (update-vals waits #(filter known %))]
+    (loop [bound {} remaining known]
+      (let [ready (filter (fn [id] (every? bound (waits id))) remaining)]
+        (if (empty? ready)
+          bound
+          (recur (into bound
+                       (map (fn [id]
+                              [id (if (empty? (waits id))
+                                    0
+                                    (inc (apply max (map bound (waits id)))))]))
                        ready)
                  (reduce disj remaining ready)))))))
 
@@ -142,7 +180,8 @@
           declared (set (keys (:process/facts process {})))
           stage-ids (into #{} (map :stage/id) stages)
           reachable (reachable-ids process)
-          depth (strata process)]
+          depth (strata process)
+          latest (entry-bounds process)]
       (vec
        (concat
         ;; facts-over-flags: allowed but discouraged; opt out per process
@@ -258,15 +297,27 @@
                      " — a :signed-by over no fact can never be satisfied;"
                      " give it an over-path, e.g. [:signed-by "
                      (pr-str (nth sb 1 :role)) " [:fact]].")})
-        ;; ADR 0005: stratified negation
+        ;; ADR 0005 and ADR 0033: stratified negation. A stage is first
+        ;; judged in the sweep of its :after depth; every stage it negates
+        ;; must have entered for good by then, so the target's latest
+        ;; possible entry must come strictly earlier.
         (for [s stages, g (all-guards s)
-              target (negated-stage-refs g)
-              :let [ds (depth (:stage/id s)) dt (depth target)]
-              :when (and ds dt (>= dt ds))]
+              target (distinct (negated-stage-refs g))
+              :let [ds (depth (:stage/id s))]
+              :when (and ds (stage-ids target))
+              :let [lt (latest target)]
+              :when (or (nil? lt) (>= lt ds))]
           {:level :error
            :msg (str "stage " (:stage/id s) " negates stage " target
-                     " in the same or a later stratum — stratified"
-                     " negation (ADR 0005) requires strictly"
+                     (cond
+                       (nil? lt)
+                       ", which waits on a cycle of stage references and has no stratum —"
+                       (= lt (depth target))
+                       " in the same or a later stratum —"
+                       :else
+                       (str ", which its stage references can hold back until sweep " lt
+                            ", no earlier than " (:stage/id s) " is judged in sweep " ds " —"))
+                     " stratified negation (ADR 0005) requires strictly"
                      " earlier targets, or the result depends on"
                      " fixpoint iteration order.")})
         (for [s stages, a (:after s []) :when (not (stage-ids a))]
