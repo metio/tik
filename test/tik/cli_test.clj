@@ -180,6 +180,33 @@
           (is (not (re-find #"unexpected error|bug in tik" out)) (str (pr-str argv) "\n" out))))
       (is (= log-before (:out (in root "log" id))) "nothing was written"))))
 
+(deftest every-flag-a-command-reads-reaches-it
+  (let [root (h/temp-dir! "tik-readflags")]
+    (System/setProperty "user.name" "tester")
+    (in root "new" "track" "--title" "x")
+    (let [id (-> (in root "ls" "--edn") :out
+                 (str/split #"[^0-9a-f-]") (->> (filter #(= 36 (count %))))
+                 first)
+          f (doto (io/file (str root) "note.txt") (spit "n"))
+          pricing (doto (io/file (str root) "p.edn") (spit "{}"))]
+      (doseq [argv [["attach" id (str f) "--derived-from" "sha256-abc"]
+                    ["work" "week" "--actor" "tester" "--sign"]
+                    ["work" "cost" "--pricing" (str pricing)]]]
+        (let [r (apply in root argv)]
+          (is (not (re-find #"unknown flag" (str (:out r) (:err r)))) (pr-str argv))
+          (is (not (re-find #"needs a value" (str (:out r) (:err r)))) (pr-str argv)))))))
+
+(deftest no-command-reads-a-flag-check-flags-refuses
+  ;; identity_trust's binding-status takes an internal options map whose
+  ;; keys are not CLI flags
+  (let [internal #{"leeway" "policy"}
+        read (into #{}
+                   (comp (filter #(str/ends-with? (.getName ^java.io.File %) ".clj"))
+                         (mapcat #(re-seq #"\(:([a-z][a-z-]*) opts\)" (slurp %)))
+                         (map second))
+                   (file-seq (io/file "cli")))]
+    (is (empty? (remove (some-fn @#'tik.cli/known-flags internal) read)))))
+
 (deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
   ;; the name is written verbatim into the OpenSSH allowed-signers file;
   ;; whitespace/quote/newline would split it into a second attacker-shaped

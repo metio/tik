@@ -24,7 +24,7 @@
   the id, drop the id from the filter, and widen the batch to everything
   else that waits. A switch still takes the --flag=value form."
   #{"all" "anchor" "apply" "changed" "dry-run" "edn" "force" "github" "help"
-    "hidden" "list" "long" "no-repo" "published-only" "retire" "serve" "sqlite" "verbose" "watch" "webhook"
+    "hidden" "list" "long" "no-repo" "published-only" "retire" "serve" "sign" "sqlite" "verbose" "watch" "webhook"
     "withdraw" "witness" "yes"})
 
 (defn parse-args [args]
