@@ -163,40 +163,109 @@
       (.decode (Base64/getMimeDecoder) ^String b64))
     (catch Exception _ nil)))
 
-(defn- namespace-allowed?
-  "Does an allowed-signers line permit this namespace? A line may carry
-  `namespaces=\"pat,pat\"`; ssh-keygen refuses a signature outside it, so
-  a second reader that ignored the option would be more permissive than
-  the tool whose answers it is reproducing."
-  [line namespace]
-  (if-let [pats (second (re-find #"namespaces=\"([^\"]*)\"" (str line)))]
-    (boolean
-     (some (fn [pat]
-             (re-matches (re-pattern
-                          (str/join ".*" (map #(java.util.regex.Pattern/quote %)
-                                              (str/split pat #"\*" -1))))
-                         namespace))
-           (remove str/blank? (str/split pats #","))))
-    true))
+(defn- pattern-matches?
+  "OpenSSH's match_pattern: `*` is any run of characters, `?` exactly one."
+  [pat s]
+  (boolean
+   (re-matches (re-pattern
+                (str/join (map (fn [c]
+                                 (case c
+                                   \* ".*"
+                                   \? "."
+                                   (java.util.regex.Pattern/quote (str c))))
+                               pat)))
+               s)))
+
+(defn- pattern-list-allows?
+  "OpenSSH's match_pattern_list over a comma-separated list: a matching
+  negated pattern (`!pat`) refuses whatever else matches, otherwise any
+  matching pattern allows."
+  [pats s]
+  (let [ps (remove str/blank? (str/split pats #","))
+        hits (filter (fn [p] (pattern-matches? (str/replace p #"^!" "") s)) ps)]
+    (and (seq hits) (not-any? #(str/starts-with? % "!") hits))))
+
+(defn- key-type? [token]
+  (boolean (re-matches #"(ssh-(ed25519|rsa|dss|ed448)|ecdsa-sha2-[a-z0-9]+|sk-[a-z0-9@.-]+|[a-z0-9@.-]+-cert-v01@openssh\.com)"
+                       (str token))))
+
+(defn- read-options
+  "The options field at the start of `s`, up to its first unquoted
+  whitespace: [[name value-or-nil] ...] and the rest of the line."
+  [^String s]
+  (loop [i 0, quoted? false]
+    (if (or (= i (count s)) (and (not quoted?) (Character/isWhitespace (.charAt s i))))
+      [(vec (for [opt (re-seq #"(?:[^,\"]|\"[^\"]*\")+" (subs s 0 i))
+                  :let [[_ k v] (re-matches #"([^=]+)(?:=\"?(.*?)\"?)?" opt)]]
+              [(str/lower-case k) v]))
+       (str/triml (subs s i))]
+      (recur (inc i) (if (= \" (.charAt s i)) (not quoted?) quoted?)))))
+
+(defn parse-signer-line
+  "One allowed-signers line as OpenSSH reads it: principals, optional
+  options, key type, base64 key, optional comment. nil for a blank or
+  comment line, or one whose key cannot be read. Only the fields are
+  read, so text in the comment never counts as an option or a key."
+  [line]
+  (let [l (str/trim (str line))]
+    (when-not (or (str/blank? l) (str/starts-with? l "#"))
+      (let [[principals rest*] (str/split l #"\s+" 2)
+            rest* (str rest*)
+            [options after] (if (key-type? (first (str/split rest* #"\s+" 2)))
+                              [[] rest*]
+                              (read-options rest*))
+            [ktype b64] (str/split after #"\s+" 3)
+            blob (when (and (key-type? ktype) b64 (re-matches #"AAAA[A-Za-z0-9+/=]+" b64))
+                   (try (.decode (Base64/getDecoder) ^String b64) (catch Exception _ nil)))]
+        (when blob
+          {:principals (vec (remove str/blank? (str/split principals #",")))
+           :options options
+           :key-type ktype
+           :blob blob})))))
 
 (defn principals
   "The principal names an allowed-signers line names."
   [line]
-  (let [f (first (str/split (str/trim (str line)) #"\s+"))]
-    (remove str/blank? (str/split (str f) #","))))
+  (or (:principals (parse-signer-line line)) []))
+
+(def ^:private clock-options
+  "Options whose answer depends on the time of the check. This reader has
+  no clock, so a line carrying one defers to ssh-keygen."
+  #{"valid-before" "valid-after"})
+
+(defn- grant
+  "What one parsed line says about `public-key` signing for `namespace`:
+  :grants, :refuses, or ::unsupported. A cert-authority line accepts only
+  certificates, never a direct signature by the CA key, and OpenSSH
+  rejects a line with an option it does not know."
+  [{:keys [options blob]} ^bytes public-key namespace]
+  (let [names (set (map first options))
+        ns-pats (some (fn [[k v]] (when (= "namespaces" k) v)) options)]
+    (cond
+      (or (not= (seq public-key) (seq blob))
+          (seq (remove #{"namespaces" "cert-authority" "valid-before" "valid-after"} names))
+          (names "cert-authority")
+          (and ns-pats (not (pattern-list-allows? ns-pats namespace))))
+      :refuses
+      (some clock-options names) ::unsupported
+      :else :grants)))
 
 (defn- signer-lines
-  "The allowed-signers lines that grant `namespace` to a key, optionally
-  narrowed to those naming `principal`."
+  "The parsed allowed-signers lines that grant `namespace` to a key,
+  optionally narrowed to those naming `principal`, or ::unsupported when
+  a line for that key needs a judgement this reader cannot make."
   [allowed-signers-text ^bytes public-key namespace principal]
-  (let [want (seq public-key)]
-    (->> (str/split-lines (str allowed-signers-text))
-         (remove #(or (str/blank? %) (str/starts-with? (str/trim %) "#")))
-         (filter (fn [l]
-                   (and (= want (seq (or (key-blob l) (byte-array 0))))
-                        (namespace-allowed? l namespace)
-                        (or (nil? principal)
-                            (some #{principal} (principals l)))))))))
+  (let [verdicts (for [l (str/split-lines (str allowed-signers-text))
+                       :let [parsed (parse-signer-line l)]
+                       :when (and parsed
+                                  (or (nil? principal)
+                                      (some #{principal} (:principals parsed))))]
+                   [parsed (grant parsed public-key namespace)])
+        granting (keep (fn [[p v]] (when (= :grants v) p)) verdicts)]
+    (cond
+      (seq granting) granting
+      (some #(= ::unsupported (second %)) verdicts) ::unsupported
+      :else [])))
 
 (defn- check
   "The cryptographic half, once a line has been found to grant the key."
@@ -231,11 +300,14 @@
     (if (or (nil? parsed)
             ;; the namespace is inside the signed blob, so a mismatch here
             ;; is a signature made for another purpose
-            (not= namespace (:namespace parsed))
-            (empty? (signer-lines allowed-signers-text (:public-key parsed)
-                                  namespace principal)))
+            (not= namespace (:namespace parsed)))
       false
-      (check parsed message namespace))))
+      (let [lines (signer-lines allowed-signers-text (:public-key parsed)
+                                namespace principal)]
+        (cond
+          (= ::unsupported lines) ::unsupported
+          (empty? lines) false
+          :else (check parsed message namespace))))))
 
 (defn find-principals
   "Which registered principals could have produced `signature` over
@@ -251,7 +323,9 @@
         (cond
           (= ::unsupported verdict) ::unsupported
           (not verdict) []
-          :else (vec (mapcat principals
-                             (signer-lines allowed-signers-text
-                                           (:public-key parsed)
-                                           namespace nil))))))))
+          :else (let [lines (signer-lines allowed-signers-text
+                                          (:public-key parsed)
+                                          namespace nil)]
+                  (if (= ::unsupported lines)
+                    ::unsupported
+                    (vec (mapcat :principals lines)))))))))

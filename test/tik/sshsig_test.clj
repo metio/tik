@@ -117,3 +117,49 @@
                    {:sig (.getName ^File sig) :ssh-keygen theirs :ours ours})]
     (is (empty? (vec disagree)))
     (is (< 100 @checked) "the store should hold plenty of signatures to check")))
+
+(defn- keygen-verdict
+  "ssh-keygen's own answer for `allowed` over `msg`/`armor`."
+  [dir allowed principal namespace ^String msg armor]
+  (let [af (File/createTempFile "allowed" "" (io/file dir))
+        sf (File/createTempFile "sig" ".sig" (io/file dir))]
+    (spit af (str allowed "\n"))
+    (spit sf armor)
+    (zero? (:exit (sh/sh "ssh-keygen" "-Y" "verify" "-f" (str af) "-I" principal
+                         "-n" namespace "-s" (str sf) :in msg)))))
+
+(deftest it-never-grants-what-ssh-keygen-refuses
+  (let [dir (h/temp-dir! "sshsig-opts")
+        {:keys [key]} (signer! dir "seb")
+        pub (str/join " " (take 2 (str/split (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str key)))) #"\s+")))
+        msg "endorsed bytes"
+        armor (sign! dir key "tik-event" msg)
+        lines [(str "seb " pub)
+               (str "seb namespaces=\"tik-*\" " pub)
+               (str "seb namespaces=\"!tik-event,tik-*\" " pub)
+               (str "seb namespaces=\"tik-?vent\" " pub)
+               (str "seb namespaces=\"tik-?\" " pub)
+               (str "seb namespaces=\"other\" " pub " namespaces=\"*\"")
+               (str "seb cert-authority " pub)
+               (str "seb cert-authority,namespaces=\"tik-*\" " pub)
+               (str "seb valid-before=\"20200101\" " pub)
+               (str "seb valid-after=\"20200101\" " pub)
+               (str "seb valid-before=\"29990101\" " pub)
+               (str "seb no-such-option " pub)
+               (str "seb " pub " trailing comment")
+               (str "mallory " pub)
+               (str "*,seb " pub)]]
+    (doseq [line lines]
+      (let [ours (sshsig/verify line (.getBytes msg "UTF-8") armor "seb" "tik-event")
+            theirs (keygen-verdict dir line "seb" "tik-event" msg armor)]
+        (is (or (= ::sshsig/unsupported ours) (= theirs ours))
+            (str line " — ssh-keygen " theirs ", in process " ours))))
+    (testing "the options that need a clock defer to ssh-keygen"
+      (is (= ::sshsig/unsupported
+             (sshsig/verify (str "seb valid-before=\"20200101\" " pub)
+                            (.getBytes msg "UTF-8") armor "seb" "tik-event"))))
+    (testing "find-principals agrees"
+      (is (= [] (sshsig/find-principals (str "seb cert-authority " pub)
+                                        (.getBytes msg "UTF-8") armor "tik-event")))
+      (is (= [] (sshsig/find-principals (str "seb namespaces=\"!tik-event,tik-*\" " pub)
+                                        (.getBytes msg "UTF-8") armor "tik-event"))))))
