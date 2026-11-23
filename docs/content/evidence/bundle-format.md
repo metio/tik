@@ -14,6 +14,7 @@ tik bundle <id> --out evidence.tgz
 ```text
 bundle.edn                          the format name and version
 actors                              the allowed-signers registry
+pq-signers                          the ML-DSA-65 key registry, where the store keeps one
 roles.edn                           role membership, where the store keeps a register
 identity/<event-id>.edn             key bindings, as signed registry events
 identity/<event-id>.sig.<fpr>       their authorship signatures
@@ -22,6 +23,7 @@ processes/by-hash/<hash>.edn        the definition the ticket pinned
 processes/by-hash/<hash>.sig.<fpr>  its publication signatures
 tickets/<uuid>/events/<id>.edn      the append-only log
 tickets/<uuid>/events/<id>.sig.<fpr>      authorship signatures
+tickets/<uuid>/events/<id>.pqsig.<fpr>    post-quantum authorship signatures
 tickets/<uuid>/events/<id>.witness.<fpr>  countersignatures over a head
 tickets/<uuid>/blobs/<hash>         attached artifacts, addressed by content
 verify.sh                           a coreutils implementation of the checks
@@ -43,7 +45,10 @@ is the id. Re-emitting a parsed event reproduces the file byte for byte.
 event's stored bytes under the `tik-event` namespace; `<id>.witness.<fpr>`
 covers a head under `tik-witness`; a definition's `.sig.<fpr>` uses
 `tik-process`. Each verifies with `ssh-keygen -Y verify` against
-`actors`.
+`actors`. `<id>.pqsig.<fpr>` is the raw FIPS 204 ML-DSA-65 signature over
+the bytes `tik-event-v1`, a NUL byte, then the event's stored bytes, by
+the `pq-signers` key whose DER SubjectPublicKeyInfo hashes (SHA-256, hex)
+to `<fpr>`.
 
 **Exactly one ticket directory, with exactly one root event.** Every
 parent an event names is present in the same directory, so the Merkle DAG
@@ -82,6 +87,10 @@ it, or run this list yourself.
    event names* — binding `-I` to `:event/actor` rather than accepting
    whoever happened to sign, so a registered actor cannot sign another's
    authorship.
+   Every `.pqsig.` sidecar likewise verifies as its event's actor through
+   a `pq-signers` line that allows the `tik-event` namespace. A
+   `.pqsig.` sidecar without `pq-signers` fails, and `verify.sh` fails
+   one it cannot check because the host's OpenSSL is older than 3.5.
 5. **Countersignature.** Every `.witness.` sidecar verifies as a
    registered principal under `tik-witness`.
 6. **Key bindings.** For each binding in `identity/`: the issuer signed

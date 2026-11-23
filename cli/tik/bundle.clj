@@ -32,6 +32,7 @@
             [tik.jwks :as jwks]
             [tik.lint :as lint]
             [tik.process :as process]
+            [tik.pqsig :as pqsig]
             [tik.reduce :as red]
             [tik.sign :as sign]
             [tik.stage :as stage]
@@ -265,6 +266,7 @@
        :events-dir (io/file tdir "events")
        :blobs-dir (io/file tdir "blobs")
        :actors (io/file dir "actors")
+       :pq-signers (io/file dir "pq-signers")
        :roles (io/file dir "roles.edn")
        :identity-dir (io/file dir "identity")
        :definitions-dir (io/file dir "processes" "by-hash")})))
@@ -380,6 +382,41 @@
         (pos? @unsigned)
         (conj (note (str @unsigned " event(s) unsigned — authenticity"
                          " unclaimed, not failed")))))))
+
+(defn pq-checks
+  "L1, post-quantum half (ADR 0036): every `.pqsig.` sidecar verifies as
+  its event's own actor through `pq-signers`. A sidecar without the
+  registry, or a registry that does not parse, fails: a signature that
+  travels is a claim, and a claim nobody can check is not evidence."
+  [{:keys [events-dir pq-signers]} events]
+  (let [sidecars (for [e (red/ordered events)
+                       ^File f (sidecar-files events-dir (:event/id e) "pqsig")]
+                   [e f])
+        registry (when (and (seq sidecars) (.isFile ^File pq-signers))
+                   (try (pqsig/parse-registry (slurp pq-signers))
+                        (catch clojure.lang.ExceptionInfo e e)))]
+    (cond
+      (empty? sidecars) []
+      (nil? registry)
+      [(bad (str (count sidecars) " post-quantum signature(s) travel without"
+                 " the pq-signers registry that checks them"))]
+      (instance? Exception registry) [(bad (ex-message registry))]
+      :else
+      (vec (for [[e ^File f] sidecars
+                 :let [id (:event/id e)
+                       actor (:event/actor e)
+                       holds? (pqsig/check-event
+                               registry
+                               {:actor actor
+                                :fpr (pqsig/sidecar-fpr (.getName f))
+                                :signature (java.nio.file.Files/readAllBytes (.toPath f))
+                                :event-bytes (java.nio.file.Files/readAllBytes
+                                              (.toPath (io/file events-dir (str id ".edn"))))
+                                :namespace sign/namespace-event})]]
+             (if holds?
+               (ok (str (.getName f) " verifies post-quantum as " actor))
+               (bad (str (.getName f) " does not verify post-quantum as its"
+                         " event's actor (" actor ")"))))))))
 
 (defn witness-checks
   "L3: countersignatures over a head. One signature timestamps the whole
@@ -578,6 +615,7 @@
   (vec (concat (integrity-checks layout*)
                (dag-checks events)
                (authorship-checks layout* events)
+               (pq-checks layout* events)
                (binding-checks layout*)
                (witness-checks layout* events))))
 
