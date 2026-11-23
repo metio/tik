@@ -11,7 +11,7 @@
             [clojure.string :as str]
             [tik.bundle :as bundle]
             [tik.canonical :as canonical]
-            [tik.cli-core :refer [db-path die exit! load-pinned-process load-ticket
+            [tik.cli-core :refer [blob-dir db-path die exit! load-pinned-process load-ticket
                                   cache-flush! now put-signature! registry-events
                                   registry-ticket-ids resolve-id
                                   role-register root root-dir-roots
@@ -118,7 +118,7 @@
             ^File b (.listFiles bd)
             :when (.isFile b)
             :let [tid (.getName (.getParentFile bd))
-                  dest (io/file (root) "tickets" tid "blobs" (.getName b))]]
+                  dest (io/file (blob-dir tid) (.getName b))]]
       (io/make-parents dest)
       (io/copy b dest))
     (cache-flush!)
@@ -570,7 +570,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         (io/copy (store/event-bytes s id eid) (io/file evdir (str eid ".edn"))))
       (doseq [name (store/sidecar-names s id)]
         (io/copy (store/read-sidecar s id name) (io/file evdir name))))
-    (copy! (io/file (root) "tickets" (str id) "blobs")
+    (copy! (blob-dir id)
            (io/file bdir "tickets" (str id) "blobs"))
     ;; the bundle's `actors` is what verify.sh checks against, and it
     ;; carries BOTH rungs: the curated registry plus the keys a verified

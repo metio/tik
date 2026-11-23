@@ -29,6 +29,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
+            [tik.cli-core :as cli-core]
             [tik.event :as event])
   (:import (java.net InetSocketAddress ServerSocket Socket URI URLEncoder)
            (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse
@@ -392,7 +393,7 @@
 (defn write-blob!
   "Store a blob by hash under the ticket, the layout `tik attach` uses."
   [root id hash text]
-  (let [dest (io/file root "tickets" (str id) "blobs" hash)]
+  (let [dest (io/file (cli-core/blob-dir root id) hash)]
     (when-not (.exists dest)
       (io/make-parents dest)
       (spit dest text))))

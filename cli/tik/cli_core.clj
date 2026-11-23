@@ -272,6 +272,20 @@
                      "version")))
         proc))))
 
+(defn blob-dir
+  "The directory holding ticket `id`'s blobs under store root `r`, for
+  `backend` (:file or :sqlite; by default the one the store's shape
+  says). A file store keeps them in the ticket's own tree,
+  tickets/<id>/blobs/. A SQLite store keeps them in blobs/<id>/ beside
+  tik.db: a tickets/ directory there would make the store's shape
+  ambiguous (see db-path) and refuse every later command."
+  (^File [id] (blob-dir (root) id))
+  (^File [r id] (blob-dir r (if (.isFile (io/file r "tik.db")) :sqlite :file) id))
+  (^File [r backend id]
+   (case backend
+     :sqlite (io/file r "blobs" (str id))
+     :file (io/file r "tickets" (str id) "blobs"))))
+
 (defn db-path
   "The SQLite db when THIS store is sqlite-backed — DERIVED from the
   store's own shape (ADR 0020), never an ambient override: a `tik.db`

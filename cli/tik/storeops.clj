@@ -12,7 +12,7 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
-            [tik.cli-core :refer [all-ticket-ctx append!* archive-process! available-processes
+            [tik.cli-core :refer [all-ticket-ctx append!* archive-process! available-processes blob-dir
                                   cache-flush!
                                   db-path die display-title exit! git-tracked? link-lines
                                   load-process load-ticket now parse-instant process-file
@@ -902,8 +902,9 @@
   other (append is idempotent by id), verifies the full event-id and
   sidecar-name sets carried over, then removes the source. Lossless —
   authorship and countersignatures travel with the events (both backends
-  hold sidecars, ADR 0007). Blobs, the actors registry, and processes are
-  untouched — they live filesystem-side regardless of backend."
+  hold sidecars, ADR 0007). Blobs move to the destination's layout
+  (cli-core/blob-dir) and are checked before the source goes; the actors
+  registry and processes are untouched."
   [{:keys [pos opts]}]
   (when-not (= "migrate" (first pos))
     (die "usage: tik store migrate --to sqlite|file"))
@@ -930,17 +931,36 @@
       (doseq [e events] (store/append! dst e))
       (doseq [[id name] sidecars]
         (store/put-sidecar! dst id name (store/read-sidecar src id name)))
-      (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
-                                 (store/ticket-ids dst)))
-            dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))]
-        (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars))
-          (die (str "migration incomplete: " (count src-ids) " event(s)/"
-                    (count sidecars) " sidecar(s) read, " (count dst-ids) "/"
-                    dst-sidecars " written — source left intact for retry"))))
-      (case from
-        :sqlite (doseq [suffix ["" "-journal" "-wal" "-shm"]]
-                  (.delete (io/file (str db suffix))))
-        :file (delete-tree! tickets))
+      ;; blobs follow the backend's layout (cli-core/blob-dir); copy
+      ;; them across before anything is removed, by name, which is
+      ;; their hash
+      (let [blob-moves (vec (for [id ids
+                                  :let [from-dir (blob-dir r from id)]
+                                  :when (.isDirectory from-dir)
+                                  ^File b (.listFiles from-dir)
+                                  :when (.isFile b)]
+                              [b (io/file (blob-dir r to id) (.getName b))]))]
+        (doseq [[^File b ^File dest] blob-moves]
+          (io/make-parents dest)
+          (io/copy b dest))
+        (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
+                                   (store/ticket-ids dst)))
+              dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))
+              blobs-ok (count (filter (fn [[^File b ^File dest]]
+                                        (and (.isFile dest) (= (.length b) (.length dest))))
+                                      blob-moves))]
+          (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars)
+                         (= (count blob-moves) blobs-ok))
+            (die (str "migration incomplete: " (count src-ids) " event(s)/"
+                      (count sidecars) " sidecar(s)/" (count blob-moves) " blob(s) read, "
+                      (count dst-ids) "/" dst-sidecars "/" blobs-ok
+                      " written — source left intact for retry"))))
+        (case from
+          :sqlite (do (doseq [suffix ["" "-journal" "-wal" "-shm"]]
+                        (.delete (io/file (str db suffix))))
+                      (delete-tree! (io/file r "blobs")))
+          :file (delete-tree! tickets))
+        (println (str "moved " (count blob-moves) " blob(s)")))
       (println (str "migrated " (count ids) " ticket(s), " (count src-ids)
                     " event(s), " (count sidecars) " sidecar(s) to the "
                     (name to) " backend"))

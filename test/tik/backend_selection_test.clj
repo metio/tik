@@ -143,3 +143,41 @@
             (let [r (tik.cli/run-argv ["verify" id])]
               (is (zero? (:exit r)) (:err r))
               (is (re-find #"signed by seb" (:out r))))))))))
+
+(defn- blob-files [dir]
+  (sort (map #(.getName ^java.io.File %)
+             (filter #(.isFile ^java.io.File %) (file-seq (io/file dir))))))
+
+(deftest a-comment-on-a-sqlite-store-keeps-the-store-usable
+  (let [{:keys [root]} (h/temp-store!)]
+    (h/with-cli-root root
+      (fn []
+        (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"])
+        (tik.cli/run-argv ["new" "track" "--title" "c"])
+        (let [id (uuid-in (:out (tik.cli/run-argv ["ls" "--edn"])))
+              r (tik.cli/run-argv ["comment" id "looks" "fine"])]
+          (is (zero? (:exit r)) (:err r))
+          (is (not (.exists (io/file root "tickets"))) "no tickets/ beside tik.db")
+          (is (= 1 (count (blob-files (io/file root "blobs" id)))) "the blob lives under blobs/<id>/")
+          (let [ls (tik.cli/run-argv ["ls"])]
+            (is (zero? (:exit ls)) (:err ls))))))))
+
+(deftest migrate-carries-blobs-both-ways
+  (let [{:keys [root]} (h/temp-store!)]
+    (h/with-cli-root root
+      (fn []
+        (tik.cli/run-argv ["new" "track" "--title" "b"])
+        (let [id (uuid-in (:out (tik.cli/run-argv ["ls" "--edn"])))
+              _ (tik.cli/run-argv ["comment" id "keep" "me"])
+              file-blobs (blob-files (io/file root "tickets" id "blobs"))]
+          (is (= 1 (count file-blobs)))
+          (testing "file -> sqlite moves the blob beside tik.db"
+            (let [r (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"])]
+              (is (zero? (:exit r)) (:err r))
+              (is (= file-blobs (blob-files (io/file root "blobs" id))))))
+          (testing "sqlite -> file moves it back"
+            (let [r (tik.cli/run-argv ["store" "migrate" "--to" "file"])]
+              (is (zero? (:exit r)) (:err r))
+              (is (= file-blobs (blob-files (io/file root "tickets" id "blobs"))))
+              (is (not (.exists (io/file root "blobs"))))
+              (is (= "keep me" (slurp (io/file root "tickets" id "blobs" (first file-blobs))))))))))))

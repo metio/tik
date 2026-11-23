@@ -10,9 +10,9 @@
             [clojure.string :as str]
             [tik.args :refer [actor parse-key typed-value]]
             [tik.canonical :as canonical]
-            [tik.cli-core :refer [append!* archive-process! cache-flush! context-facts
+            [tik.cli-core :refer [append!* archive-process! blob-dir cache-flush! context-facts
                                   definition-publishers die load-process load-ticket now
-                                  open-ticket-rows repo-dir resolve-id root stage-delta store-holder
+                                  open-ticket-rows repo-dir resolve-id stage-delta store-holder
                                   the-store ticket-ctx]]
             [tik.dag :as dag]
             [tik.dupe :as dupe]
@@ -207,7 +207,7 @@
         hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
         ;; blobs stored BY HASH: nothing in the store is addressed by
         ;; anything except what it is
-        dest (io/file (root) "tickets" (str id) "blobs" hash)]
+        dest (io/file (blob-dir id) hash)]
     (.mkdirs (.getParentFile dest))
     (io/copy src dest)
     (append!* s (event/attach-artifact
@@ -239,7 +239,7 @@
         text (str/join " " words)
         bytes (.getBytes ^String text "UTF-8")
         hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
-        dest (io/file (root) "tickets" (str id) "blobs" hash)]
+        dest (io/file (blob-dir id) hash)]
     (.mkdirs (.getParentFile dest))
     (spit dest text)
     (append!* s (event/attach-artifact

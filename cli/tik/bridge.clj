@@ -13,7 +13,7 @@
             [tik.args :refer [actor parse-key parse-value read-edn-file
                               slurp-existing typed-value]]
             [tik.canonical :as canonical]
-            [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
+            [tik.cli-core :refer [append!* archive-process! blob-dir cache-flush! claimed-at
                                   die exit! load-process now
                                   registry-ticket-ids
                                   resolve-id root the-store ticket-ctx]]
@@ -567,7 +567,7 @@
   [s id actor at path text opts]
   (let [bytes (.getBytes ^String text "UTF-8")
         hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
-        dest (io/file (root) "tickets" (str id) "blobs" hash)]
+        dest (io/file (blob-dir id) hash)]
     (io/make-parents dest)
     (spit dest text)
     (append!* s (event/attach-artifact
