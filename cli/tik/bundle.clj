@@ -21,10 +21,13 @@
   the archive is unpacked by this namespace rather than by `tar`, the
   shipped `verify.sh` is never executed, and the definition must lint
   before it is allowed to judge anything."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
+            [tik.delegation :as delegation]
+            [tik.delegation-trust :as delegation-trust]
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.guard :as guard]
@@ -267,11 +270,55 @@
        :blobs-dir (io/file tdir "blobs")
        :actors (io/file dir "actors")
        :pq-signers (io/file dir "pq-signers")
+       :delegation-policy (io/file dir "delegation.edn")
        :roles (io/file dir "roles.edn")
        :identity-dir (io/file dir "identity")
        :definitions-dir (io/file dir "processes" "by-hash")})))
 
 ;; ------------------------------------------------------------ the checks
+
+(declare bindings)
+
+(defn- rung-1-text
+  "The bundle's `actors` without the lines a key binding earned. The file
+  carries both rungs for verify.sh, and only the curated lines may sign a
+  delegation (ADR 0037): a key a binding grants cannot delegate."
+  [{:keys [actors] :as layout*}]
+  (when (.isFile ^File actors)
+    (let [earned (keep :public-key (bindings layout*))]
+      (str/join "\n" (remove (fn [line] (some #(str/includes? line (str %)) earned))
+                             (str/split-lines (slurp actors)))))))
+
+(defn- delegation-policy
+  "The producer store's delegation policy, as delegation.edn carries it:
+  no file is no touch requirement, a file that does not parse trusts no
+  delegation."
+  [{:keys [delegation-policy]}]
+  (if-not (.isFile ^File delegation-policy)
+    {:require-touch false}
+    (delegation-trust/policy-of
+     {:delegation (try (edn/read-string (slurp delegation-policy))
+                       (catch Exception _ ::unreadable))})))
+
+(defn- judged-delegations
+  "The delegations under identity/, each judged as the store would judge
+  it, against the curated actors lines and the travelling policy."
+  [{:keys [identity-dir] :as layout*}]
+  (let [signers (rung-1-text layout*)
+        policy (delegation-policy layout*)]
+    (vec (for [^File f (files-under identity-dir edn?)
+               :let [e (try (fstore/read-event f) (catch Exception _ nil))]
+               :when e
+               d (delegation/delegations [e])
+               :let [bytes (java.nio.file.Files/readAllBytes (.toPath f))
+                     sigs (mapv #(java.nio.file.Files/readAllBytes (.toPath ^File %))
+                                (files-under identity-dir
+                                             (fn [^File g]
+                                               (and (.isFile g)
+                                                    (str/starts-with? (.getName g)
+                                                                      (str (:event/id e) ".sig."))))))]]
+           (merge d (delegation-trust/judge d {:bytes bytes :sigs sigs
+                                               :signers signers :policy policy}))))))
 
 (defn- ok [msg] {:ok? true :msg msg})
 (defn- bad [msg] {:ok? false :msg msg})
@@ -344,12 +391,13 @@
   "L1: each detached signature verifies AS THE EVENT'S OWN `:event/actor`,
   never merely as some registered principal — otherwise a registered
   actor forges another's authorship and the audit still passes."
-  [{:keys [events-dir actors]} events]
+  [{:keys [events-dir actors] :as layout*} events]
   (cond
     (not (.isFile ^File actors))
     [(note "no actors registry travels with this bundle — authorship is unclaimed")]
     :else
     (let [unsigned (atom 0)
+          delegations (delay (judged-delegations layout*))
           checks (vec (for [e (red/ordered events)
                             :let [id (:event/id e)
                                   sigs (sidecar-files events-dir id "sig")]
@@ -373,8 +421,11 @@
                           (case (try (sign/verify-bytes actors bytes sb actor)
                                      (catch Exception _ false))
                             true (ok (str (.getName sig) " verifies as " actor))
-                            false (bad (str (.getName sig) " does not verify as"
-                                            " its event's actor (" actor ")"))
+                            false (if-let [d (delegation-trust/credit @delegations e bytes sb)]
+                                    (ok (str (.getName sig) " verifies as " actor
+                                             " (delegated by " (subs (str (:event d)) 0 (min 19 (count (str (:event d))))) "…)"))
+                                    (bad (str (.getName sig) " does not verify as"
+                                              " its event's actor (" actor ")")))
                             (note (str (.getName sig) " is a key type this"
                                        " build cannot check, and no ssh-keygen"
                                        " is here to ask"))))))]

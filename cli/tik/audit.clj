@@ -19,6 +19,7 @@
                                   signing-key sidecar-names-for store-root-doc
                                   the-store]]
             [tik.dag :as dag]
+            [tik.delegation :as delegation]
             [tik.delegation-trust :as delegation-trust]
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
@@ -341,7 +342,7 @@ else
 fi
 
 # L0 integrity: every stored file's name IS the sha256 of its bytes.
-for f in tickets/*/events/*.edn processes/by-hash/*.edn; do
+for f in tickets/*/events/*.edn identity/*.edn processes/by-hash/*.edn; do
   [ -e \"$f\" ] || continue
   base=$(basename \"$f\" .edn)
   sum=$(sha256sum \"$f\" | cut -d' ' -f1)
@@ -391,6 +392,72 @@ check_sig() { # $1 sidecar, $2 target file, $3 namespace
     echo \"FAIL  $1 does not verify\"; fail=1
   fi
 }
+# ADR 0037: a signature by a key outside the registry still counts for a
+# verdict a delegation in identity/ covers. The delegation must verify as
+# its actor through the curated actors lines alone - never a key a binding
+# earned - be touched where delegation.edn requires it, stay within five
+# minutes, and name the event's ticket and a parent in its scope and the
+# event's fact path in its facts. Sets dlg to the delegation's id.
+epoch_ms() { # $1 an RFC 3339 instant in UTC
+  printf %s \"$1\" | awk -F'[-T:Z]' 'NF >= 6 { y = $1 + 0; m = $2 + 0; d = $3 + 0
+    if (m <= 2) { y--; m += 12 }
+    days = 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d - 719469
+    printf \"%d\\n\", (days * 86400 + $4 * 3600 + $5 * 60) * 1000 + int($6 * 1000 + 0.5) }'
+}
+delegated() { # $1 sidecar, $2 event .edn, $3 actor
+  dlg=
+  [ -d identity ] || return 1
+  dt=$(mktemp -d)
+  sed -n 's/.*:identity\\/public-key \"\\([^\"]*\\)\".*/\\1/p' identity/*.edn 2>/dev/null > \"$dt/earned\"
+  grep -v -F -f \"$dt/earned\" actors > \"$dt/rung1\" 2>/dev/null
+  etype=$(sed -n 's/.*:event\\/type \\(:[^ }]*\\)}$/\\1/p' \"$2\")
+  eat=$(epoch_ms \"$(sed -n 's/.*:event\\/at #inst \"\\([^\"]*\\)\".*/\\1/p' \"$2\")\")
+  etk=$(sed -n 's/.*:event\\/ticket #uuid \"\\([^\"]*\\)\".*/\\1/p' \"$2\")
+  eparents=$(sed -n 's/.*:event\\/parents #{\\([^}]*\\)}.*/\\1/p' \"$2\")
+  epath=$(sed -n 's/.*:event\\/body {:fact\\/path \\(\\[[^]]*\\]\\).*/\\1/p' \"$2\")
+  touch_needed=no
+  if [ -f delegation.edn ]; then
+    if grep -q ':require-touch true' delegation.edn; then touch_needed=yes
+    elif ! grep -q ':require-touch false' delegation.edn; then rm -rf \"$dt\"; return 1; fi
+  fi
+  [ \"$etype\" = \":fact/assert\" ] || { rm -rf \"$dt\"; return 1; }
+  for d in identity/*.edn; do
+    [ -e \"$d\" ] || continue
+    grep -q ':event/body {:claim :delegation ' \"$d\" || continue
+    [ \"$(sed -n 's/^{:event\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$d\")\" = \"$3\" ] || continue
+    signed=no
+    for ds in \"${d%.edn}\".sig.*; do
+      [ -e \"$ds\" ] || continue
+      ssh-keygen -Y verify -f \"$dt/rung1\" -I \"$3\" -n tik-event -s \"$ds\" < \"$d\" >/dev/null 2>&1 || continue
+      sk_untouched \"$ds\" && continue
+      if [ \"$touch_needed\" = yes ]; then
+        sed '1d;$d' \"$ds\" | tr -d '\\n\\r' | base64 -d 2>/dev/null \\
+          | LC_ALL=C grep -aq -e 'sk-ssh-ed25519@openssh.com' -e 'sk-ecdsa-sha2-nistp256@openssh.com' || continue
+      fi
+      signed=yes; break
+    done
+    [ \"$signed\" = yes ] || continue
+    dat=$(epoch_ms \"$(sed -n 's/.*:event\\/at #inst \"\\([^\"]*\\)\".*/\\1/p' \"$d\")\")
+    dna=$(epoch_ms \"$(sed -n 's/.*:delegation\\/not-after #inst \"\\([^\"]*\\)\".*/\\1/p' \"$d\")\")
+    [ -n \"$dat\" ] && [ -n \"$dna\" ] && [ -n \"$eat\" ] || continue
+    [ $((dna - dat)) -le 300000 ] && [ \"$dna\" -ge \"$dat\" ] || continue
+    [ \"$eat\" -ge \"$dat\" ] && [ \"$eat\" -le \"$dna\" ] || continue
+    scoped=no
+    for p in $eparents; do
+      grep -qF \"[#uuid \\\"$etk\\\" $p]\" \"$d\" && { scoped=yes; break; }
+    done
+    [ \"$scoped\" = yes ] || continue
+    facts=$(sed -n 's/.*:delegation\\/facts #{\\([^}]*\\)}.*/\\1/p' \"$d\")
+    case \" $facts \" in *\"$epath\"*) ;; *) continue ;; esac
+    [ -n \"$epath\" ] || continue
+    pub=$(sed -n 's/.*:delegation\\/public-key \"\\([^\"]*\\)\".*/\\1/p' \"$d\")
+    printf '%s namespaces=\"tik-event\" %s\\n' \"$3\" \"$pub\" > \"$dt/throwaway\"
+    if ssh-keygen -Y verify -f \"$dt/throwaway\" -I \"$3\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+      dlg=$(basename \"$d\" .edn); rm -rf \"$dt\"; return 0
+    fi
+  done
+  rm -rf \"$dt\"; return 1
+}
 # An event names its own author in :event/actor; the signature must
 # verify AS THAT ACTOR, not merely as some registered principal —
 # else a registered actor forges another's authorship and the audit
@@ -406,7 +473,12 @@ check_event_sig() { # $1 sidecar, $2 event .edn
   # the verification DECISION binds to the claimed actor below, never to
   # whoever happened to sign — that is the whole point.
   if ! ssh-keygen -Y find-principals -f actors -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
-    echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1; return
+    if delegated \"$1\" \"$2\" \"$actor\"; then
+      echo \"ok    $(basename \"$1\") verifies as $actor (delegated by $(printf %s \"$dlg\" | cut -c1-19)…)\"
+    else
+      echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1
+    fi
+    return
   fi
   if sk_untouched \"$1\"; then
     echo \"FAIL  $1 was made by a security key nobody touched\"; fail=1
@@ -516,6 +588,8 @@ if [ -d identity ]; then
   }
   for b in identity/*.edn; do
     [ -e \"$b\" ] || continue
+    # a delegation travels here too, and is judged where it is used
+    grep -q ':event/body {:claim :delegation ' \"$b\" && continue
     tok=$(sed -n 's/.*:identity\\/id-token \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
     who=$(sed -n 's/.*:identity\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
     pub=$(sed -n 's/.*:identity\\/public-key \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
@@ -671,6 +745,10 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "- `identity/` — the key bindings behind any actor the registry\n"
        "  lists on an issuer's say-so, with that issuer's public key, so\n"
        "  the grant is re-earned here rather than taken on our word.\n"
+       "- `identity/` also holds the delegations behind any verdict a\n"
+       "  `tik review --batch` throwaway key signed, and `delegation.edn`\n"
+       "  the store's policy for them (whether a security-key touch is\n"
+       "  required), when the store sets one.\n"
        "- `roles.edn` — who was in which role when this was bundled,\n"
        "  where the store keeps a register. Absent means the definition's\n"
        "  own declared members stand.\n"
@@ -784,6 +862,23 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                     (str kid ".pem")))
                     pem)
               (swap! written conj kid))))))
+    ;; the delegations that cover this ticket's events travel beside the
+    ;; bindings, with their signatures and the store's touch requirement,
+    ;; so a recipient re-judges them (ADR 0037 point 5). A store whose
+    ;; policy does not parse trusts none, and so sends none.
+    (let [pol (delegation-trust/policy (root))
+          evs (store/events s id)
+          covering (when (map? pol)
+                     (filterv (fn [d] (some #(delegation/covers? d %) evs))
+                              (delegation/delegations (registry-events s))))]
+      (when (seq covering)
+        (let [idir (doto (io/file bdir "identity") (.mkdirs))]
+          (doseq [{:keys [ticket event]} covering]
+            (io/copy (store/event-bytes s ticket event) (io/file idir (str event ".edn")))
+            (doseq [nm (sidecar-names-for s ticket event "sig")]
+              (io/copy (store/read-sidecar s ticket nm) (io/file idir nm))))
+          (spit (io/file bdir "delegation.edn")
+                (pr-str {:require-touch (true? (:require-touch pol))})))))
     (when phash
       (doseq [^File f (.listFiles (io/file (root) "processes" "by-hash"))
               :when (str/starts-with? (.getName f) phash)]
