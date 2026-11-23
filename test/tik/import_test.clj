@@ -82,3 +82,37 @@
         r (h/run-tik! {:root (str dest) :actor "seb"} "import" "/nope/absent.tgz")]
     (is (pos? (:exit r)))
     (is (str/includes? (str (:err r) (:out r)) "no such bundle"))))
+
+(defn- bare-store! [prefix]
+  (let [root (h/temp-dir! prefix)]
+    (h/run-tik! {:root (str root)} "init")
+    root))
+
+(deftest an-import-brings-the-definitions-its-tickets-pin
+  (let [{:keys [id bundle]} (seeded!)
+        dest (bare-store! "tik-import-nodef")
+        env {:root (str dest) :actor "seb"}
+        r (h/run-tik! env "import" (str bundle))]
+    (is (zero? (:exit r)) (str (:err r) (:out r)))
+    (is (seq (filter #(str/ends-with? (.getName ^java.io.File %) ".edn")
+                     (.listFiles (io/file dest "processes" "by-hash"))))
+        "the pinned definition is archived in the receiving store")
+    (testing "the ticket derives under its pinned rules, with no named file here"
+      (let [st (h/run-tik! env "status" id)]
+        (is (zero? (:exit st)) (str (:err st) (:out st)))
+        (is (str/includes? (:out st) "triaged") (:out st))))
+    (is (zero? (:exit (h/run-tik! env "ls"))))))
+
+(deftest an-import-refuses-a-definition-that-does-not-hash-to-its-name
+  (let [{:keys [bundle]} (seeded!)
+        unpacked (h/temp-dir! "tik-import-unpacked")
+        _ (sh/sh "tar" "-xzf" (str bundle) "-C" (str unpacked))
+        defs (filter #(str/ends-with? (.getName ^java.io.File %) ".edn")
+                     (file-seq (io/file unpacked)))
+        def-file (first (filter #(= "by-hash" (.getName (.getParentFile ^java.io.File %))) defs))
+        _ (spit def-file (str/replace (slurp def-file) ":triaged" ":tampered"))
+        dest (bare-store! "tik-import-tampered")
+        r (h/run-tik! {:root (str dest) :actor "seb"} "import" (str unpacked))]
+    (is (= 1 (:exit r)))
+    (is (re-find #"does not hash to its name" (str (:err r) (:out r))))
+    (is (empty? (.listFiles (io/file dest "tickets"))) "nothing was imported")))
