@@ -6,6 +6,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.pq-fixture :as fx]
+            [tik.pq-keys :as keys]
             [tik.pqsig :as pqsig]))
 
 (defn- flip ^bytes [^bytes b i]
@@ -83,3 +84,28 @@
   (is (= fx/fingerprint (pqsig/sidecar-fpr (str "sha256-ab.pqsig." fx/fingerprint))))
   (is (nil? (pqsig/sidecar-fpr "sha256-ab.sig.abc")))
   (is (nil? (pqsig/sidecar-fpr "sha256-ab.pqsig.XYZ"))))
+
+(deftest a-pkcs8-private-key-signs-what-the-verifier-accepts
+  (doseq [[source key] [["the JDK" (keys/jdk-key)] ["OpenSSL" (keys/openssl-key)]]
+          :when key]
+    (testing source
+      (let [sig (pqsig/sign-event (pqsig/read-private-key (:pem key)) fx/event-bytes)]
+        (is (= 3309 (alength ^bytes sig)))
+        (is (true? (pqsig/verify-event (:public-key key) sig fx/event-bytes)))))))
+
+(deftest a-malformed-private-key-is-refused-plainly
+  (doseq [pem ["" "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n" "not a pem" nil]]
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"PKCS#8"
+                          (pqsig/read-private-key pem))
+        (pr-str pem))))
+
+(deftest the-signer-is-the-registered-key-that-verifies
+  (let [key (keys/jdk-key)
+        reg (pqsig/parse-registry (str (line "alice" fx/public-key-b64) "\n"
+                                       (line "alice" (:public-key-b64 key))))
+        sig (pqsig/sign-event (pqsig/read-private-key (:pem key)) fx/event-bytes)]
+    (is (= (pqsig/fingerprint (:public-key key))
+           (:fpr (pqsig/signer-entry reg "alice" sig fx/event-bytes))))
+    (is (nil? (pqsig/signer-entry reg "bob" sig fx/event-bytes)))
+    (is (nil? (pqsig/signer-entry (pqsig/parse-registry "# no ML-DSA-65 key\n")
+                                  "alice" sig fx/event-bytes)))))

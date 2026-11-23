@@ -158,6 +158,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   checked against the store's `pq-signers` file: one that does not verify,
   names an unregistered key, or a key registered for another actor fails
   the audit, and a malformed `pq-signers` line fails it by line number.
+  `TIK_PQ_KEY` (a PKCS#8 PEM ML-DSA-65 key from `openssl genpkey
+  -algorithm ML-DSA-65`) makes every write carry that sidecar too; a key
+  `pq-signers` does not grant the actor refuses the write before anything
+  is stored, and `tik sign <id>` back-signs your own earlier events.
   L1 credits a signature when the key is in `actors` (rung 1) **or** a verified
   binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
   not a failure — it grants nothing, and events are never deleted, so failing
