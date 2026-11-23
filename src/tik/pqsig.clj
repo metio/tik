@@ -22,7 +22,7 @@
   (:require [clojure.string :as str]
             [tik.identity :as identity])
   (:import (java.security KeyFactory MessageDigest Signature)
-           (java.security.spec X509EncodedKeySpec)
+           (java.security.spec PKCS8EncodedKeySpec X509EncodedKeySpec)
            (java.util Arrays Base64)))
 
 (def algorithm
@@ -170,3 +170,39 @@
                   (= actor (:actor entry))
                   (namespace-allowed? (:namespaces entry) namespace)
                   (verify-event (:public-key entry) signature event-bytes)))))
+
+(defn read-private-key
+  "The ML-DSA private key in a PKCS#8 PEM text, as `openssl genpkey
+  -algorithm ML-DSA-65` writes it. Its parameter set is not checked here:
+  a signature counts only through a registered ML-DSA-65 key, which
+  `signer-entry` finds by verifying."
+  [pem]
+  (let [refuse #(throw (ex-info (str "not a PKCS#8 PEM ML-DSA private key: " %)
+                                {:reason :pqsig/bad-private-key}))
+        body (when (string? pem)
+               (second (re-find #"(?s)-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----"
+                                pem)))]
+    (when-not body (refuse "no BEGIN/END PRIVATE KEY block"))
+    (try
+      (.generatePrivate (KeyFactory/getInstance "ML-DSA")
+                        (PKCS8EncodedKeySpec.
+                         (.decode (Base64/getMimeDecoder) ^String (str/trim body))))
+      (catch Exception _ (refuse "the provider rejects the key")))))
+
+(defn sign-event
+  "The ML-DSA signature of `private-key` over `event-bytes`, domain
+  separated as `verify-event` expects."
+  ^bytes [private-key ^bytes event-bytes]
+  (.sign (doto (Signature/getInstance "ML-DSA")
+           (.initSign ^java.security.PrivateKey private-key)
+           (.update (event-message event-bytes)))))
+
+(defn signer-entry
+  "The registry entry under `actor`, allowed to sign events, whose key
+  verifies `signature` over `event-bytes`; nil when there is none."
+  [registry actor signature event-bytes]
+  (some #(when (and (= actor (:actor %))
+                    (namespace-allowed? (:namespaces %) "tik-event")
+                    (verify-event (:public-key %) signature event-bytes))
+           %)
+        registry))

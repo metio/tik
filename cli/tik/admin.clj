@@ -13,7 +13,7 @@
             [tik.args :refer [actor read-edn-file slurp-existing]]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [append!* archive-process! by-hash-file die load-process
-                                  now put-signature! resolve-id role-register roles-file
+                                  now pq-sidecar pq-signing-key put-signature! resolve-id role-register roles-file
                                   root signing-key stage-delta the-store
                                   ticket-ctx]]
             [tik.dag :as dag]
@@ -197,19 +197,37 @@
 (defn cmd-sign
   "Sign this actor's OWN events that this key has not signed yet. A
   signature is an authorship claim (ADR 0010), so signing another
-  actor's events would assert something false — those are skipped."
+  actor's events would assert something false — those are skipped.
+  TIK_PQ_KEY adds the ML-DSA-65 sidecars (ADR 0036) the same way, which
+  is how events written before a store took up post-quantum signatures
+  gain them."
   [{:keys [pos opts]}]
   (let [s (the-store)
         id (resolve-id s (first pos))
-        key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
+        key (signing-key opts)
+        pq-key (pq-signing-key opts)
+        _ (when-not (or key pq-key)
+            (die "no key: pass --key or set TIK_KEY, or set TIK_PQ_KEY"))
         me (actor opts)
-        fpr (sign/fingerprint (sign/pubkey key))
         names (set (store/sidecar-names s id))
-        mine (filter #(= me (:event/actor %)) (store/events s id))
-        unsigned (remove #(contains? names (str (:event/id %) ".sig." fpr))
-                         mine)]
-    (doseq [e unsigned]
-      (put-signature! s key id (:event/id e) "sig" sign/namespace-event
-                      (store/event-bytes s id (:event/id e))))
-    (println "signed" (count unsigned) "event(s) as" me
-             (str "(" (count mine) " authored, key " fpr ")"))))
+        mine (filter #(= me (:event/actor %)) (store/events s id))]
+    (when key
+      (let [fpr (sign/fingerprint (sign/pubkey key))
+            unsigned (remove #(contains? names (str (:event/id %) ".sig." fpr))
+                             mine)]
+        (doseq [e unsigned]
+          (put-signature! s key id (:event/id e) "sig" sign/namespace-event
+                          (store/event-bytes s id (:event/id e))))
+        (println "signed" (count unsigned) "event(s) as" me
+                 (str "(" (count mine) " authored, key " fpr ")"))))
+    (when pq-key
+      (let [added (reduce (fn [n e]
+                            (let [sc (pq-sidecar pq-key me (:event/id e)
+                                                 (store/event-bytes s id (:event/id e)))]
+                              (if (contains? names (:name sc))
+                                n
+                                (do (store/put-sidecar! s id (:name sc) (:signature sc))
+                                    (inc n)))))
+                          0 mine)]
+        (println "signed" added "event(s) post-quantum as" me
+                 (str "(" (count mine) " authored)"))))))

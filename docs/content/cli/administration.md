@@ -90,8 +90,22 @@ The key is the base64 DER SubjectPublicKeyInfo, and `<fpr>` is the hex
 SHA-256 of that DER. `namespaces` takes comma-separated patterns where
 `*` is the only wildcard. A sidecar that does not verify, names a key
 `pq-signers` lacks, or a key registered for another actor fails the
-audit, and so does a malformed line. tik cannot make these signatures
-yet. Until it can, a store without the file is checked as before.
+audit, and so does a malformed line. A store without the file is
+checked as before.
+
+To sign with ML-DSA-65, make a key with OpenSSL 3.5 or later, register
+its public half, and point `TIK_PQ_KEY` at the private key:
+
+```sh
+openssl genpkey -algorithm ML-DSA-65 -out ~/.config/tik/id_ml_dsa_65.pem
+echo "seb namespaces=\"tik-*\" ml-dsa-65 $(openssl pkey -in ~/.config/tik/id_ml_dsa_65.pem -pubout -outform DER | base64 -w0)" >> pq-signers
+export TIK_PQ_KEY=~/.config/tik/id_ml_dsa_65.pem
+```
+
+Every write then carries both signatures. A write whose `TIK_PQ_KEY`
+`pq-signers` does not grant the actor is refused before anything is
+stored. `tik sign <id>` with `TIK_PQ_KEY` adds the sidecar to your own
+events that lack one, which is how events written earlier gain it.
 
 ## Moving tickets to newer rules
 

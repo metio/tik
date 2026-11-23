@@ -26,6 +26,7 @@
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [paint-stage sid]]
+            [tik.pqsig :as pqsig]
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -353,16 +354,50 @@
   (into #{} (keep #(when-let [i (str/index-of % ".sig.")] (subs % 0 i)))
         (store/sidecar-names s ticket-id)))
 
+(defn pq-signing-key
+  "The ML-DSA-65 key file TIK_PQ_KEY names (ADR 0036 point 5). `opts` is
+  taken for symmetry with `signing-key`; there is no flag for it."
+  [_opts]
+  (let [k (System/getenv "TIK_PQ_KEY")]
+    (when-not (str/blank? k) k)))
+
+(defn pq-sidecar
+  "The post-quantum sidecar for `event-bytes` signed with the key file
+  `key-path` (ADR 0036): {:name :signature}. Dies, before anything is
+  stored, when the key does not load or pq-signers grants no key under
+  `actor` that verifies the signature — a sidecar no verifier would credit
+  is a write the author did not intend."
+  [key-path actor event-id ^bytes event-bytes]
+  (let [private-key (try (pqsig/read-private-key (slurp key-path))
+                         (catch Exception e
+                           (die (str "TIK_PQ_KEY " key-path ": " (ex-message e)))))
+        signature (pqsig/sign-event private-key event-bytes)
+        registry-file (io/file (root) "pq-signers")
+        registry (when (.exists registry-file)
+                   (try (pqsig/parse-registry (slurp registry-file))
+                        (catch clojure.lang.ExceptionInfo e (die (ex-message e)))))
+        entry (pqsig/signer-entry registry actor signature event-bytes)]
+    (when-not entry
+      (die (str "TIK_PQ_KEY is not a key pq-signers grants " actor
+                (when-not (.exists registry-file) " (the store has no pq-signers file)")
+                " — add its public key: " actor " namespaces=\"tik-*\" ml-dsa-65 <base64 DER>")))
+    {:name (str event-id ".pqsig." (:fpr entry)) :signature signature}))
+
 (defn append!*
   "Append, then sign the stored bytes when a key is configured (--key or
-  TIK_KEY): authorship travels with the write (ADR 0010)."
+  TIK_KEY): authorship travels with the write (ADR 0010). With TIK_PQ_KEY
+  the ML-DSA-65 sidecar is made first, so a key the store would not
+  credit refuses the write instead of leaving an unverifiable one."
   [s event opts]
-  (store/append! s event)
-  (when-let [key (signing-key opts)]
-    (put-signature! s key (:event/ticket event) (:event/id event)
-                    "sig" sign/namespace-event
-                    (.getBytes (canonical/emit (dissoc event :event/id))
-                               "UTF-8")))
+  (let [bytes (.getBytes (canonical/emit (dissoc event :event/id)) "UTF-8")
+        pq (when-let [k (pq-signing-key opts)]
+             (pq-sidecar k (:event/actor event) (:event/id event) bytes))]
+    (store/append! s event)
+    (when-let [key (signing-key opts)]
+      (put-signature! s key (:event/ticket event) (:event/id event)
+                      "sig" sign/namespace-event bytes))
+    (when pq
+      (store/put-sidecar! s (:event/ticket event) (:name pq) (:signature pq))))
   event)
 
 (defn matching-ticket-ids
