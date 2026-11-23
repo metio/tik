@@ -12,7 +12,9 @@
             [clojure.test :refer [deftest is testing]]
             [tik.cli]
             [tik.cli-core]
-            [tik.harness :as h]))
+            [tik.harness :as h]
+            [tik.store.protocol]
+            [tik.storeops]))
 
 (defn- uuid-in [s]
   (first (re-seq #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -181,3 +183,41 @@
               (is (= file-blobs (blob-files (io/file root "tickets" id "blobs"))))
               (is (not (.exists (io/file root "blobs"))))
               (is (= "keep me" (slurp (io/file root "tickets" id "blobs" (first file-blobs))))))))))))
+
+(deftest a-failed-migration-leaves-only-the-source
+  (let [{:keys [root]} (h/temp-store!)
+        open tik.storeops/*open-destination*
+        failing (fn [dir to]
+                  (let [real (open dir to)]
+                    (reify tik.store.protocol/EventStore
+                      (append! [_ _] (throw (ex-info "disk full" {})))
+                      (events [_ id] (tik.store.protocol/events real id))
+                      (ticket-ids [_] (tik.store.protocol/ticket-ids real))
+                      (has-event? [_ id] (tik.store.protocol/has-event? real id))
+                      (event-bytes [_ t id] (tik.store.protocol/event-bytes real t id))
+                      (put-sidecar! [_ t n b] (tik.store.protocol/put-sidecar! real t n b))
+                      (sidecar-names [_ t] (tik.store.protocol/sidecar-names real t))
+                      (read-sidecar [_ t n] (tik.store.protocol/read-sidecar real t n)))))
+        leftovers #(set (remove #{"tickets" "tik.db" "actors" "processes" "roles.edn"}
+                                (.list (io/file root))))]
+    (h/with-cli-root root
+      (fn []
+        (tik.cli/run-argv ["new" "track" "--title" "m"])
+        (let [before (:out (tik.cli/run-argv ["ls" "--edn"]))
+              names-before (leftovers)]
+          (testing "file -> sqlite fails mid-copy"
+            (let [r (binding [tik.storeops/*open-destination* failing]
+                      (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"]))]
+              (is (not (zero? (:exit r))))
+              (is (not (.exists (io/file root "tik.db"))) "no half-built destination")
+              (is (= names-before (leftovers)) "no staging left behind")
+              (is (= before (:out (tik.cli/run-argv ["ls" "--edn"]))) "the store still works")))
+          (testing "and the retry the message promises succeeds"
+            (is (zero? (:exit (tik.cli/run-argv ["store" "migrate" "--to" "sqlite"])))))
+          (testing "sqlite -> file fails mid-copy"
+            (let [r (binding [tik.storeops/*open-destination* failing]
+                      (tik.cli/run-argv ["store" "migrate" "--to" "file"]))]
+              (is (not (zero? (:exit r))))
+              (is (not (.exists (io/file root "tickets"))) "no half-built destination")
+              (is (= names-before (leftovers)) "no staging left behind")
+              (is (= before (:out (tik.cli/run-argv ["ls" "--edn"]))) "the store still works"))))))))

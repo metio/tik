@@ -31,6 +31,7 @@
             [tik.store.sqlite :as sqlite]
             [tik.text :refer [safe-name]])
   (:import (java.io File)
+           (java.nio.file CopyOption Files StandardCopyOption)
            (java.time Instant LocalDate ZoneOffset)))
 
 (defn- minted-id
@@ -926,6 +927,26 @@
   [^File f]
   (doseq [^File c (reverse (file-seq f))] (.delete c)))
 
+(defn- open-destination
+  "Opens the store a migration writes into, under the staging root `dir`."
+  [^File dir to]
+  (case to
+    :sqlite (sqlite/sqlite-store (str (io/file dir "tik.db")))
+    :file (fstore/file-store dir)))
+
+(def ^:dynamic *open-destination*
+  "How a migration opens its destination. A seam for tests, which wrap
+  the real store to fail mid-copy."
+  open-destination)
+
+(defn- staged-entries
+  "The names a backend occupies in a store root: what a migration builds
+  under its staging directory and then moves into place."
+  [to]
+  (case to
+    :sqlite ["tik.db" "tik.db-journal" "tik.db-wal" "tik.db-shm" "blobs"]
+    :file ["tickets"]))
+
 (defn cmd-store
   "store migrate --to sqlite|file: convert THIS store's event backend in
   place (ADR 0020). Reads every event AND every detached sidecar
@@ -935,7 +956,14 @@
   authorship and countersignatures travel with the events (both backends
   hold sidecars, ADR 0007). Blobs move to the destination's layout
   (cli-core/blob-dir) and are checked before the source goes; the actors
-  registry and processes are untouched."
+  registry and processes are untouched.
+
+  The destination is built in a staging directory inside the store and
+  moved into place only once it verifies. A migration that fails,
+  however it fails, removes the staging directory and leaves the source
+  as the store's only backend, so the store keeps working and the same
+  command can run again; both backends side by side would make every
+  command refuse the store as ambiguous."
   [{:keys [pos opts]}]
   (when-not (= "migrate" (first pos))
     (die "usage: tik store migrate --to sqlite|file"))
@@ -945,53 +973,70 @@
         r (root)
         db (io/file r "tik.db")
         tickets (io/file r "tickets")
-        from (if (.isFile db) :sqlite :file)]
+        from (if (.isFile db) :sqlite :file)
+        staging (io/file r ".tik-migrating")]
     (when (= from to)
       (die (str "this store is already " (name to) "-backed")))
+    (when (.exists staging)
+      (die (str staging " exists, left by an interrupted migration; remove it"
+                " and run the migration again")))
     (let [src (the-store)
           ids (vec (store/ticket-ids src))
           events (vec (mapcat #(store/events src %) ids))
           src-ids (set (map :event/id events))
           sidecars (vec (for [id ids, name (store/sidecar-names src id)]
                           [id name]))
-          dst (case to
-                :sqlite (sqlite/sqlite-store (str db))
-                :file (fstore/file-store r))]
-      ;; move bytes only — no re-signing (migration preserves authorship,
-      ;; it does not re-author); events then their endorsements
-      (doseq [e events] (store/append! dst e))
-      (doseq [[id name] sidecars]
-        (store/put-sidecar! dst id name (store/read-sidecar src id name)))
-      ;; blobs follow the backend's layout (cli-core/blob-dir); copy
-      ;; them across before anything is removed, by name, which is
-      ;; their hash
-      (let [blob-moves (vec (for [id ids
-                                  :let [from-dir (blob-dir r from id)]
-                                  :when (.isDirectory from-dir)
-                                  ^File b (.listFiles from-dir)
-                                  :when (.isFile b)]
-                              [b (io/file (blob-dir r to id) (.getName b))]))]
-        (doseq [[^File b ^File dest] blob-moves]
-          (io/make-parents dest)
-          (io/copy b dest))
-        (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
-                                   (store/ticket-ids dst)))
-              dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))
-              blobs-ok (count (filter (fn [[^File b ^File dest]]
-                                        (and (.isFile dest) (= (.length b) (.length dest))))
-                                      blob-moves))]
-          (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars)
-                         (= (count blob-moves) blobs-ok))
-            (die (str "migration incomplete: " (count src-ids) " event(s)/"
-                      (count sidecars) " sidecar(s)/" (count blob-moves) " blob(s) read, "
-                      (count dst-ids) "/" dst-sidecars "/" blobs-ok
-                      " written — source left intact for retry"))))
-        (case from
-          :sqlite (do (doseq [suffix ["" "-journal" "-wal" "-shm"]]
-                        (.delete (io/file (str db suffix))))
-                      (delete-tree! (io/file r "blobs")))
-          :file (delete-tree! tickets))
-        (println (str "moved " (count blob-moves) " blob(s)")))
+          moved? (volatile! false)]
+      (.mkdirs staging)
+      (try
+        (let [dst (*open-destination* staging to)
+              ;; blobs follow the backend's layout (cli-core/blob-dir)
+              ;; and are copied by name, which is their hash
+              blob-moves (vec (for [id ids
+                                    :let [from-dir (blob-dir r from id)]
+                                    :when (.isDirectory from-dir)
+                                    ^File b (.listFiles from-dir)
+                                    :when (.isFile b)]
+                                [b (io/file (blob-dir staging to id) (.getName b))]))]
+          ;; move bytes only — no re-signing (migration preserves
+          ;; authorship, it does not re-author); events then their
+          ;; endorsements
+          (doseq [e events] (store/append! dst e))
+          (doseq [[id name] sidecars]
+            (store/put-sidecar! dst id name (store/read-sidecar src id name)))
+          (doseq [[^File b ^File dest] blob-moves]
+            (io/make-parents dest)
+            (io/copy b dest))
+          (let [dst-ids (set (mapcat #(map :event/id (store/events dst %))
+                                     (store/ticket-ids dst)))
+                dst-sidecars (reduce + (map #(count (store/sidecar-names dst %)) ids))
+                blobs-ok (count (filter (fn [[^File b ^File dest]]
+                                          (and (.isFile dest) (= (.length b) (.length dest))))
+                                        blob-moves))]
+            (when-not (and (= src-ids dst-ids) (= (count sidecars) dst-sidecars)
+                           (= (count blob-moves) blobs-ok))
+              (die (str "migration incomplete: " (count src-ids) " event(s)/"
+                        (count sidecars) " sidecar(s)/" (count blob-moves) " blob(s) read, "
+                        (count dst-ids) "/" dst-sidecars "/" blobs-ok
+                        " written — source left intact for retry")))
+            (case from
+              :sqlite (do (doseq [suffix ["" "-journal" "-wal" "-shm"]]
+                            (.delete (io/file (str db suffix))))
+                          (delete-tree! (io/file r "blobs")))
+              :file (delete-tree! tickets))
+            (vreset! moved? true)
+            (doseq [entry (staged-entries to)
+                    :let [f (io/file staging entry)]
+                    :when (.exists f)]
+              (Files/move (.toPath f) (.toPath (io/file r entry))
+                          (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE])))
+            (delete-tree! staging)
+            (println (str "moved " (count blob-moves) " blob(s)"))))
+        (finally
+          ;; until the source is removed the staging tree holds only
+          ;; copies and goes; once it is removed the staging tree holds
+          ;; the store's only copy, so it stays for the operator
+          (when-not @moved? (delete-tree! staging))))
       (println (str "migrated " (count ids) " ticket(s), " (count src-ids)
                     " event(s), " (count sidecars) " sidecar(s) to the "
                     (name to) " backend"))
