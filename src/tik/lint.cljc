@@ -23,6 +23,27 @@
                    guard)
     @acc))
 
+(def ^:private guard-arity
+  "How many arguments each operator takes after its head. :and and :or
+  take any number. A guard short of one is not a weaker guard: derivation
+  reads the missing argument as nil, so [:fact= path] demands that the
+  fact equal nil."
+  {:fact 1 :fact= 2 :artifact 1 :signed-by 2 :stage-reached 1
+   :elapsed-since 2 :malli 1 :attested-within 2 :different-person 2 :not 1})
+
+(defn- misshapen-guards
+  "Every guard inside `guard` whose operator takes a fixed number of
+  arguments and is given another, found by descending only into
+  combinator argument positions."
+  [guard]
+  (when (and (vector? guard) (keyword? (first guard)))
+    (let [op (first guard)
+          want (guard-arity op)]
+      (concat (when (and want (not= want (dec (count guard)))) [guard])
+              (cond
+                (#{:and :or} op) (mapcat misshapen-guards (rest guard))
+                (= :not op) (misshapen-guards (second guard)))))))
+
 (defn- unknown-operators
   "Operators outside the closed vocabulary the process DECLARES
   (:process/guard-vocab, conservative default 1), found by descending
@@ -220,6 +241,11 @@
                        " (v2 adds :attested-within and"
                        " :different-person — declare"
                        " :process/guard-vocab 2 to use them).")}))
+        (for [s stages, g (all-guards s), bad (misshapen-guards g)]
+          {:level :error
+           :msg (str "stage " (:stage/id s) " uses " (pr-str bad) ", but "
+                     (first bad) " takes " (guard-arity (first bad))
+                     " argument(s); a missing one derives as nil.")})
         ;; schemas are DATA. malli's :fn and :multi compile a child
         ;; through m/eval, which on a runtime carrying sci runs a string
         ;; or s-expression straight out of the definition — and a
@@ -367,7 +393,7 @@
                            (some (fn [[_path vs]]
                                    (< 1 (count (distinct (map second vs)))))
                                  (group-by first
-                                           (map (juxt second #(nth % 2))
+                                           (map (juxt second #(nth % 2 nil))
                                                 eqs))))))]
             (concat
              (for [s stages, g (all-guards s)
