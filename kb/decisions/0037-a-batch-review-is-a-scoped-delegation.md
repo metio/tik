@@ -1,6 +1,6 @@
 ---
 type: decision
-status: proposed
+status: accepted
 date: 2026-11-23
 title: A reviewed batch is approved by one signature, through a scoped and short-lived delegation
 supersedes: null
@@ -10,7 +10,9 @@ supersedes: null
 
 ## Decision
 
-Proposed, not yet accepted: nothing described here is implemented.
+Accepted on 2026-11-23 by the maintainer, with the expiry cap set to
+five minutes and the touch requirement of point 4 switched on for the
+metio store. Not implemented yet.
 
 **A reviewer may approve a batch of tickets with one signature, by
 delegating to a throwaway key exactly the review events they were
@@ -25,8 +27,8 @@ batch is an option.
    delegated or bound through rung 2 cannot delegate, so there are no
    chains. The body names:
    - `:delegation/public-key`, the throwaway key;
-   - `:delegation/not-after`, at most one hour after the attestation's
-     `:event/at`;
+   - `:delegation/not-after`, at most five minutes after the attestation's
+     `:event/at`, which covers signing one batch and nothing after it;
    - `:delegation/scope`, a set of `[ticket-id head-event-id]` pairs, the
      heads the reviewer was shown;
    - `:delegation/facts`, the fact paths the delegated key may assert, for
@@ -48,7 +50,8 @@ batch is an option.
 4. **A store can require the delegation to come from a security key.**
    `{:delegation {:require-touch true}}` in `oidc.edn` credits a delegation
    only when its signature carries the user-presence flag. Without the
-   setting any key `actors` grants the delegator may sign one.
+   setting any key `actors` grants the delegator may sign one. The metio
+   store sets it.
 5. **Bundles carry the delegation.** It travels in `identity/` beside key
    bindings, and the bundle's `verify.sh` checks the same conditions with
    `ssh-keygen` and coreutils.
