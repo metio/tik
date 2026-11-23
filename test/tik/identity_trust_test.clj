@@ -49,8 +49,13 @@
              (.update (.getBytes si "US-ASCII")))]
      (str si "." (b64url (.sign s))))))
 
+(def ^:private bound-key
+  "The key the fixtures bind, and so the key their tokens commit to."
+  "ssh-ed25519 AAAAC3Kci")
+
 (defn- claims-json
-  [{:keys [iss sub iat exp aud] :or {iss issuer sub subject aud "tik"
+  [{:keys [iss sub iat exp aud] :or {iss issuer sub subject
+                                     aud (str "tik#" (trust/key-commitment bound-key))
                                      iat 1782000000 exp 1782000900}}]
   (str "{\"iss\":\"" iss "\",\"sub\":\"" sub "\",\"aud\":\"" aud "\","
        "\"iat\":" iat ",\"exp\":" exp "}"))
@@ -71,7 +76,7 @@
 (defn- registry-events
   "A registry log carrying one binding, for actor `ci` unless named."
   [{:keys [token at key actor sub]
-    :or {key "ssh-ed25519 AAAAC3Kci" at live-at actor "ci" sub subject}}]
+    :or {key bound-key at live-at actor "ci" sub subject}}]
   (let [create (event/create-ticket {:ticket tid :actor "seb" :at t0
                                      :title "identity registry"
                                      :process :identity-registry})]
@@ -226,7 +231,7 @@
 (deftest an-audience-array-counts-when-it-names-us
   (let [root (store-with-pin! {})
         payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject "\","
-                     "\"aud\":[\"other\",\"tik\"],\"iat\":1782000000,"
+                     "\"aud\":[\"other\",\"tik#" (trust/key-commitment bound-key) "\"],\"iat\":1782000000,"
                      "\"exp\":1782000900}")
         evs (registry-events {:token (jwt payload)})]
     (is (= :trusted (trust/binding-status root (first (identity/bindings evs))
@@ -390,3 +395,53 @@
     (let [root (store-with-pin! {})
           evs (registry-events {:token (jwt (claims-json {})) :actor actor})]
       (is (empty? (trust/verified-bindings root evs)) actor))))
+
+;; ------------------------------------------------- the token commits to the key
+
+(defn- committed-claims
+  "Claims whose audience commits to `key`, as `bridge workload` requests them."
+  [key]
+  (claims-json {:aud (str "tik#" (trust/key-commitment key))}))
+
+(deftest a-token-copied-from-the-log-cannot-bind-another-key
+  (let [root (store-with-pin! {})
+        token (jwt (committed-claims "ssh-ed25519 AAAAC3Kci"))
+        good (registry-events {:token token})
+        copied (registry-events {:token token :key "ssh-ed25519 AAAAC3Kother"})]
+    (is (= :trusted (status root good)))
+    (is (= :identity/key-not-committed (:reason (status root copied)))
+        "the token is genuine, but it names another key")))
+
+(deftest a-token-committing-to-no-key-binds-none
+  (let [root (store-with-pin! {})
+        evs (registry-events {:token (jwt (claims-json {:aud "tik"}))})]
+    (is (= :identity/key-not-committed (:reason (status root evs))))))
+
+(deftest a-nonce-commits-the-token-to-the-key
+  (let [root (store-with-pin! {})
+        payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject "\",\"aud\":\"tik\","
+                     "\"nonce\":\"" (trust/key-commitment "ssh-ed25519 AAAAC3Kci") "\","
+                     "\"iat\":1782000000,\"exp\":1782000900}")]
+    (is (= :trusted (status root (registry-events {:token (jwt payload)}))))))
+
+(deftest the-commitment-rides-on-the-audience-the-store-expects
+  (let [root (store-with-pin! {})
+        evs (registry-events {:token (jwt (committed-claims "ssh-ed25519 AAAAC3Kci"))})]
+    (is (= :trusted (trust/binding-status root (first (identity/bindings evs)) {:audience "tik"})))
+    (is (= :identity/audience-mismatch
+           (:reason (trust/binding-status root (first (identity/bindings evs)) {:audience "other"}))))))
+
+(deftest a-store-can-opt-out-of-the-commitment-and-is-told-so
+  (let [root (store-with-pin! {})
+        _ (spit (io/file root "oidc.edn") (pr-str {:key-commitment :optional}))
+        evs (registry-events {:token (jwt (claims-json {:aud "tik"}))})]
+    (is (= :trusted (status root evs)))
+    (is (seq (trust/uncommitted-bindings root evs))
+        "verify names the bindings a copied token could have made")))
+
+(deftest the-commitment-names-the-key-and-not-its-comment
+  (is (= (trust/key-commitment "ssh-ed25519 AAAAC3Kci")
+         (trust/key-commitment "ssh-ed25519 AAAAC3Kci ci@runner  ")))
+  (is (not= (trust/key-commitment "ssh-ed25519 AAAAC3Kci")
+            (trust/key-commitment "ssh-ed25519 AAAAC3Kother")))
+  (is (re-matches #"tik-key-[0-9a-f]{64}" (trust/key-commitment "ssh-ed25519 AAAAC3Kci"))))

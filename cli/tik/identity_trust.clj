@@ -33,6 +33,19 @@
   is detectable rather than prevented — a witness countersignature over
   the head is what turns that into evidence.
 
+  **The token must commit to the key it binds.** The id-token is stored
+  verbatim in the registry, so anyone who can append to the store can
+  read it. Without a commitment, such a writer could copy a genuine
+  token into a second binding that names their own key, claim an
+  instant inside the token's window, and speak as the actor for that
+  window. A binding therefore counts only when the token names
+  `key-commitment` of its public key: as the `nonce` of an OIDC login,
+  or as the suffix `#<commitment>` of an `aud` entry, which is how a
+  workload asks for it, since GitHub issues one audience per token.
+  A store whose issuer can carry neither sets `:key-commitment
+  :optional` in `oidc.edn`, and `verify` names every binding that rests
+  on that.
+
   **The subject must be allowed to bind that actor.** The token says who
   the IdP thinks the subject is; it says nothing about which actor that
   subject may speak for, and the actor name is whatever the binding
@@ -186,6 +199,41 @@
       (try (:audience (edn/read-string (slurp f)))
            (catch Exception _ nil)))))
 
+(defn key-commitment
+  "The value a token carries to commit to `public-key`: `tik-key-` and
+  the hex SHA-256 of the key's type and base64 blob, so a comment or
+  extra whitespace on the key line changes nothing."
+  [public-key]
+  (let [[kind blob] (str/split (str/trim (str public-key)) #"\s+")
+        md (java.security.MessageDigest/getInstance "SHA-256")
+        digest (.digest md (.getBytes (str kind " " blob) "UTF-8"))]
+    (str "tik-key-" (str/join (map #(format "%02x" (bit-and % 0xff)) digest)))))
+
+(defn key-commitment-required?
+  "Whether this store refuses a binding whose token does not commit to its
+  key. Required unless `oidc.edn` sets `:key-commitment :optional`, for an
+  issuer that can carry neither a nonce nor a chosen audience."
+  [root]
+  (let [f (io/file root "oidc.edn")]
+    (not (and (.exists f)
+              (= :optional (try (:key-commitment (edn/read-string (slurp f)))
+                                (catch Exception _ nil)))))))
+
+(defn- audience-base
+  "An `aud` entry without the key commitment `bridge workload` appends."
+  [a]
+  (if (string? a) (str/replace a #"#tik-key-[0-9a-f]{64}$" "") a))
+
+(defn token-names-key?
+  "Does a token with these `claims` commit to `public-key`, through its
+  nonce or through an audience entry ending in `#<commitment>`?"
+  [claims public-key]
+  (let [c (key-commitment public-key)
+        aud (:aud claims)
+        auds (cond (string? aud) [aud] (sequential? aud) aud :else [])]
+    (boolean (or (= c (:nonce claims))
+                 (some #(and (string? %) (str/ends-with? % (str "#" c))) auds)))))
+
 (defn- policy-rule? [r]
   (and (map? r)
        (string? (:issuer r)) (not (str/blank? (:issuer r)))
@@ -256,8 +304,8 @@
   [aud expected]
   (or (nil? expected)
       (cond
-        (string? aud) (= aud expected)
-        (sequential? aud) (boolean (some #(= % expected) aud))
+        (string? aud) (= (audience-base aud) expected)
+        (sequential? aud) (boolean (some #(= (audience-base %) expected) aud))
         :else false)))
 
 (defn- epoch-seconds
@@ -304,9 +352,12 @@
                      (expected-audience root))
                    (if (contains? opts :policy)
                      (:policy opts)
-                     (binding-policy root))))
-  ([root {:keys [actor issuer subject id-token at] :as binding} leeway audience
-    policy]
+                     (binding-policy root))
+                   (if (contains? opts :key-commitment)
+                     (:key-commitment opts)
+                     (key-commitment-required? root))))
+  ([root {:keys [actor issuer subject id-token at public-key] :as binding} leeway
+    audience policy commitment?]
    (let [jwks (try (pinned-jwks root issuer)
                    (catch Exception _ ::unreadable))]
      (cond
@@ -352,6 +403,13 @@
                 :binding binding :expected audience
                 :token-audience (:aud (:claims parsed))}
 
+               ;; a genuine token copied out of the log into a binding for
+               ;; another key; judged after the audience so a token for
+               ;; another service is still reported as that
+               (and commitment? (not (token-names-key? (:claims parsed) public-key)))
+               {:reason :identity/key-not-committed :issuer issuer
+                :binding binding :commitment (key-commitment public-key)}
+
                ;; judged last, so a forged token is reported as forged
                ;; rather than as merely unauthorized
                (= ::malformed-policy policy)
@@ -388,6 +446,16 @@
   [root registry-events]
   (identity/verified (identity/bindings registry-events)
                      (binding-verifier root)))
+
+(defn uncommitted-bindings
+  "Verified bindings whose token does not commit to their key, in a store
+  that set `:key-commitment :optional`. Not a refusal there, but worth
+  saying: a writer who copied the token could have made the same binding
+  for another key."
+  [root registry-events]
+  (when-not (key-commitment-required? root)
+    (seq (into [] (remove #(token-names-key? (token-claims (:id-token %)) (:public-key %)))
+               (verified-bindings root registry-events)))))
 
 (defn refusals
   "Every binding that does NOT count, with the reason — what `verify`

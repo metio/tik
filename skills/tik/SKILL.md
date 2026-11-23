@@ -265,7 +265,13 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   A binding counts only when its token's signature is the issuer's, its `sub`
   and `iss` match what the attestation claims, and it was LIVE when the binding
   was written — so a leaked expired token cannot mint one (ADR 0023); a token
-  without `exp` is never live, since its key would otherwise speak for ever. The token
+  without `exp` is never live, since its key would otherwise speak for ever.
+  The token must also name the key it binds (ADR 0035): `--github` requests
+  the audience `tik#tik-key-<sha256>`, and `bridge oidc` sends the same value
+  as the nonce, so a token copied out of the registry cannot bind another
+  key. A token from `--token-file`/`--token-env` must have been requested
+  that way; the refusal names the audience. A store whose issuer carries
+  neither sets `:key-commitment :optional` in `oidc.edn`. The token
   is checked before the binding is written, because a log never deletes.
 - `tik bridge oid4vci --credential vc.jwt --registry ID [--jwks-url U |
   --jwks FILE]` — ingest a **verifiable credential** (a VC is an attestation

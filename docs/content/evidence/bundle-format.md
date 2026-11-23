@@ -87,11 +87,14 @@ it, or run this list yourself.
 6. **Key bindings.** For each binding in `identity/`: the issuer signed
    the id-token, using the key at `identity/keys/<kid>.pem`; the token's
    `sub` and `iss` equal the binding's; the token was live at the
-   binding's `:event/at`; and the key it binds appears in `actors`.
+   binding's `:event/at`; the token names the key it binds, as a `nonce`
+   or an `aud` suffix equal to `tik-key-<sha256 of the key>` (ADR 0035);
+   and the key it binds appears in `actors`.
 
 Check 6 is checkable offline because the issuer's key travels in the
 archive, and it says exactly this much: *whoever built this bundle holds
-a token that this key signed, for this subject, at that moment.*
+a token that this key signed, for this subject and this bound key, at
+that moment.*
 Recognizing the key as the issuer's is the reader's job, the same way
 recognizing an `actors` line is — a subject like
 `repo:metio/tik:ref:refs/heads/main` is worth what the reader knows about

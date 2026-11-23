@@ -164,7 +164,9 @@
                   (h/run-tik! ci-env "bridge" "workload" "--registry" registry
                               "--token-file" (str tf) "--public-key" (str ci-key ".pub")
                               "--actor" "ci")))
-        payload (str "{\"sub\":\"" svid "\",\"aud\":[\"tik\"],\"exp\":" (+ now 300) "}")]
+        payload (str "{\"sub\":\"" svid "\",\"aud\":[\"tik#"
+                     (trust/key-commitment (slurp (str ci-key ".pub")))
+                     "\"],\"exp\":" (+ now 300) "}")]
     (testing "pinning keeps the JWT-SVID key and skips the CA key"
       (is (zero? (:exit pin)) (str (:out pin) (:err pin)))
       (is (str/includes? (:err pin) "skipped 1") (:err pin))

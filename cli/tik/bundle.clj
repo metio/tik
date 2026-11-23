@@ -488,6 +488,12 @@
          (bad (str "the token in the binding for " (:actor b)
                    " was not live when the binding was written"))
 
+         ;; a reader judges with no store policy to relax it, and a token
+         ;; that names no key could have been copied into this binding
+         (not (identity-trust/token-names-key? parsed (:public-key b)))
+         (bad (str "the token in the binding for " (:actor b)
+                   " does not name the key the binding grants"))
+
          (not (and registry (str/includes? registry (str (:public-key b)))))
          (bad (str "the binding for " (:actor b)
                    " binds a key the registry does not list"))
