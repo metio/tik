@@ -1687,3 +1687,29 @@
         ((:poll df))
         (is (every? #(and (number? %) (not (neg? %))) @sleeps)
             (str start " -> " (pr-str @sleeps)))))))
+
+(deftest a-ticket-whose-definition-is-gone-never-hides-the-healthy
+  (let [root (h/temp-dir! "tik-gone")
+        run (h/tik-runner root)]
+    (.mkdirs (io/file root "processes"))
+    (spit (io/file root "processes" "gone.edn")
+          (pr-str {:process/id :gone :process/version 1 :process/guard-vocab 1
+                   :lint {:runbooks :off}
+                   :process/stages [{:stage/id :a :guards []}]}))
+    (run "new" "track" "--title" "healthy neighbor")
+    (run "new" "gone" "--title" "the orphan")
+    (io/delete-file (io/file root "processes" "gone.edn"))
+    (doseq [f (.listFiles (io/file root "processes" "by-hash"))]
+      (io/delete-file f))
+    (doseq [verb [["ls"] ["next" "--actor" "fuzz"] ["plan"] ["board"]]]
+      (testing (str/join " " verb)
+        (let [r (apply run verb)]
+          (is (zero? (:exit r)) (str (:out r) (:err r))))))
+    (testing "ls names the orphan as an error row next to the healthy ticket"
+      (let [r (run "ls")]
+        (is (re-find #"healthy neighbor" (:out r)))
+        (is (re-find #"error\s+cannot derive.*no process named 'gone'" (:out r)))))
+    (testing "new without the definition still refuses with a usage message"
+      (let [r (run "new" "gone" "--title" "x")]
+        (is (= 1 (:exit r)))
+        (is (re-find #"no process named 'gone'" (str (:out r) (:err r))))))))

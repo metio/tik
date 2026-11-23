@@ -200,12 +200,12 @@
               (filter #(not (str/ends-with? (.getName ^File %) ".tests.edn"))
                       (.listFiles (io/file (root) "processes"))))))
 
-(defn load-process [name]
-  (when-not name
-    (die (str "usage: tik new <process> [--title T]\n"
-              (if-let [ps (seq (available-processes))]
-                (str "available processes: " (str/join ", " ps))
-                "no processes yet — `tik author` writes your first one"))))
+(defn read-named-process
+  "The definition processes/<name>.edn holds. Throws ex-info
+  {:reason :process/missing} when there is none, so a caller deriving
+  many tickets isolates the one whose definition is gone instead of
+  exiting for all of them."
+  [name]
   (let [f (process-file name)]
     (when (and (not (.exists f)) (= "track" name))
       ;; the built-in fallback works in an EMPTY store; materialize it
@@ -213,12 +213,25 @@
       (io/make-parents f)
       (spit f (with-out-str (pp/pprint templates/track-process))))
     (when-not (.exists f)
-      (die (str "no process named '" name "' (looked for " f ")\n"
-                (if-let [ps (seq (available-processes))]
-                  (str "available: " (str/join ", " ps)
-                       "\nor `tik author` to create one")
-                  "none exist yet — `tik author` writes your first one"))))
+      (throw (ex-info (str "no process named '" name "' (looked for " f ")")
+                      {:reason :process/missing :process name})))
     (read-edn-file f)))
+
+(defn load-process [name]
+  (when-not name
+    (die (str "usage: tik new <process> [--title T]\n"
+              (if-let [ps (seq (available-processes))]
+                (str "available processes: " (str/join ", " ps))
+                "no processes yet — `tik author` writes your first one"))))
+  (try (read-named-process name)
+       (catch clojure.lang.ExceptionInfo e
+         (if (= :process/missing (:reason (ex-data e)))
+           (die (str (ex-message e) "\n"
+                     (if-let [ps (seq (available-processes))]
+                       (str "available: " (str/join ", " ps)
+                            "\nor `tik author` to create one")
+                       "none exist yet — `tik author` writes your first one")))
+           (throw e)))))
 
 (defn roles-file ^File [] (io/file (root) "roles.edn"))
 
@@ -263,7 +276,7 @@
         archived (some-> hash by-hash-file)]
     (if (and archived (.exists ^File archived))
       (read-edn-file archived)
-      (let [proc (load-process (process-name state))]
+      (let [proc (read-named-process (process-name state))]
         (when (and hash (not= hash (process/process-hash proc)))
           (binding [*out* *err*]
             (println "warning: pinned definition" hash
