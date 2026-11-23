@@ -50,7 +50,10 @@ tik test processes/support-request.tests.edn
 
 Scripted cases: evidence in, expected stages out. Deterministic — a fixed
 epoch, pure derivation, no store — and a failing case prints `explain`, so
-the process itself says why a stage did not derive.
+the process itself says why a stage did not derive. A file without cases,
+or a case whose `:case/expect` asserts none of `:reached`, `:current`,
+`:includes` or `:excludes`, is refused rather than passed, so a typo cannot
+turn a gate green.
 
 ```clojure
 {:test/process "support-request.edn"

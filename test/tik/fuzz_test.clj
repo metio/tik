@@ -764,8 +764,14 @@
                  ["{:test/process 42}" #":test/process"]
                  ["{:test/process \"nope.edn\" :test/cases []}" #"no process definition"]
                  ["{:test/process \"proc.edn\" :test/cases 42}" #":test/cases must be"]
-                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [42] :case/expect {}}]}" #"each step must be a list"]
-                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [[:frobnicate]] :case/expect {}}]}" #"unknown step op"]]]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [42] :case/expect {:includes #{:x}}}]}" #"each step must be a list"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [[:frobnicate]] :case/expect {:includes #{:x}}}]}" #"unknown step op"]
+                 ["{:test/process \"proc.edn\"}" #"no cases"]
+                 ["{:test/process \"proc.edn\" :test/case [{:case/name \"c\" :case/steps [] :case/expect {:includes #{:x}}}]}" #"no cases"]
+                 ["{:test/process \"proc.edn\" :test/cases []}" #"no cases"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [] :case/expected {:includes #{:x}}}]}" #"case \"c\".*:case/expected"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [] :case/expect {}}]}" #"case \"c\" asserts nothing"]
+                 ["{:test/process \"proc.edn\" :test/cases [{:case/name \"c\" :case/steps [] :case/expect {:include #{:x}}}]}" #"case \"c\".*:include"]]]
           (let [r (tik.cli/run-argv ["test" (write body)])]
             (is (= 1 (:exit r)) body)
             (is (h/clean-output? (str (:out r) (:err r))) (str body "\n" (:err r)))

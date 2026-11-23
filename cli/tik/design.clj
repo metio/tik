@@ -174,6 +174,29 @@
         _ (when-not (map? proc)
             (die (str "the :test/process path holds no process definition: "
                       process)))
+        ;; a run that asserts nothing must not print PASS: a CI gate would
+        ;; go green on a typo
+        _ (when (empty? cases)
+            (die (str "test file has no cases — :test/cases is missing or empty"
+                      (when-let [other (seq (remove #{:test/process :test/roles :test/cases}
+                                                    (keys spec)))]
+                        (str " (it carries " (str/join ", " (map pr-str other)) ")")))))
+        _ (doseq [c cases]
+            (when-not (map? c) (die (str "each case must be a map: " (pr-str c))))
+            (let [{:case/keys [name expect]} c
+                  label (pr-str name)
+                  unknown (remove #{:case/name :case/steps :case/expect} (keys c))]
+              (when (seq unknown)
+                (die (str "case " label " carries unknown keys "
+                          (str/join ", " (map pr-str unknown))
+                          " — a case has :case/name, :case/steps and :case/expect")))
+              (when-not (and (map? expect) (seq expect))
+                (die (str "case " label " asserts nothing — give :case/expect"
+                          " one of :reached, :current, :includes, :excludes")))
+              (when-let [bad (seq (remove #{:reached :current :includes :excludes} (keys expect)))]
+                (die (str "case " label " expects unknown keys "
+                          (str/join ", " (map pr-str bad))
+                          " — :case/expect takes :reached, :current, :includes, :excludes")))))
         ;; A definition that ships its roles EMPTY — the shape anyone can
         ;; adopt without inheriting somebody else's org chart — cannot have
         ;; its `:signed-by` stages tested against declared members, because
