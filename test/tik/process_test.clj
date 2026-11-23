@@ -221,3 +221,10 @@
     (is (some #(re-find #"fact \[:a\] carries a schema that is not data" %) msgs))
     (is (some #(re-find #":malli guard carries a schema that is not data" %)
               msgs))))
+
+(deftest a-stage-defined-twice-is-an-error
+  (let [p {:process/id :p :process/version 1
+           :process/stages [{:stage/id :draft :guards []}
+                            {:stage/id :approved :after [:draft] :guards [[:fact [:x]]]}
+                            {:stage/id :approved :guards []}]}]
+    (is (some #(re-find #"stage :approved is defined more than once" (:msg %)) (errors p)))))
