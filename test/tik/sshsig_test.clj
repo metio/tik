@@ -146,6 +146,9 @@
                (str "seb valid-after=\"20200101\" " pub)
                (str "seb valid-before=\"29990101\" " pub)
                (str "seb no-such-option " pub)
+               (str "seb = " pub)
+               (str "seb =\"x\" " pub)
+               (str "seb namespaces=\"tik-*\",= " pub)
                (str "seb " pub " trailing comment")
                (str "mallory " pub)
                (str "*,seb " pub)]]
@@ -154,6 +157,10 @@
             theirs (keygen-verdict dir line "seb" "tik-event" msg armor)]
         (is (or (= ::sshsig/unsupported ours) (= theirs ours))
             (str line " — ssh-keygen " theirs ", in process " ours))))
+    (testing "an option without a name fails well"
+      (is (= [["=" nil]] (:options (sshsig/parse-signer-line "seb = ssh-ed25519 AAAAC3x")))
+          "kept as an unknown option, which refuses the line")
+      (is (= ["seb"] (sshsig/principals (str "seb = " pub)))))
     (testing "the options that need a clock defer to ssh-keygen"
       (is (= ::sshsig/unsupported
              (sshsig/verify (str "seb valid-before=\"20200101\" " pub)
