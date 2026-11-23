@@ -880,6 +880,8 @@
                                  " if you might ever need the old rules.")))))
           (println "dry run — nothing deleted. Re-run with --apply to remove."))))))
 
+(declare delete-tree!)
+
 (defn cmd-init
   "init [--sqlite] [--hidden]: mark this directory as a store. The
   backend is the store's own shape (ADR 0020): the default is the
@@ -894,15 +896,26 @@
   (let [here (.getCanonicalFile (io/file "."))
         store (if (:hidden opts) (io/file here ".tik") here)
         tickets (io/file store "tickets")
-        db (io/file store "tik.db")]
-    (when (or (.isDirectory tickets) (.isFile db))
-      (die (str "already a store: " store)))
+        db (io/file store "tik.db")
+        hidden-dir (io/file here ".tik")
+        fresh-hidden? (and (:hidden opts) (not (.exists hidden-dir)))]
+    ;; discovery prefers .tik/ over tickets/ in the same directory, so a
+    ;; second store of the other layout here would hide the first
+    (when-let [existing (first (filter #(.exists ^File %)
+                                       [(io/file here "tickets") (io/file here "tik.db")
+                                        (io/file hidden-dir "tickets") (io/file hidden-dir "tik.db")]))]
+      (die (str "already a store: " (.getParentFile ^File existing))))
     (.mkdirs store)
-    (if (:sqlite opts)
-      (do (sqlite/sqlite-store (str db))       ; init! writes the schema file
-          (println (str "SQLite store initialized at " db)))
-      (do (.mkdirs tickets)
-          (println (str "store initialized at " store))))
+    (try
+      (if (:sqlite opts)
+        (do (sqlite/sqlite-store (str db))       ; init! writes the schema file
+            (println (str "SQLite store initialized at " db)))
+        (do (.mkdirs tickets)
+            (println (str "store initialized at " store))))
+      (catch Throwable e
+        ;; a bare .tik/ left behind would win discovery as an empty store
+        (when fresh-hidden? (delete-tree! hidden-dir))
+        (throw e)))
     (println (str "every tik command run at or below " here
                   " now uses it — try:"))
     (println "  tik new track --title \"the first thing\"")

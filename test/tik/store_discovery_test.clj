@@ -90,6 +90,20 @@
       (is (= 1 (:exit r)))
       (is (re-find #"already a store" (:err r))))))
 
+(deftest init-refuses-a-second-store-of-the-other-layout
+  (doseq [[first-args second-args] [[["init"] ["init" "--hidden"]]
+                                    [["init" "--hidden"] ["init"]]
+                                    [["init" "--sqlite"] ["init" "--hidden"]]
+                                    [["init" "--hidden"] ["init" "--sqlite"]]]]
+    (let [top (tmpdir)]
+      (apply tik-at top nil first-args)
+      (tik-at top nil "new" "track" "--title" "visible")
+      (let [r (apply tik-at top nil second-args)]
+        (is (= 1 (:exit r)) (pr-str first-args second-args))
+        (is (re-find #"already a store" (:err r)) (pr-str first-args second-args)))
+      (is (str/includes? (:out (tik-at top nil "ls")) "visible")
+          (str "the existing ticket stays reachable after " (pr-str second-args))))))
+
 (deftest context_facts_make_the_repo_dimension_automatic
   (let [top (tmpdir)
         jaas (io/file top "jaas" "src")
