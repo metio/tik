@@ -80,3 +80,19 @@
     (let [{:keys [exit err out]} (h/run-tik! env "ls")]
       (is (pos? exit) "silently falling back would widen authority")
       (is (str/includes? (str err out) "malformed role register")))))
+
+(deftest the-board-follows-a-register-change
+  (let [root (h/temp-dir! "tik-roles-board")
+        env {:root (str root) :actor "ana"}
+        run (fn [& args] (apply h/run-tik! env args))]
+    (write-process! root)
+    (run "init")
+    (write-process! root)
+    (let [id (second (re-find #"([0-9a-f]{8})" (:out (run "new" "approval" "--title" "board"))))
+          approved-on-board? #(boolean (re-find #":approved" (:out (run "ls" "--all" "--edn"))))]
+      (run "set" id "ok=true" "--actor" "ana")
+      (is (not (approved-on-board?)) "the first listing caches the row")
+      (run "roles" "add" "approver" "ana")
+      (is (approved-on-board?) "the cached row does not outlive the register it was derived under")
+      (run "roles" "remove" "approver" "ana")
+      (is (not (approved-on-board?))))))
