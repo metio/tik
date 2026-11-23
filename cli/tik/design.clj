@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [tik.args :refer [actor parse-key parse-value read-edn-file]]
             [tik.canonical :as canonical]
+            [tik.dag :as dag]
             [tik.cli-core :refer [die exit! load-process-arg load-ticket now
                                   parse-when resolve-file resolve-id-soft
                                   stage-delta the-store]]
@@ -51,7 +52,10 @@
   (let [[op & args] step
         tick (.plusMillis ^Instant now 1)
         arg {:ticket (:event/ticket (first events)) :actor actor :at tick
-             :parents #{(:event/id (peek events))}}
+             ;; every head, as a real write takes: on a forked ticket
+             ;; (whatif) the last-ordered event is only one branch, and a
+             ;; write on it would read as concurrent with the others
+             :parents (dag/heads events)}
         append (fn [e] (-> st (update :events conj e) (assoc :now tick)))]
     (case op
       :actor (assoc st :actor (first args))
