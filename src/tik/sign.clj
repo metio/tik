@@ -199,6 +199,19 @@
            (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
                 (finally (.delete sig)))))))))
 
+(defn verify-text
+  "verify-bytes over allowed-signers given as text rather than a file, for
+  a caller that narrowed the registry to some of its lines. ssh-keygen
+  reads a temporary copy only for a key type tik.sshsig does not read."
+  [^String text ^bytes event-bytes ^bytes sig-bytes actor sig-namespace]
+  (let [in-process (sshsig/verify text event-bytes sig-bytes actor sig-namespace)]
+    (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
+      in-process
+      (when @verifier-available?
+        (let [f (write-temp "tik-signers" (.getBytes text "UTF-8"))]
+          (try (verify-bytes f event-bytes sig-bytes actor sig-namespace)
+               (finally (.delete f))))))))
+
 (defn find-principals-bytes
   "Which registered principals could have produced `sig-bytes` over
   `event-bytes`? Empty when the key is not in the registry."

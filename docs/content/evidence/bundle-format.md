@@ -16,7 +16,8 @@ bundle.edn                          the format name and version
 actors                              the allowed-signers registry
 pq-signers                          the ML-DSA-65 key registry, where the store keeps one
 roles.edn                           role membership, where the store keeps a register
-identity/<event-id>.edn             key bindings, as signed registry events
+delegation.edn                      the store's delegation policy, where it sets one
+identity/<event-id>.edn             key bindings and delegations, as signed registry events
 identity/<event-id>.sig.<fpr>       their authorship signatures
 identity/keys/<kid>.pem             the issuer keys those bindings rest on
 processes/by-hash/<hash>.edn        the definition the ticket pinned
@@ -64,6 +65,14 @@ issuer's public key. Its parents live in a registry ticket that stays
 behind, so its standing rests on its content address plus the issuer's
 signature over the id-token it carries.
 
+**Delegations travel with the verdicts they cover.** A verdict signed by
+the throwaway key of a `tik review --batch` (ADR 0037) counts only
+through the delegation that names the key, so the bundle carries every
+delegation covering one of its events, and `delegation.edn`
+(`{:require-touch true}` or `false`) when the store sets a delegation
+policy. A bundle without `delegation.edn` credits delegations without a
+touch requirement, as a store without a policy does.
+
 **`bundle.edn` declares the packaging version and nothing else.** The
 ticket, the head, the definition and the stage are derivable from the
 files, so the manifest names none of them and nothing in it is trusted.
@@ -77,7 +86,7 @@ coreutils, `ssh-keygen` and — for key bindings — `openssl`;
 script travels inside the archive it checks, so read it before you run
 it, or run this list yourself.
 
-1. **Integrity.** Every `tickets/*/events/*.edn`,
+1. **Integrity.** Every `tickets/*/events/*.edn`, `identity/*.edn`,
    `processes/by-hash/*.edn` and `tickets/*/blobs/*` hashes to its own
    name.
 2. **Shape.** Exactly one ticket directory.
@@ -91,6 +100,17 @@ it, or run this list yourself.
    a `pq-signers` line that allows the `tik-event` namespace. A
    `.pqsig.` sidecar without `pq-signers` fails, and `verify.sh` fails
    one it cannot check because the host's OpenSSL is older than 3.5.
+   A `.sig.` sidecar whose key `actors` does not grant still counts when
+   a delegation in `identity/` covers it:
+   - the delegation is an attestation by the event's actor, verifying
+     through an `actors` line no key binding earned, and touched where
+     `delegation.edn` requires it;
+   - its window is at most five minutes and holds the event's
+     `:event/at`;
+   - its scope names the event's ticket together with one of the event's
+     parents;
+   - its facts name the path the event asserts;
+   - the sidecar verifies against the key the delegation names.
 5. **Countersignature.** Every `.witness.` sidecar verifies as a
    registered principal under `tik-witness`.
 6. **Key bindings.** For each binding in `identity/`: the issuer signed

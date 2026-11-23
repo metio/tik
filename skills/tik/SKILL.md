@@ -178,7 +178,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   bindings and their issuer keys, the pinned definition, `roles.edn`, and a
   `verify.sh` that checks the lot with coreutils + `ssh-keygen`. Post-quantum
   sidecars travel with `pq-signers`; `verify.sh` checks them with OpenSSL 3.5
-  or later and fails, rather than passes, where OpenSSL has no ML-DSA.
+  or later and fails, rather than passes, where OpenSSL has no ML-DSA. A
+  verdict from `tik review --batch` travels with the delegation that covers
+  it and the store's `delegation.edn`, so both `verify.sh` and `rederive`
+  credit it as the delegating actor.
 - `tik rederive <ev.tgz|dir|https url> [--edn]` — check a bundle and recompute
   what its facts imply under the definition it pinned, **at the instant you
   ask**: a guard with a freshness window (`:attested-within`,
