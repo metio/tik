@@ -95,6 +95,33 @@
                                        (or (.listFiles holder) []))))]
            {:subject r :repo r}))))
 
+(defn- below-holder
+  "The canonical directory `c` as {:repo rel}, rel its path relative to
+  the holder, or {:error msg} when it is not strictly below the holder or
+  does not exist. A probe runs in the directory a ticket names, so this
+  is the one check between a fact and a working directory."
+  [^File holder ^File c shown]
+  (let [h (str (.getCanonicalFile holder) File/separator)]
+    (cond
+      (not (str/starts-with? (str c File/separator) h))
+      {:error (str shown " is outside " holder)}
+      (= (str c File/separator) h)
+      {:error (str shown " is the store holder itself, not a directory below it")}
+      (not (.isDirectory c))
+      {:error (str "no such directory: " c)}
+      :else {:repo (subs (str c) (count h))})))
+
+(defn repo-under-holder
+  "Where a ticket's [:repo] value `repo` points: {:dir File} for a
+  relative path that resolves strictly below the holder, else {:error
+  msg}. An absolute path or one that climbs out is refused."
+  [^File holder repo]
+  (let [f (io/file (str repo))]
+    (if (.isAbsolute f)
+      {:error (str repo " is an absolute path; [:repo] is relative to " holder)}
+      (let [r (below-holder holder (.getCanonicalFile (io/file holder (str repo))) repo)]
+        (if (:repo r) {:dir (io/file (.getCanonicalFile holder) ^String (:repo r))} r)))))
+
 (defn- member-repo
   "Where a declared member's work happens, as a path relative to the
   holder: {:repo rel}, {} for a member without a directory, or {:error
@@ -104,17 +131,8 @@
   [^File holder dir]
   (if (nil? dir)
     {}
-    (let [f (io/file dir)
-          ^File c (.getCanonicalFile (if (.isAbsolute f) f (io/file holder dir)))
-          h (str (.getCanonicalFile holder) File/separator)]
-      (cond
-        (not (str/starts-with? (str c File/separator) h))
-        {:error (str dir " is outside " holder)}
-        (= (str c File/separator) h)
-        {:error (str dir " is the store holder itself, not a directory below it")}
-        (not (.isDirectory c))
-        {:error (str "no such directory: " c)}
-        :else {:repo (subs (str c) (count h))}))))
+    (let [f (io/file dir)]
+      (below-holder holder (.getCanonicalFile (if (.isAbsolute f) f (io/file holder dir))) dir))))
 
 (defn- command-entries
   "The entries a population's :command prints: one member per line, as
@@ -671,7 +689,8 @@
                       (not (next-lens/settled? process events t roles)))
             :let [repo (red/fact-value state [:repo])
                   repo-name (when repo (safe-name repo))
-                  ^File dir (when repo-name (io/file holder repo-name))
+                  {^File dir :dir dir-error :error} (when repo-name
+                                                      (repo-under-holder holder repo-name))
                   definition (let [f (process-file (process-name state))]
                                (when (.exists f) (read-edn-file f)))
                   probe (or (:command opts) (:probe definition))
@@ -695,8 +714,7 @@
                     (nil? probe)
                     (str "process " (process-name state)
                          " declares no :probe — pass --command to run one")
-                    (and dir (not (.isDirectory dir)))
-                    (str "no such directory under " holder ": " repo-name)
+                    dir-error dir-error
                     :else nil)]]
       (cond
         ;; Naming an id asks for THIS ticket's probe; when it cannot run,
