@@ -320,6 +320,13 @@
                      " stratified negation (ADR 0005) requires strictly"
                      " earlier targets, or the result depends on"
                      " fixpoint iteration order.")})
+        ;; derivation reaches an id when ANY entry with it passes, while
+        ;; explain and the strata read only the last, so a reviewer of
+        ;; one entry would miss the gate another bypasses
+        (for [[id n] (sort-by (comp str key) (frequencies (map :stage/id stages)))
+              :when (< 1 n)]
+          {:level :error
+           :msg (str "stage " id " is defined more than once (" n " entries)")})
         (for [s stages, a (:after s []) :when (not (stage-ids a))]
           {:level :error
            :msg (str "stage " (:stage/id s) " :after unknown stage " a)})

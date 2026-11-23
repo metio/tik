@@ -112,6 +112,10 @@
      (let [stage-names (set (map :name (:stages answers)))]
        (vec
         (concat
+         (for [[name n] (sort-by key (frequencies (map :name (:stages answers))))
+               :when (< 1 n)]
+           {:level :error
+            :msg (str "stage '" name "' is defined more than once")})
          (for [{:keys [name after]} (:stages answers)
                missing (remove stage-names (or after []))]
            {:level :error

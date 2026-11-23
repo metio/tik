@@ -179,3 +179,13 @@
                                          :needs [{:kind :fact
                                                   :path [:flagged-item]}]}]}
                               rules))))))
+
+(deftest author-check-refuses-a-stage-named-twice
+  (let [answers {:name "twice" :purpose "a process whose stage repeats"
+                 :roles {"r" ["seb"]}
+                 :stages [{:name "open" :purpose "opened"}
+                          {:name "done" :purpose "done" :after ["open"] :needs [{:kind :fact :path [:x]}]}
+                          {:name "done" :purpose "done again" :after ["open"] :needs [{:kind :fact :path [:y]}]}]}]
+    (is (some #(and (= :error (:level %)) (re-find #"stage 'done' is defined more than once" (:msg %)))
+              (author/check answers))
+        (pr-str (author/check answers)))))
