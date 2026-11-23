@@ -81,6 +81,9 @@
   (collect #(when (and (vector? %) (= :artifact (first %))) (nth % 1 nil))
            guard))
 
+(defn- artifact-forms [guard]
+  (collect #(when (and (vector? %) (= :artifact (first %))) %) guard))
+
 (defn- stage-refs [guard]
   (collect #(when (and (vector? %) (= :stage-reached (first %)))
               (second %))
@@ -243,6 +246,17 @@
            :msg (str "stage " (:stage/id s) " references fact " path
                      " not declared in :process/facts (no schema,"
                      " no generated form, no generator).")})
+        ;; eval-artifact compares artifact names with str/starts-with?,
+        ;; so any other prefix throws on every derivation of a ticket
+        ;; holding an artifact
+        (for [s stages, g (all-guards s)
+              form (artifact-forms g)
+              :when (not (and (= 2 (count form)) (string? (second form))))]
+          {:level :error
+           :msg (str "stage " (:stage/id s) " guard " (pr-str form)
+                     " needs a string prefix, such as \"receipts/\" —"
+                     " any other value fails every derivation once an"
+                     " artifact is attached")})
         ;; :artifact matches a raw string prefix, so one that does not
         ;; end at a path boundary also accepts sibling names — a
         ;; "review" prefix is satisfied by "review-notes-fake.txt".

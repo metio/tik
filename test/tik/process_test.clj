@@ -228,3 +228,10 @@
                             {:stage/id :approved :after [:draft] :guards [[:fact [:x]]]}
                             {:stage/id :approved :guards []}]}]
     (is (some #(re-find #"stage :approved is defined more than once" (:msg %)) (errors p)))))
+
+(deftest an-artifact-guard-needs-a-string-prefix
+  (doseq [g [[:artifact :receipts] [:artifact] [:artifact nil] [:artifact 42]]]
+    (let [p {:process/id :p :process/version 1
+             :process/stages [{:stage/id :open :guards []}
+                              {:stage/id :paid :after [:open] :guards [g]}]}]
+      (is (some #(re-find #"needs a string prefix" (:msg %)) (errors p)) (pr-str g)))))
