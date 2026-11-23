@@ -538,6 +538,8 @@
     tik.canonical/sha256-hex-bytes  "SHA-256 over a byte array, ex-info for anything else; the hostile corpus covers it"
     tik.canonical/address-of-bytes  "the prefix and sha256-hex-bytes, ex-info for anything else; the hostile corpus covers it"
     tik.canonical/address-of-text   "the prefix and sha256-hex, ex-info for anything else; the hostile corpus covers it"
+    tik.canonical/hash-spec         "a lookup in hash-of-version, ex-info for any version it lacks; the hostile corpus covers it"
+    tik.canonical/address-with      "a row and a byte array, ex-info for anything else; the hostile corpus covers it"
     tik.event/valid?                "malli validator over the Event schema: a boolean over any input"
     tik.event/explain-event         "malli explainer over the Event schema: an explanation or nil over any input"
     tik.event/event-id              "content-address of a map; the hashing core of mint (registered)"

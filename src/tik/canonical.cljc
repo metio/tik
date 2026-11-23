@@ -161,33 +161,72 @@
 (defn- bytes->hex ^String [^bytes b]
   (str/join (map #(format "%02x" %) b)))
 
+(def implemented-algorithms
+  "The digests this build can compute for a content address. A format
+  version may name only one of these; SHA-512 is here so that a version
+  switching to it is a table row, not new code."
+  #{"SHA-256" "SHA-512"})
+
+(def hash-of-version
+  "The content hash of each format version this build implements, and the
+  prefix its ids carry. ADR 0006 rule 2 is one row per version, rule 4 is
+  that a verifier reads this table and never the prefix of an id it is
+  handed."
+  {1 {:prefix "sha256-" :algorithm "SHA-256"}})
+
+(defn hash-spec
+  "The row of `hash-of-version` for `version`, refusing a version this
+  build does not implement."
+  [version]
+  (or (get hash-of-version version)
+      (throw (ex-info (str "format version " (pr-str version)
+                           " is not implemented by this build")
+                      {:reason :canonical/unknown-format-version
+                       :version version
+                       :known (vec (sort (keys hash-of-version)))}))))
+
+(defn- digest-hex ^String [^String algorithm ^bytes b]
+  (when-not (contains? implemented-algorithms algorithm)
+    (throw (ex-info (str "hash algorithm " (pr-str algorithm) " is not implemented")
+                    {:reason :canonical/unknown-hash-algorithm
+                     :algorithm algorithm})))
+  (bytes->hex (.digest (MessageDigest/getInstance algorithm) b)))
+
 (defn sha256-hex ^String [^String s]
   (shape/string :text s)
-  (bytes->hex (.digest (MessageDigest/getInstance "SHA-256")
-                       (.getBytes s "UTF-8"))))
+  (digest-hex "SHA-256" (.getBytes s "UTF-8")))
 
 (defn sha256-hex-bytes
   "For blobs (artifacts). Hash policy — one algorithm per store per
   format-version, self-describing ids, additive migration — is ADR 0006."
   ^String [^bytes b]
   (when-not (bytes? b) (shape/reject :blob :bytes b))
-  (bytes->hex (.digest (MessageDigest/getInstance "SHA-256") b)))
+  (digest-hex "SHA-256" b))
+
+(defn address-with
+  "The content address of `b` under the row `spec` of `hash-of-version`:
+  its prefix and the hex digest of its algorithm."
+  ^String [spec ^bytes b]
+  (when-not (and (map? spec) (string? (:prefix spec)) (string? (:algorithm spec)))
+    (shape/reject :hash-spec :map spec))
+  (when-not (bytes? b) (shape/reject :blob :bytes b))
+  (str (:prefix spec) (digest-hex (:algorithm spec) b)))
 
 (def address-prefix
-  "The prefix of every content address in format version 1. The hash a
-  format version uses is named here and nowhere else, so a second one
-  under a version bump (ADR 0006 rule 3) is one change."
-  "sha256-")
+  "The prefix of every content address this build writes: the row of the
+  current `format-version`."
+  (:prefix (hash-spec format-version)))
 
 (defn address-of-bytes
-  "The content address of `b`: `address-prefix` and the hex SHA-256."
+  "The content address of `b` under the current format version."
   ^String [^bytes b]
-  (str address-prefix (sha256-hex-bytes b)))
+  (address-with (hash-spec format-version) b))
 
 (defn address-of-text
   "The content address of the UTF-8 bytes of `s`."
   ^String [^String s]
-  (str address-prefix (sha256-hex s)))
+  (shape/string :text s)
+  (address-of-bytes (.getBytes s "UTF-8")))
 
 (defn content-address
   "The content address of the canonical form of `value`."
