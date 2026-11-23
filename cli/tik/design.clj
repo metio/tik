@@ -99,6 +99,7 @@
   derive; edit the EDN in another window and the next render uses the
   new rules. Pure derivation each round — nothing is stored."
   [{:keys [pos opts]}]
+  (when-not (first pos) (die "usage: tik sim <process.edn>"))
   (let [f (resolve-file (first pos))]
     (when-not (.exists f) (die "no such file:" (str f)))
     (let [tid (random-uuid)
@@ -158,7 +159,7 @@
   Deterministic: fixed epoch, pure derivation. A failing case prints
   explain — the process tells you WHY the stage did not derive."
   [{:keys [pos]}]
-  (let [f (resolve-file (first pos))
+  (let [f (resolve-file (or (first pos) (die "usage: tik test <tests.edn>")))
         _ (when-not (.exists f) (die "no such file:" (str f)))
         spec (read-edn-file f)
         _ (when-not (map? spec)
@@ -313,6 +314,9 @@
                 (cond
                   (str/starts-with? kv "+") [:now (str kv)]
                   (str/starts-with? kv "retract:") [:retract (parse-key (subs kv 8))]
+                  (not (str/includes? kv "="))
+                  (die (str "usage: tik whatif <id> key=value | retract:key | +PT48H …"
+                            " — '" kv "' is none of them"))
                   :else (let [[k v] (str/split kv #"=" 2)]
                           [:set (parse-key k) (parse-value v)])))
         before (stage/effective-reached process events t roles)

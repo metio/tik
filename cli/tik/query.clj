@@ -380,7 +380,12 @@
   [{:keys [opts]}]
   (let [s (the-store)
         t (now)
-        threshold (or (some-> (:threshold opts) parse-value double) 0.4)
+        threshold (if-some [raw (:threshold opts)]
+                    (let [v (parse-value raw)]
+                      (if (number? v)
+                        (double v)
+                        (die (str "--threshold must be a number between 0 and 1, got " raw))))
+                    0.4)
         pairs (dupe/lookalikes (open-ticket-rows s t) threshold)]
     (when-not (emit-data opts (mapv #(select-keys % [:a :b :score]) pairs))
       (doseq [{:keys [a b score]} pairs]

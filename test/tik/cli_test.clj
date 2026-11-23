@@ -159,6 +159,27 @@
       (is (zero? (:exit (in root "ls" "--all"))))
       (is (zero? (:exit (in root "ls" "--format=edn")))))))
 
+(deftest a-missing-or-malformed-positional-fails-well
+  (let [root (h/temp-dir! "tik-positional")]
+    (System/setProperty "user.name" "tester")
+    (in root "new" "track" "--title" "x")
+    (let [id (-> (in root "ls" "--edn") :out
+                 (str/split #"[^0-9a-f-]") (->> (filter #(= 36 (count %))))
+                 first)
+          log-before (:out (in root "log" id))]
+      (doseq [argv [["test"] ["sim"] ["attach" id]
+                    ["work" "record" id] ["work" "record" id "notedn{"] ["work" "record" id "42"]
+                    ["agent" "set" id "outcome" "--actor" "tester"]
+                    ["dupes" "--threshold" "abc"]
+                    ["whatif" id "outcome"]]]
+        (let [r (apply in root argv)
+              out (str (:out r) (:err r))]
+          (is (= 1 (:exit r)) (pr-str argv))
+          (is (not (str/blank? out)) (pr-str argv))
+          (is (h/clean-output? out) (str (pr-str argv) "\n" out))
+          (is (not (re-find #"unexpected error|bug in tik" out)) (str (pr-str argv) "\n" out))))
+      (is (= log-before (:out (in root "log" id))) "nothing was written"))))
+
 (deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
   ;; the name is written verbatim into the OpenSSH allowed-signers file;
   ;; whitespace/quote/newline would split it into a second attacker-shaped
