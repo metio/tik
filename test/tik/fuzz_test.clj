@@ -446,6 +446,9 @@
     :gen (one gen-dep-graph)}
    {:sym 'tik.plan/ready :f tik.plan/ready
     :gen (gen/tuple gen-dep-graph gen-settled)}
+   {:sym 'tik.template/params-schema :f tik.template/params-schema
+    :gen (gen/one-of [(gen/fmap (fn [t] [t]) gen-template)
+                      (one gen/any-equatable)])}
    {:sym 'tik.template/expand :f tik.template/expand
     ;; gen-template carries real + malformed markers and hostile param
     ;; specs; a separate defspec pins the marker-freedom of the output

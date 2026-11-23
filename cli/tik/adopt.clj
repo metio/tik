@@ -50,8 +50,8 @@
 (defn template-fields
   "Prompt specs for a template's :tik/params — one per :map entry."
   [tmpl]
-  (when-let [schema (:tik/params tmpl)]
-    (for [[k props child] (m/children (m/schema schema))]
+  (when-let [schema (template/params-schema tmpl)]
+    (for [[k props child] (m/children schema)]
       {:key k :optional? (boolean (:optional props))
        :desc (:description props) :child child :hint (field-hint child)})))
 

@@ -105,3 +105,16 @@
     (is (seq errs) "a pathless :signed-by lints (does not crash)")
     (is (some #(re-find #":signed-by over no fact" (:msg %)) errs)
         "and the diagnostic names the unsatisfiable signature")))
+
+(deftest a-template-param-schema-cannot-call-code
+  (let [called (atom false)
+        t {:tik/params [:map [:x [:fn (fn [_] (reset! called true) true)]]]
+           :tik/template {:process/id :t :process/version 1
+                          :process/stages [{:stage/id :a :guards []}]}}]
+    (is (= :template/bad-schema
+           (try (tmpl/expand t {:x 1}) nil
+                (catch clojure.lang.ExceptionInfo e (:reason (ex-data e))))))
+    (is (false? @called) "the schema's function never ran")
+    (is (= :template/bad-schema
+           (try (tmpl/params-schema t) nil
+                (catch clojure.lang.ExceptionInfo e (:reason (ex-data e))))))))
