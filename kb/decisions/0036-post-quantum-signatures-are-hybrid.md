@@ -73,10 +73,13 @@ Verified on 2026-11-23 on the development host:
   -verify` with the JDK's X.509 public key, and an OpenSSL signature
   verifies under the JDK.
 
-Not verified: whether GraalVM native-image, which builds the shipped
-binary, includes the ML-DSA provider; whether either side exposes the
-FIPS 204 context string consistently, which is why point 2 uses a message
-prefix instead.
+- A minimal program compiled with GraalVM native-image (CE 25.0.2, the
+  `ghcr.io/graalvm/native-image-community:25` image) generates, signs and
+  verifies ML-DSA-65 with no reflection or security-provider
+  configuration. tik's own native build was not tried.
+
+Not verified: whether either side exposes the FIPS 204 context string
+consistently, which is why point 2 uses a message prefix instead.
 
 **Hashes stay as they are.** SHA-256 content addresses carry integrity
 only (ADR 0006, ADR 0007). Grover's algorithm reduces preimage resistance
@@ -105,8 +108,8 @@ which point 7's anchor dates.
   addressing through one function; add the `pq-signers` reader and the
   `.pqsig.` verifier with tests against OpenSSL-made signatures; add
   signing; extend `verify.sh` and the bundle format; add the policy file
-  and the witness anchor; confirm native-image support first, since the
-  rest depends on it.
+  and the witness anchor. Building tik's own binary with an ML-DSA
+  signature in its test suite belongs to the first signing step.
 
 ## Alternatives considered
 
