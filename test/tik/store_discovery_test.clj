@@ -612,7 +612,8 @@
         (testing "pack consolidates the settled ticket"
           (let [r (tik-at top nil "pack")]
             (is (re-find #"1 ticket\(s\) packed" (:out r)))
-            (is (.isFile (io/file evdir "events.pack")))
+            (is (some #(re-matches #"events\.[0-9a-f]{64}\.pack" (.getName ^java.io.File %))
+                      (.listFiles evdir)))
             (is (< (count (.listFiles evdir)) loose-before))))
         (testing "derivation is byte-identical after packing"
           (is (= before (:out (tik-at top nil "status" id)))))
