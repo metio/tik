@@ -10,9 +10,12 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [tik.delegation :as d]
             [tik.event :as event]
             [tik.harness :as h]
-            [tik.review :as review])
+            [tik.review :as review]
+            [tik.store.file :as fstore]
+            [tik.store.protocol :as store])
   (:import (java.time Instant)))
 
 (def ^:private t (Instant/parse "2026-11-19T12:00:00Z"))
@@ -166,3 +169,59 @@
         r (run root "seb" "review" "--yes")]
     (is (= 1 (:exit r)))
     (is (str/includes? (:err r) "needs a key"))))
+
+;; ------------------------------------------------------------ batch (ADR 0037)
+
+(deftest a_ticket_whose_heads_moved_since_the_list_is_named
+  (let [a (random-uuid) b (random-uuid)
+        shown [{:id a :heads #{"sha256-1"}} {:id b :heads #{"sha256-2"}}]]
+    (is (= [] (review/moved shown {a #{"sha256-1"} b #{"sha256-2"}})))
+    (is (= [b] (review/moved shown {a #{"sha256-1"} b #{"sha256-3"}})))
+    (testing "a new sibling head is a move too"
+      (is (= [a] (review/moved shown {a #{"sha256-1" "sha256-9"} b #{"sha256-2"}}))))))
+
+(defn- with-registry!
+  "Copy the identity-registry process into `root` and mint its ticket."
+  [root key]
+  (io/copy (io/file (System/getProperty "user.dir") "processes" "identity-registry.edn")
+           (io/file root "processes" "identity-registry.edn"))
+  (str/trim (:out (h/tik! {:root root :dir root :actor "seb" :env {"TIK_KEY" (str key)}}
+                          "new" "identity-registry" "--title" "registry"))))
+
+(defn- two-merged-changes! [root]
+  (vec (for [title ["one" "two"]]
+         (let [id (str/trim (first (str/split-lines
+                                    (:out (run root "claude" "new" "change" "--title" title)))))]
+           (h/tik! {:root root :dir root :actor "claude"} "set" id "merge.commit=46db877")
+           id))))
+
+(deftest batch_review_signs_one_delegation_and_the_verdicts_with_a_throwaway_key
+  (let [[root key] (store-with-key!)
+        registry (with-registry! root key)
+        ids (two-merged-changes! root)
+        _ (run root "seb" "review" "--yes" "--key" key "change")
+        r (run root "seb" "review" "review.verdict=approved" "--yes" "--batch"
+               "--registry" registry "--key" key)]
+    (is (zero? (:exit r)) (:err r))
+    (is (re-find #"delegated 2 ticket\(s\) to a throwaway key" (:out r)) (:out r))
+    (doseq [id ids]
+      (testing (str "ticket " id " derives reviewed from seb's delegated signatures")
+        (is (str/includes? (:out (run root "seb" "status" id)) "stage:   reviewed"))))
+    (testing "the registry holds the one delegation seb signed"
+      (is (= 1 (count (d/delegations
+                       (vec (store/events (fstore/file-store (str root))
+                                          (java.util.UUID/fromString registry)))))))
+      (is (str/includes? (:out (run root "seb" "verify")) "verify: PASS")))
+    (let [out (:out (run root "seb" "verify" (first ids)))]
+      (is (re-find #"signed by seb \(delegated by sha256-" out) out))
+    (testing "the throwaway key is gone"
+      (is (empty? (filter #(str/includes? (.getName ^java.io.File %) "tik-batch")
+                          (file-seq (io/file (System/getProperty "java.io.tmpdir")))))))))
+
+(deftest batch_review_needs_a_registry
+  (let [[root key] (store-with-key!)
+        _ (two-merged-changes! root)
+        _ (run root "seb" "review" "--yes" "--key" key "change")
+        r (run root "seb" "review" "review.verdict=approved" "--yes" "--batch" "--key" key)]
+    (is (= 1 (:exit r)))
+    (is (str/includes? (:err r) "identity-registry"))))

@@ -388,7 +388,7 @@
   `tik probe --help` therefore read as \"probe every ticket\" and wrote
   signed facts nobody asked for. A verb that can write to every ticket
   in the store has earned the stricter reading of its arguments."
-  #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "body" "by" "changed"
+  #{"actor" "all" "anchor" "apply" "assets" "at" "audience" "batch" "body" "by" "changed"
     "as" "client-id" "command" "config" "credential" "derived-from" "dry-run" "edn"
     "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"

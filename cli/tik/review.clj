@@ -12,16 +12,26 @@
   asserts the passed ones. A dry run over the same events must show the
   stage landing and nothing regressing before anything is offered.
 
+  With `--batch` (ADR 0037) the reviewer's key signs one delegation on the
+  identity registry instead of every fact: the delegation scopes the exact
+  ticket heads listed and the fact paths the plans set, and stays valid
+  for five minutes. A throwaway key made in a private directory signs the
+  facts and is deleted afterwards, so a security key is touched once for
+  the whole list.
+
   Porcelain over explain and the whatif fold: it reads derivations and
   writes ordinary signed facts, and stores nothing of its own."
   (:require [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.args :refer [actor parse-key typed-value]]
             [tik.cli-core :refer [append!* archive-process! available-processes
-                                  by-hash-file die load-process now root
+                                  by-hash-file die load-process now
+                                  registry-events resolve-id root
                                   signing-key stage-delta the-store ticket-ctx
                                   ticket-row]]
             [tik.dag :as dag]
+            [tik.delegation :as delegation]
             [tik.design :as design]
             [tik.event :as event]
             [tik.explain :as explain]
@@ -32,7 +42,9 @@
             [tik.render :refer [emit-data shash]]
             [tik.sign :as sign]
             [tik.stage :as stage]
-            [tik.store.protocol :as store]))
+            [tik.store.protocol :as store])
+  (:import (java.nio.file Files)
+           (java.nio.file.attribute FileAttribute PosixFilePermissions)))
 
 ;; ------------------------------------------------------------------ plan
 
@@ -159,7 +171,8 @@
                                 [path (typed-value process path v)]))
                p (plan process events t roles who given)]
          :when p]
-     (assoc p :id id :title (:title state) :process pname))))
+     (assoc p :id id :title (:title state) :process pname
+            :heads (set (dag/heads events))))))
 
 (defn approve!
   "Record a plan's steps as signed facts of `who`, one chained event each."
@@ -170,6 +183,91 @@
                   :parents (dag/heads (store/events s id))
                   :path path :value value})
               opts)))
+
+;; ----------------------------------------------------------------- batch
+
+(defn- registry-id
+  "The identity-registry ticket a batch delegation goes on: `--registry`,
+  else the store's only one."
+  [s opts]
+  (if-let [ref (:registry opts)]
+    (resolve-id s ref)
+    (let [ids (distinct (keep :event/ticket (registry-events s)))]
+      (case (count ids)
+        0 (die (str "a batch review delegates on an identity-registry ticket, and the"
+                    " store has none — mint one with\n"
+                    "  tik new identity-registry --title 'identity registry'"))
+        1 (first ids)
+        (die "the store has several identity-registry tickets — pass --registry <id>")))))
+
+(defn- delete-tree! [^java.io.File dir]
+  (doseq [^java.io.File f (reverse (file-seq dir))] (.delete f)))
+
+(defn- throwaway-key!
+  "A fresh Ed25519 key in a new directory only this user can read."
+  [dir]
+  (let [k (io/file dir "key")
+        r (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "tik-batch" "-f" (str k))]
+    (when-not (zero? (:exit r))
+      (die (str "could not make the throwaway key: " (str/trim (:err r)))))
+    k))
+
+(defn moved
+  "The ids of `shown` tickets whose heads in `current` (id -> heads)
+  differ from the heads they were listed with: something happened on them
+  that the reviewer did not see."
+  [shown current]
+  (into [] (keep (fn [{:keys [id heads]}]
+                   (when (not= (set heads) (set (get current id))) id)))
+        shown))
+
+(defn approve-batch!
+  "Sign one delegation with the reviewer's key, then every step of
+  `tickets` with a throwaway key it names. Each fact's parents are the
+  heads the reviewer was shown, because the delegation's scope names
+  exactly those; chaining the facts would put all but the first outside
+  it. Returns the delegation event."
+  [s tickets opts]
+  (let [who (actor opts)
+        reg (registry-id s opts)
+        heads (into {} (for [{:keys [id heads]} tickets] [id heads]))
+        stale (moved tickets (into {} (for [{:keys [id]} tickets]
+                                        [id (set (dag/heads (store/events s id)))])))
+        _ (when (seq stale)
+            (die (str "signed nothing: " (str/join ", " (map #(subs (str %) 0 8) stale))
+                      " changed after the list was drawn; review again")))
+        dir (.toFile (Files/createTempDirectory
+                      "tik-batch"
+                      (into-array FileAttribute
+                                  [(PosixFilePermissions/asFileAttribute
+                                    (PosixFilePermissions/fromString "rwx------"))])))]
+    (try
+      (let [tkey (throwaway-key! dir)
+            at (now)
+            not-after (.plus ^java.time.Instant at ^java.time.Duration delegation/max-window)
+            d (event/add-attestation
+               {:ticket reg :actor who :at at
+                :parents (dag/heads (store/events s reg))
+                :claim {:claim delegation/claim-type
+                        :delegation/public-key (sign/pubkey (str tkey))
+                        :delegation/not-after not-after
+                        :delegation/scope (set (for [[id hs] heads h hs] [id h]))
+                        :delegation/facts (set (for [{:keys [steps]} tickets
+                                                     [path _] steps]
+                                                 path))}})]
+        (append!* s d opts)
+        (doseq [{:keys [id steps]} tickets
+                [path value] steps
+                :let [t (now)]]
+          (when (.isAfter ^java.time.Instant t not-after)
+            (die (str "the delegation expired before " (subs (str id) 0 8)
+                      " was signed; review the rest again")))
+          (append!* s (event/assert-fact {:ticket id :actor who :at t
+                                          :parents (get heads id)
+                                          :path path :value value})
+                    (assoc opts :key (str tkey))))
+        d)
+      (finally (delete-tree! dir)))))
 
 ;; --------------------------------------------------------------- command
 
@@ -224,14 +322,22 @@
         (when-not (:list opts)
           (when (and (seq definitions) (nil? (signing-key opts)))
             (die "publishing a definition needs a key: pass --key or set TIK_KEY"))
+          (when (and (:batch opts) (seq tickets) (nil? (signing-key opts)))
+            (die "a batch review signs its delegation: pass --key or set TIK_KEY"))
+          (when (and (:batch opts) (seq tickets))
+            (registry-id s opts))
           (if-not (or (:yes opts) (confirmed? total who))
             (println "signed nothing")
             (do
               (doseq [{nm :process} definitions]
                 (sign-definition! (signing-key opts) nm)
                 (println "published" nm))
+              (if (and (:batch opts) (seq tickets))
+                (let [d (approve-batch! s tickets opts)]
+                  (println (str "delegated " (count tickets) " ticket(s) to a throwaway key"
+                                " under delegation " (shash (:event/id d)) "…")))
+                (doseq [p tickets] (approve! s p opts)))
               (doseq [{:keys [id stage] :as p} tickets]
-                (approve! s p opts)
                 (let [{:keys [events process roles]} (ticket-ctx s id)
                       reached (stage/effective-reached process events (now) roles)]
                   (println (str (if (contains? reached stage) "approved " "signed, but not yet ")
