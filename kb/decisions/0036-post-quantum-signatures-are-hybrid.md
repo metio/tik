@@ -1,6 +1,6 @@
 ---
 type: decision
-status: proposed
+status: accepted
 date: 2026-11-23
 title: Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG
 supersedes: null
@@ -10,7 +10,11 @@ supersedes: null
 
 ## Decision
 
-Proposed, not yet accepted: nothing described here is implemented.
+Accepted on 2026-11-23 by the maintainer, with points 1 to 7 as written
+and two refinements: the witness anchor of point 7 uses ML-DSA-65, the
+same algorithm as the event signatures, and point 8 makes the content
+hash a parameter of the format version. The implementation follows in
+the order listed under Consequences.
 
 **A store opts into post-quantum authenticity by requiring a second
 signature per event, made with ML-DSA-65 (FIPS 204), beside the SSHSIG
@@ -51,7 +55,18 @@ post-quantum security if Ed25519 is.
    attacker can produce new events with old instants. A witness holding an
    ML-DSA key countersigns every store's heads when the policy takes
    effect (`.pqwitness.<fpr>`), so classical history up to that moment is
-   anchored by a signature that remains unforgeable.
+   anchored by a signature that remains unforgeable. The witness signs
+   with ML-DSA-65. SLH-DSA remains a candidate for this anchor later, since
+   its security rests on hash assumptions only and the anchor's volume is
+   low.
+8. **The content hash is a parameter, not a constant.** SHA-256 stays the
+   hash of format version 1. Which hash a format version uses is declared
+   in one table in `tik.canonical`, and every content address, the
+   bundle's `verify.sh` and the L0 checks read it from there, so a format
+   version that switches to SHA-512 (`sha512-`) is a new table entry and
+   a version bump. Following ADR 0006 rule 4, a verifier supports exactly
+   the hashes of the format versions it implements and never dispatches
+   on whatever prefix an id carries.
 
 ## Context
 
@@ -105,7 +120,9 @@ which point 7's anchor dates.
   it. That follows from the format-version rule and is the intended
   behaviour.
 - Implementation order, each step its own change: route content
-  addressing through one function; add the `pq-signers` reader and the
+  addressing through one function (done); make the hash a parameter of
+  the format version, with SHA-512 implemented and tested but not used
+  by any format version yet; add the `pq-signers` reader and the
   `.pqsig.` verifier with tests against OpenSSL-made signatures; add
   signing; extend `verify.sh` and the bundle format; add the policy file
   and the witness anchor. Building tik's own binary with an ML-DSA
