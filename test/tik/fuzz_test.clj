@@ -29,6 +29,7 @@
             [tik.work :as work]
             [tik.gen-events :as ge]
             [tik.identity :as identity]
+            [tik.sshsig :as sshsig]
             [tik.link :as link]
             [tik.harness :as h]
             [tik.guard :as guard]
@@ -360,6 +361,8 @@
            [bs (constantly true)])}
    {:sym 'tik.identity/public-key-line? :f identity/public-key-line? :gen (one gen/any-equatable)}
    {:sym 'tik.identity/principal? :f identity/principal? :gen (one gen/any-equatable)}
+   {:sym 'tik.sshsig/parse-signer-line :f sshsig/parse-signer-line
+    :gen (one (gen/one-of [gen/any-equatable gen/string (gen/fmap #(str "seb " % " ssh-ed25519 AAAAC3x") gen/string)]))}
    {:sym 'tik.identity/signing-keys :f identity/signing-keys
     :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)] [bs])}
    {:sym 'tik.reduce/ticket-state :f red/ticket-state
