@@ -420,6 +420,22 @@ if [ -d identity ]; then
     case $(( ${#v} % 4 )) in 2) v=\"$v==\";; 3) v=\"$v=\";; esac
     printf %s \"$v\" | base64 -d 2>/dev/null
   }
+  # a JSON claim of the token payload: a string (with \\/ unescaped) or
+  # an integer; anything else reads as absent, which fails closed
+  claim_str() {
+    printf %s \"$1\" | sed -n \"s/.*\\\"$2\\\" *: *\\\"\\\\([^\\\"]*\\\\)\\\".*/\\\\1/p\" | sed 's|\\\\/|/|g'
+  }
+  claim_num() {
+    printf %s \"$1\" | sed -n \"s/.*\\\"$2\\\" *: *\\\\([0-9][0-9]*\\\\)[,} ].*/\\\\1/p\"
+  }
+  # seconds since the epoch of an ISO-8601 UTC instant, by the civil
+  # calendar, so the script needs no GNU date
+  epoch() {
+    printf %s \"$1\" | awk -F'[-T:.Z]' 'NF >= 6 { y = $1 + 0; m = $2 + 0; d = $3 + 0
+      if (m <= 2) { y--; m += 12 }
+      days = 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d - 719469
+      print days * 86400 + $4 * 3600 + $5 * 60 + int($6) }'
+  }
   for b in identity/*.edn; do
     [ -e \"$b\" ] || continue
     tok=$(sed -n 's/.*:identity\\/id-token \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
@@ -480,8 +496,29 @@ if [ -d identity ]; then
       rm -f \"$si\" \"$sf\"; continue
     fi
     if [ \"$signed\" = 1 ]; then
-      sub=$(b64url \"$pay\" | sed -n 's/.*\"sub\":\"\\([^\"]*\\)\".*/\\1/p')
-      if grep -qF \"$pub\" actors; then
+      # the token must be for the subject and issuer the binding names,
+      # and live when the binding was written: a token without exp never
+      # is, and the leeway is the 60 s tik allows for clock skew
+      claims=$(b64url \"$pay\")
+      sub=$(claim_str \"$claims\" sub)
+      iss=$(claim_str \"$claims\" iss)
+      if [ -z \"$iss\" ]; then
+        # a SPIFFE JWT-SVID may omit iss; its trust domain is the issuer
+        iss=$(printf %s \"$sub\" | sed -n 's|^\\(spiffe://[^/?#]*\\).*|\\1|p')
+      fi
+      exp=$(claim_num \"$claims\" exp); nbf=$(claim_num \"$claims\" nbf); iat=$(claim_num \"$claims\" iat)
+      bsub=$(sed -n 's/.*:identity\\/subject \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
+      biss=$(sed -n 's/.*:identity\\/issuer \"\\([^\"]*\\)\".*/\\1/p' \"$b\")
+      when=$(epoch \"$(sed -n 's/.*:event\\/at #inst \"\\([^\"]*\\)\".*/\\1/p' \"$b\")\")
+      if [ \"$sub\" != \"$bsub\" ]; then
+        echo \"FAIL  the token in $b is for subject $sub, not $bsub\"; fail=1
+      elif [ \"$iss\" != \"$biss\" ]; then
+        echo \"FAIL  the token in $b was issued by $iss, not $biss\"; fail=1
+      elif [ -z \"$exp\" ] || [ -z \"$when\" ] || [ \"$when\" -gt $((exp + 60)) ] \\
+           || { [ -n \"$nbf\" ] && [ \"$when\" -lt $((nbf - 60)) ]; } \\
+           || { [ -n \"$iat\" ] && [ \"$when\" -lt $((iat - 60)) ]; }; then
+        echo \"FAIL  the token in $b was not live when the binding was written\"; fail=1
+      elif grep -qF \"$pub\" actors; then
         echo \"ok    $who is bound to its key by $sub, per the issuer\"
       else
         echo \"FAIL  $b binds a key the registry does not list\"; fail=1
