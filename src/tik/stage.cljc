@@ -170,41 +170,52 @@
 (defn trace-sweeps
   "The fixpoint with its working shown: one entry per sweep, recording
   which stages were evaluated against the sweep-start snapshot, every
-  guard's verdict, and what the sweep added. Pure — the process
-  debugger's data source, and executable documentation of the
-  normative synchronous-sweep semantics (ADR 0005/0018)."
-  [process state now roles]
-  (shape/process process)
-  (shape/state state)
-  (shape/optional-instant :now now)
-  (shape/roles roles)
-  (loop [reached #{} sweeps []]
-    (let [ctx {:state state :process process :now now
-               :roles roles :reached reached
-               :fact-memo (volatile! {})}
-          evaluated (for [s (:process/stages process)
-                          :when (not (contains? reached (:stage/id s)))]
-                      {:stage (:stage/id s)
-                       :prereqs-met? (every? reached (:after s []))
-                       :guards (when (every? reached (:after s []))
-                                 (mapv (fn [g]
-                                         {:guard g
-                                          :verdict (guard/eval-guard g ctx)})
-                                       (:guards s [])))})
-          added (into #{}
-                      (comp (filter :prereqs-met?)
-                            (filter #(every? (comp :satisfied? :verdict)
-                                             (:guards %)))
-                            (map :stage))
-                      evaluated)
-          reached' (into reached added)
-          sweeps' (conj sweeps {:sweep (inc (count sweeps))
-                                :snapshot reached
-                                :evaluated (vec evaluated)
-                                :added added})]
-      (if (= reached' reached)
-        {:reached reached :sweeps sweeps'}
-        (recur reached' sweeps')))))
+  guard's verdict, which carried sticky stages joined, and what the sweep
+  added. Pure — the process debugger's data source, and executable
+  documentation of the normative synchronous-sweep semantics (ADR
+  0005/0018). With `base`, the sticky carry, it computes exactly what
+  reached-set does with it, so the debugger shows the fixpoint status
+  reports."
+  ([process state now roles] (trace-sweeps process state now roles #{}))
+  ([process state now roles base]
+   (shape/process process)
+   (shape/state state)
+   (shape/optional-instant :now now)
+   (shape/roles roles)
+   (shape/plain-set :base base)
+   (let [depth (strata process)]
+     (loop [reached #{} sweeps []]
+       (let [sweep (count sweeps)
+             ctx {:state state :process process :now now
+                  :roles roles :reached (into reached base)
+                  :fact-memo (volatile! {})}
+             evaluated (for [s (:process/stages process)
+                             :when (not (contains? reached (:stage/id s)))]
+                         {:stage (:stage/id s)
+                          :prereqs-met? (every? reached (:after s []))
+                          :guards (when (every? reached (:after s []))
+                                    (mapv (fn [g]
+                                            {:guard g
+                                             :verdict (guard/eval-guard g ctx)})
+                                          (:guards s [])))})
+             carried (into #{} (filter #(and (<= (get depth % 0) sweep)
+                                             (not (contains? reached %))))
+                           base)
+             added (into carried
+                         (comp (filter :prereqs-met?)
+                               (filter #(every? (comp :satisfied? :verdict)
+                                                (:guards %)))
+                               (map :stage))
+                         evaluated)
+             reached' (into reached added)
+             sweeps' (conj sweeps {:sweep (inc sweep)
+                                   :snapshot reached
+                                   :evaluated (vec evaluated)
+                                   :carried carried
+                                   :added added})]
+         (if (and (= reached' reached) (every? #(contains? reached %) base))
+           {:reached reached :sweeps sweeps'}
+           (recur reached' sweeps')))))))
 
 (defn effective-reached
   "Reached set at `now` (which may be later than the last event — time alone
