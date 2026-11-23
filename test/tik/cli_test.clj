@@ -137,6 +137,28 @@
       (let [r (in root "ls" "--edn")]
         (is (zero? (:exit r)))))))
 
+(deftest a-valued-flag-without-a-value-stops-the-command
+  (let [root (h/temp-dir! "tik-novalue")]
+    (System/setProperty "user.name" "tester")
+    (in root "new" "track" "--title" "x")
+    (let [id (-> (in root "ls" "--edn") :out
+                 (str/split #"[^0-9a-f-]") (->> (filter #(= 36 (count %))))
+                 first)
+          events-before (:out (in root "log" id))]
+      (doseq [argv [["retract" id "x" "--reason"]
+                    ["dispute" id "x" "--reason" "--actor" "tester"]
+                    ["status" id "--at"]
+                    ["dupes" "--threshold"]
+                    ["bundle" id "--out"]]]
+        (let [r (apply in root argv)]
+          (is (= 1 (:exit r)) (pr-str argv))
+          (is (re-find #"--\S+ needs a value" (str (:out r) (:err r))) (pr-str argv))
+          (is (not (re-find #"unexpected error" (str (:out r) (:err r)))) (pr-str argv))))
+      (is (= events-before (:out (in root "log" id))) "nothing was written"))
+    (testing "a switch still stands alone, and --flag=value still binds"
+      (is (zero? (:exit (in root "ls" "--all"))))
+      (is (zero? (:exit (in root "ls" "--format=edn")))))))
+
 (deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
   ;; the name is written verbatim into the OpenSSH allowed-signers file;
   ;; whitespace/quote/newline would split it into a second attacker-shaped
