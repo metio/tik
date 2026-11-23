@@ -81,6 +81,36 @@
   (Files/move (.toPath tmp) (.toPath dest)
               (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))
 
+(defn installed!
+  "Atomically move the finished temp file `tmp` onto `dest`, replacing
+  it. A reader sees the old file or the new one, never a partial write.
+  Named so a test can fail the install and assert nothing torn remains."
+  [^File tmp ^File dest]
+  (Files/move (.toPath tmp) (.toPath dest)
+              (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
+                                      StandardCopyOption/REPLACE_EXISTING])))
+
+(defn- write-atomically!
+  "Write `bytes` to `dest` through a synced temp file in the same
+  directory, then install it atomically, removing the temp file when
+  the install fails."
+  [^File dest ^bytes bytes]
+  ;; the temp name carries neither .edn nor .sig./.witness., so a temp
+  ;; file a killed process leaves behind is never read as an event or a
+  ;; sidecar
+  (let [tmp (File/createTempFile ".tik-write-" ".tmp" (.getParentFile dest))]
+    (try
+      (write-synced! tmp [bytes])
+      (installed! tmp dest)
+      (finally (.delete tmp)))))
+
+(defn- holds-event?
+  "Whether the file `f` holds the event named `id`: its bytes hash to the
+  id. A torn or foreign file under the name does not."
+  [^File f id]
+  (and (.isFile f)
+       (= id (str "sha256-" (canonical/sha256-hex-bytes (file-bytes f))))))
+
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))
 
@@ -186,13 +216,14 @@
     (let [dir (ticket-dir root (:event/ticket event))
           f (io/file dir (str (:event/id event) ".edn"))]
       (.mkdirs dir)
-      (when-not (.exists f)
+      ;; present means the bytes hash to the name: a torn file left by a
+      ;; killed write is replaced by the next append of the same event
+      (when-not (holds-event? f (:event/id event))
         ;; EXACT canonical bytes of the hashed region — the event WITHOUT
         ;; :event/id (ADR 0007). Written as UTF-8, the charset the id is
         ;; hashed over (canonical/sha256-hex), so sha256sum(file) = filename
         ;; = event id holds on any locale — verify L0 stays coreutils-checkable.
-        (io/copy (.getBytes (canonical/emit (dissoc event :event/id)) "UTF-8")
-                 f))
+        (write-atomically! f (.getBytes (canonical/emit (dissoc event :event/id)) "UTF-8")))
       event))
   (events [_ ticket-id]
     (let [dir (ticket-dir root ticket-id)]
@@ -252,8 +283,7 @@
     ;; alongside; the store seam simply names the operation.
     (let [dir (ticket-dir root ticket-id)]
       (.mkdirs dir)
-      (with-open [o (io/output-stream (io/file dir name))]
-        (.write o ^bytes bytes))))
+      (write-atomically! (io/file dir name) bytes)))
   (sidecar-names [_ ticket-id]
     (let [dir (ticket-dir root ticket-id)]
       (if (.isDirectory dir)
