@@ -13,7 +13,7 @@
             [tik.canonical :as canonical]
             [tik.cli-core :refer [die exit! load-process-arg load-ticket now
                                   parse-when resolve-file resolve-id-soft
-                                  stage-delta the-store]]
+                                  role-register stage-delta the-store]]
             [tik.event :as event]
             [tik.explain :as explain]
             [tik.lint :as lint]
@@ -242,19 +242,23 @@
   [{:keys [pos opts]}]
   (let [s (the-store)
         [proc-arg tid] (debug-args s pos)
-        {pinned :process pinned-state :state} (when tid (load-ticket s tid))
+        {pinned :process pinned-state :state events :events} (when tid (load-ticket s tid))
         proc (if proc-arg (load-process-arg proc-arg) pinned)
         pinned-hash (:process-hash pinned-state)
         hash (process/process-hash proc)
         state (or pinned-state red/empty-state)
-        roles (:process/roles proc {})
+        ;; who is in a role comes from the store's register, as for status
+        roles (process/resolve-roles (:process/roles proc {}) (role-register))
         t (now)
+        ;; status seeds the fixpoint with every sticky stage the fold ever
+        ;; reached; without that carry this lens shows a different answer
+        carry (if events (:sticky-ever (stage/evolve proc events roles t)) #{})
         ;; a named definition that is not the ticket's pin derives a
         ;; fixpoint the ticket does not have — say so, or this lens and
         ;; `status` disagree with nothing to explain the disagreement
         drift (when (and tid pinned-hash (not= hash pinned-hash))
                 {:debugged hash :pinned pinned-hash})
-        {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles)]
+        {:keys [reached sweeps]} (stage/trace-sweeps proc state t roles carry)]
     (when drift
       (binding [*out* *err*]
         (println (str "note: debugging against " (:process/name proc)
@@ -264,7 +268,7 @@
                       " `tik reprocess` moves the ticket onto this one"))))
     (when-not (emit-data opts (cond-> {:reached reached :sweeps sweeps}
                                 drift (assoc :version-drift drift)))
-            (doseq [{:keys [sweep snapshot evaluated added]} sweeps]
+      (doseq [{:keys [sweep snapshot evaluated carried added]} sweeps]
         (println (tint "1" (str "sweep " sweep))
                  (tint "2" (str "against " (pr-str (vec (sort-by str snapshot))))))
         (doseq [{:keys [stage prereqs-met? guards]} evaluated]
@@ -275,6 +279,9 @@
                   (println (if (:satisfied? verdict)
                              (tint "32" (str "    ✓ " (pr-str guard)))
                              (tint "31" (str "    ✗ " (pr-str guard)))))))))
+        (when (seq carried)
+          (println (tint "2" (str "  carried (sticky, reached before) "
+                                  (pr-str (vec (sort-by str carried)))))))
         (println (str "  => added " (pr-str (vec (sort-by str added))))))
       (println (tint "1" (str "fixpoint: " (pr-str (vec (sort-by str reached)))))))))
 
