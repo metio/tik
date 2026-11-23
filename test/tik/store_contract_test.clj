@@ -198,3 +198,42 @@
     (is (not (.exists (io/file dir (str (:event/id e) ".edn"))))
         "a failed write never leaves a file under the event's name")
     (is (= 1 (count (store/events store tid))) "the ticket still reads back")))
+
+(deftest a-repack-interrupted-before-the-index-loses-nothing
+  (let [root (tmp "tik-repack")
+        store (fstore/file-store root)
+        events (vec (sort-by :event/id
+                             (ge/ops->events [[:assert "seb" [:a] 1 10] [:assert "seb" [:b] 2 20]
+                                              [:assert "seb" [:c] 3 30] [:assert "seb" [:d] 4 40]])))
+        tid (:event/ticket (first events))
+        [small large] (split-at 3 events)
+        original (into {} (for [e events] [(:event/id e) (canonical/emit (dissoc e :event/id))]))
+        read-back #(into {} (for [e (store/events store tid)]
+                              [(:event/id e) (String. ^bytes (store/event-bytes store tid (:event/id e)) "UTF-8")]))]
+    (doseq [e large] (store/append! store e))
+    (fstore/pack! root tid)
+    (doseq [e small] (store/append! store e))
+    (testing "a re-pack that dies before its index is installed"
+      (with-redefs [tik.store.file/index-installed!
+                    (fn [& _] (throw (java.io.IOException. "killed")))]
+        (is (thrown? java.io.IOException (fstore/pack! root tid))))
+      (is (= original (read-back)) "every event reads back with its own bytes"))
+    (testing "and the next pack completes from that state"
+      (is (= (count events) (:packed (fstore/pack! root tid))))
+      (is (= original (read-back))))))
+
+(deftest a-slice-that-does-not-hash-to-its-id-fails-well
+  (let [root (tmp "tik-slice")
+        store (fstore/file-store root)
+        events (ge/ops->events [[:assert "seb" [:a] 1 10] [:assert "seb" [:b] 2 20]])
+        tid (:event/ticket (first events))
+        dir (io/file root "tickets" (str tid) "events")]
+    (doseq [e events] (store/append! store e))
+    (fstore/pack! root tid)
+    (let [idx (io/file dir "events.pack.idx")
+          {:keys [entries] :as index} (fstore/read-pack-index dir)
+          [a b] entries]
+      ;; swap two ids: offsets still slice valid EDN, under the wrong names
+      (spit idx (pr-str (assoc index :entries [(assoc a :id (:id b)) (assoc b :id (:id a))])))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not hash to"
+                            (doall (store/events store tid)))))))

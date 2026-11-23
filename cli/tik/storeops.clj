@@ -787,7 +787,7 @@
 
 (defn cmd-pack
   "pack [<id>]: consolidate settled tickets' loose event files into
-  one content-addressed events.pack + index per ticket (given an id,
+  one content-addressed events.<hash>.pack + index per ticket (given an id,
   pack that ticket regardless of settledness). The pack holds the
   exact per-event hashed byte regions, so verify still checks every
   event against its id — as a slice. Appends after packing land loose

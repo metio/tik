@@ -114,8 +114,30 @@
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))
 
-(defn- pack-file ^File [^File dir] (io/file dir "events.pack"))
 (defn- pack-index-file ^File [^File dir] (io/file dir "events.pack.idx"))
+
+(defn- named-pack-file
+  "Where a pack whose bytes hash to `pack-hash` (\"sha256-<hex>\") lives:
+  events.<hex>.pack. The name binds the index to the one pack it
+  describes, so installing a new pack never changes the bytes under an
+  index already in place."
+  ^File [^File dir pack-hash]
+  (io/file dir (str "events." (str/replace (str pack-hash) #"^sha256-" "") ".pack")))
+
+(defn pack-file-of
+  "The pack an index describes: the content-addressed file it names, or
+  events.pack, the name a pack carried before packs were content
+  addressed."
+  ^File [^File dir index]
+  (let [named (named-pack-file dir (:pack index))]
+    (if (.isFile named) named (io/file dir "events.pack"))))
+
+(defn- pack-files
+  "Every pack file in `dir`, current or stale."
+  [^File dir]
+  (filter (fn [^File f]
+            (and (.isFile f) (re-matches #"events(\.[0-9a-f]{64})?\.pack" (.getName f))))
+          (or (.listFiles dir) [])))
 
 (defn read-pack-index
   "The pack's table of contents: {:entries [{:id :offset :length}]}.
@@ -132,30 +154,44 @@
                              e)))))))
 
 (defn pack-slice
-  "The exact hashed byte region of one packed event. An index lying
-  about offsets, or a truncated pack, fails WELL — the rejection
-  names the pack, never a raw EOF from the depths of RandomAccessFile."
-  ^bytes [^File dir {:keys [id offset length]}]
-  (try
-    (let [out (byte-array (max 0 (long length)))]
-      (with-open [raf (java.io.RandomAccessFile. (pack-file dir) "r")]
-        (.seek raf (max 0 (long offset)))
-        (.readFully raf out))
-      out)
-    (catch Exception e
-      (throw (ex-info "pack slice unreadable — index and pack disagree"
-                      {:reason :pack/unreadable :file (str (pack-file dir))
-                       :id id :offset offset :length length}
-                      e)))))
+  "The exact hashed byte region of one packed event, checked against its
+  id. An index lying about offsets, a truncated pack, or a slice whose
+  bytes are some other event's fails WELL — the rejection names the
+  pack, never a raw EOF or a silently swapped event."
+  (^bytes [^File dir entry] (pack-slice dir (read-pack-index dir) entry))
+  (^bytes [^File dir index {:keys [id offset length]}]
+   (let [pf (pack-file-of dir index)
+         out (try
+               (let [out (byte-array (max 0 (long length)))]
+                 (with-open [raf (java.io.RandomAccessFile. pf "r")]
+                   (.seek raf (max 0 (long offset)))
+                   (.readFully raf out))
+                 out)
+               (catch Exception e
+                 (throw (ex-info "pack slice unreadable — index and pack disagree"
+                                 {:reason :pack/unreadable :file (str pf)
+                                  :id id :offset offset :length length}
+                                 e))))]
+     (when-not (= id (str "sha256-" (canonical/sha256-hex-bytes out)))
+       (throw (ex-info "pack slice does not hash to its id — index and pack disagree"
+                       {:reason :pack/unreadable :file (str pf)
+                        :id id :offset offset :length length})))
+     out)))
 
 (defn- read-packed-events [^File dir]
-  (if-let [{:keys [entries]} (read-pack-index dir)]
+  (if-let [{:keys [entries] :as index} (read-pack-index dir)]
     (mapv (fn [{:keys [id] :as entry}]
-            (parse-event (String. ^bytes (pack-slice dir entry) "UTF-8")
+            (parse-event (String. ^bytes (pack-slice dir index entry) "UTF-8")
                          id
-                         {:file (str (pack-file dir)) :id id}))
+                         {:file (str (pack-file-of dir index)) :id id}))
           entries)
     []))
+
+(defn index-installed!
+  "Replace the pack index of `dir` with `bytes` atomically. Named so a
+  test can fail it and assert an interrupted re-pack loses nothing."
+  [^File dir ^bytes bytes]
+  (write-atomically! (pack-index-file dir) bytes))
 
 (defn pack!
   "Consolidate a ticket's loose event files into events.pack + index:
@@ -169,7 +205,7 @@
   events are carried over, loose newcomers join the new pack."
   [root ticket-id]
   (let [dir (ticket-dir root ticket-id)
-        packed (when (.isFile (pack-file dir)) (read-packed-events dir))
+        packed (read-packed-events dir)
         loose-files (when (.isDirectory dir)
                       (filter (fn [^File f]
                                 (and (.isFile f)
@@ -196,19 +232,22 @@
                                                    ^bytes (first cs))}))))
             tmp (io/file dir "events.pack.tmp")]
         (write-synced! tmp chunks)
-        (let [pack-hash (canonical/sha256-hex-bytes
-                         (java.nio.file.Files/readAllBytes (.toPath tmp)))]
-          ;; packing is all-or-nothing: an install that does not happen
-          ;; throws here, before anything is deleted, so the loose files
-          ;; are left exactly as they are
-          (pack-installed! tmp (pack-file dir))
-          (write-synced! (pack-index-file dir)
-                         [(.getBytes (pr-str {:pack (str "sha256-" pack-hash)
-                                              :entries entries})
-                                     "UTF-8")])
-          ;; loose files leave only once the pack AND its index are durable
+        ;; packing is all-or-nothing. The new pack lands under its own
+        ;; content address beside the old one, so the index in place
+        ;; keeps describing intact bytes until the new index replaces it
+        ;; atomically; an install that does not happen throws before
+        ;; anything is deleted
+        (let [address (str "sha256-" (canonical/sha256-hex-bytes
+                                      (java.nio.file.Files/readAllBytes (.toPath tmp))))
+              current (named-pack-file dir address)]
+          (pack-installed! tmp current)
+          (index-installed! dir (.getBytes (pr-str {:pack address :entries entries})
+                                           "UTF-8"))
+          ;; loose files and superseded packs leave only once the pack
+          ;; AND its index are durable
           (doseq [^File f loose-files] (.delete f))
-          {:packed (count events) :pack (str "sha256-" pack-hash)})))))
+          (doseq [^File f (pack-files dir) :when (not= f current)] (.delete f))
+          {:packed (count events) :pack address})))))
 
 (defrecord FileStore [root]
   p/EventStore

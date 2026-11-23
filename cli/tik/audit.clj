@@ -877,17 +877,18 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                (str (shash eid) "… bytes are exactly the hashed region"))
         (check (event/valid? e) (str (shash eid) "… schema-valid")))
       (do
-        (when-let [{:keys [entries pack]} (fstore/read-pack-index dir)]
+        (when-let [{:keys [entries pack] :as index} (fstore/read-pack-index dir)]
           (let [pack-bytes (java.nio.file.Files/readAllBytes
-                            (.toPath (io/file dir "events.pack")))]
+                            (.toPath (fstore/pack-file-of dir index)))]
             (check (= pack (str "sha256-"
                                 (canonical/sha256-hex-bytes pack-bytes)))
                    (str "pack " (shash pack)
                         "… bytes hash to the index's pack address"))
             (doseq [{:keys [id] :as entry} entries
-                    :let [slice (fstore/pack-slice dir entry)]]
-              (check (= id (str "sha256-"
-                                (canonical/sha256-hex-bytes slice)))
+                    :let [slice (try (fstore/pack-slice dir index entry)
+                                     (catch clojure.lang.ExceptionInfo _ nil))]]
+              (check (and slice (= id (str "sha256-"
+                                           (canonical/sha256-hex-bytes slice))))
                      (str (shash id) "… packed slice hashes to id")))))
         (doseq [^File f files
                 :let [stem (str/replace (.getName f) #"\.edn$" "")

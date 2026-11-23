@@ -950,7 +950,7 @@
       (is (fails-well? #(doall (store/events s ticket)))))
     (testing "a truncated pack fails well"
       (spit idx good)
-      (spit (io/file evdir "events.pack") "short")
+      (spit (fstore/pack-file-of evdir (fstore/read-pack-index evdir)) "short")
       (is (fails-well? #(doall (store/events s ticket)))))))
 
 (deftest corrupt_caches_are_misses_never_crashes
