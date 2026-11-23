@@ -175,3 +175,24 @@
       (finally
         (io/delete-file script true)
         (io/delete-file dir true)))))
+
+(deftest a-repo-fact-that-leaves-the-holder-is-not-probed
+  (doseq [repo ["../outside" "a/../../outside" "/etc" "."]]
+    (let [{:keys [root id]} (store-with-ticket! "tik-probe-escape" (str "repo=\"" repo "\""))
+          holder (.getParentFile (io/file (str root)))
+          _ (.mkdirs (io/file holder "outside"))
+          r (in root "probe" id "--command" "echo cwd=$(pwd)")]
+      (is (= 1 (:exit r)) repo)
+      (is (re-find #"cannot probe" (str (:out r) (:err r))) repo)
+      (is (not (re-find #"cwd" (:out r))) (str repo " ran the probe")))))
+
+(deftest a-sweep-skips-an-escaping-repo-and-probes-the-rest
+  (let [{:keys [root id]} (store-with-ticket! "tik-probe-sweep" "repo=\"/etc\"")
+        _ (in root "new" "track" "--title" "good")
+        good (->> (str/split (:out (in root "ls" "--edn")) #"[^0-9a-f-]")
+                  (filter #(= 36 (count %))) (remove #{id}) first)
+        _ (.mkdirs (io/file (str root) "good"))
+        _ (in root "set" good "repo=good")
+        r (in root "probe" "--command" "echo seen=yes")]
+    (is (zero? (:exit r)) (str (:out r) (:err r)))
+    (is (re-find #"seen" (:out r)) "the healthy ticket was probed")))
