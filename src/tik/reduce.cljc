@@ -98,8 +98,9 @@
   different: an assertion clears the disputes that rejected some other
   value, and leaves standing any dispute that rejected exactly the value
   now being claimed again. So the disputed party cannot clear a dispute
-  by re-typing the same fact — the only ways out are a genuinely
-  different value, a retraction, or the disputer withdrawing.
+  by re-typing the same fact, with or without a retraction between — the
+  only ways out are a genuinely different value or the disputer
+  withdrawing.
 
   A dispute raised while the path held no value (:rejected absent)
   rejects nothing in particular, so the first assertion answers it —
@@ -107,7 +108,7 @@
   blocking the path forever."
   [prev value]
   (filterv #(and (contains? % :rejected) (= value (:rejected %)))
-           (:disputes prev [])))
+           (concat (:disputes prev) (:latent-disputes prev))))
 
 (defn- h-assert [state {:keys [event/body event/at event/actor event/id]}]
   (let [path (:fact/path body)
@@ -119,14 +120,22 @@
                  (seq live) (assoc :disputes live)))))
 
 (defn- h-retract
-  "Retraction withdraws the claim with no replacement, so every dispute
-  of that claim has lost its subject and does not carry over."
+  "Retraction withdraws the claim with no replacement, so the disputes of
+  that claim no longer make the path :disputed. A dispute that rejected a
+  specific value stays as a latent dispute, which only a later assertion
+  of that same value revives (surviving-disputes): retracting and
+  re-asserting must not clear an objection the disputed party cannot
+  clear by re-asserting alone."
   [state {:keys [event/body event/at event/actor event/id]}]
-  (let [path (:fact/path body)]
+  (let [path (:fact/path body)
+        entry (get-in state [:facts path])
+        latent (filterv #(contains? % :rejected)
+                        (concat (:disputes entry) (:latent-disputes entry)))]
     (update-in state [:facts path]
                push-history
-               {:retracted {:by actor :at at :event id
-                            :reason (:retract/reason body)}})))
+               (cond-> {:retracted {:by actor :at at :event id
+                                    :reason (:retract/reason body)}}
+                 (seq latent) (assoc :latent-disputes latent)))))
 
 (defn- observed-write
   "The latest write on `path`, in fold order, that the event with
@@ -154,8 +163,12 @@
     (cond
       (:dispute/withdraw? body)
       (if entry
-        (assoc-in state [:facts path :disputes]
-                  (filterv #(not= actor (:by %)) (:disputes entry [])))
+        (-> state
+            (assoc-in [:facts path :disputes]
+                      (filterv #(not= actor (:by %)) (:disputes entry [])))
+            (cond-> (:latent-disputes entry)
+              (assoc-in [:facts path :latent-disputes]
+                        (filterv #(not= actor (:by %)) (:latent-disputes entry)))))
         state)
 
       :else

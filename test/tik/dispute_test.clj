@@ -126,3 +126,17 @@
                                             :at (at 3) :path path :reason "?"}))
         state (red/ticket-state (conj base x ana))]
     (is (not (contains? (get-in state [:facts path :disputes 0]) :rejected)))))
+
+(deftest a-retraction-does-not-launder-the-rejected-value
+  (let [retracted (-> base (assert! 1 "seb" :billing) (dispute! 2 "auditor")
+                      (retract! 3 "seb"))]
+    (is (= :retracted (status retracted)))
+    (testing "re-asserting the rejected value meets the dispute again"
+      (let [evs (assert! retracted 4 "seb" :billing)]
+        (is (= :disputed (status evs)))
+        (is (nil? (red/fact-value (red/ticket-state evs) path)))))
+    (testing "a different value still answers it"
+      (is (= :present (status (assert! retracted 4 "seb" :technical)))))
+    (testing "the disputer can still withdraw while the path is retracted"
+      (is (= :present (status (-> retracted (dispute! 4 "auditor" :withdraw true)
+                                  (assert! 5 "seb" :billing))))))))

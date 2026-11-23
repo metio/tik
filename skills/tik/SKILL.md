@@ -75,7 +75,7 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   fact; the stage **regresses by derivation** (no manual rollback). A
   dispute rejects the value its author saw when raising it, so only a
   **different** value answers it — re-asserting the same one leaves the
-  path disputed. The disputer takes their own objection back with
+  path disputed, also after a retraction in between. The disputer takes their own objection back with
   `tik dispute <id> <k> --withdraw`; nobody can withdraw somebody else's.
 - `tik roles` / `tik roles add <role> <actor>` / `tik roles remove <role>
   <actor>` — who gates what, and the store's role register behind it. A
