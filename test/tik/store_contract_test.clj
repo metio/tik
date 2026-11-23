@@ -167,3 +167,34 @@
         (fstore/pack! root tid)
         (is (zero? (loose)))
         (is (= (count events) (count (store/events store tid))))))))
+
+(deftest a-torn-event-file-heals-on-the-next-append
+  (let [root (tmp "tik-torn")
+        store (fstore/file-store root)
+        events (ge/ops->events [[:assert "seb" [:category] :technical 60]])
+        tid (:event/ticket (first events))
+        e (last events)
+        f (io/file root "tickets" (str tid) "events" (str (:event/id e) ".edn"))]
+    (doseq [x events] (store/append! store x))
+    (let [good (slurp f)]
+      (spit f (subs good 0 (quot (count good) 2)))
+      (testing "re-appending the same event replaces the torn bytes"
+        (store/append! store e)
+        (is (= good (slurp f))))
+      (testing "and the ticket reads back"
+        (is (= (count events) (count (store/events store tid))))))))
+
+(deftest an-append-leaves-no-partial-file-under-the-event-name
+  (let [root (tmp "tik-atomic")
+        store (fstore/file-store root)
+        events (ge/ops->events [[:assert "seb" [:category] :technical 60]])
+        tid (:event/ticket (first events))
+        e (last events)
+        dir (io/file root "tickets" (str tid) "events")]
+    (store/append! store (first events))
+    (with-redefs [tik.store.file/installed!
+                  (fn [& _] (throw (java.io.IOException. "killed mid-write")))]
+      (is (thrown? java.io.IOException (store/append! store e))))
+    (is (not (.exists (io/file dir (str (:event/id e) ".edn"))))
+        "a failed write never leaves a file under the event's name")
+    (is (= 1 (count (store/events store tid))) "the ticket still reads back")))
