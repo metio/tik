@@ -563,21 +563,17 @@
   [& args]
   (dispatch-guarded (vec args)))
 
-(defn run-argv
-  "The IN-PROCESS entry point beside -main: run one CLI invocation with
-  the exact same dispatch and escape handling, but stdout/stderr are
-  captured and every exit! — a command's own die/refuse, or the escape
-  handler's — is trapped into an exit CODE instead of terminating.
-  Returns {:exit int :out string :err string}. The MCP server (and any
-  embedder) reuse the whole CLI through this, no subprocess.
+(defn run-argv-to
+  "Run one CLI invocation in process with its stdout and stderr going to
+  the writers `out` and `err` as it runs, every exit! trapped into the
+  returned exit code instead of terminating. A long-running verb (serve,
+  a watching bridge) streams through this; run-argv captures instead.
 
   argv must be a sequence of strings; a non-string element is a caller
   error answered as a clean exit-1 result, never a raw NPE from the
   parser (the fail-well contract reaches the embedding seam too)."
-  [argv]
-  (let [out (java.io.StringWriter.)
-        err (java.io.StringWriter.)
-        code (volatile! 0)]
+  [argv out err]
+  (let [code (volatile! 0)]
     (binding [*out* out
               *err* err
               *exit-fn* (fn [c]
@@ -595,7 +591,20 @@
             ;; re-throws this one; @code already carries the exit value
             (when-not (contains? (ex-data e) ::exit)
               (vreset! code 1))))))
-    {:exit @code :out (str out) :err (str err)}))
+    @code))
+
+(defn run-argv
+  "The IN-PROCESS entry point beside -main: run one CLI invocation with
+  the exact same dispatch and escape handling, but stdout/stderr are
+  captured and every exit! — a command's own die/refuse, or the escape
+  handler's — is trapped into an exit CODE instead of terminating.
+  Returns {:exit int :out string :err string}. The MCP server (and any
+  embedder) reuse the whole CLI through this, no subprocess."
+  [argv]
+  (let [out (java.io.StringWriter.)
+        err (java.io.StringWriter.)
+        code (run-argv-to argv out err)]
+    {:exit code :out (str out) :err (str err)}))
 
 
 

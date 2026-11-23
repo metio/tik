@@ -86,3 +86,15 @@
     (testing "no config file at all is a clean error"
       (.delete (io/file root "pipelines.edn"))
       (is (= 1 (:exit (run-backend root)))))))
+
+(deftest a-watcher-that-exits-says-why
+  (let [out (java.io.StringWriter.)
+        err (java.io.StringWriter.)
+        code (backend/watch-once! {:id :inbox :watch true
+                                   :run ["bridge" "imap" "--watch" "--config" "/nonexistent/imap.edn"]}
+                                  out err)]
+    (is (= 1 code))
+    (is (re-find #"no imap config at /nonexistent/imap.edn" (str err))
+        "the verb's own message reaches the backend's stream")
+    (is (re-find #"\[inbox\].*exited with code 1" (str err))
+        "and the backend names the pipeline and its exit")))

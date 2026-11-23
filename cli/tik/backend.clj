@@ -82,23 +82,38 @@
     (when-not (zero? (long exit))
       (binding [*out* *err*] (println (label p) "failed:" (str/trim (str err)))))))
 
+(defn watch-once!
+  "Run a CONTINUOUS pipeline's verb once, its output streaming to `out`
+  and `err` while it runs, and report on `err` how it ended. Returns the
+  exit code. A watcher that keeps exiting must say why each time: a
+  captured run would hold a bad config's message until the verb ends and
+  then drop it."
+  [p out err]
+  (let [code (try (cli/run-argv-to (tick-argv (LocalDate/now ZoneOffset/UTC) p) out err)
+                  (catch Throwable e
+                    (binding [*out* err] (println (label p) "watcher threw:" (ex-message e)))
+                    1))]
+    (binding [*out* err]
+      (println (label p) "watcher exited with code" code))
+    code))
+
 (defn- start-watcher!
   "Spawn a CONTINUOUS pipeline (serve, bridge imap --watch) as a daemon
   thread that runs its verb and restarts it with exponential backoff if it
   ever returns — supervision for the long-lived slices."
   [p]
-  (doto (Thread.
-         ^Runnable (fn []
-                     (loop [backoff 1000]
-                       (try (cli/run-argv (tick-argv (LocalDate/now ZoneOffset/UTC) p))
-                            (catch Throwable _ nil))
-                       (binding [*out* *err*]
-                         (println (label p) "watcher exited; restarting in" (quot backoff 1000) "s"))
-                       (Thread/sleep backoff)
-                       (recur (min (* 2 backoff) 60000))))
-         (str "tik-backend-" (name (:id p))))
-    (.setDaemon true)
-    (.start)))
+  (let [out *out* err *err*]
+    (doto (Thread.
+           ^Runnable (fn []
+                       (loop [backoff 1000]
+                         (watch-once! p out err)
+                         (binding [*out* err]
+                           (println (label p) "restarting in" (quot backoff 1000) "s"))
+                         (Thread/sleep backoff)
+                         (recur (min (* 2 backoff) 60000))))
+           (str "tik-backend-" (name (:id p))))
+      (.setDaemon true)
+      (.start))))
 
 (defn- sleep-ms
   "How long to sleep until the earliest next fire — clamped so the loop
