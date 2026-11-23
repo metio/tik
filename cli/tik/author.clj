@@ -25,14 +25,18 @@
 
 ;; ------------------------------------------------------------ checking
 
+;; A fact path names at least one segment: an empty one builds a guard
+;; over the ticket's whole fact map and has no name to show.
+(def ^:private fact-path [:vector {:min 1} :keyword])
+
 (def Need
   [:multi {:dispatch :kind}
-   [:fact [:map [:kind [:= :fact]] [:path [:vector :keyword]]
+   [:fact [:map [:kind [:= :fact]] [:path fact-path]
            [:type {:optional true} [:= :number]]]]
-   [:choice [:map [:kind [:= :choice]] [:path [:vector :keyword]]
+   [:choice [:map [:kind [:= :choice]] [:path fact-path]
              [:values [:vector :keyword]]]]
    [:signature [:map [:kind [:= :signature]] [:role :keyword]
-                [:over {:optional true} [:vector :keyword]]]]
+                [:over {:optional true} fact-path]]]
    [:file [:map [:kind [:= :file]] [:prefix :string]]]
    [:waited [:map [:kind [:= :waited]] [:duration :string]]]])
 
