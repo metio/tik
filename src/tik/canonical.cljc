@@ -173,7 +173,23 @@
   (when-not (bytes? b) (shape/reject :blob :bytes b))
   (bytes->hex (.digest (MessageDigest/getInstance "SHA-256") b)))
 
+(def address-prefix
+  "The prefix of every content address in format version 1. The hash a
+  format version uses is named here and nowhere else, so a second one
+  under a version bump (ADR 0006 rule 3) is one change."
+  "sha256-")
+
+(defn address-of-bytes
+  "The content address of `b`: `address-prefix` and the hex SHA-256."
+  ^String [^bytes b]
+  (str address-prefix (sha256-hex-bytes b)))
+
+(defn address-of-text
+  "The content address of the UTF-8 bytes of `s`."
+  ^String [^String s]
+  (str address-prefix (sha256-hex s)))
+
 (defn content-address
-  "\"sha256-<hex>\" of the canonical form of `value`."
+  "The content address of the canonical form of `value`."
   ^String [value]
-  (str "sha256-" (sha256-hex (emit value))))
+  (address-of-text (emit value)))

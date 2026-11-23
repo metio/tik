@@ -236,8 +236,7 @@
   change under it."
   [^File f]
   (when (.isFile f)
-    (str "sha256-" (canonical/sha256-hex-bytes
-                    (java.nio.file.Files/readAllBytes (.toPath f))))))
+    (canonical/address-of-bytes (java.nio.file.Files/readAllBytes (.toPath f)))))
 
 ;; ---------------------------------------------------------------- layout
 
@@ -281,7 +280,7 @@
   [^File f strip-edn?]
   (let [bytes (java.nio.file.Files/readAllBytes (.toPath f))
         named (cond-> (.getName f) strip-edn? (str/replace #"\.edn$" ""))]
-    (= named (str "sha256-" (canonical/sha256-hex-bytes bytes)))))
+    (= named (canonical/address-of-bytes bytes))))
 
 (defn integrity-checks
   "L0: every stored file's name is the sha256 of its bytes, its bytes are
@@ -597,14 +596,15 @@
   definition to collide with deliberately. It is pasted into a workflow
   file once, so the full form costs nothing worth having."
   [s]
-  (let [hex (str/replace (str/trim (str s)) #"^sha256-" "")]
+  (let [hex (str/replace (str/trim (str s))
+                         (re-pattern (str "^" canonical/address-prefix)) "")]
     (when-not (re-matches #"[0-9a-f]{64}" hex)
       (refuse! (str "--expect-definition takes a full definition hash"
                     " (sha256- followed by 64 hex characters), not "
                     (pr-str s)
                     " — a prefix is short enough to collide with on purpose,"
                     " and pinning is this flag's whole job")))
-    (str "sha256-" hex)))
+    (str canonical/address-prefix hex)))
 
 (defn- binding-expectations
   "Each signer's binding judged by the reader's `policy` and against
