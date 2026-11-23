@@ -210,6 +210,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   pass (`tik review review.verdict=approved`). Recorded values are
   re-asserted exactly as they stand, and a ticket is offered only when a
   dry run lands the stage without losing one. `--list` signs nothing.
+  `--batch [--registry ID]` signs one five-minute delegation scoping the
+  listed heads and fact paths (ADR 0037), then the facts with a throwaway
+  key it deletes, so a security key is touched once. It signs nothing when
+  a listed ticket changed after the list was drawn.
 
 ### Bringing the outside world in — the bridges
 

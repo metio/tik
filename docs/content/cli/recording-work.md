@@ -103,6 +103,24 @@ Arguments without `=` narrow the batch to a process name or a ticket id
 prefix. Publishing a definition needs a key, given with `--key` or
 `TIK_KEY`.
 
+Each fact is one signature, so with a security key a list of forty
+tickets is forty touches. `--batch` signs the tickets with one:
+
+```sh
+tik review review.verdict=approved --batch
+```
+
+Your key signs a single delegation on the identity registry. It names a
+throwaway key, the exact ticket heads in the list, and the fact paths
+the list sets, and it is valid for five minutes. The throwaway key is
+made in a private temporary directory, signs every fact, and is deleted
+afterwards. A ticket that changed after the list was drawn makes the
+batch sign nothing, because the delegation would cover an event you did
+not see. With several identity-registry tickets in the store, pass
+`--registry <id>`. Definitions are still signed one by one with your
+key. `tik verify` credits the facts to you as described under
+[Store administration](/cli/administration/).
+
 ## Derive facts from the world
 
 ```sh

@@ -23,7 +23,7 @@
   00c050ab as a positional. Read as a valued flag, it would bind :yes to
   the id, drop the id from the filter, and widen the batch to everything
   else that waits. A switch still takes the --flag=value form."
-  #{"all" "anchor" "apply" "changed" "dry-run" "edn" "force" "github" "help"
+  #{"all" "anchor" "apply" "batch" "changed" "dry-run" "edn" "force" "github" "help"
     "hidden" "list" "long" "no-repo" "published-only" "retire" "serve" "sign" "sqlite" "verbose" "watch" "webhook"
     "withdraw" "witness" "yes"})
 
