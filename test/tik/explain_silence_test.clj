@@ -31,7 +31,7 @@
                    :process/stages stages}))
     (in root "new" "probe-subject" "--title" "silent explain")
     {:root root
-     :id (->> (str/split (:out (in root "ls" "--edn")) #"[^0-9a-f-]")
+     :id (->> (str/split (:out (in root "ls" "--all" "--edn")) #"[^0-9a-f-]")
               (filter #(= 36 (count %)))
               first)}))
 
@@ -120,7 +120,7 @@
                                      :guards [[:signed-by :handlers [:evidence]]]}]}))
     (in root "new" "handled" "--title" "a role-bound step")
     {:root root
-     :id (->> (str/split (:out (in root "ls" "--edn")) #"[^0-9a-f-]")
+     :id (->> (str/split (:out (in root "ls" "--all" "--edn")) #"[^0-9a-f-]")
               (filter #(= 36 (count %)))
               first)}))
 

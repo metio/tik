@@ -235,6 +235,8 @@
         id (resolve-id s ticket)
         at (now)
         text (str/join " " words)
+        _ (when (str/blank? text)
+            (die (str "a comment needs text: tik comment " ticket " <words…>")))
         bytes (.getBytes ^String text "UTF-8")
         hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
         dest (io/file (blob-dir id) hash)]
