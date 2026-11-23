@@ -189,3 +189,11 @@
     (is (some #(and (= :error (:level %)) (re-find #"stage 'done' is defined more than once" (:msg %)))
               (author/check answers))
         (pr-str (author/check answers)))))
+
+(deftest an-empty-path-is-a-schema-error
+  (doseq [need [{:kind :fact :path []}
+                {:kind :choice :path [] :values [:a]}
+                {:kind :signature :role :r :over []}]]
+    (let [findings (author/check {:name "p" :stages [{:name "a" :needs [need]}]})]
+      (is (= :error (:level (first findings))) (pr-str need))
+      (is (re-find #"not a valid answers map" (:msg (first findings))) (pr-str need)))))
