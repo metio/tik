@@ -27,7 +27,8 @@
   with the closed guard basis or any real definition data, and they are
   all expanded away — the produced definition contains no markers."
   (:require [malli.core :as m]
-            [tik.canonical :as canonical]))
+            [tik.canonical :as canonical]
+            [tik.process :as process]))
 
 (defn- param-marker? [x]
   (and (vector? x) (= 2 (count x)) (= :tik/param (first x))))
@@ -103,6 +104,19 @@
   [x]
   (and (map? x) (contains? x :tik/template)))
 
+(defn params-schema
+  "The template's :tik/params compiled under the kernel's data-only
+  registry (tik.process/schema-registry), or nil when it declares none.
+  A template is shared material, so a schema in it that could call code
+  (:fn, :multi) is refused like one in a definition. Throws ex-info
+  {:reason :template/bad-schema} for a schema that does not compile."
+  [template]
+  (when-let [schema (when (map? template) (:tik/params template))]
+    (try (m/schema schema {:registry process/schema-registry})
+         (catch #?(:clj Exception :cljs :default) e
+           (throw (ex-info "template :tik/params is not a valid data-only schema"
+                           {:reason :template/bad-schema} e))))))
+
 (defn expand
   "Validate `params` against the template's `:tik/params` schema, then
   expand `:tik/template` to a canonical process definition. Throws
@@ -113,7 +127,7 @@
   (when-not (template? template)
     (throw (ex-info "not a template: missing :tik/template"
                     {:reason :template/malformed})))
-  (when-let [schema (:tik/params template)]
+  (when-let [schema (params-schema template)]
     ;; a hand-set template could carry a garbage :tik/params — malli must
     ;; not leak a raw error out of the fail-well contract
     (let [valid? (try (m/validate schema params)

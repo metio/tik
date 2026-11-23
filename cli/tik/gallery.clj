@@ -123,9 +123,9 @@
   so the page lists what an adopter chooses without anybody writing it
   down twice."
   [tmpl]
-  (when-let [schema (:tik/params tmpl)]
+  (when (:tik/params tmpl)
     (try
-      (vec (for [[k props child] (m/children (m/schema schema))]
+      (vec (for [[k props child] (m/children (template/params-schema tmpl))]
              {:key k
               :required? (not (:optional props))
               :description (:description props)
