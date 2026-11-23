@@ -95,7 +95,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   store's holder for a ticket that has only its definition's `:subject`
   fact, with `TIK_SUBJECT` set), and assert
   each **changed** value as an ordinary signed fact, so a ticket regresses on
-  its own when reality does. The probe's environment carries `TIK_TICKET`,
+  its own when reality does. `[:repo]` must be a relative path strictly below
+  the store holder (`app`, `group/app`); an absolute or climbing value blocks
+  that ticket. The probe's environment carries `TIK_TICKET`,
   `TIK_REPO`, and every present fact as `TIK_FACT_<PATH>` (`[:candidate :repo]`
   → `TIK_FACT_CANDIDATE__REPO`) — that is what lets one repository hold many
   subjects, a package or tenant or workload per ticket, each probe told which
