@@ -19,7 +19,7 @@
   fact-status is the single choke point for 'why does this fact (not)
   satisfy guards': :present | :absent | :retracted | :disputed |
   :conflicted. A dispute rejects the value that stood when it was
-  raised, so only a DIFFERENT value (or a retraction, or the disputer
+  raised, for its author (the latest write among its ancestors), so only a DIFFERENT value (or a retraction, or the disputer
   withdrawing) answers it — see `surviving-disputes`. Guards consult
   nothing else about facts. :conflicted is
   structural (ADR 0003/0004): causally concurrent writes that disagree,
@@ -128,13 +128,29 @@
                {:retracted {:by actor :at at :event id
                             :reason (:retract/reason body)}})))
 
+(defn- observed-write
+  "The latest write on `path`, in fold order, that the event with
+  `parents` had seen: one of its parents or an ancestor of one. nil when
+  it saw none."
+  [state path parents]
+  (let [index (:parents state)
+        seen? (fn [w] (or (contains? parents (:event w))
+                          (some #(ancestor? index (:event w) %) parents)))]
+    (some #(when (seen? %) %) (rseq (get-in state [:writes path] [])))))
+
 (defn- h-dispute
   "Raise a dispute, or withdraw this actor's own. Disputes accumulate:
   several people may reject the same claim, and one of them withdrawing
-  says nothing about the others."
-  [state {:keys [event/body event/at event/actor event/id]}]
+  says nothing about the others.
+
+  A dispute rejects the value its author saw: the latest write on the
+  path among the dispute's ancestors. Fold order alone would name a
+  concurrent write the disputer never saw, and the dispute would then
+  stand against that write's every re-assertion."
+  [state {:keys [event/body event/at event/actor event/id] :as event}]
   (let [path (:fact/path body)
-        entry (get-in state [:facts path])]
+        entry (get-in state [:facts path])
+        seen (observed-write state path (or (shape/parent-ids event) #{}))]
     (cond
       (:dispute/withdraw? body)
       (if entry
@@ -146,7 +162,7 @@
       (update-in state [:facts path :disputes] (fnil conj [])
                  (cond-> {:by actor :at at :event id
                           :reason (:dispute/reason body)}
-                   (contains? entry :value) (assoc :rejected (:value entry)))))))
+                   (= :assert (:kind seen)) (assoc :rejected (:value seen)))))))
 
 (defn- h-artifact [state {:keys [event/body event/at event/actor]}]
   (assoc-in state [:artifacts (:artifact/path body)]

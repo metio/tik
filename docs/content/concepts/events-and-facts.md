@@ -63,8 +63,11 @@ guards consult nothing else:
 
 ## What a dispute means
 
-A dispute rejects **the value that stood when it was raised**, so the
-assertion that answers it has to claim something else. Re-asserting the
+A dispute rejects **the value that stood when it was raised**: the latest
+claim on the path among the dispute's own ancestors, which is the value its
+author saw. A concurrent correction the disputer had not seen is not what
+they rejected, so it is not held hostage by the dispute. The assertion that
+answers a dispute has to claim something else. Re-asserting the
 rejected value verbatim leaves the path `:disputed` — otherwise the party a
 dispute holds accountable could clear it in one command by retyping the
 same fact.

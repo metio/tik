@@ -72,7 +72,7 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik status <id>` — derived stage, facts, links, what's next.
 - `tik retract <id> <k>` / `tik dispute <id> <k>` — withdraw or reject a
   fact; the stage **regresses by derivation** (no manual rollback). A
-  dispute rejects the value that stood when it was raised, so only a
+  dispute rejects the value its author saw when raising it, so only a
   **different** value answers it — re-asserting the same one leaves the
   path disputed. The disputer takes their own objection back with
   `tik dispute <id> <k> --withdraw`; nobody can withdraw somebody else's.
