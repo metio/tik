@@ -199,7 +199,7 @@
 (deftest no-command-reads-a-flag-check-flags-refuses
   ;; identity_trust's binding-status takes an internal options map whose
   ;; keys are not CLI flags
-  (let [internal #{"leeway" "policy"}
+  (let [internal #{"leeway" "policy" "key-commitment"}
         read (into #{}
                    (comp (filter #(str/ends-with? (.getName ^java.io.File %) ".clj"))
                          (mapcat #(re-seq #"\(:([a-z][a-z-]*) opts\)" (slurp %)))

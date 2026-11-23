@@ -518,6 +518,10 @@ if [ -d identity ]; then
            || { [ -n \"$nbf\" ] && [ \"$when\" -lt $((nbf - 60)) ]; } \\
            || { [ -n \"$iat\" ] && [ \"$when\" -lt $((iat - 60)) ]; }; then
         echo \"FAIL  the token in $b was not live when the binding was written\"; fail=1
+      elif ! { kc=\"tik-key-$(printf '%s %s' $(printf %s \"$pub\" | cut -d' ' -f1,2 | tr ' ' '\\n') | sha256sum | cut -d' ' -f1)\"
+               printf %s \"$claims\" | grep -qF \"\\\"nonce\\\":\\\"$kc\\\"\" ||
+               printf %s \"$claims\" | grep -qF \"#$kc\\\"\"; }; then
+        echo \"FAIL  the token in $b does not name the key the binding grants\"; fail=1
       elif grep -qF \"$pub\" actors; then
         echo \"ok    $who is bound to its key by $sub, per the issuer\"
       else
@@ -852,13 +856,28 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (println (str "  note  " (count open) " binding(s) count with no :bindings"
                   " policy in oidc.edn — any subject the issuer vouches for"
                   " may bind any actor name until the store says which may")))
-  (doseq [{:keys [reason issuer actor subject]}
+  (when-let [weak (identity-trust/uncommitted-bindings (root) (registry-events s))]
+    (println (str "  note  " (count weak) " binding(s) count although their token"
+                  " does not name their key, because oidc.edn sets"
+                  " :key-commitment :optional — a writer who copied such a token"
+                  " could bind another key the same way")))
+  (doseq [{:keys [reason issuer actor subject binding]}
           (identity-trust/refusals (root) (registry-events s))]
-    (if (uncheckable reason)
+    (cond
+      ;; not forged, only unbound: it grants nothing, and since events are
+      ;; never deleted, failing on it would fail the store for good
+      (= :identity/key-not-committed reason)
+      (println (str "  note  identity binding for actor '" (:actor binding) "' grants nothing:"
+                    " its token from " issuer " does not name the key it binds"
+                    " — bind again with a token requested by `tik bridge`,"
+                    " or set :key-commitment :optional in oidc.edn"))
+
+      (uncheckable reason)
       (println (str "  note  identity binding for issuer " issuer
                     " is unverifiable (" (name reason) ") and grants nothing"
                     " — pin its keys with `tik bridge jwks --issuer "
                     issuer "` to make it count"))
+      :else
       (check false (str "identity binding refused (" (name reason) ")"
                         (when issuer (str " for issuer " issuer))
                         (when (= :identity/actor-not-permitted reason)

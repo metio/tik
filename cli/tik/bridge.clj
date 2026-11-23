@@ -88,10 +88,12 @@
         password (resolve-oidc-password opts)
         response (if (and (:user opts) password)
                    (oidc/password-flow oidc/http-post endpoints client-id
-                                       (:user opts) password)
+                                       (:user opts) password
+                                       (identity-trust/key-commitment public-key))
                    (let [{:keys [prompt poll]} (oidc/device-flow
                                                 oidc/http-post endpoints
-                                                client-id #(Thread/sleep (long %)))]
+                                                client-id #(Thread/sleep (long %))
+                                                (identity-trust/key-commitment public-key))]
                      (println prompt)
                      (loop [] (or (poll) (recur)))))
         claim (try (oidc/token->binding response {:actor who
@@ -103,6 +105,12 @@
                                   :parents heads :claim claim})]
     ;; as in `workload`: --key is the key being bound, not the signer
     (append!* s e (dissoc opts :key))
+    (when-not (identity-trust/token-names-key?
+               (identity-trust/token-claims (:identity/id-token claim)) public-key)
+      (binding [*out* *err*]
+        (println (str "warning: " issuer " did not put the nonce into the id-token, so"
+                      " this binding counts only in a store that sets"
+                      " :key-commitment :optional in oidc.edn"))))
     (println (str "bound " (:identity/issuer claim) " subject "
                   (:identity/subject claim) " (" (:identity/username claim)
                   ") to actor '" who "' — attestation " (shash (:event/id e))
@@ -327,8 +335,11 @@
 (defn- workload-token
   "The pre-issued OIDC token a workload presents. No interactive flow:
   a pipeline already holds a token, and the point of rung 2 for CI is
-  that no long-lived secret exists to steal."
-  [opts]
+  that no long-lived secret exists to steal. `commitment` is appended to
+  the audience a GitHub job asks for, so the token names the key it will
+  bind; a token from a file or the environment must have been requested
+  that way already."
+  [opts commitment]
   (str/trim
    (cond
      (:token-file opts) (slurp-existing "token" (:token-file opts))
@@ -347,7 +358,7 @@
                              " unset (add `permissions: id-token: write`)")))
            rt (or (System/getenv "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
                   (die "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset"))
-           aud (or (:audience opts) "tik")
+           aud (str (or (:audience opts) "tik") "#" commitment)
            body (oidc/http-get-with-auth
                  (str url "&audience="
                       (java.net.URLEncoder/encode (str aud) "UTF-8"))
@@ -395,7 +406,7 @@
                      (die (str "which key binds to this workload?"
                                " --public-key <key.pub> or set TIK_KEY")))
         public-key (str/trim (slurp-existing "key" key-file))
-        token (workload-token opts)
+        token (workload-token opts (identity-trust/key-commitment public-key))
         claims (try (oidc/decode-jwt-payload token)
                     (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
         issuer (or (identity-trust/token-issuer claims)
@@ -414,7 +425,7 @@
         audience (or (:audience opts) (:audience cfg) "tik")
         status (identity-trust/binding-status
                 (root) {:actor who :issuer issuer :subject (:sub claims)
-                        :id-token token :at at}
+                        :id-token token :at at :public-key public-key}
                 {:audience audience})]
     (when-not (= :trusted status)
       (die (str "refusing to write a binding `verify` would refuse ("
@@ -429,6 +440,10 @@
                   (str " — subject " (pr-str (:sub claims))
                        " may not bind actor '" who "'; :bindings in"
                        " oidc.edn names who may"))
+                (when (= :identity/key-not-committed (:reason status))
+                  (str " — the token does not name this key; request it with"
+                       " the audience " (pr-str (str audience "#" (:commitment status)))
+                       " (or the nonce " (pr-str (:commitment status)) ")"))
                 (when (= :identity/malformed-policy (:reason status))
                   " — :bindings in oidc.edn does not parse, so it permits nothing"))))
     (when (nil? (identity-trust/binding-policy (root)))

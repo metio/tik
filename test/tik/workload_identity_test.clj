@@ -54,12 +54,17 @@
 
 (defn- id-token
   "A token live right now, the way a real one is when a job presents it,
-  unless the subject or window is named."
+  unless the subject or window is named. `key` is the private key path
+  whose public half the token commits to, as `bridge workload --github`
+  asks GitHub for it."
   ([] (id-token {}))
-  ([{:keys [sub iat exp pair]}]
+  ([{:keys [sub iat exp pair key]}]
    (let [now (.getEpochSecond (Instant/now))
+         aud (if key
+               (str "tik#" (trust/key-commitment (slurp (str key ".pub"))))
+               "tik")
          payload (str "{\"iss\":\"" issuer "\",\"sub\":\"" (or sub subject) "\","
-                      "\"aud\":\"tik\",\"iat\":" (or iat (- now 30))
+                      "\"aud\":\"" aud "\",\"iat\":" (or iat (- now 30))
                       ",\"exp\":" (or exp (+ now 300)) "}")
          h (b64url (.getBytes "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"k1\"}" "UTF-8"))
          p (b64url (.getBytes payload "UTF-8"))
@@ -104,7 +109,7 @@
         ;; the job's ephemeral key: generated here, never stored anywhere
         ci-key (ssh-keygen! root "ci_key")
         token-file (str (io/file root "token.jwt"))
-        _ (spit token-file (id-token))
+        _ (spit token-file (id-token {:key ci-key}))
         ci-env (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
         bound (h/run-tik! ci-env "bridge" "workload"
                           "--registry" registry
@@ -147,7 +152,7 @@
           _ (.delete (trust/jwks-file root issuer))
           ci-key (ssh-keygen! root "ci_key")
           token-file (str (io/file root "token.jwt"))
-          _ (spit token-file (id-token))
+          _ (spit token-file (id-token {:key ci-key}))
           r (h/run-tik! (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
                         "bridge" "workload" "--registry" registry
                         "--token-file" token-file
@@ -184,12 +189,13 @@
         (str (:err r) (:out r)))))
 
 (defn- bind!
-  "Run `tik bridge workload` for `actor` with `token`; returns the result
-  and the key it bound."
+  "Run `tik bridge workload` for `actor` with `token`, or with the token
+  `token` returns for the key path it is given; returns the result and the
+  key it bound."
   [{:keys [root env]} registry actor token]
   (let [ci-key (ssh-keygen! root (str actor "_key"))
         token-file (str (io/file root (str actor ".jwt")))]
-    (spit token-file token)
+    (spit token-file (if (fn? token) (token ci-key) token))
     {:key ci-key
      :env (assoc env :actor actor :env {"TIK_KEY" ci-key})
      :result (h/run-tik! (assoc env :actor actor :env {"TIK_KEY" ci-key})
@@ -206,13 +212,13 @@
                                               "--title" "identity registry")))]
     (testing "a genuine token from the same issuer, about somebody else"
       (let [{r :result} (bind! st registry "ci"
-                               (id-token {:sub "repo:attacker/evil:ref:refs/heads/main"}))
+                               #(id-token {:sub "repo:attacker/evil:ref:refs/heads/main" :key %}))
             out (str (:err r) (:out r))]
         (is (pos? (:exit r)) out)
         (is (str/includes? out "actor-not-permitted") out)
         (is (str/includes? out ":bindings") "the refusal says where the policy lives")))
     (testing "the subject the policy names binds, and says nothing about a policy"
-      (let [{r :result} (bind! st registry "ci" (id-token))]
+      (let [{r :result} (bind! st registry "ci" #(id-token {:key %}))]
         (is (zero? (:exit r)) (str (:err r) (:out r)))
         (is (not (str/includes? (str (:err r)) "no :bindings policy")))))))
 
@@ -220,7 +226,7 @@
   (let [{:keys [env] :as st} (setup!)
         registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
                                               "--title" "identity registry")))
-        {r :result} (bind! st registry "ci" (id-token))]
+        {r :result} (bind! st registry "ci" #(id-token {:key %}))]
     (is (zero? (:exit r)) (str (:err r) (:out r)))
     (is (str/includes? (str (:err r)) "no :bindings policy") (:err r))))
 
@@ -234,7 +240,7 @@
         now (.getEpochSecond (Instant/now))
         closes (+ now 15)
         {r :result ci-env :env} (bind! st registry "ci"
-                                       (id-token {:iat (- now 400) :exp (- now 45)}))]
+                                       #(id-token {:iat (- now 400) :exp (- now 45) :key %}))]
     (is (zero? (:exit r)) (str (:err r) (:out r)))
     (let [inside (ticket-id (:out (h/run-tik! ci-env "new" "identity-registry"
                                               "--title" "inside the window")))]
@@ -255,7 +261,7 @@
                                               "--title" "identity registry")))
         ci-key (ssh-keygen! root "ci_key")
         token-file (str (io/file root "token.jwt"))
-        _ (spit token-file (id-token))
+        _ (spit token-file (id-token {:key ci-key}))
         ci-env (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
         _ (h/run-tik! ci-env "bridge" "workload" "--registry" registry
                       "--token-file" token-file "--public-key" (str ci-key ".pub")
@@ -302,20 +308,20 @@
         bind! (fn [actor token]
                 (let [k (ssh-keygen! root (str actor "_key"))
                       tf (str (io/file root (str actor ".jwt")))]
-                  (spit tf token)
+                  (spit tf (token k))
                   (h/run-tik! (assoc env :actor actor :env {"TIK_KEY" k})
                               "bridge" "workload" "--registry" registry
                               "--token-file" tf "--public-key" (str k ".pub")
                               "--actor" actor)
                   (assoc env :actor actor :env {"TIK_KEY" k})))
         ;; yesterday's binding, under the key pinned in setup!
-        old-env (bind! "ci" (id-token))
+        old-env (bind! "ci" #(id-token {:key %}))
         rotated (.generateKeyPair (doto (KeyPairGenerator/getInstance "RSA")
                                     (.initialize 2048)))
         new-jwks (str (io/file root "new-jwks.json"))
         _ (spit new-jwks (other-jwks rotated))
         repin (h/run-tik! env "bridge" "jwks" "--issuer" issuer "--jwks" new-jwks)
-        new-env (bind! "ci-next" (id-token {:pair rotated}))
+        new-env (bind! "ci-next" #(id-token {:pair rotated :key %}))
         work (ticket-id (:out (h/run-tik! old-env "new" "identity-registry"
                                           "--title" "signed by both")))]
     (h/run-tik! old-env "set" work "description=old" "--actor" "ci")
@@ -347,7 +353,7 @@
         registry (ticket-id (:out (h/run-tik! env "new" "identity-registry" "--title" "registry")))
         ci-key (ssh-keygen! root "ci_key")
         token-file (str (io/file root "token.jwt"))
-        _ (spit token-file (id-token))
+        _ (spit token-file (id-token {:key ci-key}))
         ci-env (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
         _ (h/run-tik! ci-env "bridge" "workload" "--registry" registry "--token-file" token-file
                       "--public-key" (str ci-key ".pub") "--actor" "ci")
@@ -368,8 +374,23 @@
       (let [out (unpacked #(str/replace % #":event/at #inst \"\d{4}" ":event/at #inst \"2099"))]
         (is (re-find #"FAIL .*not live" out) out)
         (is (not (str/includes? out "ci is bound")) out)))
+    (testing "a binding whose token names another key is not"
+      (let [out (unpacked #(str/replace % #":identity/public-key \"[^\"]*\""
+                                        ":identity/public-key \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther\""))]
+        (is (re-find #"FAIL .*does not name the key" out) out)
+        (is (not (str/includes? out "ci is bound")) out)))
     (testing "a binding naming another subject is not"
       (let [out (unpacked #(str/replace % (str ":identity/subject \"" subject "\"")
                                         ":identity/subject \"repo:other/x:ref:refs/heads/main\""))]
         (is (re-find #"FAIL .*subject" out) out)
         (is (not (str/includes? out "ci is bound")) out)))))
+
+(deftest a-token-that-names-no-key-is-refused-at-bind-time
+  (let [{:keys [env] :as st} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry"
+                                              "--title" "identity registry")))
+        {r :result} (bind! st registry "ci" (id-token))
+        out (str (:err r) (:out r))]
+    (is (pos? (:exit r)) out)
+    (is (str/includes? out "key-not-committed") out)
+    (is (str/includes? out "tik#tik-key-") "the refusal names the audience to request")))

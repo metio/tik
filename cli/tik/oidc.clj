@@ -131,10 +131,14 @@
 (defn device-flow
   "Start device authorization; returns {:prompt … :poll (fn [] …)}.
   `poll` returns the token map once the human has approved, nil while
-  pending. `sleep` is injected for the same reason http is."
-  [post {:keys [device token]} client-id sleep]
-  (let [start (json-parse (post device {"client_id" client-id
-                                        "scope" "openid"}))
+  pending. `sleep` is injected for the same reason http is. `nonce`, when
+  given, asks the IdP to put it in the id-token, which is how a binding's
+  token commits to the key it binds."
+  ([post endpoints client-id sleep] (device-flow post endpoints client-id sleep nil))
+  ([post {:keys [device token]} client-id sleep nonce]
+  (let [start (json-parse (post device (cond-> {"client_id" client-id
+                                                "scope" "openid"}
+                                         nonce (assoc "nonce" nonce))))
         ;; the poll interval is the IdP's word (RFC 8628: seconds, default
         ;; 5); a broken or hostile provider can send a non-number or a
         ;; negative, so fall back to the default rather than throwing on
@@ -152,17 +156,21 @@
                              "device_code" (:device_code start)
                              "client_id" client-id}))]
                (when-not (= "authorization_pending" (:error r))
-                 r)))}))
+                 r)))})))
 
 (defn password-flow
   "Resource-owner password grant — the headless path for tests and
-  scripted onboarding against a directly-trusted IdP."
-  [post {:keys [token]} client-id username password]
-  (json-parse (post token {"grant_type" "password"
-                           "client_id" client-id
-                           "scope" "openid"
-                           "username" username
-                           "password" password})))
+  scripted onboarding against a directly-trusted IdP. `nonce` as in
+  `device-flow`."
+  ([post endpoints client-id username password]
+   (password-flow post endpoints client-id username password nil))
+  ([post {:keys [token]} client-id username password nonce]
+   (json-parse (post token (cond-> {"grant_type" "password"
+                                    "client_id" client-id
+                                    "scope" "openid"
+                                    "username" username
+                                    "password" password}
+                             nonce (assoc "nonce" nonce))))))
 
 (defn token->binding
   "Token response -> the attestation body, or a thrown error carrying

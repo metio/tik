@@ -76,6 +76,7 @@ so a checkout and this site carry the same record.
 | [0032](/decisions/0032-the-sticky-carry-enters-by-stratum/) | Guards read the sticky carry from the first sweep, and :after admits a carried stage only in its own stratum. |
 | [0033](/decisions/0033-a-stratum-counts-every-wait/) | A negated stage must enter for good before its negator is first judged, counting every stage reference it waits on and every negation parity. |
 | [0034](/decisions/0034-a-rollout-subject-need-not-be-a-git-repository/) | A rollout takes its members from a declared population, and a subject needs no git repository. |
+| [0035](/decisions/0035-a-binding-token-commits-to-its-key/) | A binding counts only when its token names the key it binds, through its nonce or an audience suffix. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
 | [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |
