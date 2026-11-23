@@ -72,8 +72,10 @@ rejected value verbatim leaves the path `:disputed` — otherwise the party a
 dispute holds accountable could clear it in one command by retyping the
 same fact.
 
-A retraction clears disputes too, because the rejected claim is gone. A
-dispute raised on a path holding nothing rejects no particular value, so
+A retraction leaves the path `:retracted`, because the rejected claim is
+gone, but it does not answer the dispute: asserting the rejected value again
+after the retraction leaves the path `:disputed`, exactly as a direct
+re-assertion would. A dispute raised on a path holding nothing rejects no particular value, so
 the first assertion answers it, which is what keeps a dispute from making a
 path permanently unusable.
 

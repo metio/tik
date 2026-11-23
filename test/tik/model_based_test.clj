@@ -17,7 +17,7 @@
   model carries because the semantics do: a dispute rejects the VALUE
   that stood when it was raised, so an assert answers it only by
   claiming something else. Re-asserting the rejected value leaves the
-  path :disputed."
+  path :disputed, also after a retraction in between."
   (:require [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
@@ -53,7 +53,7 @@
                                {:status :present :value* value
                                 :has-value? true :rejected #{}})
                      :retract {:status :retracted :has-value? false
-                               :rejected #{}}
+                               :rejected rejected}
                      :dispute {:status :disputed :value* value*
                                :has-value? has-value?
                                :rejected (cond-> rejected
