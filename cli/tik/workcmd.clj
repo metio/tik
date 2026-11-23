@@ -31,8 +31,12 @@
         sub (first pos)]
     (case sub
       "record"
-      (let [id (resolve-id s (second pos))
-            body (canonical/parse (nth pos 2))]
+      (let [usage "usage: tik work record <id> '{:minutes 30 …}' — the claim is one EDN map"
+            id (resolve-id s (second pos))
+            body (try (canonical/parse (or (nth pos 2 nil) (die usage)))
+                      (catch clojure.lang.ExceptionInfo e (throw e))
+                      (catch Exception _ (die usage)))
+            _ (when-not (map? body) (die usage))]
         (append!* s (event/add-attestation
                      {:ticket id :actor (actor opts) :at (now)
                       :parents (dag/heads (store/events s id))

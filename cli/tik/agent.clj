@@ -71,6 +71,8 @@
                     (prn data)))
       "set" (let [kv (or (first args)
                          (die "usage: tik agent set <id> key=value --actor A"))
+                  _ (when-not (str/includes? kv "=")
+                      (die "usage: tik agent set <id> key=value --actor A"))
                   [k v] (str/split kv #"=" 2)
                   path (parse-key k)
                   attempted [:set path]]

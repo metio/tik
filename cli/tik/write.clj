@@ -196,6 +196,7 @@
 
 (defn cmd-attach [{:keys [pos opts]}]
   (let [[ticket path] pos
+        _ (when-not path (die "usage: tik attach <id> <file> [--as PATH]"))
         s (the-store)
         id (resolve-id s ticket)
         src (io/file path)
