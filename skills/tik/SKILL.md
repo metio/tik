@@ -142,9 +142,13 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   agrees with `status`; `tik debug <process> <id>` asks about a different
   definition instead and warns on stderr that it is not the pin.
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
-  Signature checking is IN PROCESS for the Ed25519 keys tik mints
+  Signature checking is IN PROCESS for the Ed25519 keys tik mints and for
+  Ed25519 security keys (`sk-ssh-ed25519@openssh.com`, e.g. a YubiKey)
   (`tik.sshsig` reads OpenSSH's SSHSIG format), so verification needs no
   `ssh-keygen` on the host — which the distroless container has none of.
+  A security-key signature counts only when the key reports a touch (the
+  user-presence flag); `ssh-keygen -Y verify` ignores that flag, so tik and
+  the bundle's `verify.sh` check it themselves.
   Signing still shells out. An unsupported key type falls back to
   ssh-keygen, and reports UNCHECKED rather than forged when neither can
   judge. Hand-written `actors` options behave as in ssh-keygen
