@@ -191,13 +191,16 @@
 
 (defn- read-options
   "The options field at the start of `s`, up to its first unquoted
-  whitespace: [[name value-or-nil] ...] and the rest of the line."
+  whitespace: [[name value-or-nil] ...] and the rest of the line. An
+  option whose name cannot be read (`=x`) keeps its whole text as the
+  name, so it counts as an unknown option, which refuses the line as
+  OpenSSH does."
   [^String s]
   (loop [i 0, quoted? false]
     (if (or (= i (count s)) (and (not quoted?) (Character/isWhitespace (.charAt s i))))
       [(vec (for [opt (re-seq #"(?:[^,\"]|\"[^\"]*\")+" (subs s 0 i))
                   :let [[_ k v] (re-matches #"([^=]+)(?:=\"?(.*?)\"?)?" opt)]]
-              [(str/lower-case k) v]))
+              (if k [(str/lower-case k) v] [opt nil])))
        (str/triml (subs s i))]
       (recur (inc i) (if (= \" (.charAt s i)) (not quoted?) quoted?)))))
 
