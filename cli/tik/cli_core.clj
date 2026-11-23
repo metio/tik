@@ -552,14 +552,24 @@
     (swap! cache-state assoc :dirty? false)))
 
 (defn event-ids-fingerprint
-  "sha256 over the sorted event filenames — the complete input identity
-  of one ticket's derivation, read from the directory listing alone.
-  nil when the store is not file-backed (cache bypassed)."
+  "sha256 over the ticket's sorted event filenames and the store's role
+  register — the input identity of one ticket's derivation as far as a
+  listing and one small file can tell. The register decides who counts
+  in a :signed-by guard for every ticket at once, so a row derived under
+  another register is stale. The definition is the other input; a pinned
+  hash names it immutably, and compute-row refuses to cache a row whose
+  pin fell back to the mutable named file. nil when the store is not
+  file-backed (cache bypassed)."
   [id]
-  (let [d (io/file (root) "tickets" (str id) "events")]
+  (let [d (io/file (root) "tickets" (str id) "events")
+        roles (roles-file)]
     (when (and (nil? (db-path)) (.isDirectory d))
       (canonical/sha256-hex
        (str (:pack (fstore/read-pack-index d)) "\n"
+            (if (.isFile roles)
+              (canonical/sha256-hex-bytes (java.nio.file.Files/readAllBytes (.toPath roles)))
+              "no-register")
+            "\n"
             (str/join "\n" (sort (keep #(let [n (.getName ^File %)]
                                            (when (str/ends-with? n ".edn") n))
                                         (.listFiles d)))))))))
@@ -740,7 +750,12 @@
                              (vec (mapcat :missing blocks))))
         fm (guard/fact-map state)]
     {:valid-until (cond
-                    (contains? ops :attested-within) :never-cache
+                    ;; a freshness window, or a row derived under the
+                    ;; named file, which can change without the
+                    ;; fingerprint seeing it
+                    (or (contains? ops :attested-within)
+                        (not (some-> (:process-hash state) by-hash-file .exists)))
+                    :never-cache
                     (and (contains? ops :elapsed-since) (seq dues))
                     (inst-ms (first (sort dues)))
                     :else nil)
