@@ -71,7 +71,7 @@
 (defn- registry-events
   "A registry log carrying one binding, for actor `ci` unless named."
   [{:keys [token at key actor sub]
-    :or {key "ssh-ed25519 AAAAC3ci" at live-at actor "ci" sub subject}}]
+    :or {key "ssh-ed25519 AAAAC3Kci" at live-at actor "ci" sub subject}}]
   (let [create (event/create-ticket {:ticket tid :actor "seb" :at t0
                                      :title "identity registry"
                                      :process :identity-registry})]
@@ -93,7 +93,7 @@
   (let [root (store-with-pin! {})
         evs (registry-events {:token (jwt (claims-json {}))})]
     (is (= :trusted (status root evs)))
-    (is (= {"ci" #{"ssh-ed25519 AAAAC3ci"}}
+    (is (= {"ci" #{"ssh-ed25519 AAAAC3Kci"}}
            (identity/signing-keys (trust/verified-bindings root evs))))))
 
 (deftest an-issuer-nobody-pinned-is-named-rather-than-called-a-bad-signature
@@ -169,7 +169,7 @@
         text (slurp f)]
     (is (re-find #"seb namespaces=\"tik-\*\" ssh-ed25519 AAAAC3seb" text)
         "rung 1 keeps verifying")
-    (is (re-find #"ci namespaces=\"tik-\*\" ssh-ed25519 AAAAC3ci" text)
+    (is (re-find #"ci namespaces=\"tik-\*\" ssh-ed25519 AAAAC3Kci" text)
         "rung 2 is added for this check")
     (is (not= (.getCanonicalPath ^java.io.File f) (.getCanonicalPath actors))
         "the curated registry is never rewritten")
@@ -347,7 +347,7 @@
         evs (registry-events {:token (jwt (claims-json {}))})
         view (trust/signer-view root evs)
         grants? (fn [secs]
-                  (boolean (re-find #"AAAAC3ci"
+                  (boolean (re-find #"AAAAC3Kci"
                                     (slurp (view (Instant/ofEpochSecond secs))))))]
     (is (grants? 1782000300) "inside the window")
     (is (grants? 1782000950) "inside the leeway after expiry")
@@ -368,8 +368,8 @@
 (deftest a-binding-key-cannot-add-a-signer-line-for-another-actor
   (let [root (store-with-pin! {})
         evs (registry-events {:token (jwt (claims-json {}))
-                              :key "ssh-ed25519 AAAAC3ci\nseb ssh-ed25519 AAAAC3evil"})]
-    (spit (io/file root "actors") "ci namespaces=\"tik-*\" ssh-ed25519 AAAAC3ci\n")
+                              :key "ssh-ed25519 AAAAC3Kci\nseb ssh-ed25519 AAAAC3evil"})]
+    (spit (io/file root "actors") "ci namespaces=\"tik-*\" ssh-ed25519 AAAAC3Kci\n")
     (is (empty? (trust/verified-bindings root evs)) "a malformed key is no binding")
     (is (not (re-find #"AAAAC3evil" (slurp ((trust/signer-view root evs) live-at))))
         "and grants nothing")))

@@ -36,11 +36,11 @@
 (def ^:private all (constantly true))
 
 (deftest a-binding-is-read-off-the-registry-log
-  (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAci" :token "jwt"})
+  (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAKci" :token "jwt"})
         [b :as bs] (identity/bindings evs)]
     (is (= 1 (count bs)))
     (is (= "ci" (:actor b)))
-    (is (= "ssh-ed25519 AAAAci" (:public-key b)))
+    (is (= "ssh-ed25519 AAAAKci" (:public-key b)))
     (is (= "https://idp.example" (:issuer b)))
     (is (some? (:event b)) "a trust decision must name the event it rests on")))
 
@@ -63,7 +63,7 @@
 
 (deftest a-binding-without-a-token-is-not-a-claim-at-all
   (testing "there is nothing for a verifier to check, so it cannot count"
-    (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAci"})]
+    (let [evs (bind! base 1 {:actor "ci" :key "ssh-ed25519 AAAAKci"})]
       (is (empty? (identity/verified (identity/bindings evs) all))))))
 
 (deftest a-binding-missing-an-actor-or-key-is-refused
@@ -89,10 +89,10 @@
 
 (deftest distinct-actors-keep-distinct-keys
   (let [evs (-> base
-                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAAci" :token "jwt"})
+                (bind! 1 {:actor "ci" :key "ssh-ed25519 AAAAKci" :token "jwt"})
                 (bind! 2 {:actor "seb" :key "ssh-ed25519 AAAAseb" :token "jwt"}))
         keys* (identity/signing-keys (identity/verified (identity/bindings evs) all))]
-    (is (= #{"ssh-ed25519 AAAAci"} (get keys* "ci")))
+    (is (= #{"ssh-ed25519 AAAAKci"} (get keys* "ci")))
     (is (= #{"ssh-ed25519 AAAAseb"} (get keys* "seb")))
     (is (nil? (get keys* "nobody"))
         "an actor nobody vouched for is absent, not empty")))
