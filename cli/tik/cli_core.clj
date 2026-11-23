@@ -366,11 +366,17 @@
   event)
 
 (defn matching-ticket-ids
-  "Stringified ticket ids whose text starts with `prefix`."
+  "Stringified ticket ids whose text starts with `prefix`. A missing or
+  blank prefix matches nothing: every id starts with the empty string,
+  and an omitted argument must not select the store's only ticket."
   [s prefix]
-  (filter #(str/starts-with? % (str prefix)) (map str (store/ticket-ids s))))
+  (if (str/blank? (str prefix))
+    []
+    (filter #(str/starts-with? % (str prefix)) (map str (store/ticket-ids s)))))
 
 (defn resolve-id [s ticket-str]
+  (when (str/blank? (str ticket-str))
+    (die "which ticket? give its id or a unique prefix — `tik ls` lists open tickets"))
   (let [hits (matching-ticket-ids s ticket-str)]
     (case (count hits)
       1 (java.util.UUID/fromString (first hits))

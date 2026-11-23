@@ -207,6 +207,24 @@
                    (file-seq (io/file "cli")))]
     (is (empty? (remove (some-fn @#'tik.cli/known-flags internal) read)))))
 
+(deftest an-omitted-ticket-id-is-asked-for-not-guessed
+  (let [root (h/temp-dir! "tik-noid")]
+    (System/setProperty "user.name" "tester")
+    (in root "new" "track" "--title" "the only one")
+    (let [id (-> (in root "ls" "--edn") :out
+                 (str/split #"[^0-9a-f-]") (->> (filter #(= 36 (count %))))
+                 first)
+          log-before (:out (in root "log" id))]
+      (doseq [argv [["comment"] ["status"] ["explain"] ["comment" ""]]]
+        (let [r (apply in root argv)]
+          (is (= 1 (:exit r)) (pr-str argv))
+          (is (re-find #"which ticket" (str (:out r) (:err r))) (pr-str argv))))
+      (testing "a comment needs text"
+        (let [r (in root "comment" id)]
+          (is (= 1 (:exit r)))
+          (is (re-find #"comment needs text" (str (:out r) (:err r))))))
+      (is (= log-before (:out (in root "log" id))) "nothing was written"))))
+
 (deftest actor_add_rejects_a_name_that_would_corrupt_the_registry
   ;; the name is written verbatim into the OpenSSH allowed-signers file;
   ;; whitespace/quote/newline would split it into a second attacker-shaped
