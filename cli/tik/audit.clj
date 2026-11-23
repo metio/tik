@@ -311,7 +311,8 @@
   signature rather than taken from a list we wrote."
   "#!/bin/sh
 # Verifies this tik evidence bundle. Requires coreutils and ssh-keygen
-# (OpenSSH 8.2+), plus openssl if the bundle carries identity bindings.
+# (OpenSSH 8.2+), plus openssl if the bundle carries identity bindings,
+# and OpenSSL 3.5 or later if it carries post-quantum signatures.
 # Run from anywhere: ./verify.sh
 #
 # This script is a COPY of the checks the format publishes, shipped for
@@ -425,6 +426,63 @@ done
 for sig in processes/by-hash/*.sig.*; do
   [ -e \"$sig\" ] || continue
   check_sig \"$sig\" \"${sig%%.sig.*}.edn\" tik-process
+done
+
+# L1, post-quantum half (ADR 0036): <id>.pqsig.<fpr> is the raw FIPS 204
+# ML-DSA-65 signature over the bytes tik-event-v1, a NUL, then the event,
+# by the pq-signers key whose DER hashes to <fpr>. Only OpenSSL 3.5 or
+# later can check one, and a signature nobody here can check fails.
+pq_tool=
+for sig in tickets/*/events/*.pqsig.*; do
+  [ -e \"$sig\" ] || continue
+  if [ ! -f pq-signers ]; then
+    echo \"FAIL  $sig travels without the pq-signers registry that checks it\"; fail=1; continue
+  fi
+  if [ -z \"$pq_tool\" ]; then
+    if openssl list -signature-algorithms 2>/dev/null | grep -qi 'ml-dsa-65'; then
+      pq_tool=yes
+    else
+      pq_tool=no
+    fi
+  fi
+  if [ \"$pq_tool\" = no ]; then
+    echo \"FAIL  $sig needs OpenSSL 3.5 or later (ML-DSA-65) to check\"; fail=1; continue
+  fi
+  ev=\"${sig%%.pqsig.*}.edn\"
+  fpr=\"${sig##*.pqsig.}\"
+  actor=$(sed -n 's/^{:event\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$ev\")
+  t=$(mktemp -d)
+  holder=
+  patterns=
+  while read -r who opts alg key rest; do
+    case \"$who\" in ''|'#'*) continue ;; esac
+    [ \"$alg\" = ml-dsa-65 ] || continue
+    printf %s \"$key\" | base64 -d > \"$t/k.der\" 2>/dev/null || continue
+    if [ \"$(sha256sum \"$t/k.der\" | cut -d' ' -f1)\" = \"$fpr\" ]; then
+      holder=$who
+      patterns=${opts#namespaces=\\\"}
+      patterns=${patterns%\\\"}
+      break
+    fi
+  done < pq-signers
+  allowed=
+  for p in $(printf %s \"$patterns\" | tr ',' ' '); do
+    case tik-event in $p) allowed=yes ;; esac
+  done
+  { printf 'tik-event-v1\\000'; cat \"$ev\"; } > \"$t/m\"
+  if [ -z \"$holder\" ]; then
+    echo \"FAIL  $sig is signed by a key pq-signers does not hold (post-quantum)\"; fail=1
+  elif [ \"$holder\" != \"$actor\" ]; then
+    echo \"FAIL  $sig is a post-quantum key of $holder, not of its event's actor ($actor)\"; fail=1
+  elif [ -z \"$allowed\" ]; then
+    echo \"FAIL  $sig is a post-quantum key pq-signers does not allow to sign events\"; fail=1
+  elif openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey \"$t/k.der\" \\
+         -in \"$t/m\" -sigfile \"$sig\" >/dev/null 2>&1; then
+    echo \"ok    $(basename \"$sig\") verifies post-quantum as $actor\"
+  else
+    echo \"FAIL  $sig does not verify post-quantum as its event's actor ($actor)\"; fail=1
+  fi
+  rm -rf \"$t\"
 done
 
 # Rung 2: every key this bundle's signers file grants through an
@@ -600,6 +658,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "  NAME is the sha256 of its BYTES, and parents inside each event\n"
        "  chain them into a Merkle DAG: one head commits to all history.\n"
        "- `*.sig.*` — detached authorship signatures (`ssh-keygen -Y`).\n"
+       "- `*.pqsig.*` — ML-DSA-65 authorship signatures beside them,\n"
+       "  checked against `pq-signers` with OpenSSL 3.5 or later.\n"
        "- `*.witness.*` — third-party countersignatures over a head:\n"
        "  one signature timestamps the entire ancestry.\n"
        "- `processes/by-hash/" process-hash ".edn` — the exact ruleset\n"
@@ -682,6 +742,11 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       (spit (io/file bdir "actors")
             (str base (when (and (seq base) (seq lines)) "\n")
                  (str/join "\n" lines) (when (seq lines) "\n")))
+      ;; the post-quantum registry travels whole, as `actors` does: the
+      ;; .pqsig. sidecars copied above are checked against it
+      (let [pq (io/file (root) "pq-signers")]
+        (when (.exists pq)
+          (io/copy pq (io/file bdir "pq-signers"))))
       (when (seq granting)
         (let [idir (io/file bdir "identity")
               kdir (io/file idir "keys")]
