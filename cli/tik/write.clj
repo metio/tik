@@ -63,10 +63,7 @@
                   (take 3 (dupe/radar title (open-ticket-rows s t) 0.4)))
         id (random-uuid)
         e (event/create-ticket {:ticket id :actor (actor opts) :at t
-                                ;; --title with no following value parses to Boolean true —
-                                ;; the log stores strings, never a parser artifact
-                                :title (let [t (:title opts)]
-                                         (if (string? t) t ""))
+                                :title (or (:title opts) "")
                                 :process (keyword proc-name)
                                 :version (:process/version proc)
                                 :process-hash (archive-process! proc)})]

@@ -10,7 +10,7 @@
   - fact keys:   dotted paths -> keyword vectors
   - fact values: parsed as EDN; bare words become keywords"
   (:require [clojure.string :as str]
-            [tik.args :refer [parse-args]]
+            [tik.args :refer [parse-args switch-flags]]
             [tik.adopt :as adopt]
             [tik.admin :as admin]
             [tik.agent :as agent]
@@ -402,7 +402,8 @@
     "witness" "yes"})
 
 (defn- check-flags!
-  "Refuse flags nothing reads, naming them, before any command runs."
+  "Refuse flags nothing reads, and valued flags given no value, naming
+  them, before any command runs."
   [cmd {:keys [opts]}]
   (when-let [unknown (seq (sort (remove known-flags (map name (keys opts)))))]
     (binding [*out* *err*]
@@ -410,6 +411,18 @@
                     (str/join ", " (map #(str "--" %) unknown))
                     (when cmd (str " for '" cmd "'"))))
       (println "  nothing ran — `tik help` lists every command and its flags"))
+    (exit! 1))
+  ;; parse-args reads a valued flag at the end of argv, or before another
+  ;; flag, as true; every consumer expects a string, and a write would
+  ;; sign the parser artifact into the log
+  (when-let [bare (seq (sort (for [[k v] opts
+                                   :when (and (true? v) (not (switch-flags (name k))))]
+                               (name k))))]
+    (binding [*out* *err*]
+      (println (str "tik: " (str/join ", " (map #(str "--" %) bare))
+                    (if (< 1 (count bare)) " need" " needs") " a value"
+                    (when cmd (str " for '" cmd "'"))
+                    " — nothing ran")))
     (exit! 1)))
 
 (defn- dispatch [cmd parsed]
