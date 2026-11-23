@@ -15,10 +15,17 @@
   the fold.
 
   Scope is deliberately narrow: Ed25519 keys, which is what tik mints and
-  what `tik actor add` documents. Anything else — an RSA or ECDSA signer,
-  an unknown hash — is answered `::unsupported` rather than false, so a
-  caller falls back to ssh-keygen instead of calling an honest signature
-  forged. Fail-closed everywhere else: a malformed blob, a truncated
+  what `tik actor add` documents, and Ed25519 security keys
+  (`sk-ssh-ed25519@openssh.com`, a FIDO authenticator such as a YubiKey).
+  Anything else — an RSA or ECDSA signer, an unknown hash — is answered
+  `::unsupported` rather than false, so a caller falls back to ssh-keygen
+  instead of calling an honest signature forged.
+
+  A security-key signature counts only when the authenticator reports that
+  a user was present (flag 0x01), the rule sshd applies unless told
+  otherwise. The flag is inside the signed bytes, so it cannot be set after
+  the fact, but `ssh-keygen -Y verify` does not look at it: there the two
+  readers differ, and this one refuses. Fail-closed everywhere else: a malformed blob, a truncated
   field, a namespace that does not match, a key that is not the claimed
   actor's, all verify as false.
 
@@ -127,31 +134,71 @@
   (byte-array (map unchecked-byte
                    [0x30 0x2a 0x30 0x05 0x06 0x03 0x2b 0x65 0x70 0x03 0x21 0x00])))
 
-(defn- ed25519-key
-  "A java.security key from an `ssh-ed25519` public-key blob, or nil when
-  the blob is not one."
+(def ^:private sk-ed25519 "sk-ssh-ed25519@openssh.com")
+
+(def ^:private sk-user-present
+  "The authenticator flag saying a user touched it while it signed."
+  0x01)
+
+(defn- ed25519-point->key [^bytes point]
+  (.generatePublic (KeyFactory/getInstance "Ed25519")
+                   (X509EncodedKeySpec.
+                    (byte-array (concat (seq ed25519-spki-prefix) (seq point))))))
+
+(defn- key-of
+  "The key in an `ssh-ed25519` or `sk-ssh-ed25519@openssh.com` public-key
+  blob, as {:type :key} plus the :application a security key is bound to,
+  or nil when the blob is neither or has bytes left over."
   [^bytes pk]
   (try
     (let [[kind o1] (ssh-string pk 0)
-          [point _] (ssh-string pk o1)]
-      (when (and (= "ssh-ed25519" (String. ^bytes kind "UTF-8"))
-                 (= 32 (alength ^bytes point)))
-        (.generatePublic (KeyFactory/getInstance "Ed25519")
-                         (X509EncodedKeySpec.
-                          (byte-array (concat (seq ed25519-spki-prefix)
-                                              (seq point)))))))
+          kind (String. ^bytes kind "UTF-8")
+          [point o2] (ssh-string pk o1)]
+      (when (= 32 (alength ^bytes point))
+        (case kind
+          "ssh-ed25519"
+          (when (= o2 (alength pk))
+            {:type kind :key (ed25519-point->key point)})
+          "sk-ssh-ed25519@openssh.com"
+          (let [[app o3] (ssh-string pk o2)]
+            (when (= o3 (alength pk))
+              {:type kind :key (ed25519-point->key point) :application app}))
+          nil)))
     (catch Exception _ nil)))
 
-(defn- ed25519-signature
-  "The raw 64-byte signature inside an `ssh-ed25519` signature blob."
-  ^bytes [^bytes sig]
+(defn- signature-parts
+  "The raw 64-byte signature inside a signature blob of `type`, with the
+  authenticator's flags and counter for a security key. nil when the blob
+  is of another type or has bytes left over."
+  [type ^bytes sig]
   (try
     (let [[kind o1] (ssh-string sig 0)
-          [raw _] (ssh-string sig o1)]
-      (when (and (= "ssh-ed25519" (String. ^bytes kind "UTF-8"))
+          [raw o2] (ssh-string sig o1)]
+      (when (and (= type (String. ^bytes kind "UTF-8"))
                  (= 64 (alength ^bytes raw)))
-        raw))
+        (if (= type sk-ed25519)
+          (when (= (alength sig) (+ o2 5))
+            {:raw raw
+             :flags (bit-and (aget sig o2) 0xff)
+             :counter (java.util.Arrays/copyOfRange sig (int (inc o2)) (int (+ o2 5)))})
+          (when (= o2 (alength sig))
+            {:raw raw}))))
     (catch Exception _ nil)))
+
+(defn- covered-bytes
+  "What the Ed25519 signature is over: the SSHSIG signed data for a plain
+  key, and for a security key SHA-256(application) || flags || counter ||
+  SHA-256(signed data), which is what the authenticator signs."
+  ^bytes [{:keys [type application]} {:keys [flags counter]} ^bytes signed]
+  (if (= type sk-ed25519)
+    (let [out (java.io.ByteArrayOutputStream.)
+          sha (fn [^bytes b] (.digest (MessageDigest/getInstance "SHA-256") b))]
+      (.write out ^bytes (sha application))
+      (.write out (int flags))
+      (.write out ^bytes counter)
+      (.write out ^bytes (sha signed))
+      (.toByteArray out))
+    signed))
 
 (defn key-blob
   "The wire bytes of an `ssh-…` public key line — the part after the
@@ -273,19 +320,24 @@
 (defn- check
   "The cryptographic half, once a line has been found to grant the key."
   [{:keys [public-key hash-algorithm signature]} ^bytes message namespace]
-  (let [^java.security.PublicKey key (ed25519-key public-key)]
+  (let [pk (key-of public-key)]
     (cond
-      (nil? key) ::unsupported
+      (nil? pk) ::unsupported
       :else
       (if-let [hash (digest hash-algorithm message)]
-        (let [raw (ed25519-signature signature)]
+        (let [parts (signature-parts (:type pk) signature)]
           (boolean
-           (and raw
+           (and parts
+                ;; a security key that signed without a touch vouches for
+                ;; nobody having been there
+                (or (not= sk-ed25519 (:type pk))
+                    (pos? (bit-and sk-user-present (:flags parts))))
                 (try
                   (let [v (Signature/getInstance "Ed25519")]
-                    (.initVerify v key)
-                    (.update v (signed-blob namespace hash-algorithm hash))
-                    (.verify v raw))
+                    (.initVerify v ^java.security.PublicKey (:key pk))
+                    (.update v (covered-bytes pk parts
+                                              (signed-blob namespace hash-algorithm hash)))
+                    (.verify v ^bytes (:raw parts)))
                   (catch Exception _ false)))))
         ::unsupported))))
 

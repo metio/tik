@@ -361,12 +361,29 @@ for f in tickets/*/blobs/*; do
 done
 
 # L1 authenticity: detached signatures against the actors registry.
+# A security-key signature counts only when the authenticator saw a
+# touch: its flags byte, fifth from the end of the signature blob and
+# covered by the signature, carries user presence as bit 0x01.
+# ssh-keygen -Y verify does not look at it, so this does.
+sk_untouched() { # $1 sidecar: true for a security-key signature made without a touch
+  t=$(mktemp)
+  sed '1d;$d' \"$1\" | tr -d '\\n\\r' | base64 -d > \"$t\" 2>/dev/null
+  if LC_ALL=C grep -aq -e 'sk-ssh-ed25519@openssh.com' -e 'sk-ecdsa-sha2-nistp256@openssh.com' \"$t\"; then
+    flags=$(tail -c 5 \"$t\" | head -c 1 | od -An -tu1 | tr -d ' ')
+    rm -f \"$t\"
+    [ $(( ${flags:-0} % 2 )) -eq 0 ]
+  else
+    rm -f \"$t\"; return 1
+  fi
+}
 check_sig() { # $1 sidecar, $2 target file, $3 namespace
   p=$(ssh-keygen -Y find-principals -f actors -n \"$3\" -s \"$1\" < \"$2\" 2>/dev/null)
   if [ -z \"$p\" ]; then
     echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1; return
   fi
-  if ssh-keygen -Y verify -f actors -I \"$p\" -n \"$3\" -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+  if sk_untouched \"$1\"; then
+    echo \"FAIL  $1 was made by a security key nobody touched\"; fail=1
+  elif ssh-keygen -Y verify -f actors -I \"$p\" -n \"$3\" -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$1\") verifies as $p\"
   else
     echo \"FAIL  $1 does not verify\"; fail=1
@@ -389,7 +406,9 @@ check_event_sig() { # $1 sidecar, $2 event .edn
   if ! ssh-keygen -Y find-principals -f actors -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1; return
   fi
-  if ssh-keygen -Y verify -f actors -I \"$actor\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
+  if sk_untouched \"$1\"; then
+    echo \"FAIL  $1 was made by a security key nobody touched\"; fail=1
+  elif ssh-keygen -Y verify -f actors -I \"$actor\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$1\") verifies as $actor\"
   else
     echo \"FAIL  $1 does not verify as its event's actor ($actor)\"; fail=1

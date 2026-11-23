@@ -29,6 +29,21 @@ does not know grants nothing. A line carrying `valid-before` or
 `valid-after` depends on the time of the check, so `verify` hands it to
 `ssh-keygen`, and reports the signature unchecked on a host without one.
 
+A hardware security key works as a signer too. Generate a key that lives
+on the device, register its public half, and point `TIK_KEY` at the key
+handle; every signature then needs a touch, and with `-O verify-required`
+the device PIN as well:
+
+```sh
+ssh-keygen -t ed25519-sk -O verify-required -f ~/.config/tik/id_ed25519_sk
+tik actor add alice ~/.config/tik/id_ed25519_sk.pub
+```
+
+tik verifies these signatures in process and counts one only when the
+device reports that a user was present, a flag inside the signed bytes.
+`ssh-keygen -Y verify` accepts a security-key signature made without a
+touch, so `verify` and the bundle's `verify.sh` read the flag themselves.
+
 Exporting `TIK_KEY` signs every write as it happens; `sign` catches up on
 your own earlier events, and only your own — signing somebody else's would
 assert something false. `witness` countersigns a ticket's head, and one
