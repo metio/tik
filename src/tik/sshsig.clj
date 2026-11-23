@@ -200,6 +200,16 @@
       (.toByteArray out))
     signed))
 
+(defn signer-key-type
+  "The key type of the public key an armored SSHSIG `sidecar` (bytes or
+  text) carries, such as \"sk-ssh-ed25519@openssh.com\", or nil when it is
+  not a signature. Says nothing about whether the signature verifies."
+  [sidecar]
+  (let [text (if (bytes? sidecar) (String. ^bytes sidecar "UTF-8") (str sidecar))]
+    (when-let [{:keys [public-key]} (some-> (unarmor text) parse)]
+      (try (String. ^bytes (first (ssh-string public-key 0)) "UTF-8")
+           (catch Exception _ nil)))))
+
 (defn key-blob
   "The wire bytes of an `ssh-…` public key line — the part after the
   type, base64-decoded. nil when the line carries none."
