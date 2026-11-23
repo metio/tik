@@ -56,6 +56,17 @@
         (let [e (canonical/parse (String. ^bytes bytes "UTF-8"))]
           {:event (assoc e :event/id named) :file f :dir d})))))
 
+(defn- bundle-definitions
+  "The archived definitions under a bundle root:
+  processes/by-hash/<hash>.edn files."
+  [^File root-dir]
+  (filterv (fn [^File f]
+             (and (.isFile f)
+                  (str/ends-with? (.getName f) ".edn")
+                  (= "by-hash" (some-> f .getParentFile .getName))
+                  (= "processes" (some-> f .getParentFile .getParentFile .getName))))
+           (file-seq root-dir)))
+
 (defn cmd-import
   "import <bundle.tgz|dir>: bring somebody else's events into this store.
 
@@ -96,6 +107,25 @@
         new-events (remove #(contains? present (:event/id (:event %))) found)]
     (when (empty? found)
       (die (str "no events found under " src)))
+    ;; the definitions the tickets pin travel with them; each must hash
+    ;; to its own name, checked before anything is written
+    (let [defs (bundle-definitions root-dir)]
+      (doseq [^File d defs
+              :let [want (subs (.getName d) 0 (- (count (.getName d)) 4))
+                    have (str "sha256-" (canonical/sha256-hex-bytes
+                                         (java.nio.file.Files/readAllBytes (.toPath d))))]
+              :when (not= want have)]
+        (die (str "the bundle's definition " (.getName d) " does not hash to its name"
+                  " (" have ") — nothing imported")))
+      ;; with each definition, its publication signatures <hash>.sig.*
+      (doseq [^File d defs
+              :let [sig-prefix (str (subs (.getName d) 0 (- (count (.getName d)) 4)) ".sig.")]
+              ^File f (cons d (filter #(str/starts-with? (.getName ^File %) sig-prefix)
+                                      (or (.listFiles (.getParentFile d)) [])))
+              :let [dest (io/file (root) "processes" "by-hash" (.getName f))]
+              :when (not (.exists dest))]
+        (io/make-parents dest)
+        (io/copy f dest)))
     (doseq [{:keys [event dir]} new-events
             :let [tid (:event/ticket event)]]
       (store/append! s event)
