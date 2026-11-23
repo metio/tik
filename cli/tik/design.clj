@@ -67,8 +67,7 @@
                                                   :reason (second args))))
       :attach (append (event/attach-artifact
                        (assoc arg :path (first args)
-                              :hash (str "sha256-" (canonical/sha256-hex
-                                                    (first args))))))
+                              :hash (canonical/address-of-text (first args)))))
       ;; the body is the claim map verbatim, exactly as `tik attest` writes
       ;; it, so a case exercises the same shape a pipeline produces
       :attest (append (event/add-attestation (assoc arg :claim (first args))))

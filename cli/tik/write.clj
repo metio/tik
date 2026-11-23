@@ -202,7 +202,7 @@
         src (io/file path)
         _ (when-not (.exists src) (die "no such file:" path))
         bytes (java.nio.file.Files/readAllBytes (.toPath src))
-        hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
+        hash (canonical/address-of-bytes bytes)
         ;; blobs stored BY HASH: nothing in the store is addressed by
         ;; anything except what it is
         dest (io/file (blob-dir id) hash)]
@@ -238,7 +238,7 @@
         _ (when (str/blank? text)
             (die (str "a comment needs text: tik comment " ticket " <words…>")))
         bytes (.getBytes ^String text "UTF-8")
-        hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
+        hash (canonical/address-of-bytes bytes)
         dest (io/file (blob-dir id) hash)]
     (.mkdirs (.getParentFile dest))
     (spit dest text)

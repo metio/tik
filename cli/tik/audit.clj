@@ -49,7 +49,7 @@
           :when (and (.isFile f) (str/ends-with? (.getName f) ".edn"))]
       (let [bytes (java.nio.file.Files/readAllBytes (.toPath f))
             named (str/replace (.getName f) #"\.edn$" "")
-            actual (str "sha256-" (canonical/sha256-hex-bytes bytes))]
+            actual (canonical/address-of-bytes bytes)]
         (when-not (= named actual)
           (die (str "refusing to import " (.getName f)
                     ": its bytes hash to " actual)))
@@ -112,8 +112,7 @@
     (let [defs (bundle-definitions root-dir)]
       (doseq [^File d defs
               :let [want (subs (.getName d) 0 (- (count (.getName d)) 4))
-                    have (str "sha256-" (canonical/sha256-hex-bytes
-                                         (java.nio.file.Files/readAllBytes (.toPath d))))]
+                    have (canonical/address-of-bytes (java.nio.file.Files/readAllBytes (.toPath d)))]
               :when (not= want have)]
         (die (str "the bundle's definition " (.getName d) " does not hash to its name"
                   " (" have ") — nothing imported")))
@@ -226,7 +225,7 @@
   (let [s (the-store)
         doc (store-root-doc s)
         bytes (canonical/emit doc)
-        root (str "sha256-" (canonical/sha256-hex bytes))]
+        root (canonical/address-of-text bytes)]
     (println root (str "(" (count doc) " tickets)"))
     (when (:witness opts)
       (let [key (or (signing-key opts) (die "no key: pass --key or set TIK_KEY"))
@@ -282,7 +281,7 @@
       (println "roots")
       (let [current-doc (store-root-doc s)
             current-bytes (canonical/emit current-doc)
-            current-root (str "sha256-" (canonical/sha256-hex current-bytes))]
+            current-root (canonical/address-of-text current-bytes)]
         (doseq [^File sc (.listFiles dir)
                 :when (str/includes? (.getName sc) ".witness.")
                 :let [attested-root (first (str/split (.getName sc)
@@ -753,7 +752,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       (doseq [^File f (.listFiles dir)
               :when (str/ends-with? (.getName f) ".edn")
               :let [stem (str/replace (.getName f) #"\.edn$" "")]]
-        (check (= stem (str "sha256-" (canonical/sha256-hex (slurp f))))
+        (check (= stem (canonical/address-of-text (slurp f)))
                (str (shash stem) "… definition bytes hash to filename"))
         (let [sigs (sign/sidecars dir stem)]
           (if (empty? sigs)
@@ -946,7 +945,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                  (ex-message ex)))
                                nil)))]
               :when e]
-        (check (= eid (str "sha256-" (canonical/sha256-hex raw)))
+        (check (= eid (canonical/address-of-text raw))
                (str (shash eid) "… hash(stored bytes) = id"))
         (check (= raw (canonical/emit (dissoc e :event/id)))
                (str (shash eid) "… bytes are exactly the hashed region"))
@@ -955,15 +954,13 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         (when-let [{:keys [entries pack] :as index} (fstore/read-pack-index dir)]
           (let [pack-bytes (java.nio.file.Files/readAllBytes
                             (.toPath (fstore/pack-file-of dir index)))]
-            (check (= pack (str "sha256-"
-                                (canonical/sha256-hex-bytes pack-bytes)))
+            (check (= pack (canonical/address-of-bytes pack-bytes))
                    (str "pack " (shash pack)
                         "… bytes hash to the index's pack address"))
             (doseq [{:keys [id] :as entry} entries
                     :let [slice (try (fstore/pack-slice dir index entry)
                                      (catch clojure.lang.ExceptionInfo _ nil))]]
-              (check (and slice (= id (str "sha256-"
-                                           (canonical/sha256-hex-bytes slice))))
+              (check (and slice (= id (canonical/address-of-bytes slice)))
                      (str (shash id) "… packed slice hashes to id")))))
         (doseq [^File f files
                 :let [stem (str/replace (.getName f) #"\.edn$" "")

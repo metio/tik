@@ -109,7 +109,7 @@
   id. A torn or foreign file under the name does not."
   [^File f id]
   (and (.isFile f)
-       (= id (str "sha256-" (canonical/sha256-hex-bytes (file-bytes f))))))
+       (= id (canonical/address-of-bytes (file-bytes f)))))
 
 (defn- ticket-dir ^File [root ticket-id]
   (io/file root "tickets" (str ticket-id) "events"))
@@ -172,7 +172,7 @@
                                  {:reason :pack/unreadable :file (str pf)
                                   :id id :offset offset :length length}
                                  e))))]
-     (when-not (= id (str "sha256-" (canonical/sha256-hex-bytes out)))
+     (when-not (= id (canonical/address-of-bytes out))
        (throw (ex-info "pack slice does not hash to its id — index and pack disagree"
                        {:reason :pack/unreadable :file (str pf)
                         :id id :offset offset :length length})))
@@ -237,8 +237,7 @@
         ;; keeps describing intact bytes until the new index replaces it
         ;; atomically; an install that does not happen throws before
         ;; anything is deleted
-        (let [address (str "sha256-" (canonical/sha256-hex-bytes
-                                      (java.nio.file.Files/readAllBytes (.toPath tmp))))
+        (let [address (canonical/address-of-bytes (java.nio.file.Files/readAllBytes (.toPath tmp)))
               current (named-pack-file dir address)]
           (pack-installed! tmp current)
           (index-installed! dir (.getBytes (pr-str {:pack address :entries entries})

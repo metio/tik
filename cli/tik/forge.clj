@@ -122,7 +122,7 @@
              ""]))
 
 (defn blob-hash [^String text]
-  (str "sha256-" (canonical/sha256-hex-bytes (.getBytes text "UTF-8"))))
+  (canonical/address-of-bytes (.getBytes text "UTF-8")))
 
 (defn run-artifact-path [run]
   (str "ci/run/" (:id run) "/" (or (:attempt run) 1)))

@@ -565,8 +565,7 @@
   loudly instead; the operator sees a message that needs a decision."
   [s id msgid text]
   (when-let [prior (mail-artifact s id msgid)]
-    (let [hash (str "sha256-" (canonical/sha256-hex-bytes
-                               (.getBytes ^String text "UTF-8")))]
+    (let [hash (canonical/address-of-bytes (.getBytes ^String text "UTF-8"))]
       (when (not= hash (:hash prior))
         (throw (ex-info (str "Message-ID " msgid " is already on ticket " id
                              " with different content — refusing to treat"
@@ -581,7 +580,7 @@
   comment and the dedup marker."
   [s id actor at path text opts]
   (let [bytes (.getBytes ^String text "UTF-8")
-        hash (str "sha256-" (canonical/sha256-hex-bytes bytes))
+        hash (canonical/address-of-bytes bytes)
         dest (io/file (blob-dir id) hash)]
     (io/make-parents dest)
     (spit dest text)
@@ -622,7 +621,7 @@
   [s cfg raw opts]
   (let [{:keys [from subject body message-id] :as msg} (parse-rfc822 raw)
         msgid (or (not-empty message-id)
-                  (str "sha256-" (canonical/sha256-hex-bytes (.getBytes ^String raw "UTF-8"))))]
+                  (canonical/address-of-bytes (.getBytes ^String raw "UTF-8")))]
     (if (own-message? msg)
       {:outcome :own :msgid msgid}
       (do
