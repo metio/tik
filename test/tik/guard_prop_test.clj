@@ -123,7 +123,18 @@
             (eval-at [create (att "2026-07-08T11:00:00Z")]
                      "2026-08-08T12:00:00Z")]
         (is (not satisfied?))
-        (is (= :attestation/stale (:reason (first reasons))))))))
+        (is (= :attestation/stale (:reason (first reasons))))))
+    (testing "a postdated attestation does not exist yet, so it is not fresh"
+      (let [{:keys [satisfied? reasons]}
+            (eval-at [create (att "2027-07-08T10:00:00Z")] "2026-07-08T12:00:00Z")]
+        (is (not satisfied?))
+        (is (= :attestation/missing (:reason (first reasons))))))
+    (testing "nor does it stand in as the latest one for a stale verdict"
+      (let [{:keys [reasons]}
+            (eval-at [create (att "2026-07-01T11:00:00Z") (att "2027-07-08T10:00:00Z")]
+                     "2026-07-08T12:00:00Z")]
+        (is (= :attestation/stale (:reason (first reasons))))
+        (is (= (at "2026-07-01T11:00:00Z") (:last-at (first reasons))))))))
 
 (deftest v2-different-person
   (let [events (ge/ops->events [])
