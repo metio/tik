@@ -235,3 +235,21 @@
              :process/stages [{:stage/id :open :guards []}
                               {:stage/id :paid :after [:open] :guards [g]}]}]
       (is (some #(re-find #"needs a string prefix" (:msg %)) (errors p)) (pr-str g)))))
+
+(deftest a-guard-with-the-wrong-number-of-arguments-is-an-error
+  (let [with-guard (fn [g] (assoc sample :process/stages
+                                  [{:stage/id :a :hint "kb/runbooks/a.md" :guards [g]}]))]
+    (testing "inside :and, the contradiction check does not crash"
+      (is (some #(re-find #"\[:fact= \[:category\]\].*takes 2 argument" (:msg %))
+                (errors (with-guard [:and [:fact= [:category]] [:fact [:severity]]])))))
+    (testing "at the top level, where it would read as 'equals nil'"
+      (is (some #(re-find #"takes 2 argument" (:msg %))
+                (errors (with-guard [:fact= [:category]])))))
+    (testing "each operator's arity"
+      (doseq [g [[:fact] [:fact [:category] :x] [:signed-by :billing] [:stage-reached]
+                 [:not] [:not [:fact [:category]] [:fact [:severity]]]
+                 [:elapsed-since :ticket/create]]]
+        (is (some #(re-find #"argument" (:msg %)) (errors (with-guard g))) (pr-str g))))
+    (testing "an explicit nil is an argument"
+      (is (not-any? #(re-find #"argument" (:msg %))
+                    (errors (with-guard [:fact= [:category] nil])))))))
