@@ -27,12 +27,20 @@
     "hidden" "list" "long" "no-repo" "published-only" "retire" "serve" "sqlite" "verbose" "watch" "webhook"
     "withdraw" "witness" "yes"})
 
-(defn parse-args [args]
+(defn parse-args
+  "argv -> {:pos [positional ...] :opts {flag value}}. A lone `--` ends
+  the flags: every token after it is positional, however it starts —
+  how an embedder passes text it did not write (a title, a ticket
+  argument) without it ever being read as a flag."
+  [args]
   (loop [args args pos [] opts {}]
     (if (empty? args)
       {:pos pos :opts opts}
       (let [[a & more] args]
         (cond
+          (= "--" a)
+          {:pos (into pos more) :opts opts}
+
           (not (str/starts-with? a "--"))
           (recur more (conj pos a) opts)
           ;; --flag=value: the value rides in the same token (the near-

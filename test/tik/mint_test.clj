@@ -10,6 +10,7 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [tik.args]
             [tik.cli :as cli]
             [tik.harness :as h]
             [tik.mcp :as mcp]))
@@ -119,3 +120,23 @@
       (is (str/includes? (:text (call root "tik_new" {:process "track"})) "missing required argument(s): title"))
       (is (str/includes? (:text (call root "tik_new" {:process "track" :title "x" :repo "../x"})) "no git repository"))
       (is (str/includes? (:text (call root "tik_new" {:process "track" :title "x" :repo 7})) "repo must be a string")))))
+
+(deftest an-agents-text-is-never-read-as-a-flag
+  (let [{:keys [holder root]} (holder!)
+        maintainer (key! holder "maintainer")]
+    (actors! root maintainer)
+    (run root "new" "track" "--title" "materialise" "--no-repo")
+    (run root "process" "sign" "track" "--key" (:key maintainer))
+    (testing "a title that looks like a flag is the title"
+      (let [{:keys [error? text]} (call root "tik_new" {:process "track" :title "--edn"})
+            data (when-not error? (json/parse-string text true))]
+        (is (not error?) text)
+        (is (str/includes? (:out (run root "status" (:id data))) "--edn"))))
+    (testing "a ticket argument that looks like a flag is a ticket argument"
+      (let [{:keys [error? text]} (call root "tik_explain" {:ticket "--all"})]
+        (is error?)
+        (is (str/includes? text "no ticket starting with '--all'") text)))))
+
+(deftest a-double-dash-ends-the-flags
+  (is (= {:pos ["new" "--title" "x"] :opts {:actor "a"}}
+         (tik.args/parse-args ["--actor" "a" "--" "new" "--title" "x"]))))

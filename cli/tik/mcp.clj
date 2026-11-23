@@ -91,29 +91,34 @@
 
 ;; every tool speaks JSON: an MCP client is a JSON transport, so the tool
 ;; payload is JSON too (--format json), not tik's native EDN.
+;;
+;; The agent's text never reaches the flag parser: flag values travel as
+;; --flag=value, which is split once and never re-read, and positionals
+;; follow a lone --, after which nothing is a flag. Otherwise a title of
+;; "--edn" or a ticket argument of "--key=…" would be read as an option.
 (defn- call-tool [name {:strs [ticket key value claim process title repo] :as args}]
-  (case name
-    "tik_new" (or (need args ["process" "title"])
-                  (when (and (some? repo) (not (string? repo)))
-                    {:err "repo must be a string"})
-                  (apply tik "new" process "--title" title
-                         (concat (if (and (string? repo) (not (str/blank? repo)))
-                                   ["--repo" repo]
-                                   ["--no-repo"])
-                                 ["--published-only" "--actor" (actor) "--format" "json"])))
-    "tik_board" (tik "ls" "--format" "json")
-    "tik_explain" (or (need args ["ticket"])
-                      (tik "explain" ticket "--format" "json"))
-    "tik_actions" (or (need args ["ticket"])
-                      (tik "agent" "actions" ticket "--actor" (actor)
-                           "--format" "json"))
-    "tik_assert" (or (need args ["ticket" "key" "value"])
-                     (tik "agent" "set" ticket (str key "=" value)
-                          "--actor" (actor) "--format" "json"))
-    "tik_attest" (or (need args ["ticket" "claim"])
-                     (tik "agent" "attest" ticket claim
-                          "--actor" (actor) "--format" "json"))
-    {:err (str "unknown tool " name)}))
+  (let [json-as (fn [& flags] (concat flags [(str "--actor=" (actor)) "--format=json"]))]
+    (case name
+      "tik_new" (or (need args ["process" "title"])
+                    (when (and (some? repo) (not (string? repo)))
+                      {:err "repo must be a string"})
+                    (apply tik "new"
+                           (concat (json-as (str "--title=" title)
+                                            (if (and (string? repo) (not (str/blank? repo)))
+                                              (str "--repo=" repo)
+                                              "--no-repo")
+                                            "--published-only")
+                                   ["--" process])))
+      "tik_board" (tik "ls" "--format=json")
+      "tik_explain" (or (need args ["ticket"])
+                        (tik "explain" "--format=json" "--" ticket))
+      "tik_actions" (or (need args ["ticket"])
+                        (apply tik "agent" (concat (json-as) ["--" "actions" ticket])))
+      "tik_assert" (or (need args ["ticket" "key" "value"])
+                       (apply tik "agent" (concat (json-as) ["--" "set" ticket (str key "=" value)])))
+      "tik_attest" (or (need args ["ticket" "claim"])
+                       (apply tik "agent" (concat (json-as) ["--" "attest" ticket claim])))
+      {:err (str "unknown tool " name)})))
 
 (def ^:private protocol-versions
   "The MCP revisions this server speaks; initialize answers in the
