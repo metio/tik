@@ -29,8 +29,9 @@ setting: a `tickets/` tree is the file/git store (sha256sum-auditable, the
 signed interchange format); a `tik.db` is the SQLite store (single-file
 ops). Choose at creation — `tik init` (file) or `tik init --sqlite` — and
 switch in place with `tik store migrate --to sqlite|file`, which is
-lossless: events and their detached signatures/witnesses both travel
-(each backend holds sidecars). The SQLite driver is embedded in the
+lossless: events, their detached signatures/witnesses (each backend holds
+sidecars) and attached blobs all travel. A file store keeps blobs in
+`tickets/<id>/blobs/`, a SQLite store in `blobs/<id>/` beside `tik.db`. The SQLite driver is embedded in the
 binary, so no external `sqlite3` is needed. Working in one store never
 reroutes another.
 
