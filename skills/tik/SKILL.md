@@ -169,7 +169,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik bundle <id> --out ev.tgz` — one ticket as a portable evidence bundle
   (`tik-evidence-bundle` version 1): events, signatures, witness marks, key
   bindings and their issuer keys, the pinned definition, `roles.edn`, and a
-  `verify.sh` that checks the lot with coreutils + `ssh-keygen`.
+  `verify.sh` that checks the lot with coreutils + `ssh-keygen`. Post-quantum
+  sidecars travel with `pq-signers`; `verify.sh` checks them with OpenSSL 3.5
+  or later and fails, rather than passes, where OpenSSL has no ML-DSA.
 - `tik rederive <ev.tgz|dir|https url> [--edn]` — check a bundle and recompute
   what its facts imply under the definition it pinned, **at the instant you
   ask**: a guard with a freshness window (`:attested-within`,
