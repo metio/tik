@@ -154,6 +154,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   judge. Hand-written `actors` options behave as in ssh-keygen
   (`namespaces=` patterns with `!` negation, `cert-authority`); a line with
   `valid-before`/`valid-after` is always judged by ssh-keygen.
+  A post-quantum sidecar (`<id>.pqsig.<fpr>`, ML-DSA-65, ADR 0036) is
+  checked against the store's `pq-signers` file: one that does not verify,
+  names an unregistered key, or a key registered for another actor fails
+  the audit, and a malformed `pq-signers` line fails it by line number.
   L1 credits a signature when the key is in `actors` (rung 1) **or** a verified
   binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
   not a failure — it grants nothing, and events are never deleted, so failing

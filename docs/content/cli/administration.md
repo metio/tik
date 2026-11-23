@@ -77,6 +77,22 @@ rather than the full audit. `root` prints one hash committing to the entire
 store, optionally countersigned, optionally anchored to a third-party
 timestamp.
 
+An event can also carry a post-quantum signature, an ML-DSA-65 sidecar
+`<id>.pqsig.<fpr>` beside its SSHSIG one. `verify` checks every such
+sidecar against `pq-signers` in the store root, which holds one line per
+key:
+
+```text
+seb namespaces="tik-*" ml-dsa-65 MIIHsjALBglghkgBZQMEAxID…
+```
+
+The key is the base64 DER SubjectPublicKeyInfo, and `<fpr>` is the hex
+SHA-256 of that DER. `namespaces` takes comma-separated patterns where
+`*` is the only wildcard. A sidecar that does not verify, names a key
+`pq-signers` lacks, or a key registered for another actor fails the
+audit, and so does a malformed line. tik cannot make these signatures
+yet. Until it can, a store without the file is checked as before.
+
 ## Moving tickets to newer rules
 
 ```sh

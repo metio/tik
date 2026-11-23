@@ -22,6 +22,7 @@
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
             [tik.jwks :as jwks]
+            [tik.pqsig :as pqsig]
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
@@ -1031,6 +1032,32 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
                             " (authenticity unclaimed, not failed)"))))))
+      ;; ADR 0036: every post-quantum sidecar present is checked against
+      ;; pq-signers. Which events must carry one is the store policy's
+      ;; question; a sidecar that is there and does not verify fails
+      ;; whatever the policy says, as a classical one does.
+      (let [pq-file (io/file (root) "pq-signers")
+            pq-sidecars (for [e (red/ordered evs)
+                              name (sidecar-names-for s id (:event/id e) "pqsig")]
+                          [e name])]
+        (when (seq pq-sidecars)
+          (if-not (.exists pq-file)
+            (println (str "  skip  " (count pq-sidecars) " post-quantum signature(s),"
+                          " no pq-signers registry"))
+            (when-let [registry (try (pqsig/parse-registry (slurp pq-file))
+                                     (catch clojure.lang.ExceptionInfo ex
+                                       (check false (ex-message ex))
+                                       nil))]
+              (doseq [[e name] pq-sidecars]
+                (check (pqsig/check-event
+                        registry
+                        {:actor (:event/actor e)
+                         :fpr (pqsig/sidecar-fpr name)
+                         :signature (store/read-sidecar s id name)
+                         :event-bytes (store/event-bytes s id (:event/id e))
+                         :namespace sign/namespace-event})
+                       (str (shash (:event/id e)) "… post-quantum signed by "
+                            (:event/actor e))))))))
       (println "L3 provenance (witness countersignatures)")
       (let [signers (io/file (root) "actors")
             heads (dag/heads evs)
