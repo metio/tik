@@ -77,17 +77,28 @@
           r))
     (red/fact-status (:state ctx) path)))
 
+(defn- unusable
+  "The failure for a fact whose status `fs` is not :present, naming why:
+  a retraction or dispute carries who and their note, a conflict its
+  claims. Every guard over a fact reports these the same way, so a lens
+  never prescribes an assertion that cannot discharge them. `missing`
+  is the reason for an absent fact."
+  [{:keys [status] :as fs} path missing]
+  (case status
+    :absent    (fail missing)
+    :retracted (fail {:reason :fact/retracted :path path
+                      :by (:by fs) :note (:note fs)})
+    :disputed  (fail {:reason :fact/disputed :path path
+                      :by (:by fs) :note (:note fs)})
+    :conflicted (fail {:reason :fact/conflicted :path path
+                       :claims (:claims fs)})))
+
 (defn- eval-fact [[_ path] {:keys [process] :as ctx}]
   (let [{:keys [status] :as fs} (fact-status* ctx path)
         schema (get-in process [:process/facts path])]
     (case status
-      :absent    (fail {:reason :fact/missing :path path :schema schema})
-      :retracted (fail {:reason :fact/retracted :path path
-                        :by (:by fs) :note (:note fs)})
-      :disputed  (fail {:reason :fact/disputed :path path
-                        :by (:by fs) :note (:note fs)})
-      :conflicted (fail {:reason :fact/conflicted :path path
-                         :claims (:claims fs)})
+      (:absent :retracted :disputed :conflicted)
+      (unusable fs path {:reason :fact/missing :path path :schema schema})
       :present
       (if-not schema
         ok
@@ -151,12 +162,13 @@
 (defn- eval-fact=
   "Present AND equal, with exactly one reason per failure mode: absent
   reports :fact/missing carrying :expected (the lens can say what to
-  set it TO); a different value reports :fact/mismatch."
+  set it TO); retracted, disputed and conflicted report themselves as
+  :fact does; a different value reports :fact/mismatch."
   [[_ path expected] ctx]
-  (let [{:keys [status value]} (fact-status* ctx path)]
+  (let [{:keys [status value] :as fs} (fact-status* ctx path)]
     (cond
       (not= :present status)
-      (fail {:reason :fact/missing :path path :expected expected})
+      (unusable fs path {:reason :fact/missing :path path :expected expected})
 
       (not= expected value)
       (fail {:reason :fact/mismatch :path path
@@ -199,10 +211,10 @@
         b (fact-status* ctx path-b)]
     (cond
       (not= :present (:status a))
-      (fail {:reason :fact/missing :path path-a})
+      (unusable a path-a {:reason :fact/missing :path path-a})
 
       (not= :present (:status b))
-      (fail {:reason :fact/missing :path path-b})
+      (unusable b path-b {:reason :fact/missing :path path-b})
 
       (= (:by a) (:by b))
       (fail {:reason :role/same-person :paths [path-a path-b]
