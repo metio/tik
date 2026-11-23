@@ -78,8 +78,10 @@ tik gc --apply
 ```
 
 The file store is the signed interchange format; SQLite keeps the same
-events in one file. Migration is lossless in both directions — events and
-their detached signatures travel together. `export` materializes any store
+events in one file. Migration is lossless in both directions — events,
+their detached signatures and the attached blobs travel together. A file
+store keeps a ticket's blobs in `tickets/<id>/blobs/`; a SQLite store keeps
+them in `blobs/<id>/` beside `tik.db`. `export` materializes any store
 as the file format. `pack` consolidates settled tickets into one
 content-addressed pack each, and `gc` removes archived definitions no
 ticket pins any more and no named definition is at, together with their
