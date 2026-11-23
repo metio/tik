@@ -21,7 +21,8 @@
   ceiling."
   (:require [clojure.string :as str]
             [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me]
+            [tik.lint :as lint]))
 
 ;; ------------------------------------------------------------ checking
 
@@ -102,24 +103,40 @@
         {:level level :msg (str "stage '" name "' " msg)})
       [])))
 
+(declare build-process parse-duration with-runbook-hints)
+
+(defn- built-definition-errors
+  "The lint errors of the definition these answers build. check reports
+  them so that 'clean' means `tik author --from` writes a definition
+  that lints, which a check of the answers alone cannot promise: a
+  duration lint cannot read and an :after cycle both pass the answers
+  schema."
+  [answers]
+  (for [{:keys [level msg]} (lint/lint (with-runbook-hints (build-process answers)
+                                         (:name answers)))
+        :when (= :error level)]
+    {:level :error :msg (str "the built definition: " msg)}))
+
 (defn check
   "Findings for an answers map: schema errors first (level :error),
   then structural smells, then every naming rule in `rules` (defaults
-  to default-rules; pass (merge-rules org) to apply an org's file).
-  Empty = clean."
+  to default-rules; pass (merge-rules org) to apply an org's file),
+  and, when the answers raise no error of their own, the lint errors of
+  the definition they build. Empty = clean."
   ([answers] (check answers default-rules))
   ([answers rules]
    (if-not (m/validate Answers answers)
      [{:level :error
        :msg (str "not a valid answers map: "
                  (pr-str (me/humanize (m/explain Answers answers))))}]
-     (let [stage-names (set (map :name (:stages answers)))]
-       (vec
-        (concat
-         (for [[name n] (sort-by key (frequencies (map :name (:stages answers))))
-               :when (< 1 n)]
-           {:level :error
-            :msg (str "stage '" name "' is defined more than once")})
+     (let [stage-names (set (map :name (:stages answers)))
+           findings
+           (vec
+            (concat
+             (for [[name n] (sort-by key (frequencies (map :name (:stages answers))))
+                   :when (< 1 n)]
+               {:level :error
+                :msg (str "stage '" name "' is defined more than once")})
          (for [{:keys [name after]} (:stages answers)
                missing (remove stage-names (or after []))]
            {:level :error
@@ -139,7 +156,10 @@
                       (pr-str members)
                       " — put real actor names in, or signatures can"
                       " never be satisfied")})
-         (mapcat #(apply-rule % answers) rules)))))))
+         (mapcat #(apply-rule % answers) rules)))]
+       (if (some #(= :error (:level %)) findings)
+         findings
+         (into findings (built-definition-errors answers)))))))
 
 ;; ---------------------------------------------------------------- pure
 
@@ -183,7 +203,9 @@
                  (let [p (decision-path role)]
                    [[:fact= p :approved] [:signed-by role p]]))
     :file      [[:artifact prefix]]
-    :waited    [[:elapsed-since :ticket/create duration]]))
+    ;; the interview normalises a friendly duration as it reads it; an
+    ;; answers file gets the same reading here
+    :waited    [[:elapsed-since :ticket/create (or (parse-duration duration) duration)]]))
 
 (defn- need->fact-decl [{:keys [kind path values type role over]}]
   (case kind

@@ -197,3 +197,17 @@
     (let [findings (author/check {:name "p" :stages [{:name "a" :needs [need]}]})]
       (is (= :error (:level (first findings))) (pr-str need))
       (is (re-find #"not a valid answers map" (:msg (first findings))) (pr-str need)))))
+
+(deftest check-says-clean-only-for-answers-that-build-a-lint-clean-definition
+  (testing "a duration lint cannot read is an error before anything is written"
+    (is (some #(and (= :error (:level %)) (re-find #"soonish" (:msg %)))
+              (author/check {:name "p" :stages [{:name "a" :needs [{:kind :waited :duration "soonish"}]}]}))))
+  (testing "a friendly duration builds as ISO-8601, as in the interview"
+    (let [answers {:name "p" :stages [{:name "a" :needs [{:kind :waited :duration "48h"}]}]}]
+      (is (not-any? #(= :error (:level %)) (author/check answers)))
+      (is (= [[:elapsed-since :ticket/create "PT48H"]]
+             (:guards (first (:process/stages (author/build-process answers))))))))
+  (testing "an :after cycle is an error"
+    (is (some #(= :error (:level %))
+              (author/check {:name "p" :stages [{:name "a" :after ["b"] :needs [{:kind :fact :path [:x]}]}
+                                                {:name "b" :after ["a"] :needs [{:kind :fact :path [:y]}]}]})))))
