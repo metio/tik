@@ -142,6 +142,17 @@
     (is (= :identity/token-not-live (:reason (status root evs)))
         "with no iat or exp the token could be replayed into a binding at any time")))
 
+(deftest a-token-without-an-expiry-is-never-live
+  (let [root (store-with-pin! {})
+        evs (registry-events
+             {:token (jwt (str "{\"iss\":\"" issuer "\",\"sub\":\"" subject
+                               "\",\"aud\":\"tik\",\"iat\":1782000000}"))
+              :at (Instant/ofEpochSecond 1782000030)})]
+    (is (= :identity/token-not-live (:reason (status root evs)))
+        "an iat alone bounds the token from below only, so its key would speak for ever")
+    (is (not (tik.identity-trust/token-live-at? {:iat 1782000000}
+                                                (Instant/ofEpochSecond 1782000030))))))
+
 (deftest a-mangled-token-fails-well
   (let [root (store-with-pin! {})]
     (doseq [[label t] [["not a jwt" "garbage"]

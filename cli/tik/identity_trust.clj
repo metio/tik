@@ -269,17 +269,17 @@
 (defn- window-holds?
   "Did the token's validity window contain `when-secs`?
 
-  A token carrying neither `exp` nor `iat` is refused rather than
-  accepted: there is no way to tie it to a moment, so it could be
-  replayed into a binding at any time."
+  A token without `exp` is refused rather than accepted. With neither
+  `exp` nor `iat` nothing ties it to a moment, so it could be replayed
+  into a binding at any time; with `iat` alone its window has no end,
+  and a key bound through it would speak as the actor for ever, which
+  is exactly what a short-lived token is there to prevent."
   [{:keys [exp nbf iat]} when-secs leeway]
   (let [n (fn [v] (when (number? v) (long v)))
         exp (n exp) nbf (n nbf) iat (n iat)]
     (cond
-      ;; no instant to judge against, or no claim tying the token to one:
-      ;; either way it could be replayed into a binding at any time
-      (or (nil? when-secs) (and (nil? exp) (nil? iat))) false
-      :else (and (or (nil? exp) (<= when-secs (+ exp leeway)))
+      (or (nil? when-secs) (nil? exp)) false
+      :else (and (<= when-secs (+ exp leeway))
                  (or (nil? nbf) (>= when-secs (- nbf leeway)))
                  (or (nil? iat) (>= when-secs (- iat leeway)))))))
 
