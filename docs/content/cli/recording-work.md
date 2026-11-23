@@ -64,7 +64,7 @@ tik dispute 3184 category --withdraw         # take back your own objection
 
 A later assertion supersedes an earlier one. A retraction says the claim
 should not exist and offers no replacement. A dispute rejects the value
-that stood when it was raised, so only a *different* value answers it. In
+its author saw when they raised it, so only a *different* value answers it. In
 every case the stage regresses by derivation — there is no rollback step.
 
 ## Signed claims and attestations

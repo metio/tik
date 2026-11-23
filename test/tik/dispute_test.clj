@@ -93,3 +93,36 @@
         {:keys [by note]} (red/fact-status (red/ticket-state evs) path)]
     (is (= "auditor" by))
     (is (= "no" note))))
+
+(defn- event-on [parents ctor] (ctor parents))
+
+(deftest a-dispute-rejects-the-value-its-author-saw
+  ;; ana disputes having seen only :billing; bob's concurrent correction
+  ;; to :tech folds before the dispute but is not what ana rejected
+  (let [x (peek (assert! base 1 "seb" :billing))
+        evs (conj base x)
+        bob (event-on #{(:event/id x)}
+                      #(event/assert-fact {:ticket tid :actor "bob" :parents %
+                                           :at (at 2) :path path :value :tech}))
+        ana (event-on #{(:event/id x)}
+                      #(event/dispute-fact {:ticket tid :actor "ana" :parents %
+                                            :at (at 3) :path path :reason "not billing"}))
+        forked (conj evs bob ana)
+        state (red/ticket-state forked)]
+    (is (= :billing (get-in state [:facts path :disputes 0 :rejected]))
+        "the dispute names the value ana observed")
+    (testing "bob, having seen the dispute, re-asserts his correction and it stands"
+      (let [bob2 (event-on #{(:event/id bob) (:event/id ana)}
+                           #(event/assert-fact {:ticket tid :actor "bob" :parents %
+                                                :at (at 4) :path path :value :tech}))
+            r (red/fact-status (red/ticket-state (conj forked bob2)) path)]
+        (is (= :present (:status r)))
+        (is (= :tech (:value r)))))))
+
+(deftest a-dispute-that-saw-no-claim-rejects-nothing-in-particular
+  (let [x (peek (assert! base 2 "seb" :billing))
+        ana (event-on #{(:event/id (first base))}
+                      #(event/dispute-fact {:ticket tid :actor "ana" :parents %
+                                            :at (at 3) :path path :reason "?"}))
+        state (red/ticket-state (conj base x ana))]
+    (is (not (contains? (get-in state [:facts path :disputes 0]) :rejected)))))
