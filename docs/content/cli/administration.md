@@ -77,6 +77,29 @@ rather than the full audit. `root` prints one hash committing to the entire
 store, optionally countersigned, optionally anchored to a third-party
 timestamp.
 
+A review verdict can also be signed by a throwaway key the reviewer
+delegated to for one batch (ADR 0037). The delegation is an attestation
+on the identity registry:
+
+```clojure
+{:claim :delegation
+ :delegation/public-key "ssh-ed25519 AAAA…"
+ :delegation/not-after #inst "2026-11-23T20:04:00Z"
+ :delegation/scope #{[#uuid "…" "sha256-…"]}
+ :delegation/facts #{[:review :verdict]}}
+```
+
+`verify` credits a signature by that key to the reviewer only when the
+delegation is signed with a key `actors` grants the reviewer, and the
+verdict lies inside it. The verdict must name the reviewer as its actor,
+be claimed no more than five minutes after the delegation, and sit on a
+ticket and head pair the scope lists. It must also assert a fact path
+the delegation allows. A key granted through an identity binding or
+another delegation cannot delegate. With
+`{:delegation {:require-touch true}}` in `oidc.edn`, the delegation must
+come from a touched security key. A delegation that credits nothing is
+named in the output with the reason.
+
 An event can also carry a post-quantum signature, an ML-DSA-65 sidecar
 `<id>.pqsig.<fpr>` beside its SSHSIG one. `verify` checks every such
 sidecar against `pq-signers` in the store root, which holds one line per

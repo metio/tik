@@ -28,6 +28,7 @@
             [tik.next]
             [tik.work :as work]
             [tik.gen-events :as ge]
+            [tik.delegation :as delegation]
             [tik.identity :as identity]
             [tik.sshsig :as sshsig]
             [tik.link :as link]
@@ -360,6 +361,14 @@
     :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)]
            [bs (constantly true)])}
    {:sym 'tik.identity/public-key-line? :f identity/public-key-line? :gen (one gen/any-equatable)}
+   {:sym 'tik.delegation/delegations :f delegation/delegations
+    :gen (gen/let [garbage (gen/vector gen-garbage 0 5)
+                   valid ge/gen-events]
+           [(into (vec valid) garbage)])}
+   {:sym 'tik.delegation/covers? :f delegation/covers?
+    :gen (gen/tuple (gen/one-of [gen/any-equatable
+                                 (gen/fmap #(assoc % :problems []) (gen/map gen/keyword gen/any-equatable))])
+                    (gen/one-of [gen/any-equatable gen-garbage]))}
    {:sym 'tik.identity/principal? :f identity/principal? :gen (one gen/any-equatable)}
    {:sym 'tik.sshsig/parse-signer-line :f sshsig/parse-signer-line
     :gen (one (gen/one-of [gen/any-equatable gen/string (gen/fmap #(str "seb " % " ssh-ed25519 AAAAC3x") gen/string)]))}
@@ -514,7 +523,7 @@
   reason it need not. This is the forcing function at the fn level."
   '#{tik.canonical tik.event tik.reduce tik.guard tik.stage tik.dag
      tik.explain tik.causal tik.next tik.process tik.lint tik.plan tik.template
-     tik.identity tik.link tik.shape tik.stats})
+     tik.identity tik.delegation tik.link tik.shape tik.stats})
 
 (def ^:private excluded-namespaces
   "Kernel .cljc namespaces deliberately NOT swept fn-by-fn, each with

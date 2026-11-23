@@ -19,6 +19,7 @@
                                   signing-key sidecar-names-for store-root-doc
                                   the-store]]
             [tik.dag :as dag]
+            [tik.delegation-trust :as delegation-trust]
             [tik.event :as event]
             [tik.identity-trust :as identity-trust]
             [tik.jwks :as jwks]
@@ -1076,7 +1077,14 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       ;; cannot be checked must not pass quietly, and "signature does not
       ;; verify" would be a lie when the truth is that nobody pinned the
       ;; issuer.
-      (let [signers-at (identity-trust/signer-view (root) (registry-events s))]
+      (let [signers-at (identity-trust/signer-view (root) (registry-events s))
+            ;; ADR 0037: a key outside the registry still counts for a
+            ;; verdict a trusted delegation covers, and for nothing else
+            delegations (delegation-trust/assess (root) s (registry-events s))]
+        (doseq [d delegations
+                :when (not (:trusted? d))]
+          (println (str "  note  delegation " (shash (:event d)) "… by " (:actor d)
+                        " credits nothing: " (:why d))))
         (if-not signers-at
           (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
           (let [unsigned (atom 0)]
@@ -1086,14 +1094,19 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                 (swap! unsigned inc)
                 (let [ev-bytes (store/event-bytes s id (:event/id e))]
                   (doseq [name names
-                          :let [sig (store/read-sidecar s id name)]]
-                    (check (boolean
-                            (and ev-bytes sig
-                                 (when-let [signers (signers-at (:event/at e))]
-                                   (sign/verify-bytes signers ev-bytes sig
-                                                      (:event/actor e)))))
+                          :let [sig (store/read-sidecar s id name)
+                                direct (boolean
+                                        (and ev-bytes sig
+                                             (when-let [signers (signers-at (:event/at e))]
+                                               (sign/verify-bytes signers ev-bytes sig
+                                                                  (:event/actor e)))))
+                                delegated (when (and (not direct) ev-bytes sig)
+                                            (delegation-trust/credit delegations e ev-bytes sig))]]
+                    (check (or direct (some? delegated))
                            (str (shash (:event/id e)) "… signed by "
-                                (:event/actor e)))))))
+                                (:event/actor e)
+                                (when delegated
+                                  (str " (delegated by " (shash (:event delegated)) "…)"))))))))
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
                             " (authenticity unclaimed, not failed)"))))))

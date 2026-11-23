@@ -154,6 +154,13 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   judge. Hand-written `actors` options behave as in ssh-keygen
   (`namespaces=` patterns with `!` negation, `cert-authority`); a line with
   `valid-before`/`valid-after` is always judged by ssh-keygen.
+  A verdict signed by a throwaway key counts for the reviewer only through
+  a `:delegation` attestation on the identity registry (ADR 0037), signed
+  by a key `actors` grants them. That attestation must be valid for at most
+  five minutes, scope the exact `[ticket head]` pairs and the allowed fact
+  paths, and, with `{:delegation {:require-touch true}}` in `oidc.edn`,
+  come from a touched security key. `verify` names a delegation that
+  credits nothing, with the reason.
   A post-quantum sidecar (`<id>.pqsig.<fpr>`, ML-DSA-65, ADR 0036) is
   checked against the store's `pq-signers` file: one that does not verify,
   names an unregistered key, or a key registered for another actor fails
