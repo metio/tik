@@ -341,3 +341,35 @@
           (is (str/includes? (:out r) "ci-next is bound") (:out r)))
         (let [r (h/run-tik! env "rederive" (str tgz))]
           (is (zero? (:exit r)) (str (:out r) (:err r))))))))
+
+(deftest the-bundle-script-checks-what-a-binding-claims
+  (let [{:keys [root env]} (setup!)
+        registry (ticket-id (:out (h/run-tik! env "new" "identity-registry" "--title" "registry")))
+        ci-key (ssh-keygen! root "ci_key")
+        token-file (str (io/file root "token.jwt"))
+        _ (spit token-file (id-token))
+        ci-env (assoc env :actor "ci" :env {"TIK_KEY" ci-key})
+        _ (h/run-tik! ci-env "bridge" "workload" "--registry" registry "--token-file" token-file
+                      "--public-key" (str ci-key ".pub") "--actor" "ci")
+        work (ticket-id (:out (h/run-tik! ci-env "new" "identity-registry" "--title" "w")))
+        _ (h/run-tik! ci-env "set" work "description=x" "--actor" "ci")
+        tgz (io/file root "evidence.tgz")
+        _ (h/run-tik! env "bundle" work "--out" (str tgz))
+        unpacked (fn [edit]
+                   (let [dest (h/temp-dir! "tik-binding-bundle")]
+                     (sh/sh "tar" "xzf" (str tgz) "-C" (str dest))
+                     (doseq [^java.io.File f (.listFiles (io/file dest "identity"))
+                             :when (str/ends-with? (.getName f) ".edn")]
+                       (spit f (edit (slurp f))))
+                     (:out (sh/sh "sh" "./verify.sh" :dir (str dest)))))]
+    (testing "an honest binding is credited"
+      (is (str/includes? (unpacked identity) "ci is bound") (unpacked identity)))
+    (testing "a binding written after its token expired is not"
+      (let [out (unpacked #(str/replace % #":event/at #inst \"\d{4}" ":event/at #inst \"2099"))]
+        (is (re-find #"FAIL .*not live" out) out)
+        (is (not (str/includes? out "ci is bound")) out)))
+    (testing "a binding naming another subject is not"
+      (let [out (unpacked #(str/replace % (str ":identity/subject \"" subject "\"")
+                                        ":identity/subject \"repo:other/x:ref:refs/heads/main\""))]
+        (is (re-find #"FAIL .*subject" out) out)
+        (is (not (str/includes? out "ci is bound")) out)))))
