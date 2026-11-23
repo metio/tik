@@ -317,7 +317,7 @@
                  (pack-slice dir)))))
   (put-sidecar! [_ ticket-id name bytes]
     ;; a sidecar lives beside the event it endorses, exactly as before —
-    ;; sha256sum(<id>.edn) still auditable, the .sig./.witness. sidecar
+    ;; sha256sum(<id>.edn) still auditable, the .sig./.pqsig./.witness. sidecar
     ;; alongside; the store seam simply names the operation.
     (let [dir (ticket-dir root ticket-id)]
       (.mkdirs dir)
@@ -328,6 +328,7 @@
         (into [] (comp (filter #(.isFile ^File %))
                        (map #(.getName ^File %))
                        (filter #(or (str/includes? % ".sig.")
+                                    (str/includes? % ".pqsig.")
                                     (str/includes? % ".witness."))))
               (.listFiles dir))
         [])))
