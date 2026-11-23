@@ -183,11 +183,17 @@
   (ADR 0012: claimed is the default; a witnessed variant arrives with
   witness infrastructure). Closes the stale-evidence gap: a replayed
   \"CI green\" from last month is cryptographically valid and fails
-  this guard honestly."
+  this guard honestly. An attestation dated after `now` does not count."
   [[_ claim dur-str] {:keys [state now]}]
-  (let [cutoff (.minus (->instant now) (Duration/parse dur-str))
+  (let [now* (->instant now)
+        cutoff (.minus now* (Duration/parse dur-str))
+        ;; an attestation claiming an instant after `now` does not exist
+        ;; yet at this read, as stage/evolve's clamp says of every event;
+        ;; counted, a postdated one would stay fresh for its window plus
+        ;; however far ahead it was dated
         attests? (fn [e] (and (= :attestation/add (:event/type e))
-                              (= claim (get-in e [:event/body :claim]))))
+                              (= claim (get-in e [:event/body :claim]))
+                              (not (.isAfter (->instant (:event/at e)) now*))))
         fresh (filter (fn [e] (and (attests? e)
                                    (not (.isBefore (->instant (:event/at e))
                                                    cutoff))))

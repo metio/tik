@@ -79,6 +79,8 @@ because the semantics of a verifiable kernel have to be enumerable:
 `:different-person` is the four-eyes principle as a derivable condition.
 `:attested-within` closes the stale-evidence gap: a replayed "CI green"
 from last month is cryptographically valid and fails the guard honestly.
+An attestation dated after the moment of derivation does not count yet, so
+dating one ahead cannot stretch its window.
 
 There is no conditional operator, because material implication already
 spells one — "technical implies reproduced" is:
