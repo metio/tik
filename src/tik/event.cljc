@@ -78,11 +78,14 @@
     (let [bytes (canonical/emit (dissoc e :event/id))
           reread (try (edn/read-string {:readers canonical/edn-readers} bytes)
                       (catch #?(:clj Exception :cljs :default) _ ::unreadable))]
-      ;; byte-level round trip: what parses back must re-emit to the
-      ;; very same bytes (the canonical readers return Instant, the one
-      ;; time type; a keyword with a space cannot survive)
+      ;; what parses back must re-emit to the very same bytes AND be the
+      ;; very same value: a keyword or symbol is printed by its bare name,
+      ;; so [(keyword "a b")] reads back as [:a b] and (symbol "true") as
+      ;; true — identical bytes, a different event, and two events under
+      ;; one id
       (when (or (= ::unreadable reread)
-                (not= bytes (canonical/emit reread)))
+                (not= bytes (canonical/emit reread))
+                (not= (dissoc e :event/id) reread))
         (throw (ex-info "event does not survive serialization — a value cannot be written that could never be read"
                         {:reason :event/unwritable :event e}))))
     (let [root? (= :ticket/create (:event/type e))

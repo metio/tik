@@ -75,3 +75,17 @@
                  (event/event-id (assoc-in e [:event/body :injected] true)))
            (not= (event/event-id e)
                  (event/event-id (update e :event/parents conj "sha256-bogus")))))))
+
+(deftest a-value-that-reads-back-as-another-value-is-refused
+  (let [tid #uuid "018f2f6e-7c1a-7000-8000-00000000e0a1"
+        c (event/create-ticket {:ticket tid :actor "seb" :at (java.time.Instant/parse "2026-07-08T10:00:00Z")
+                                :title "m" :process :p})
+        assert-of (fn [v] (event/assert-fact {:ticket tid :actor "seb" :parents #{(:event/id c)}
+                                              :at (java.time.Instant/parse "2026-07-08T10:01:00Z")
+                                              :path [:x] :value v}))]
+    (doseq [v [[(keyword "a b")] (symbol "true") (symbol "nil") (keyword "x y")]]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not survive serialization"
+                            (assert-of v))
+          (pr-str v)))
+    (testing "what round-trips still mints, under distinct ids"
+      (is (not= (:event/id (assert-of [:a 'b])) (:event/id (assert-of true)))))))
