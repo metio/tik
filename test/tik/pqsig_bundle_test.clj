@@ -112,3 +112,25 @@
       (is (re-find #"(?m)^\s*FAIL.*post-quantum" (rederive root dest)))
       (when openssl-has-ml-dsa?
         (is (re-find #"(?m)^FAIL.*does not allow to sign events" (verify-sh dest)))))))
+
+(defn- with-patterns! [dest patterns]
+  (let [reg (io/file dest "pq-signers")]
+    (spit reg (str/replace (slurp reg) #"namespaces=\"[^\"]*\""
+                           (str "namespaces=\"" patterns "\"")))))
+
+(deftest namespace-patterns-read-the-same-in-both-verifiers
+  (testing "a lone * matches every namespace, whatever files sit beside verify.sh"
+    (let [{:keys [root dest]} (bundled)]
+      (with-patterns! dest "*")
+      (let [out (rederive root dest)]
+        (is (= 2 (count (re-seq #"verifies post-quantum as seb" out))) out))
+      (when openssl-has-ml-dsa?
+        (let [out (verify-sh dest)]
+          (is (= 2 (count (re-seq #"verifies post-quantum as seb" out))) out)
+          (is (str/includes? out "bundle: PASS") out)))))
+  (testing "brackets are literal characters, never a set"
+    (let [{:keys [root dest]} (bundled)]
+      (with-patterns! dest "tik-[e]vent")
+      (is (re-find #"(?m)^\s*FAIL.*post-quantum" (rederive root dest)))
+      (when openssl-has-ml-dsa?
+        (is (re-find #"(?m)^FAIL.*does not allow to sign events" (verify-sh dest)))))))

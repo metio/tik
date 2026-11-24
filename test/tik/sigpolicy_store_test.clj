@@ -150,3 +150,14 @@
       (is (not (zero? (:exit r))))
       (is (str/includes? (:err r) "witness") (:err r))
       (is (h/clean-output? (:all r))))))
+
+(deftest a-key-allowed-every-namespace-signs-and-witnesses-in-every-verifier
+  (let [st (store)
+        reg (io/file (:root st) "pq-signers")
+        _ (spit reg (str/replace (slurp reg) "tik-*" "*"))
+        id (new-ticket st)]
+    (tik st "set" id "summary=\"signed and anchored by a * key\"")
+    (policy! st future-policy)
+    (is (zero? (:exit (tik st "anchor"))))
+    (let [r (passes? st id)]
+      (is (all-pass? r) (:out r)))))

@@ -542,6 +542,13 @@ done
 # ML-DSA-65 signature over the bytes tik-event-v1, a NUL, then the event,
 # by the pq-signers key whose DER hashes to <fpr>. Only OpenSSL 3.5 or
 # later can check one, and a signature nobody here can check fails.
+# A pq-signers pattern knows one wildcard, `*`, for any run of characters;
+# every other character is literal. Each pattern becomes an anchored
+# basic regular expression, so the shell never globs it against files.
+pq_allows() { # $1 the comma-separated namespaces= patterns, $2 a namespace, $3 a scratch dir
+  printf %s \"$1\" | tr ',' '\\n' | sed -e '/^$/d' -e 's/[].[\\^$]/\\\\&/g' -e 's/\\*/.*/g' > \"$3/pats\"
+  printf '%s\\n' \"$2\" | grep -qx -f \"$3/pats\"
+}
 pq_tool=
 for sig in tickets/*/events/*.pqsig.*; do
   [ -e \"$sig\" ] || continue
@@ -576,9 +583,7 @@ for sig in tickets/*/events/*.pqsig.*; do
     fi
   done < pq-signers
   allowed=
-  for p in $(printf %s \"$patterns\" | tr ',' ' '); do
-    case tik-event in $p) allowed=yes ;; esac
-  done
+  pq_allows \"$patterns\" tik-event \"$t\" && allowed=yes
   { printf 'tik-event-v1\\000'; cat \"$ev\"; } > \"$t/m\"
   if [ -z \"$holder\" ]; then
     echo \"FAIL  $sig is signed by a key pq-signers does not hold (post-quantum)\"; fail=1
@@ -633,9 +638,7 @@ for sig in tickets/*/events/*.pqwitness.*; do
     fi
   done < pq-signers
   allowed=
-  for p in $(printf %s \"$patterns\" | tr ',' ' '); do
-    case tik-witness in $p) allowed=yes ;; esac
-  done
+  pq_allows \"$patterns\" tik-witness \"$t\" && allowed=yes
   { printf 'tik-witness-v1\\000'; cat \"$ev\"; } > \"$t/m\"
   if [ -z \"$holder\" ] || [ -z \"$allowed\" ]; then
     echo \"FAIL  $sig is not by a key pq-signers allows to witness\"; fail=1

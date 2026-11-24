@@ -114,7 +114,8 @@ seb namespaces="tik-*" ml-dsa-65 MIIHsjALBglghkgBZQMEAxID…
 
 The key is the base64 DER SubjectPublicKeyInfo, and `<fpr>` is the hex
 SHA-256 of that DER. `namespaces` takes comma-separated patterns where
-`*` is the only wildcard. A sidecar that does not verify, names a key
+`*` is the only wildcard and every other character, brackets included,
+stands for itself. A sidecar that does not verify, names a key
 `pq-signers` lacks, or a key registered for another actor fails the
 audit, and so does a malformed line. A store without the file is
 checked as before.
