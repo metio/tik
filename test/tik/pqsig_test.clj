@@ -109,3 +109,24 @@
     (is (nil? (pqsig/signer-entry reg "bob" sig fx/event-bytes)))
     (is (nil? (pqsig/signer-entry (pqsig/parse-registry "# no ML-DSA-65 key\n")
                                   "alice" sig fx/event-bytes)))))
+
+(deftest a-witness-countersignature-is-its-own-domain
+  (let [{:keys [pem public-key public-key-b64]} (keys/jdk-key)
+        k (pqsig/read-private-key pem)
+        bytes (.getBytes "{:event/actor \"seb\"}" "UTF-8")
+        witness (pqsig/sign-witness k bytes)
+        authorship (pqsig/sign-event k bytes)
+        fpr (pqsig/fingerprint public-key)
+        registry #(pqsig/parse-registry (str "wit namespaces=\"" % "\" ml-dsa-65 " public-key-b64))]
+    (is (= "tik-witness-v1\u0000" (String. ^bytes (pqsig/witness-message (byte-array 0)) "UTF-8")))
+    (is (true? (pqsig/verify-witness public-key witness bytes)))
+    (testing "neither signature passes as the other"
+      (is (false? (pqsig/verify-event public-key witness bytes)))
+      (is (false? (pqsig/verify-witness public-key authorship bytes))))
+    (testing "a witness counts through a key allowed to witness"
+      (is (= "wit" (pqsig/check-witness (registry "tik-witness") {:fpr fpr :signature witness :event-bytes bytes})))
+      (is (= "wit" (pqsig/check-witness (registry "tik-*") {:fpr fpr :signature witness :event-bytes bytes})))
+      (is (nil? (pqsig/check-witness (registry "tik-event") {:fpr fpr :signature witness :event-bytes bytes})))
+      (is (nil? (pqsig/check-witness (registry "tik-witness") {:fpr fpr :signature authorship :event-bytes bytes}))))
+    (is (= fpr (:fpr (pqsig/entry-of-private-key (registry "tik-witness") k))))
+    (is (= fpr (pqsig/sidecar-fpr (str "sha256-ab.pqwitness." fpr))))))

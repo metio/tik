@@ -13,6 +13,7 @@
             [tik.delegation :as d]
             [tik.event :as event]
             [tik.harness :as h]
+            [tik.pq-keys :as pq-keys]
             [tik.review :as review]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store])
@@ -217,6 +218,57 @@
     (testing "the throwaway key is gone"
       (is (empty? (filter #(str/includes? (.getName ^java.io.File %) "tik-batch")
                           (file-seq (io/file (System/getProperty "java.io.tmpdir")))))))))
+
+(deftest batch_review_meets_a_post_quantum_signature_policy
+  ;; under signatures.edn every verdict also carries an ML-DSA-65
+  ;; signature by the reviewer's own key, so the post-quantum half needs
+  ;; no delegation and a forged throwaway Ed25519 key alone cannot pass
+  (let [[root seb-key] (store-with-key!)
+        claude-key (io/file root "claude_key")
+        _ (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "claude" "-f" (str claude-key))
+        _ (spit (io/file root "actors")
+                (str "claude namespaces=\"tik-*\" "
+                     (str/trim (:out (sh/sh "ssh-keygen" "-y" "-f" (str claude-key)))) "\n")
+                :append true)
+        pq (into {} (for [who ["seb" "claude"]
+                          :let [k (pq-keys/jdk-key) f (io/file root (str who ".pq.pem"))]]
+                      (do (spit f (:pem k)) [who {:file (str f) :b64 (:public-key-b64 k)}])))
+        _ (spit (io/file root "pq-signers")
+                (str/join (for [[who {:keys [b64]}] pq] (str who " namespaces=\"tik-*\" ml-dsa-65 " b64 "\n"))))
+        _ (spit (io/file root "signatures.edn")
+                "{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst \"2000-01-01T00:00:00Z\"}")
+        env (fn [who key & {:keys [pq?] :or {pq? true}}]
+              (cond-> {"NO_COLOR" "1" "TIK_KEY" (str key)} pq? (assoc "TIK_PQ_KEY" (get-in pq [who :file]))))
+        as (fn [who key & args] (apply h/run-tik! {:root root :dir root :actor who :env (env who key)} args))
+        _ (io/copy (io/file (System/getProperty "user.dir") "processes" "identity-registry.edn")
+                   (io/file root "processes" "identity-registry.edn"))
+        registry (str/trim (:out (as "seb" seb-key "new" "identity-registry" "--title" "registry")))
+        ids (vec (for [title ["one" "two"]]
+                   (let [id (str/trim (first (str/split-lines (:out (as "claude" claude-key "new" "change" "--title" title)))))]
+                     (as "claude" claude-key "set" id "merge.commit=46db877")
+                     id)))
+        _ (as "seb" seb-key "review" "--yes" "--key" (str seb-key) "change")]
+    (testing "without the reviewer's ML-DSA key the batch writes nothing and leaves no key behind"
+      (let [batch-dirs #(set (filter (fn [^java.io.File f] (str/starts-with? (.getName f) "tik-batch"))
+                                     (.listFiles (io/file (System/getProperty "java.io.tmpdir")))))
+            before (batch-dirs)
+            r (h/run-tik! {:root root :dir root :actor "seb" :env (env "seb" seb-key :pq? false)}
+                          "review" "review.verdict=approved" "--yes" "--batch"
+                          "--registry" registry "--key" (str seb-key))]
+        (is (not (zero? (:exit r))))
+        (is (str/includes? (:err r) "signatures.edn") (:err r))
+        (is (= before (batch-dirs)) "the refused batch removed its throwaway key")
+        (doseq [id ids]
+          (is (not (str/includes? (:out (as "seb" seb-key "status" id)) "stage:   reviewed"))))))
+    (let [r (as "seb" seb-key "review" "review.verdict=approved" "--yes" "--batch"
+                "--registry" registry "--key" (str seb-key))]
+      (is (zero? (:exit r)) (:err r)))
+    (doseq [id ids
+            :let [out (:out (as "seb" seb-key "verify" id))]]
+      (is (str/includes? (:out (as "seb" seb-key "status" id)) "stage:   reviewed"))
+      (is (str/includes? out "verify: PASS") out)
+      (is (re-find #"signed by seb \(delegated by sha256-" out) out)
+      (is (str/includes? out "every event meets signatures.edn") out))))
 
 (deftest batch_review_needs_a_registry
   (let [[root key] (store-with-key!)

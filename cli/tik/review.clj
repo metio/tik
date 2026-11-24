@@ -240,7 +240,11 @@
                       "tik-batch"
                       (into-array FileAttribute
                                   [(PosixFilePermissions/asFileAttribute
-                                    (PosixFilePermissions/fromString "rwx------"))])))]
+                                    (PosixFilePermissions/fromString "rwx------"))])))
+        ;; die ends the process, which skips finally: the hook removes the
+        ;; throwaway key on that path, and finally on every other
+        cleanup (Thread. ^Runnable (fn [] (delete-tree! dir)))]
+    (.addShutdownHook (Runtime/getRuntime) cleanup)
     (try
       (let [tkey (throwaway-key! dir)
             at (now)
@@ -267,7 +271,11 @@
                                           :path path :value value})
                     (assoc opts :key (str tkey))))
         d)
-      (finally (delete-tree! dir)))))
+      (finally
+        (delete-tree! dir)
+        (try (.removeShutdownHook (Runtime/getRuntime) cleanup)
+             ;; the JVM is already shutting down and runs the hook itself
+             (catch IllegalStateException _ nil))))))
 
 ;; --------------------------------------------------------------- command
 

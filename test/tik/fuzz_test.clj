@@ -31,6 +31,7 @@
             [tik.delegation :as delegation]
             [tik.identity :as identity]
             [tik.sshsig :as sshsig]
+            [tik.sigpolicy :as sigpolicy]
             [tik.link :as link]
             [tik.harness :as h]
             [tik.guard :as guard]
@@ -372,6 +373,10 @@
    {:sym 'tik.identity/principal? :f identity/principal? :gen (one gen/any-equatable)}
    {:sym 'tik.sshsig/parse-signer-line :f sshsig/parse-signer-line
     :gen (one (gen/one-of [gen/any-equatable gen/string (gen/fmap #(str "seb " % " ssh-ed25519 AAAAC3x") gen/string)]))}
+   {:sym 'tik.sigpolicy/parse :f sigpolicy/parse
+    :gen (one (gen/one-of [gen/any-equatable gen/string
+                           (gen/fmap (fn [[a b]] (str "{:require #{:ssh-ed25519 " a "} :from " b "}"))
+                                     (gen/tuple gen/string gen/string))]))}
    {:sym 'tik.identity/signing-keys :f identity/signing-keys
     :gen (gen/let [bs (gen/vector gen/any-equatable 0 5)] [bs])}
    {:sym 'tik.reduce/ticket-state :f red/ticket-state

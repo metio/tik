@@ -15,6 +15,7 @@ tik bundle <id> --out evidence.tgz
 bundle.edn                          the format name and version
 actors                              the allowed-signers registry
 pq-signers                          the ML-DSA-65 key registry, where the store keeps one
+signatures.edn                      the signature policy, where the store sets one
 roles.edn                           role membership, where the store keeps a register
 delegation.edn                      the store's delegation policy, where it sets one
 identity/<event-id>.edn             key bindings and delegations, as signed registry events
@@ -26,6 +27,7 @@ tickets/<uuid>/events/<id>.edn      the append-only log
 tickets/<uuid>/events/<id>.sig.<fpr>      authorship signatures
 tickets/<uuid>/events/<id>.pqsig.<fpr>    post-quantum authorship signatures
 tickets/<uuid>/events/<id>.witness.<fpr>  countersignatures over a head
+tickets/<uuid>/events/<id>.pqwitness.<fpr>  ML-DSA-65 countersignatures sealing an ancestry
 tickets/<uuid>/blobs/<hash>         attached artifacts, addressed by content
 verify.sh                           a coreutils implementation of the checks
 README.md                           what the recipient is holding
@@ -112,15 +114,24 @@ it, or run this list yourself.
    - its facts name the path the event asserts;
    - the sidecar verifies against the key the delegation names.
 5. **Countersignature.** Every `.witness.` sidecar verifies as a
-   registered principal under `tik-witness`.
-6. **Key bindings.** For each binding in `identity/`: the issuer signed
+   registered principal under `tik-witness`. Every `.pqwitness.` sidecar
+   is an ML-DSA-65 signature over `tik-witness-v1\0` followed by the
+   event's bytes, by a `pq-signers` key allowed `tik-witness`.
+6. **Signature policy.** Where `signatures.edn` travels, it reads as
+   `{:require #{:ssh-ed25519 …} :from <instant>}` over the algorithms
+   `:ssh-ed25519` and `:ml-dsa-65`, or the bundle fails. Every event
+   carries a verifying `ssh-ed25519` signature by its actor; from `:from`
+   on, also one for every other required algorithm; and where
+   `:ml-dsa-65` is required, every event claimed before `:from` is a
+   `.pqwitness.` event or one of its ancestors.
+7. **Key bindings.** For each binding in `identity/`: the issuer signed
    the id-token, using the key at `identity/keys/<kid>.pem`; the token's
    `sub` and `iss` equal the binding's; the token was live at the
    binding's `:event/at`; the token names the key it binds, as a `nonce`
    or an `aud` suffix equal to `tik-key-<sha256 of the key>` (ADR 0035);
    and the key it binds appears in `actors`.
 
-Check 6 is checkable offline because the issuer's key travels in the
+Check 7 is checkable offline because the issuer's key travels in the
 archive, and it says exactly this much: *whoever built this bundle holds
 a token that this key signed, for this subject and this bound key, at
 that moment.*

@@ -169,6 +169,13 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   -algorithm ML-DSA-65`) makes every write carry that sidecar too; a key
   `pq-signers` does not grant the actor refuses the write before anything
   is stored, and `tik sign <id>` back-signs your own earlier events.
+  `signatures.edn` (`{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst …}`)
+  makes it a requirement: from `:from` on every event needs both signatures
+  by its actor, and every earlier event must lie in the ancestry of an
+  ML-DSA-65 witness countersignature, written by `tik anchor` (TIK_PQ_KEY,
+  a `pq-signers` key allowed `tik-witness`). Writes the policy would reject
+  are refused, a malformed policy fails `verify`, and the file travels in
+  bundles, where `rederive` and `verify.sh` apply it too.
   L1 credits a signature when the key is in `actors` (rung 1) **or** a verified
   binding grants it (rung 2). A binding whose issuer nobody pinned is a note,
   not a failure — it grants nothing, and events are never deleted, so failing
