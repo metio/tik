@@ -78,6 +78,7 @@ so a checkout and this site carry the same record.
 | [0034](/decisions/0034-a-rollout-subject-need-not-be-a-git-repository/) | A rollout takes its members from a declared population, and a subject needs no git repository. |
 | [0035](/decisions/0035-a-binding-token-commits-to-its-key/) | A binding counts only when its token names the key it binds, through its nonce or an audience suffix. |
 | [0036](/decisions/0036-post-quantum-signatures-are-hybrid/) | Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG, with a store policy, a witness anchor, and the content hash as a parameter of the format version. |
+| [0038](/decisions/0038-one-shared-server-holds-no-keys/) | Proposed: one shared server per organisation holds no signing keys; agents sign their own events, prove their actor per connection, and receive work through roles. |
 | [0037](/decisions/0037-a-batch-review-is-a-scoped-delegation/) | One signature approves a reviewed batch, through a delegation scoped to the shown heads and the verdict fact, valid for at most five minutes. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
