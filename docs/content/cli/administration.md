@@ -43,6 +43,9 @@ tik verifies these signatures in process and counts one only when the
 device reports that a user was present, a flag inside the signed bytes.
 `ssh-keygen -Y verify` accepts a security-key signature made without a
 touch, so `verify` and the bundle's `verify.sh` read the flag themselves.
+That holds for an ECDSA security key (`ecdsa-sk`) too: tik reads its flag
+in process, and only a touched signature is passed on to `ssh-keygen` for
+the cryptographic check.
 
 Exporting `TIK_KEY` signs every write as it happens; `sign` catches up on
 your own earlier events, and only your own — signing somebody else's would

@@ -11,6 +11,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.harness :as h]
+            [tik.sign :as sign]
             [tik.sk-fixture :as sk]
             [tik.sshsig :as sshsig]))
 
@@ -79,6 +80,42 @@
                          :blob (:blob (sk/signer "ssh:other")))]
         (is (false? (sshsig/verify (line moved) msg armor "alice" "tik-event")))))))
 
+(defn- signers-file [text]
+  (doto (io/file (h/temp-dir! "sk-signers") "allowed") (spit (str text "\n"))))
+
+(defn- every-reader
+  "What each signature reader tik has says about `armor` over the message
+  under the allowed-signers `allowed`."
+  [allowed armor]
+  (let [sig (.getBytes ^String armor "UTF-8")]
+    {:verify-text (sign/verify-text allowed msg sig "alice" "tik-event")
+     :verify-bytes (sign/verify-bytes (signers-file allowed) msg sig "alice" "tik-event")
+     :find-principals (sign/find-principals-bytes (signers-file allowed) msg sig "tik-event")}))
+
+(deftest an-ecdsa-security-key-signature-without-a-touch-counts-for-nothing
+  (let [s (sk/ecdsa-signer)
+        armor (sk/sign s "tik-event" msg :flags 0)]
+    (is (ssh-keygen-accepts? (line s) armor msg)
+        "the bytes are a valid signature, and ssh-keygen ignores the flag")
+    (is (false? (sshsig/verify (line s) msg armor "alice" "tik-event")))
+    (is (= {:verify-text false :verify-bytes false :find-principals []}
+           (every-reader (line s) armor)))))
+
+(deftest a-touched-ecdsa-security-key-signature-still-verifies-through-ssh-keygen
+  (let [s (sk/ecdsa-signer)
+        armor (sk/sign s "tik-event" msg)]
+    (is (ssh-keygen-accepts? (line s) armor msg))
+    (is (= {:verify-text true :verify-bytes true :find-principals ["alice"]}
+           (every-reader (line s) armor)))))
+
+(deftest a-signer-line-with-a-clock-option-does-not-reopen-the-touch
+  (let [s (sk/signer)
+        dated (str "alice valid-after=\"20200101\" " (sk/public-line s))]
+    (is (= {:verify-text false :verify-bytes false :find-principals []}
+           (every-reader dated (sk/sign s "tik-event" msg :flags 0))))
+    (is (= {:verify-text true :verify-bytes true :find-principals ["alice"]}
+           (every-reader dated (sk/sign s "tik-event" msg))))))
+
 (defn- shell-fn
   "The `sk_untouched` function as the bundle's verify.sh defines it."
   []
@@ -97,6 +134,10 @@
     (is (untouched-by-script? (sk/sign s "tik-event" msg :flags 0)))
     (is (not (untouched-by-script? (sk/sign s "tik-event" msg))))
     (is (not (untouched-by-script? (sk/sign s "tik-event" msg :flags 5))))
+    (testing "an ECDSA security key"
+      (let [e (sk/ecdsa-signer)]
+        (is (untouched-by-script? (sk/sign e "tik-event" msg :flags 0)))
+        (is (not (untouched-by-script? (sk/sign e "tik-event" msg))))))
     (testing "a plain Ed25519 signature carries no flags to check"
       (let [dir (h/temp-dir! "sk-plain")
             key (io/file dir "k")
