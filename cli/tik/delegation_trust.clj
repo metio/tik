@@ -22,14 +22,17 @@
 
 (defn policy-of
   "`{:require-touch bool}` from a parsed `oidc.edn` map, or `::malformed`
-  when it is not a map or its `:delegation` setting does not parse."
+  when it is not a map or its `:delegation` setting is anything but
+  `{:require-touch true}` or `{:require-touch false}`. A misspelt or
+  missing key reads as malformed, because reading it as absent would turn
+  the touch requirement off."
   [conf]
   (let [d (when (map? conf) (:delegation conf))]
     (cond
       (not (map? conf)) ::malformed
       (nil? d) {:require-touch false}
-      (and (map? d) (contains? #{nil true false} (:require-touch d)))
-      {:require-touch (true? (:require-touch d))}
+      (and (map? d) (= #{:require-touch} (set (keys d))) (boolean? (:require-touch d)))
+      {:require-touch (:require-touch d)}
       :else ::malformed)))
 
 (defn policy

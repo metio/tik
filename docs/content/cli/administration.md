@@ -100,7 +100,10 @@ ticket and head pair the scope lists. It must also assert a fact path
 the delegation allows. A key granted through an identity binding or
 another delegation cannot delegate. With
 `{:delegation {:require-touch true}}` in `oidc.edn`, the delegation must
-come from a touched security key. A delegation that credits nothing is
+come from a touched security key. The `:delegation` map holds exactly
+`:require-touch` with `true` or `false`; any other key, a missing one or
+another value makes the setting malformed, and a malformed setting
+credits no delegation at all. A delegation that credits nothing is
 named in the output with the reason.
 
 An event can also carry a post-quantum signature, an ML-DSA-65 sidecar

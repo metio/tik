@@ -293,8 +293,8 @@
 
 (defn- delegation-policy
   "The producer store's delegation policy, as delegation.edn carries it:
-  no file is no touch requirement, a file that does not parse trusts no
-  delegation."
+  no file is no touch requirement, and a file that does not parse, or
+  holds anything but `{:require-touch bool}`, trusts no delegation."
   [{:keys [delegation-policy]}]
   (if-not (.isFile ^File delegation-policy)
     {:require-touch false}
