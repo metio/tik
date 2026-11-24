@@ -217,7 +217,7 @@
       (is (re-find #"signed by seb \(delegated by sha256-" out) out))
     (testing "the throwaway key is gone"
       (is (empty? (filter #(str/includes? (.getName ^java.io.File %) "tik-batch")
-                          (file-seq (io/file (System/getProperty "java.io.tmpdir")))))))))
+                          (file-seq (h/temp-root!))))))))
 
 (deftest batch_review_meets_a_post_quantum_signature_policy
   ;; under signatures.edn every verdict also carries an ML-DSA-65
@@ -250,7 +250,7 @@
         _ (as "seb" seb-key "review" "--yes" "--key" (str seb-key) "change")]
     (testing "without the reviewer's ML-DSA key the batch writes nothing and leaves no key behind"
       (let [batch-dirs #(set (filter (fn [^java.io.File f] (str/starts-with? (.getName f) "tik-batch"))
-                                     (.listFiles (io/file (System/getProperty "java.io.tmpdir")))))
+                                     (.listFiles (h/temp-root!))))
             before (batch-dirs)
             r (h/run-tik! {:root root :dir root :actor "seb" :env (env "seb" seb-key :pq? false)}
                           "review" "review.verdict=approved" "--yes" "--batch"

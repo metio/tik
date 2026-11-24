@@ -6,7 +6,8 @@
   has ML-DSA (3.5 or later), for its PKCS#8 encoding."
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [tik.harness :as h])
   (:import (java.security KeyPairGenerator)
            (java.util Base64)))
 
@@ -37,8 +38,7 @@
   `openssl genpkey`, or nil where the host's OpenSSL has no ML-DSA."
   []
   (when openssl-has-ml-dsa?
-    (let [dir (.toFile (java.nio.file.Files/createTempDirectory
-                        "tik-pq-key" (make-array java.nio.file.attribute.FileAttribute 0)))
+    (let [dir (h/temp-dir! "tik-pq-key")
           k (io/file dir "k.pem")
           d (io/file dir "pub.der")]
       (sh/sh "openssl" "genpkey" "-algorithm" "ML-DSA-65" "-out" (str k))

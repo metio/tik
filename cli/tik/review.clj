@@ -25,7 +25,7 @@
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [tik.args :refer [actor parse-key typed-value]]
-            [tik.cli-core :refer [append!* archive-process! available-processes
+            [tik.cli-core :refer [append!* archive-process! available-processes call-with-temp-dir
                                   by-hash-file die load-process now
                                   registry-events resolve-id root
                                   signing-key stage-delta the-store ticket-ctx
@@ -43,8 +43,7 @@
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.protocol :as store])
-  (:import (java.nio.file Files)
-           (java.nio.file.attribute FileAttribute PosixFilePermissions)))
+  (:import (java.nio.file.attribute PosixFilePermissions)))
 
 ;; ------------------------------------------------------------------ plan
 
@@ -200,9 +199,6 @@
         1 (first ids)
         (die "the store has several identity-registry tickets — pass --registry <id>")))))
 
-(defn- delete-tree! [^java.io.File dir]
-  (doseq [^java.io.File f (reverse (file-seq dir))] (.delete f)))
-
 (defn- throwaway-key!
   "A fresh Ed25519 key in a new directory only this user can read."
   [dir]
@@ -236,16 +232,11 @@
         _ (when (seq stale)
             (die (str "signed nothing: " (str/join ", " (map #(subs (str %) 0 8) stale))
                       " changed after the list was drawn; review again")))
-        dir (.toFile (Files/createTempDirectory
-                      "tik-batch"
-                      (into-array FileAttribute
-                                  [(PosixFilePermissions/asFileAttribute
-                                    (PosixFilePermissions/fromString "rwx------"))])))
-        ;; die ends the process, which skips finally: the hook removes the
-        ;; throwaway key on that path, and finally on every other
-        cleanup (Thread. ^Runnable (fn [] (delete-tree! dir)))]
-    (.addShutdownHook (Runtime/getRuntime) cleanup)
-    (try
+        owner-only [(PosixFilePermissions/asFileAttribute
+                     (PosixFilePermissions/fromString "rwx------"))]]
+    (call-with-temp-dir
+     "tik-batch" owner-only
+     (fn [dir]
       (let [tkey (throwaway-key! dir)
             at (now)
             not-after (.plus ^java.time.Instant at ^java.time.Duration delegation/max-window)
@@ -270,12 +261,7 @@
                                           :parents (get heads id)
                                           :path path :value value})
                     (assoc opts :key (str tkey))))
-        d)
-      (finally
-        (delete-tree! dir)
-        (try (.removeShutdownHook (Runtime/getRuntime) cleanup)
-             ;; the JVM is already shutting down and runs the hook itself
-             (catch IllegalStateException _ nil))))))
+        d)))))
 
 ;; --------------------------------------------------------------- command
 

@@ -1,1 +1,6 @@
-#kaocha/v1 {}
+#kaocha/v1
+{:plugins [:kaocha.plugin/hooks]
+ ;; removes the run's temp root (tik.harness) when a run ends inside a
+ ;; JVM that keeps going, such as a REPL; the JVM's own exit removes it
+ ;; through a shutdown hook
+ :kaocha.hooks/post-run [tik.harness/post-run]}

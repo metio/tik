@@ -6,8 +6,18 @@
  {tik  {:doc "Run the tik CLI (bb tik -- status <id>)"
         :requires ([tik.cli])
         :task (apply tik.cli/-main *command-line-args*)}
+  ;; the suite's JVM and every process it starts get one fresh temp
+  ;; directory as java.io.tmpdir and TMPDIR, removed when the run ends
+  ;; whatever its outcome, so even temp files made outside the test
+  ;; harness (a command under test, ssh-keygen, mktemp) cannot outlive it
   test {:doc "Run the JVM test suite (kaocha)"
-        :task (shell "clojure -M:test")}
+        :requires ([babashka.fs :as fs])
+        :task (let [tmp (str (fs/create-temp-dir {:prefix "tik-test-"}))]
+                (try
+                  (apply shell {:extra-env {"TMPDIR" tmp}}
+                         "clojure" (str "-J-Djava.io.tmpdir=" tmp) "-M:test"
+                         *command-line-args*)
+                  (finally (fs/delete-tree tmp))))}
   lint {:doc "clj-kondo over the code base"
         :task (shell "clj-kondo --lint src cli test")}
   tla  {:doc "Model-check the TLA+ specs (spec/)"

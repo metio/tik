@@ -36,11 +36,69 @@
   [proc]
   (process/resolve-roles (:process/roles proc {}) sample-register))
 
+;; ---- temp directories: one root per run, removed whatever the outcome ----
+;;
+;; Every temp directory and file a test makes lives under one root directory
+;; per JVM, so a run adds at most one entry to java.io.tmpdir and removing
+;; that entry removes everything the run made. The root goes when the JVM
+;; exits (a shutdown hook, which runs after a failing or throwing test as
+;; well as a passing one) and when kaocha finishes a run (`post-run`, for a
+;; REPL that keeps the JVM alive); the next temp-dir! makes a fresh one.
+
+(defn delete-tree!
+  "Remove `f` and everything below it. Symbolic links are removed, never
+  followed, so a test that plants one cannot make this delete its target."
+  [^File f]
+  (when (.isDirectory f)
+    (when-not (Files/isSymbolicLink (.toPath f))
+      (doseq [^File c (.listFiles f)] (delete-tree! c))))
+  (.delete f))
+
+(defonce ^:private root-state (atom nil))
+
+(defn temp-root!
+  "This run's temp root as a File, made on first use. Subprocesses the
+  suite starts get it as their temp directory (run-tik!)."
+  ^File []
+  (locking root-state
+    (let [^File r @root-state]
+      (if (and r (.isDirectory r))
+        r
+        (let [r (.toFile (Files/createTempDirectory "tik-test-run" (make-array FileAttribute 0)))]
+          (reset! root-state r)
+          r)))))
+
+(defn delete-temp-root!
+  "Remove this run's temp root and everything any test put below it."
+  []
+  (locking root-state
+    (when-let [r @root-state]
+      (delete-tree! r)
+      (reset! root-state nil))))
+
+(defonce shutdown-hook
+  ;; the JVM's exit removes the root whatever the run's outcome
+  (let [t (Thread. ^Runnable delete-temp-root!)]
+    (.addShutdownHook (Runtime/getRuntime) t)
+    t))
+
+(defn post-run
+  "kaocha post-run hook: the run is over, so is its temp root."
+  [result]
+  (delete-temp-root!)
+  result)
+
 (defn temp-dir!
-  "A fresh temp directory as a File."
+  "A fresh temp directory as a File, below this run's temp root."
   (^File [] (temp-dir! "tik-test"))
   (^File [prefix]
-   (.toFile (Files/createTempDirectory prefix (make-array FileAttribute 0)))))
+   (.toFile (Files/createTempDirectory (.toPath (temp-root!)) prefix
+                                       (make-array FileAttribute 0)))))
+
+(defn temp-file!
+  "A fresh empty temp file as a File, below this run's temp root."
+  ^File [prefix suffix]
+  (File/createTempFile prefix suffix (temp-root!)))
 
 (defn temp-store!
   "A fresh file store in a temp dir: {:root File :store EventStore}."
@@ -57,6 +115,20 @@
                     {:ticket (or ticket (random-uuid)) :actor actor
                      :at at :title title :process process})))
 
+(defn subprocess-env
+  "This process's environment with TMPDIR pointing at the run's temp root,
+  so `mktemp`, ssh-keygen and the shell scripts a test starts leave their
+  temp files where the run removes them."
+  []
+  (assoc (into {} (System/getenv)) "TMPDIR" (str (temp-root!))))
+
+(defn bb-command
+  "The argv that starts babashka with `args`. babashka reads its temp
+  directory from java.io.tmpdir and ignores TMPDIR, so the run's temp root
+  goes in as a system property."
+  [& args]
+  (into ["bb" (str "-Djava.io.tmpdir=" (temp-root!))] args))
+
 (defn run-tik!
   "Shell `bb tik <args>` against a store; the raw sh/sh map
   {:exit :out :err}. Always passes --config with the repo's bb.edn, so
@@ -68,14 +140,17 @@
         :dir   cwd for the process (default the repo)
         :env   extra env entries (merged last)
         :in    stdin for the process
+        :tmpdir its temp directory (default the run's temp root)
   Args are str-coerced, so ids/files can be passed as-is."
-  [{:keys [root actor dir env in]} & args]
-  (let [repo (System/getProperty "user.dir")]
-    (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
+  [{:keys [root actor dir env in tmpdir]} & args]
+  (let [repo (System/getProperty "user.dir")
+        tmp (str (or tmpdir (temp-root!)))]
+    (apply sh/sh (concat ["bb" (str "-Djava.io.tmpdir=" tmp)
+                          "--config" (str repo "/bb.edn") "tik"]
                          (map str args)
                          (when in [:in in])
                          [:dir (str (or dir repo))
-                          :env (merge (cond-> (into {} (System/getenv))
+                          :env (merge (cond-> (assoc (subprocess-env) "TMPDIR" tmp)
                                         true (dissoc "TIK_ROOT")
                                         root (assoc "TIK_ROOT" (str root)))
                                       {"TIK_ACTOR" (or actor "fuzz")}
