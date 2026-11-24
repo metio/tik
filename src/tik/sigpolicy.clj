@@ -34,6 +34,22 @@
 
 (def ^:private policy-keys #{:require :from})
 
+(def ^:private from-grammar
+  "The one spelling of `:from` that tik and the bundle's verify.sh both
+  read: seconds always, at most three fraction digits, then `Z` or a UTC
+  offset of hours and minutes. Instant/parse alone also takes lower case,
+  a leap second, 24:00 or an offset with seconds, which a shell reader
+  would have to mirror byte for byte to name the same instant."
+  #"(\d{4})-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})")
+
+(defn- from-instant
+  "The instant a `:from` text names, or nil when it is not in
+  from-grammar, is before 1970 or is not a real date and time."
+  [x]
+  (when-let [[_ year] (and (string? x) (re-matches from-grammar x))]
+    (when (<= 1970 (parse-long year))
+      (try (Instant/parse x) (catch Exception _ nil)))))
+
 (defn- instant [x]
   (cond
     (instance? Instant x) x
@@ -46,7 +62,7 @@
   {::malformed \"why\"}. nil text is no policy and reads as nil."
   [text]
   (when (some? text)
-    (let [form (try (edn/read-string {:readers {'inst #(Instant/parse %)}} (str text))
+    (let [form (try (edn/read-string {:readers {'inst str}} (str text))
                     (catch Exception e {::unreadable (ex-message e)}))
           bad (fn [why] {::malformed why})]
       (cond
@@ -61,8 +77,9 @@
                   (pr-str (sort-by str (set/difference (:require form) algorithms)))))
         (not (contains? (:require form) :ssh-ed25519))
         (bad ":require keeps :ssh-ed25519 - the post-quantum signature is a second one, never the only one")
-        (nil? (instant (:from form))) (bad ":from is an instant, such as #inst \"2026-12-01T00:00:00Z\"")
-        :else {:require (:require form) :from (instant (:from form))}))))
+        (nil? (from-instant (:from form)))
+        (bad ":from is an instant with seconds and Z or a UTC offset, such as #inst \"2026-12-01T00:00:00Z\"")
+        :else {:require (:require form) :from (from-instant (:from form))}))))
 
 (defn malformed
   "Why the parsed policy is malformed, or nil."

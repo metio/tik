@@ -431,11 +431,30 @@ check_sig() { # $1 sidecar, $2 target file, $3 namespace
 # earned - be touched where delegation.edn requires it, stay within five
 # minutes, and name the event's ticket and a parent in its scope and the
 # event's fact path in its facts. Sets dlg to the delegation's id.
-epoch_ms() { # $1 an RFC 3339 instant in UTC
-  printf %s \"$1\" | awk -F'[-T:Z]' 'NF >= 6 { y = $1 + 0; m = $2 + 0; d = $3 + 0
-    if (m <= 2) { y--; m += 12 }
-    days = 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d - 719469
-    printf \"%d\\n\", (days * 86400 + $4 * 3600 + $5 * 60) * 1000 + int($6 * 1000 + 0.5) }'
+epoch_ms() { # $1 an RFC 3339 instant: seconds, at most three fraction digits, Z or a UTC offset
+  printf '%s\\n' \"$1\" | awk '
+    !/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\\.[0-9]([0-9][0-9]?)?)?(Z|[-+][0-9][0-9]:[0-9][0-9])$/ { exit }
+    { y = substr($0, 1, 4) + 0; m = substr($0, 6, 2) + 0; d = substr($0, 9, 2) + 0
+      hh = substr($0, 12, 2) + 0; mi = substr($0, 15, 2) + 0; ss = substr($0, 18, 2) + 0
+      rest = substr($0, 20); frac = 0
+      if (substr(rest, 1, 1) == \".\") {
+        match(rest, /^\\.[0-9]+/); f = substr(rest, 2, RLENGTH - 1); frac = f + 0
+        for (i = length(f); i < 3; i++) frac *= 10
+        rest = substr(rest, RLENGTH + 1)
+      }
+      off = 0
+      if (rest != \"Z\") {
+        oh = substr(rest, 2, 2) + 0; om = substr(rest, 5, 2) + 0
+        if (om > 59 || oh > 18 || (oh == 18 && om > 0)) exit
+        off = (oh * 60 + om) * 60; if (substr(rest, 1, 1) == \"-\") off = -off
+      }
+      if (m < 1 || m > 12) exit
+      dim = substr(\"312831303130313130313031\", 2 * m - 1, 2) + 0
+      if (m == 2 && y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) dim = 29
+      if (y < 1970 || d < 1 || d > dim || hh > 23 || mi > 59 || ss > 59) exit
+      if (m <= 2) { y--; m += 12 }
+      days = 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d - 719469
+      printf \"%d\\n\", ((days * 86400 + hh * 3600 + mi * 60 + ss) - off) * 1000 + frac }'
 }
 delegated() { # $1 sidecar, $2 event .edn, $3 actor
   dlg=

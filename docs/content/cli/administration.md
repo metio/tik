@@ -146,6 +146,13 @@ requirement from a chosen instant on:
 {:require #{:ssh-ed25519 :ml-dsa-65} :from #inst "2026-12-01T00:00:00Z"}
 ```
 
+`:from` is written with seconds, at most three fraction digits, and `Z`
+or a UTC offset in hours and minutes, such as
+`#inst "2026-12-01T00:00:00+01:00"`. `verify`, `rederive` and the
+bundle's `verify.sh` read only that spelling, so they always name the
+same instant; lower case, a leap second, `24:00` and an instant before
+1970 make the file malformed.
+
 An event claimed at or after `:from` must carry a verifying signature by
 its own actor for every algorithm in `:require`. An event claimed before
 it needs the classical signature only, and must be anchored: it or a
