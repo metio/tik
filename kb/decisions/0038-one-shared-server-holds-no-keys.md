@@ -1,7 +1,7 @@
 ---
 type: decision
-status: proposed
-date: 2026-11-24
+status: accepted
+date: 2026-11-25
 title: One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles
 supersedes: null
 ---
@@ -10,10 +10,9 @@ supersedes: null
 
 ## Decision
 
-Proposed on 2026-11-24. The direction of points 1 to 7 follows choices
-the maintainer made that day, and the maintainer answered the questions
-under "Resolved questions" on 2026-11-25. The text stays proposed until
-the maintainer accepts it. Nothing here is implemented.
+Proposed on 2026-11-24 and accepted by the maintainer on 2026-11-25,
+together with the answers under "Resolved questions". Nothing here is
+implemented yet; the order in which it lands is under "Consequences".
 
 **An organisation runs one shared tik server, every employee's agent
 connects to it, and the server holds no signing key.** Agents sign their
