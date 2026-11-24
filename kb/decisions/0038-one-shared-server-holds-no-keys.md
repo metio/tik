@@ -11,9 +11,9 @@ supersedes: null
 ## Decision
 
 Proposed on 2026-11-24. The direction of points 1 to 7 follows choices
-the maintainer made that day; the text stays proposed until the
-maintainer accepts it, and the open questions at the end are not
-decided. Nothing here is implemented.
+the maintainer made that day, and the maintainer answered the questions
+under "Resolved questions" on 2026-11-25. The text stays proposed until
+the maintainer accepts it. Nothing here is implemented.
 
 **An organisation runs one shared tik server, every employee's agent
 connects to it, and the server holds no signing key.** Agents sign their
@@ -315,19 +315,43 @@ The order in which this would land:
   the caller's claim; the identity of an identity-dependent read has to
   come from a signature, as the identity of a write does.
 
-## Open questions
+## Resolved questions
 
-- Whether worker identities are stable slots (`claude-worker-1` and so
-  on, rung 1, which routing by roles prefers) or per session, which
-  needs the delegation ADR.
-- Whether starting a batch of workers should cost one security-key touch
-  for the batch, as ADR 0037 does for reviews.
-- Whether infra.run's agents get identities on metio's server, or keep
-  their own.
-- Whether interactive sessions keep the plain `claude` identity, with
-  per-agent names only for dispatched workers.
-- Which functional roles each metio process names first.
-- Who may edit the register: the maintainer only, or a dispatcher
-  restricted to agent roles by the check of point 6.
-- Whether in-flight tickets move onto the new guards with
-  `tik reprocess`, or only new tickets are routed.
+The maintainer answered these on 2026-11-25.
+
+1. **Worker identities are stable slots.** Dispatched workers act as
+   `claude-worker-1`, `claude-worker-2` and so on, each an ordinary key in
+   `actors` (rung 1). A slot outlives the session that used it, so its
+   inbox and history stay readable, and role routing needs nothing
+   beyond the register. Per-session identities wait for the delegation
+   ADR.
+2. **Starting a batch of workers costs one security-key touch.** The
+   touch signs the list of slots and an expiry, the shape ADR 0037 gives
+   a review batch, so a batch does not cost one touch per worker every
+   15 minutes.
+3. **infra.run's agents keep their own identities on their own server.**
+   infra.run is a separate organisation with its own store, keys and
+   server, and work between the two organisations keeps going through the
+   `request` process with the requesting organisation's actor
+   (`metio-claude`, `infra.run-claude`). Support tickets from infra.run's
+   customers belong in infra.run's store, served by infra.run's server.
+4. **Interactive sessions keep the plain `claude` identity.** A session
+   the maintainer watches acts like the maintainer driving a tool, and its
+   writes already pass the gated frontier. Per-agent names are for
+   dispatched workers, which act unattended.
+5. **The first functional roles are few, and widen when a real split
+   appears.** `implementer` for `change`, `skilled-change` and
+   `package-addition`; `infra-operator` for the plan half of
+   `infra-change`; `request-handler` for `request`; and `support` once a
+   support process exists. Each role starts holding today's actor, so
+   nothing reroutes on the day the roles land.
+6. **Only the maintainer edits the register at first.** Every register
+   edit is signed by the maintainer, and a role that gates a maintainer
+   fact refuses agent actors (point 6). A dispatcher limited to moving
+   workers between agent-only roles can follow once the register ADR is
+   implemented and tested.
+7. **Only new tickets are routed by the new guards.** In-flight tickets
+   keep the definition they pinned, because `tik reprocess` re-judges
+   evidence signed under the old rules. A long-lived ticket, such as an
+   open request or a vulnerability, moves one at a time with
+   `tik reprocess`, dry run first, when routing it matters.
