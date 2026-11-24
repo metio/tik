@@ -173,7 +173,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   `pq-signers` does not grant the actor refuses the write before anything
   is stored, and `tik sign <id>` back-signs your own earlier events.
   `signatures.edn` (`{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst …}`)
-  makes it a requirement: from `:from` on every event needs both signatures
+  makes it a requirement (`:from` with seconds, at most three fraction
+  digits and `Z` or a `+HH:MM` offset; any other spelling is malformed):
+  from `:from` on every event needs both signatures
   by its actor, and every earlier event must lie in the ancestry of an
   ML-DSA-65 witness countersignature, written by `tik anchor` (TIK_PQ_KEY,
   a `pq-signers` key allowed `tik-witness`). Writes the policy would reject

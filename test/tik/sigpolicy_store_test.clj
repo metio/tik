@@ -10,7 +10,11 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.harness :as h]
-            [tik.pq-keys :as keys]))
+            [tik.pq-keys :as keys]
+            [tik.sigpolicy :as sigpolicy])
+  (:import (java.time Instant ZoneOffset)
+           (java.time.format DateTimeFormatter)
+           (java.time.temporal ChronoUnit)))
 
 (def ^:private repo (System/getProperty "user.dir"))
 
@@ -159,5 +163,59 @@
     (tik st "set" id "summary=\"signed and anchored by a * key\"")
     (policy! st future-policy)
     (is (zero? (:exit (tik st "anchor"))))
+    (let [r (passes? st id)]
+      (is (all-pass? r) (:out r)))))
+
+(defn- shell-epoch-ms
+  "What the bundle's verify.sh reads `text` as, in epoch milliseconds, or
+  nil when it does not read it."
+  [text]
+  (let [sh-text @(requiring-resolve 'tik.audit/bundle-verify-sh)
+        start (str/index-of sh-text "epoch_ms() {")
+        end (str/index-of sh-text "\n}\n" start)
+        out (str/trim (:out (sh/sh "sh" "-c" (str (subs sh-text start (+ end 2)) "\nepoch_ms \"$1\"")
+                                   "sh" text)))]
+    (when-not (str/blank? out) (parse-long out))))
+
+(defn- policy-epoch-ms [text]
+  (some-> (sigpolicy/parse (str "{:require #{:ssh-ed25519} :from #inst \"" text "\"}"))
+          :from
+          (.toEpochMilli)))
+
+(deftest verify-sh-reads-from-as-tik-does
+  (doseq [text ["2026-12-01T00:00:00Z"
+                "2026-12-01T00:00:00.5Z"
+                "2026-12-01T00:00:00.123Z"
+                "2026-12-01T00:00:00+01:00"
+                "2026-12-01T00:00:00.000-00:00"
+                "2000-02-29T12:30:45.007+05:45"
+                "2026-12-01T00:00:00-05:30"
+                "2026-12-01T00:00:00.250+18:00"
+                "2024-02-29T23:59:59Z"
+                "2026-12-01T00:00:00+19:00"
+                "2026-12-01T00:00:00+01:60"
+                "2026-02-29T00:00:00Z"
+                "2026-04-31T00:00:00Z"
+                "2026-13-01T00:00:00Z"
+                "2026-12-01T24:00:00Z"
+                "2026-12-01T23:59:60Z"
+                "2026-12-01T00:00Z"
+                "2026-12-01"
+                "2026-12-01t00:00:00z"
+                "2026-12-01T00:00:00.1234Z"
+                "2026-12-01T00:00:00+01:00:30"
+                "1969-12-31T23:59:59Z"]]
+    (testing text
+      (is (= (policy-epoch-ms text) (shell-epoch-ms text))))))
+
+(deftest a-from-with-an-offset-means-the-same-instant-everywhere
+  (let [st (store)
+        from (.minus (Instant/now) 30 ChronoUnit/MINUTES)
+        ;; the same instant written as wall-clock time one hour east of UTC
+        text (.format (.withOffsetSameInstant (.atOffset from ZoneOffset/UTC) (ZoneOffset/ofHours 1))
+                      (DateTimeFormatter/ofPattern "yyyy-MM-dd'T'HH:mm:ssxxx"))
+        _ (policy! st (str "{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst \"" text "\"}"))
+        id (new-ticket st)]
+    (tik st "set" id "summary=\"hybrid, after an offset :from\"")
     (let [r (passes? st id)]
       (is (all-pass? r) (:out r)))))
