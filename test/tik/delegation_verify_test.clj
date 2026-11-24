@@ -97,3 +97,13 @@
       (f/delegate-with-security-key! f (sk/signer) 0)
       (f/verdict! f)
       (is (str/includes? (verify f) "verify: FAIL")))))
+
+(deftest an-ecdsa-security-key-delegation-needs-the-touch-too
+  (doseq [[flags expected] [[sk/flag-user-present "verify: PASS"] [0 "verify: FAIL"]]]
+    (testing (str "flags " flags)
+      (let [f (f/fixture)]
+        (spit (io/file (:root f) "oidc.edn") "{:delegation {:require-touch true}}")
+        (f/delegate-with-security-key! f (sk/ecdsa-signer) flags)
+        (f/verdict! f)
+        (let [out (verify f)]
+          (is (str/includes? out expected) out))))))

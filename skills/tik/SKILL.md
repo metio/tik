@@ -148,7 +148,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   `ssh-keygen` on the host — which the distroless container has none of.
   A security-key signature counts only when the key reports a touch (the
   user-presence flag); `ssh-keygen -Y verify` ignores that flag, so tik and
-  the bundle's `verify.sh` check it themselves.
+  the bundle's `verify.sh` check it themselves, for every security-key type:
+  an `sk-ecdsa-sha2-nistp256@openssh.com` signature, or one under an
+  `actors` line with `valid-before`/`valid-after`, goes to ssh-keygen only
+  after tik has read its touch.
   Signing still shells out. An unsupported key type falls back to
   ssh-keygen, and reports UNCHECKED rather than forged when neither can
   judge. Hand-written `actors` options behave as in ssh-keygen

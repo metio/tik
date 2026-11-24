@@ -99,3 +99,19 @@
       (let [dest (bundle! fx)]
         (is (rederive-passes? (rederive fx dest)))
         (is (str/includes? (verify-sh dest) "bundle: PASS") (verify-sh dest))))))
+
+(deftest an-ecdsa-security-key-delegation-agrees-across-verifiers
+  (testing "without a touch, both refuse it"
+    (let [fx (f/fixture)]
+      (spit (io/file (:root fx) "oidc.edn") "{:delegation {:require-touch true}}")
+      (f/delegate-with-security-key! fx (sk/ecdsa-signer) 0)
+      (f/verdict! fx)
+      (both-fail fx (bundle! fx))))
+  (testing "with a touch, both credit it"
+    (let [fx (f/fixture)]
+      (spit (io/file (:root fx) "oidc.edn") "{:delegation {:require-touch true}}")
+      (f/delegate-with-security-key! fx (sk/ecdsa-signer) sk/flag-user-present)
+      (f/verdict! fx)
+      (let [dest (bundle! fx)]
+        (is (rederive-passes? (rederive fx dest)))
+        (is (str/includes? (verify-sh dest) "bundle: PASS") (verify-sh dest))))))

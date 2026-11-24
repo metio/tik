@@ -25,7 +25,11 @@
   a user was present (flag 0x01), the rule sshd applies unless told
   otherwise. The flag is inside the signed bytes, so it cannot be set after
   the fact, but `ssh-keygen -Y verify` does not look at it: there the two
-  readers differ, and this one refuses. Fail-closed everywhere else: a malformed blob, a truncated
+  readers differ, and this one refuses. The flag is read for every
+  security-key type, including the ECDSA ones this reader cannot verify,
+  before anything is answered `::unsupported`, so a caller that falls back
+  to ssh-keygen only ever hands it a touched signature. Fail-closed
+  everywhere else: a malformed blob, a truncated
   field, a namespace that does not match, a key that is not the claimed
   actor's, all verify as false.
 
@@ -200,6 +204,25 @@
       (.toByteArray out))
     signed))
 
+(defn- untouched?
+  "Is the SSHSIG `parsed` made by a security key (`sk-…`) without a
+  touch? A security-key signature blob is its type, the signature, a
+  flags byte and a four-byte counter, whatever the curve; one that does
+  not read in that shape counts as untouched, because its flag cannot be
+  read."
+  [{:keys [public-key signature]}]
+  (let [kind (try (String. ^bytes (first (ssh-string public-key 0)) "UTF-8")
+                  (catch Exception _ nil))]
+    (when (some-> kind (str/starts-with? "sk-"))
+      (let [^bytes sig signature
+            flags (try
+                    (let [[_ o1] (ssh-string sig 0)
+                          [_ o2] (ssh-string sig o1)]
+                      (when (= (alength sig) (+ o2 5))
+                        (bit-and (aget sig o2) 0xff)))
+                    (catch Exception _ nil))]
+        (not (and flags (pos? (bit-and sk-user-present flags))))))))
+
 (defn signer-key-type
   "The key type of the public key an armored SSHSIG `sidecar` (bytes or
   text) carries, such as \"sk-ssh-ed25519@openssh.com\", or nil when it is
@@ -365,7 +388,8 @@
     (if (or (nil? parsed)
             ;; the namespace is inside the signed blob, so a mismatch here
             ;; is a signature made for another purpose
-            (not= namespace (:namespace parsed)))
+            (not= namespace (:namespace parsed))
+            (untouched? parsed))
       false
       (let [lines (signer-lines allowed-signers-text (:public-key parsed)
                                 namespace principal)]
@@ -382,7 +406,7 @@
   [allowed-signers-text ^bytes message signature namespace]
   (let [text (if (bytes? signature) (String. ^bytes signature "UTF-8") (str signature))
         parsed (some-> (unarmor text) parse)]
-    (if (or (nil? parsed) (not= namespace (:namespace parsed)))
+    (if (or (nil? parsed) (not= namespace (:namespace parsed)) (untouched? parsed))
       []
       (let [verdict (check parsed message namespace)]
         (cond
