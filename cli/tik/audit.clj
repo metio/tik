@@ -450,8 +450,11 @@ delegated() { # $1 sidecar, $2 event .edn, $3 actor
   epath=$(sed -n 's/.*:event\\/body {:fact\\/path \\(\\[[^]]*\\]\\).*/\\1/p' \"$2\")
   touch_needed=no
   if [ -f delegation.edn ]; then
-    if grep -q ':require-touch true' delegation.edn; then touch_needed=yes
-    elif ! grep -q ':require-touch false' delegation.edn; then rm -rf \"$dt\"; return 1; fi
+    case $(tr '\\t\\r\\n' '   ' < delegation.edn | tr -s ' ' | sed 's/^ //;s/ $//') in
+      '{:require-touch true}') touch_needed=yes ;;
+      '{:require-touch false}') ;;
+      *) rm -rf \"$dt\"; return 1 ;;
+    esac
   fi
   [ \"$etype\" = \":fact/assert\" ] || { rm -rf \"$dt\"; return 1; }
   for d in identity/*.edn; do

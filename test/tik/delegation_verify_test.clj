@@ -9,6 +9,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.delegation-fixture :as f]
+            [tik.delegation-trust :as delegation-trust]
             [tik.harness :as h]
             [tik.sk-fixture :as sk])
   (:import (java.time Instant)))
@@ -107,3 +108,20 @@
         (f/verdict! f)
         (let [out (verify f)]
           (is (str/includes? out expected) out))))))
+
+(deftest a-delegation-policy-that-says-anything-else-is-malformed
+  (doseq [conf ['{:delegation {:require-tuoch true}}
+                '{:delegation {:require-touch true :extra 1}}
+                '{:delegation {}}
+                '{:delegation {:require-touch "yes"}}]]
+    (is (= ::delegation-trust/malformed (delegation-trust/policy-of conf)) (pr-str conf)))
+  (is (= {:require-touch true} (delegation-trust/policy-of '{:delegation {:require-touch true}})))
+  (is (= {:require-touch false} (delegation-trust/policy-of '{:delegation {:require-touch false}})))
+  (is (= {:require-touch false} (delegation-trust/policy-of '{:audience "x"}))))
+
+(deftest a-misspelt-touch-requirement-credits-nothing
+  (let [f (f/fixture)]
+    (spit (io/file (:root f) "oidc.edn") "{:delegation {:require-tuoch true}}")
+    (f/delegate! f (:seb f))
+    (f/verdict! f)
+    (is (str/includes? (verify f) "verify: FAIL"))))

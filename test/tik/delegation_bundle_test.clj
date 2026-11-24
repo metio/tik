@@ -115,3 +115,13 @@
       (let [dest (bundle! fx)]
         (is (rederive-passes? (rederive fx dest)))
         (is (str/includes? (verify-sh dest) "bundle: PASS") (verify-sh dest))))))
+
+(deftest a-travelling-policy-without-the-setting-fails-both-verifiers
+  (let [fx (f/fixture)
+        _ (f/delegate! fx (:seb fx))
+        _ (f/verdict! fx)
+        dest (bundle! fx)]
+    (doseq [policy ["{}" "{:require-tuoch true}" "{:require-touch false :extra 1}"]]
+      (testing policy
+        (spit (io/file dest "delegation.edn") policy)
+        (both-fail fx dest)))))
