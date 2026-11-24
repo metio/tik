@@ -179,7 +179,7 @@
 
 (defn- policy-epoch-ms [text]
   (some-> (sigpolicy/parse (str "{:require #{:ssh-ed25519} :from #inst \"" text "\"}"))
-          :from
+          ^java.time.Instant (:from)
           (.toEpochMilli)))
 
 (deftest verify-sh-reads-from-as-tik-does
