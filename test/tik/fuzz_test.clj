@@ -876,12 +876,13 @@
       (spit (io/file root ".tik-facts.edn") garbage)
       (.mkdirs (io/file root "tickets"))
       (let [sub (doto (io/file root "inside") (.mkdirs))
-            r (sh/sh "bb" "--config" (str repo "/bb.edn")
-                     "tik" "new" "track" "--title" "x"
-                     :dir (str sub)
-                     :env (assoc (into {} (System/getenv))
-                                 "TIK_ROOT" (str root)
-                                 "TIK_ACTOR" "fuzz"))]
+            r (apply sh/sh (concat
+                            (h/bb-command "--config" (str repo "/bb.edn")
+                                          "tik" "new" "track" "--title" "x")
+                            [:dir (str sub)
+                             :env (assoc (h/subprocess-env)
+                                         "TIK_ROOT" (str root)
+                                         "TIK_ACTOR" "fuzz")]))]
         (is (= 1 (:exit r)) (:err r))
         (is (re-find #"malformed EDN" (str (:err r))))))))
 
@@ -925,10 +926,10 @@
   (let [top (h/temp-dir! "tik-dirs")
         repo (System/getProperty "user.dir")
         run (fn [dir & args]
-              (apply sh/sh (concat ["bb" "--config" (str repo "/bb.edn") "tik"]
+              (apply sh/sh (concat (h/bb-command "--config" (str repo "/bb.edn") "tik")
                                    args
                                    [:dir (str dir)
-                                    :env (assoc (into {} (System/getenv))
+                                    :env (assoc (h/subprocess-env)
                                                 "TIK_ACTOR" "fuzz")])))]
     (doseq [evil ["my repo" "wei{rd" "tick] et"]]
       (.mkdirs (io/file top evil ".git")))
@@ -1114,8 +1115,7 @@
   ;; rows written around append! — garbage bytes under an honest id, a
   ;; ticket column that is not a uuid, a db that is not a db — must all
   ;; reject with ex-info, never a raw cast or parse exception
-  (let [db (str (System/getProperty "java.io.tmpdir")
-                "/tik-fuzz-" (random-uuid) ".db")
+  (let [db (str (h/temp-dir! "tik-fuzz") "/hostile.db")
         s (tik.store.sqlite/sqlite-store db)
         t #uuid "11111111-1111-1111-1111-111111111111"]
     (sh/sh "sqlite3" db
@@ -1210,10 +1210,11 @@
         _ (h/tik! {:root root} "new" "track" "--title" "served")
         cmd ^"[Ljava.lang.String;" (into-array
                                     String
-                                    ["bb" "tik" "serve" "--port" (str port)])
+                                    (h/bb-command "tik" "serve" "--port" (str port)))
         proc (.start (doto (ProcessBuilder. cmd)
                        (.directory (io/file repo))
                        (.redirectErrorStream true)
+                       (.. environment (put "TMPDIR" (str (h/temp-root!))))
                        (.. environment (put "TIK_ROOT" (str root)))
                        (.. environment (put "TIK_ACTOR" "fuzz"))))]
     (try
@@ -1262,10 +1263,10 @@
                 "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":9}"
                 ;; the canary: a well-formed request AFTER all the abuse
                 "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/list\"}"])
-        r (sh/sh "bb" "mcp"
-                 :in lines :dir repo
-                 :env (assoc (into {} (System/getenv))
-                             "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz"))]
+        r (apply sh/sh (concat (h/bb-command "mcp")
+                               [:in lines :dir repo
+                                :env (assoc (h/subprocess-env)
+                                            "TIK_ROOT" (str root) "TIK_ACTOR" "fuzz")]))]
     (is (zero? (:exit r)) (:err r))
     (is (h/clean-output? (str (:out r) (:err r)))
         "no line stack-traces the session")

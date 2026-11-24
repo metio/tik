@@ -212,6 +212,12 @@
      (catch java.io.IOException e
        (refuse! (str "not a readable gzipped archive: " (ex-message e))))))))
 
+(defn delete-tree!
+  "Remove a directory this namespace created."
+  [^File dir]
+  (when (and dir (.exists dir))
+    (doseq [^File f (reverse (file-seq dir))] (.delete f))))
+
 (defn open!
   "A bundle as a directory: `src` may already be one, or a .tgz that is
   unpacked into a fresh temp directory. Returns {:dir :tmp} — :tmp is
@@ -226,14 +232,13 @@
        (let [tmp (.toFile (java.nio.file.Files/createTempDirectory
                            "tik-bundle-read"
                            (make-array java.nio.file.attribute.FileAttribute 0)))]
-         (untar-gz! f tmp limits)
+         ;; a refused archive is the caller's error, the half-unpacked
+         ;; directory is ours to remove
+         (try (untar-gz! f tmp limits)
+              (catch Throwable t
+                (delete-tree! tmp)
+                (throw t)))
          {:dir tmp :tmp tmp})))))
-
-(defn delete-tree!
-  "Remove a directory this namespace created."
-  [^File dir]
-  (when (and dir (.exists dir))
-    (doseq [^File f (reverse (file-seq dir))] (.delete f))))
 
 (defn digest
   "The bundle's content address — sha256 over the archive as submitted.

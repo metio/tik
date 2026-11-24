@@ -86,8 +86,8 @@
   `in` on stdin; return the marked result lines with the marker stripped,
   ignoring any unmarked stdout noise. Throws with stderr on failure."
   [form in]
-  (let [r (sh/sh "bb" "--config" (str repo "/bb.edn") "-e" form
-                 :in in :dir repo)]
+  (let [r (apply sh/sh (concat (h/bb-command "--config" (str repo "/bb.edn") "-e" form)
+                               [:in in :dir repo :env (h/subprocess-env)]))]
     (when-not (zero? (:exit r))
       (throw (ex-info "bb eval failed" {:err (:err r)})))
     (into []

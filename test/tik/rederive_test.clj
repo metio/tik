@@ -303,7 +303,7 @@
       (byte-array (concat (seq h) (seq body) (seq pad))))))
 
 (defn- tgz-of ^File [& entries]
-  (let [f (File/createTempFile "tik-hostile" ".tgz")]
+  (let [f (h/temp-file! "tik-hostile" ".tgz")]
     (with-open [o (GZIPOutputStream. (io/output-stream f))]
       (doseq [^bytes e entries] (.write o e))
       (.write o (byte-array 1024)))

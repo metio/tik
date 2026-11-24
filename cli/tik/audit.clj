@@ -11,7 +11,7 @@
             [clojure.string :as str]
             [tik.bundle :as bundle]
             [tik.canonical :as canonical]
-            [tik.cli-core :refer [blob-dir db-path die exit! load-pinned-process load-ticket
+            [tik.cli-core :refer [blob-dir call-with-temp-dir db-path die exit! load-pinned-process load-ticket
                                   cache-flush! now pq-signing-key put-signature! registry-events
                                   signature-policy
                                   registry-ticket-ids resolve-id
@@ -72,40 +72,10 @@
                   (= "processes" (some-> f .getParentFile .getParentFile .getName))))
            (file-seq root-dir)))
 
-(defn cmd-import
-  "import <bundle.tgz|dir>: bring somebody else's events into this store.
-
-  The inverse of `export`, and the reason an evidence bundle is worth
-  more than an archive: a release records itself in a store CI cannot
-  push to, and this is how that record reaches the store that cares.
-
-  Merge is union by content address (ADR 0020): an event already present
-  is a no-op, so importing twice, or importing two overlapping bundles,
-  converges without anyone deciding a winner. Nothing is overwritten and
-  no history is rewritten — the reducer sorts the union by (at, id) and
-  derives whatever now follows.
-
-  Verification happens on the way IN. Every event's bytes must hash to
-  its own name before it is appended; `tik verify` afterwards re-checks
-  signatures and re-derives, and a binding imported alongside makes a
-  foreign signer's events verifiable here (ADR 0023)."
-  [{:keys [pos opts]}]
-  (let [src (or (first pos) (die "usage: tik import <bundle.tgz|dir>"))
-        f (io/file src)
-        _ (when-not (.exists f) (die (str "no such bundle: " src)))
-        ;; unpacked by tik.bundle rather than by `tar`: an import reads an
-        ;; archive somebody else produced, and a path that climbs out of
-        ;; the temp directory would write wherever it liked
-        tmp (when-not (.isDirectory f)
-              (let [d (.toFile (java.nio.file.Files/createTempDirectory
-                                "tik-import"
-                                (make-array java.nio.file.attribute.FileAttribute 0)))]
-                (try (bundle/untar-gz! f d)
-                     (catch clojure.lang.ExceptionInfo e
-                       (die (str "cannot unpack " src ": " (ex-message e)))))
-                d))
-        root-dir (or tmp f)
-        s (the-store)
+(defn- import-dir!
+  "The import of the bundle `src`, unpacked at `root-dir`."
+  [src ^File root-dir opts]
+  (let [s (the-store)
         found (bundle-events root-dir)
         present (into #{} (mapcat #(map :event/id (store/events s %)))
                       (store/ticket-ids s))
@@ -165,6 +135,40 @@
     (when (seq new-events)
       (println "run `tik verify` to check signatures and re-derive"))
     (exit! 0)))
+
+(defn cmd-import
+  "import <bundle.tgz|dir>: bring somebody else's events into this store.
+
+  The inverse of `export`, and the reason an evidence bundle is worth
+  more than an archive: a release records itself in a store CI cannot
+  push to, and this is how that record reaches the store that cares.
+
+  Merge is union by content address (ADR 0020): an event already present
+  is a no-op, so importing twice, or importing two overlapping bundles,
+  converges without anyone deciding a winner. Nothing is overwritten and
+  no history is rewritten — the reducer sorts the union by (at, id) and
+  derives whatever now follows.
+
+  Verification happens on the way IN. Every event's bytes must hash to
+  its own name before it is appended; `tik verify` afterwards re-checks
+  signatures and re-derives, and a binding imported alongside makes a
+  foreign signer's events verifiable here (ADR 0023)."
+  [{:keys [pos opts]}]
+  (let [src (or (first pos) (die "usage: tik import <bundle.tgz|dir>"))
+        f (io/file src)]
+    (when-not (.exists f) (die (str "no such bundle: " src)))
+    (if (.isDirectory f)
+      (import-dir! src f opts)
+      (call-with-temp-dir
+       "tik-import"
+       (fn [d]
+         ;; unpacked by tik.bundle rather than by `tar`: an import reads an
+         ;; archive somebody else produced, and a path that climbs out of
+         ;; the temp directory would write wherever it liked
+         (try (bundle/untar-gz! f d)
+              (catch clojure.lang.ExceptionInfo e
+                (die (str "cannot unpack " src ": " (ex-message e)))))
+         (import-dir! src d opts))))))
 
 (defn cmd-export
   "Materialize the current store (whatever backend) as a file/git store
@@ -944,19 +948,10 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "with a freshness window answers differently next month, on the\n"
        "same evidence, which is the point.\n"))
 
-(defn cmd-bundle
-  "The evidence bundle (PLAN §10): one ticket as a portable artifact a
-  third party verifies with coreutils + ssh-keygen (and openssl, for a
-  bundle carrying identity bindings) — no tik, no trust in us. This is H5's deliverable and the thing H8 sells."
-  [{:keys [pos opts]}]
-  (let [ticket (or (first pos) (die "usage: tik bundle <id> [--out file.tgz]"))
-        s (the-store)
-        {:keys [id state]} (load-ticket s ticket)
-        phash (:process-hash state)
-        out (io/file (or (:out opts) (str "tik-bundle-" (sid id) ".tgz")))
-        work (.toFile (java.nio.file.Files/createTempDirectory
-                       "tik-bundle" (make-array java.nio.file.attribute.FileAttribute 0)))
-        bdir (io/file work "bundle")
+(defn- write-bundle!
+  "Assemble ticket `id`'s bundle in the directory `work` and pack it to `out`."
+  [s id state phash ^File out ^File work]
+  (let [bdir (io/file work "bundle")
         copy! (fn [^File src ^File dst]
                 (when (.exists src)
                   (if (.isDirectory src)
@@ -1082,6 +1077,18 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (println (str "wrote " out))
     (println (str "verify anywhere with: tar xzf, then ./verify.sh"
                   " (coreutils + ssh-keygen; openssl for bindings)"))))
+
+(defn cmd-bundle
+  "The evidence bundle (PLAN §10): one ticket as a portable artifact a
+  third party verifies with coreutils + ssh-keygen (and openssl, for a
+  bundle carrying identity bindings) — no tik, no trust in us. This is H5's deliverable and the thing H8 sells."
+  [{:keys [pos opts]}]
+  (let [ticket (or (first pos) (die "usage: tik bundle <id> [--out file.tgz]"))
+        s (the-store)
+        {:keys [id state]} (load-ticket s ticket)
+        phash (:process-hash state)
+        out (io/file (or (:out opts) (str "tik-bundle-" (sid id) ".tgz")))]
+    (call-with-temp-dir "tik-bundle" #(write-bundle! s id state phash out %))))
 
 (defn verify-definitions
   "Audit processes/by-hash/: every archived definition's bytes hash to

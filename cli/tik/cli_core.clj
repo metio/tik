@@ -164,6 +164,36 @@
   (binding [*out* *err*] (apply println msg))
   (exit! 1))
 
+(defn delete-tree!
+  "Remove `f` and everything below it. A symbolic link is removed, never
+  followed, so an unpacked archive cannot point this at anything else."
+  [^File f]
+  (when (and (.isDirectory f)
+             (not (java.nio.file.Files/isSymbolicLink (.toPath f))))
+    (doseq [^File c (.listFiles f)] (delete-tree! c)))
+  (.delete f))
+
+(defn call-with-temp-dir
+  "(f dir) with a fresh temp directory named after `prefix`, made with
+  `attrs` (FileAttributes, e.g. owner-only permissions), and removed once
+  f returns or throws. die ends the process, which skips finally, so a
+  shutdown hook removes the directory on that path."
+  ([prefix f] (call-with-temp-dir prefix [] f))
+  ([prefix attrs f]
+   (let [dir (.toFile (java.nio.file.Files/createTempDirectory
+                       ^String prefix
+                       ^"[Ljava.nio.file.attribute.FileAttribute;"
+                       (into-array java.nio.file.attribute.FileAttribute attrs)))
+         cleanup (Thread. ^Runnable (fn [] (delete-tree! dir)))]
+     (.addShutdownHook (Runtime/getRuntime) cleanup)
+     (try
+       (f dir)
+       (finally
+         (delete-tree! dir)
+         (try (.removeShutdownHook (Runtime/getRuntime) cleanup)
+              ;; the JVM is already shutting down and runs the hook itself
+              (catch IllegalStateException _ nil)))))))
+
 
 
 (defn process-file
