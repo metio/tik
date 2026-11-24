@@ -130,6 +130,44 @@ Every write then carries both signatures. A write whose `TIK_PQ_KEY`
 stored. `tik sign <id>` with `TIK_PQ_KEY` adds the sidecar to your own
 events that lack one, which is how events written earlier gain it.
 
+### Requiring post-quantum signatures
+
+`signatures.edn` in the store root makes the second signature a
+requirement from a chosen instant on:
+
+```clojure
+{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst "2026-12-01T00:00:00Z"}
+```
+
+An event claimed at or after `:from` must carry a verifying signature by
+its own actor for every algorithm in `:require`. An event claimed before
+it needs the classical signature only, and must be anchored: it or a
+later event in its ticket carries an ML-DSA-65 witness countersignature,
+which seals the whole ancestry. Once Ed25519 can be forged, anyone can
+write a new event with an old instant; the anchor tells that event apart
+from the history that existed when the policy took effect. `:require`
+always keeps `:ssh-ed25519`, so the scheme stays hybrid, and a file that
+does not read as exactly this shape fails `verify` rather than counting
+as no policy.
+
+Switch it on in this order, with a key `pq-signers` allows to witness
+(the `tik-*` pattern covers both `tik-event` and `tik-witness`):
+
+```sh
+echo '{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst "2026-12-01T00:00:00Z"}' > signatures.edn
+TIK_PQ_KEY=~/.config/tik/id_ml_dsa_65.pem tik anchor
+tik verify
+```
+
+`tik anchor` writes `<head>.pqwitness.<fpr>` on every head of every
+ticket. Anchor again whenever events claimed before `:from` were written
+after the last anchor; `verify` names each event no anchor covers. Under
+the policy, a write without `TIK_KEY` or, from `:from` on, without
+`TIK_PQ_KEY` is refused before anything is stored. `tik review --batch`
+meets the policy when `TIK_PQ_KEY` is set: its verdicts carry the
+throwaway key's delegated Ed25519 signature and an ML-DSA-65 signature by
+the reviewer's own key.
+
 ## Moving tickets to newer rules
 
 ```sh

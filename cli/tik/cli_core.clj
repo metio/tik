@@ -27,6 +27,7 @@
             [tik.reduce :as red]
             [tik.render :refer [paint-stage sid]]
             [tik.pqsig :as pqsig]
+            [tik.sigpolicy :as sigpolicy]
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -383,12 +384,35 @@
                 " — add its public key: " actor " namespaces=\"tik-*\" ml-dsa-65 <base64 DER>")))
     {:name (str event-id ".pqsig." (:fpr entry)) :signature signature}))
 
+(defn signature-policy
+  "The store's signatures.edn, parsed (ADR 0036 point 4), or nil."
+  []
+  (let [f (io/file (root) "signatures.edn")]
+    (when (.isFile f) (sigpolicy/parse (slurp f)))))
+
+(defn- check-signature-policy!
+  "Dies, before anything is stored, when the store's signature policy
+  requires a signature this write would not carry: an event the policy
+  rejects is a write the author did not intend, and a log never deletes."
+  [event opts]
+  (when-let [policy (signature-policy)]
+    (when-let [why (sigpolicy/malformed policy)]
+      (die (str why " - fix signatures.edn before writing")))
+    (let [need (sigpolicy/required policy (:event/at event))]
+      (when (and (need :ssh-ed25519) (not (signing-key opts)))
+        (die "signatures.edn requires an ssh-ed25519 signature: pass --key or set TIK_KEY"))
+      (when (and (need :ml-dsa-65) (not (pq-signing-key opts)))
+        (die (str "signatures.edn requires an ml-dsa-65 signature from " (:from policy)
+                  " on: set TIK_PQ_KEY"))))))
+
 (defn append!*
   "Append, then sign the stored bytes when a key is configured (--key or
   TIK_KEY): authorship travels with the write (ADR 0010). With TIK_PQ_KEY
   the ML-DSA-65 sidecar is made first, so a key the store would not
-  credit refuses the write instead of leaving an unverifiable one."
+  credit refuses the write instead of leaving an unverifiable one, and a
+  write signatures.edn would reject is refused the same way."
   [s event opts]
+  (check-signature-policy! event opts)
   (let [bytes (.getBytes (canonical/emit (dissoc event :event/id)) "UTF-8")
         pq (when-let [k (pq-signing-key opts)]
              (pq-sidecar k (:event/actor event) (:event/id event) bytes))]

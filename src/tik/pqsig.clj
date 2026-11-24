@@ -44,6 +44,9 @@
 (def ^:private event-domain
   (.getBytes "tik-event-v1\u0000" "UTF-8"))
 
+(def ^:private witness-domain
+  (.getBytes "tik-witness-v1\u0000" "UTF-8"))
+
 (defn ml-dsa-65-key?
   "Whether `der` is an ML-DSA-65 SubjectPublicKeyInfo by its shape."
   [der]
@@ -58,19 +61,28 @@
   (str/join (map #(format "%02x" %)
                  (.digest (MessageDigest/getInstance "SHA-256") der))))
 
+(defn- prefixed ^bytes [^bytes domain ^bytes event-bytes]
+  (let [out (byte-array (+ (alength domain) (alength event-bytes)))]
+    (System/arraycopy domain 0 out 0 (alength domain))
+    (System/arraycopy event-bytes 0 out (alength domain) (alength event-bytes))
+    out))
+
 (defn event-message
   "The bytes an event signature covers: the domain prefix, then the
   event's stored bytes."
   ^bytes [^bytes event-bytes]
-  (let [out (byte-array (+ (alength ^bytes event-domain) (alength event-bytes)))]
-    (System/arraycopy event-domain 0 out 0 (alength ^bytes event-domain))
-    (System/arraycopy event-bytes 0 out (alength ^bytes event-domain) (alength event-bytes))
-    out))
+  (prefixed event-domain event-bytes))
 
-(defn verify-event
-  "Whether `signature` is an ML-DSA-65 signature by `public-key` (DER
-  SubjectPublicKeyInfo) over `event-bytes`. False for anything malformed."
-  [public-key signature event-bytes]
+(defn witness-message
+  "The bytes a post-quantum witness countersignature covers (ADR 0036
+  point 7): its own domain prefix, then the head event's stored bytes.
+  The prefix keeps an authorship signature from passing as a
+  countersignature, and the reverse."
+  ^bytes [^bytes event-bytes]
+  (prefixed witness-domain event-bytes))
+
+(defn- verify-message
+  [public-key signature event-bytes message-of]
   (boolean
    (and (ml-dsa-65-key? public-key)
         (bytes? signature)
@@ -81,11 +93,23 @@
                                    (X509EncodedKeySpec. ^bytes public-key))
                 v (doto (Signature/getInstance "ML-DSA")
                     (.initVerify k)
-                    (.update (event-message event-bytes)))]
+                    (.update ^bytes (message-of event-bytes)))]
             (.verify v ^bytes signature))
           ;; a key or signature the provider rejects is a failed
           ;; verification, never an escape
           (catch Exception _ false)))))
+
+(defn verify-event
+  "Whether `signature` is an ML-DSA-65 signature by `public-key` (DER
+  SubjectPublicKeyInfo) over `event-bytes`. False for anything malformed."
+  [public-key signature event-bytes]
+  (verify-message public-key signature event-bytes event-message))
+
+(defn verify-witness
+  "Whether `signature` is an ML-DSA-65 witness countersignature by
+  `public-key` over the head event's `event-bytes`."
+  [public-key signature event-bytes]
+  (verify-message public-key signature event-bytes witness-message))
 
 (def ^:private line-pattern
   #"^(\S+)\s+namespaces=\"([^\"]*)\"\s+(\S+)\s+(\S+)\s*$")
@@ -153,10 +177,11 @@
   [patterns ns]
   (boolean (and (string? ns) (some #(glob-matches? % ns) patterns))))
 
-(def ^:private sidecar-pattern #"\.pqsig\.([0-9a-f]{64})$")
+(def ^:private sidecar-pattern #"\.(?:pqsig|pqwitness)\.([0-9a-f]{64})$")
 
 (defn sidecar-fpr
-  "The key fingerprint a `<id>.pqsig.<fpr>` sidecar name carries, or nil."
+  "The key fingerprint a `<id>.pqsig.<fpr>` or `<id>.pqwitness.<fpr>`
+  sidecar name carries, or nil."
   [name]
   (when (string? name) (second (re-find sidecar-pattern name))))
 
@@ -170,6 +195,17 @@
                   (= actor (:actor entry))
                   (namespace-allowed? (:namespaces entry) namespace)
                   (verify-event (:public-key entry) signature event-bytes)))))
+
+(defn check-witness
+  "The actor whose registered key, allowed to witness, made the
+  post-quantum countersignature `signature` over `event-bytes`; nil when
+  none did."
+  [registry {:keys [fpr signature event-bytes]}]
+  (let [entry (entry-for registry fpr)]
+    (when (and entry
+               (namespace-allowed? (:namespaces entry) "tik-witness")
+               (verify-witness (:public-key entry) signature event-bytes))
+      (:actor entry))))
 
 (defn read-private-key
   "The ML-DSA private key in a PKCS#8 PEM text, as `openssl genpkey
@@ -196,6 +232,23 @@
   (.sign (doto (Signature/getInstance "ML-DSA")
            (.initSign ^java.security.PrivateKey private-key)
            (.update (event-message event-bytes)))))
+
+(defn sign-witness
+  "The ML-DSA witness countersignature of `private-key` over a head
+  event's `event-bytes`."
+  ^bytes [private-key ^bytes event-bytes]
+  (.sign (doto (Signature/getInstance "ML-DSA")
+           (.initSign ^java.security.PrivateKey private-key)
+           (.update (witness-message event-bytes)))))
+
+(defn entry-of-private-key
+  "The registry entry whose key is the public half of `private-key`, found
+  by signing a probe and verifying it against each entry - a PKCS#8 file
+  need not carry its public half."
+  [registry private-key]
+  (let [probe (.getBytes "tik-key-probe" "UTF-8")
+        sig (sign-witness private-key probe)]
+    (some #(when (verify-witness (:public-key %) sig probe) %) registry)))
 
 (defn signer-entry
   "The registry entry under `actor`, allowed to sign events, whose key

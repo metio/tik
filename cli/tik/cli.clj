@@ -286,6 +286,10 @@
                                                 else is refused with the derived reason
   tik witness <id> [--key K]                    countersign the head(s): one signature
                                                 timestamps the entire ancestry
+  tik anchor                                    countersign every ticket's heads with the
+                                                ML-DSA-65 key TIK_PQ_KEY names, sealing
+                                                classical history when signatures.edn
+                                                takes effect
   tik attest <id> <claim-edn>                   record a signed claim (kernel ignores
                                                 semantics; :attested-within reads it)
   tik work record|week|cost                     work evidence (H6): telemetry claims in,
@@ -490,6 +494,7 @@
       "attest"  (admin/cmd-attest parsed)
       "work"    (workcmd/cmd-work parsed)
       "witness" (audit/cmd-witness parsed)
+      "anchor"  (audit/cmd-anchor parsed)
       "agent"   (agent/cmd-agent parsed)
       "process" (admin/cmd-process parsed)
       "review"  (review/cmd-review parsed)

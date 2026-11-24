@@ -12,7 +12,8 @@
             [tik.bundle :as bundle]
             [tik.canonical :as canonical]
             [tik.cli-core :refer [blob-dir db-path die exit! load-pinned-process load-ticket
-                                  cache-flush! now put-signature! registry-events
+                                  cache-flush! now pq-signing-key put-signature! registry-events
+                                  signature-policy
                                   registry-ticket-ids resolve-id
                                   role-register root root-dir-roots
                                   with-registry-events
@@ -28,6 +29,7 @@
             [tik.process :as process]
             [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
+            [tik.sigpolicy :as sigpolicy]
             [tik.sign :as sign]
             [tik.stage :as stage]
             [tik.store.file :as fstore]
@@ -216,6 +218,37 @@
       (println "witnessed" (shash head) "…"))
     (println (count heads) "head(s) countersigned — each timestamps its"
              "entire ancestry")))
+
+(defn cmd-anchor
+  "anchor: countersign every head of every ticket with the ML-DSA-65 key
+  TIK_PQ_KEY names, as <head>.pqwitness.<fpr> (ADR 0036 point 7). Run it
+  when signatures.edn takes effect: each countersignature seals the whole
+  ancestry its head commits to, so classical history up to that moment
+  stays checkable once Ed25519 can be forged. Re-running adds sidecars
+  only to heads that carry none from this key."
+  [_parsed]
+  (let [s (the-store)
+        key-path (or (pq-signing-key {}) (die "no key: set TIK_PQ_KEY to an ML-DSA-65 PKCS#8 PEM"))
+        private-key (try (pqsig/read-private-key (slurp key-path))
+                         (catch Exception e (die (str "TIK_PQ_KEY " key-path ": " (ex-message e)))))
+        registry-file (io/file (root) "pq-signers")
+        registry (when (.exists registry-file)
+                   (try (pqsig/parse-registry (slurp registry-file))
+                        (catch clojure.lang.ExceptionInfo e (die (ex-message e)))))
+        entry (pqsig/entry-of-private-key registry private-key)]
+    (when-not (and entry (pqsig/namespace-allowed? (:namespaces entry) sign/namespace-witness))
+      (die (str "TIK_PQ_KEY is not a key pq-signers allows to witness - add its public key:"
+                " <witness> namespaces=\"" sign/namespace-witness "\" ml-dsa-65 <base64 DER>")))
+    (let [added (atom 0) heads-seen (atom 0)]
+      (doseq [id (store/ticket-ids s)
+              head (dag/heads (store/events s id))
+              :let [name (str head ".pqwitness." (:fpr entry))]]
+        (swap! heads-seen inc)
+        (when-not (some #{name} (store/sidecar-names s id))
+          (store/put-sidecar! s id name (pqsig/sign-witness private-key (store/event-bytes s id head)))
+          (swap! added inc)))
+      (println (str "anchored " @added " head(s) of " @heads-seen " as " (:actor entry)
+                    " - each seals its entire ancestry post-quantum")))))
 
 (defn cmd-root
   "root [--witness [--key K]]: one hash for the whole store. Two
@@ -464,6 +497,8 @@ delegated() { # $1 sidecar, $2 event .edn, $3 actor
 # still passes. This binds -I to the claimed author, matching the
 # in-process L1 check (sign/verify-bytes uses -I actor). Canonical
 # bytes sort :event/actor first, so it always leads the file.
+# the ids whose signatures verified, for the signature policy below
+vdir=$(mktemp -d)
 check_event_sig() { # $1 sidecar, $2 event .edn
   actor=$(sed -n 's/^{:event\\/actor \"\\([^\"]*\\)\".*/\\1/p' \"$2\")
   if [ -z \"$actor\" ]; then
@@ -475,6 +510,7 @@ check_event_sig() { # $1 sidecar, $2 event .edn
   if ! ssh-keygen -Y find-principals -f actors -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     if delegated \"$1\" \"$2\" \"$actor\"; then
       echo \"ok    $(basename \"$1\") verifies as $actor (delegated by $(printf %s \"$dlg\" | cut -c1-19)…)\"
+      basename \"$2\" .edn >> \"$vdir/classical\"
     else
       echo \"FAIL  $1 signed by a key the registry does not grant\"; fail=1
     fi
@@ -484,6 +520,7 @@ check_event_sig() { # $1 sidecar, $2 event .edn
     echo \"FAIL  $1 was made by a security key nobody touched\"; fail=1
   elif ssh-keygen -Y verify -f actors -I \"$actor\" -n tik-event -s \"$1\" < \"$2\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$1\") verifies as $actor\"
+    basename \"$2\" .edn >> \"$vdir/classical\"
   else
     echo \"FAIL  $1 does not verify as its event's actor ($actor)\"; fail=1
   fi
@@ -552,8 +589,62 @@ for sig in tickets/*/events/*.pqsig.*; do
   elif openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey \"$t/k.der\" \\
          -in \"$t/m\" -sigfile \"$sig\" >/dev/null 2>&1; then
     echo \"ok    $(basename \"$sig\") verifies post-quantum as $actor\"
+    basename \"$ev\" .edn >> \"$vdir/pq\"
   else
     echo \"FAIL  $sig does not verify post-quantum as its event's actor ($actor)\"; fail=1
+  fi
+  rm -rf \"$t\"
+done
+
+# L3, post-quantum half (ADR 0036 point 7): <id>.pqwitness.<fpr> is an
+# ML-DSA-65 countersignature over the bytes tik-witness-v1, a NUL, then
+# the event, by a pq-signers key allowed the tik-witness namespace. It
+# seals the event's whole ancestry; the ids it seals feed the signature
+# policy below.
+for sig in tickets/*/events/*.pqwitness.*; do
+  [ -e \"$sig\" ] || continue
+  if [ ! -f pq-signers ]; then
+    echo \"FAIL  $sig travels without the pq-signers registry that checks it\"; fail=1; continue
+  fi
+  if [ -z \"$pq_tool\" ]; then
+    if openssl list -signature-algorithms 2>/dev/null | grep -qi 'ml-dsa-65'; then
+      pq_tool=yes
+    else
+      pq_tool=no
+    fi
+  fi
+  if [ \"$pq_tool\" = no ]; then
+    echo \"FAIL  $sig needs OpenSSL 3.5 or later (ML-DSA-65) to check\"; fail=1; continue
+  fi
+  ev=\"${sig%%.pqwitness.*}.edn\"
+  fpr=\"${sig##*.pqwitness.}\"
+  t=$(mktemp -d)
+  holder=
+  patterns=
+  while read -r who opts alg key rest; do
+    case \"$who\" in ''|'#'*) continue ;; esac
+    [ \"$alg\" = ml-dsa-65 ] || continue
+    printf %s \"$key\" | base64 -d > \"$t/k.der\" 2>/dev/null || continue
+    if [ \"$(sha256sum \"$t/k.der\" | cut -d' ' -f1)\" = \"$fpr\" ]; then
+      holder=$who
+      patterns=${opts#namespaces=\\\"}
+      patterns=${patterns%\\\"}
+      break
+    fi
+  done < pq-signers
+  allowed=
+  for p in $(printf %s \"$patterns\" | tr ',' ' '); do
+    case tik-witness in $p) allowed=yes ;; esac
+  done
+  { printf 'tik-witness-v1\\000'; cat \"$ev\"; } > \"$t/m\"
+  if [ -z \"$holder\" ] || [ -z \"$allowed\" ]; then
+    echo \"FAIL  $sig is not by a key pq-signers allows to witness\"; fail=1
+  elif openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey \"$t/k.der\" \\
+         -in \"$t/m\" -sigfile \"$sig\" >/dev/null 2>&1; then
+    echo \"ok    $(basename \"$sig\") witnesses post-quantum as $holder (whole ancestry)\"
+    basename \"$ev\" .edn >> \"$vdir/anchors\"
+  else
+    echo \"FAIL  $sig does not verify as a post-quantum countersignature\"; fail=1
   fi
   rm -rf \"$t\"
 done
@@ -716,6 +807,63 @@ if [ \"$roots\" != 1 ]; then
   echo \"FAIL  expected exactly one root event (empty parents), found $roots\"; fail=1
 fi
 
+# Signature policy (ADR 0036 points 4 and 7): signatures.edn names which
+# signatures an event needs - ssh-ed25519 always, ml-dsa-65 from :from on
+# where it is required - and, where it requires ml-dsa-65, that every
+# event claimed before :from lies in the ancestry of a post-quantum
+# witness. A policy that does not read as exactly that shape fails.
+if [ -f signatures.edn ]; then
+  pol=$(tr '\\n\\t' '  ' < signatures.edn)
+  req=$(printf %s \"$pol\" | sed -n 's/.*:require #{\\([^}]*\\)}.*/\\1/p')
+  from_text=$(printf %s \"$pol\" | sed -n 's/.*:from \\(#inst \\)\\{0,1\\}\"\\([^\"]*\\)\".*/\\2/p')
+  rest=$(printf %s \"$pol\" | sed 's/:require #{[^}]*}//; s/:from \\(#inst \\)\\{0,1\\}\"[^\"]*\"//' | tr -d ' {},')
+  bad_alg=$(printf %s \"$req\" | tr ', ' '\\n\\n' | grep -v -x -e '' -e ':ssh-ed25519' -e ':ml-dsa-65')
+  from_ms=$(epoch_ms \"$from_text\")
+  if [ -z \"$req\" ] || [ -n \"$rest\" ] || [ -n \"$bad_alg\" ] || [ -z \"$from_ms\" ] \\
+     || ! printf %s \"$req\" | grep -q ':ssh-ed25519'; then
+    echo \"FAIL  signatures.edn is not {:require #{:ssh-ed25519 [:ml-dsa-65]} :from <instant>}\"; fail=1
+  else
+    need_pq=no
+    printf %s \"$req\" | grep -q ':ml-dsa-65' && need_pq=yes
+    touch \"$vdir/classical\" \"$vdir/pq\" \"$vdir/anchors\"
+    # the ancestry of every anchor, walked through :event/parents
+    : > \"$vdir/sealed\"
+    cp \"$vdir/anchors\" \"$vdir/frontier\"
+    while [ -s \"$vdir/frontier\" ]; do
+      : > \"$vdir/next\"
+      while read -r a; do
+        grep -qxF \"$a\" \"$vdir/sealed\" && continue
+        echo \"$a\" >> \"$vdir/sealed\"
+        for f in tickets/*/events/\"$a\".edn; do
+          [ -f \"$f\" ] || continue
+          sed -n 's/.*:event\\/parents #{\\([^}]*\\)}.*/\\1/p' \"$f\" | tr -d '\"' | tr ' ' '\\n' \\
+            | grep -v '^$' >> \"$vdir/next\"
+        done
+      done < \"$vdir/frontier\"
+      mv \"$vdir/next\" \"$vdir/frontier\"
+    done
+    policy_failed=0
+    for f in tickets/*/events/*.edn; do
+      [ -e \"$f\" ] || continue
+      id=$(basename \"$f\" .edn)
+      at_ms=$(epoch_ms \"$(sed -n 's/.*:event\\/at #inst \"\\([^\"]*\\)\".*/\\1/p' \"$f\")\")
+      if [ -n \"$at_ms\" ] && [ \"$at_ms\" -lt \"$from_ms\" ]; then before=yes; else before=no; fi
+      if ! grep -qxF \"$id\" \"$vdir/classical\"; then
+        echo \"FAIL  $id lacks a verifying ssh-ed25519 signature by its actor, which signatures.edn requires\"
+        fail=1; policy_failed=1
+      elif [ \"$before\" = no ] && [ \"$need_pq\" = yes ] && ! grep -qxF \"$id\" \"$vdir/pq\"; then
+        echo \"FAIL  $id is claimed from $from_text on and lacks a verifying ml-dsa-65 signature by its actor\"
+        fail=1; policy_failed=1
+      elif [ \"$before\" = yes ] && [ \"$need_pq\" = yes ] && ! grep -qxF \"$id\" \"$vdir/sealed\"; then
+        echo \"FAIL  $id is claimed before $from_text and no post-quantum witness anchors it\"
+        fail=1; policy_failed=1
+      fi
+    done
+    [ \"$policy_failed\" = 0 ] && echo \"ok    every event meets signatures.edn\"
+  fi
+fi
+rm -rf \"$vdir\"
+
 if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1; fi
 ")
 
@@ -737,6 +885,10 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
        "  checked against `pq-signers` with OpenSSL 3.5 or later.\n"
        "- `*.witness.*` — third-party countersignatures over a head:\n"
        "  one signature timestamps the entire ancestry.\n"
+       "- `*.pqwitness.*` — ML-DSA-65 countersignatures that seal an\n"
+       "  ancestry against a future forged Ed25519 signature.\n"
+       "- `signatures.edn` — which signatures each event needs, when the\n"
+       "  store sets a policy.\n"
        "- `processes/by-hash/" process-hash ".edn` — the exact ruleset\n"
        "  the ticket pinned at creation, plus publication signatures.\n"
        "- `actors` — the allowed-signers registry the signatures check\n"
@@ -826,6 +978,11 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       (let [pq (io/file (root) "pq-signers")]
         (when (.exists pq)
           (io/copy pq (io/file bdir "pq-signers"))))
+      ;; the policy that says which of those signatures each event needs,
+      ;; and that classical history is anchored (ADR 0036 points 4 and 7)
+      (let [policy (io/file (root) "signatures.edn")]
+        (when (.exists policy)
+          (io/copy policy (io/file bdir "signatures.edn"))))
       (when (seq granting)
         (let [idir (io/file bdir "identity")
               kdir (io/file idir "keys")]
@@ -1172,7 +1329,9 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       ;; cannot be checked must not pass quietly, and "signature does not
       ;; verify" would be a lie when the truth is that nobody pinned the
       ;; issuer.
-      (let [signers-at (identity-trust/signer-view (root) (registry-events s))
+      (let [classical-ok (atom #{})
+            pq-ok (atom #{})
+            signers-at (identity-trust/signer-view (root) (registry-events s))
             ;; ADR 0037: a key outside the registry still counts for a
             ;; verdict a trusted delegation covers, and for nothing else
             delegations (delegation-trust/assess (root) s (registry-events s))]
@@ -1183,6 +1342,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
         (if-not signers-at
           (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
           (let [unsigned (atom 0)]
+            ;; classical-ok records which events a signature by their own
+            ;; actor verified, for the signature policy below
             (doseq [e (red/ordered evs)
                     :let [names (sidecar-names-for s id (:event/id e) "sig")]]
               (if (empty? names)
@@ -1197,6 +1358,8 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                                                   (:event/actor e)))))
                                 delegated (when (and (not direct) ev-bytes sig)
                                             (delegation-trust/credit delegations e ev-bytes sig))]]
+                    (when (or direct (some? delegated))
+                      (swap! classical-ok conj (:event/id e)))
                     (check (or direct (some? delegated))
                            (str (shash (:event/id e)) "… signed by "
                                 (:event/actor e)
@@ -1204,7 +1367,7 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
                                   (str " (delegated by " (shash (:event delegated)) "…)"))))))))
             (when (pos? @unsigned)
               (println (str "  note  " @unsigned " event(s) unsigned"
-                            " (authenticity unclaimed, not failed)"))))))
+                            " (authenticity unclaimed, not failed)")))))
       ;; ADR 0036: every post-quantum sidecar present is checked against
       ;; pq-signers. Which events must carry one is the store policy's
       ;; question; a sidecar that is there and does not verify fails
@@ -1212,25 +1375,61 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
       (let [pq-file (io/file (root) "pq-signers")
             pq-sidecars (for [e (red/ordered evs)
                               name (sidecar-names-for s id (:event/id e) "pqsig")]
-                          [e name])]
+                          [e name])
+            witnesses (for [e (red/ordered evs)
+                            name (sidecar-names-for s id (:event/id e) "pqwitness")]
+                        [e name])
+            registry (when (and (or (seq pq-sidecars) (seq witnesses)) (.exists pq-file))
+                       (try (pqsig/parse-registry (slurp pq-file))
+                            (catch clojure.lang.ExceptionInfo ex
+                              (check false (ex-message ex))
+                              nil)))
+            anchors (atom #{})
+            policy (signature-policy)]
         (when (seq pq-sidecars)
           (if-not (.exists pq-file)
             (println (str "  skip  " (count pq-sidecars) " post-quantum signature(s),"
                           " no pq-signers registry"))
-            (when-let [registry (try (pqsig/parse-registry (slurp pq-file))
-                                     (catch clojure.lang.ExceptionInfo ex
-                                       (check false (ex-message ex))
-                                       nil))]
-              (doseq [[e name] pq-sidecars]
-                (check (pqsig/check-event
-                        registry
-                        {:actor (:event/actor e)
-                         :fpr (pqsig/sidecar-fpr name)
-                         :signature (store/read-sidecar s id name)
-                         :event-bytes (store/event-bytes s id (:event/id e))
-                         :namespace sign/namespace-event})
+            (when registry
+              (doseq [[e name] pq-sidecars
+                      :let [holds? (pqsig/check-event
+                                    registry
+                                    {:actor (:event/actor e)
+                                     :fpr (pqsig/sidecar-fpr name)
+                                     :signature (store/read-sidecar s id name)
+                                     :event-bytes (store/event-bytes s id (:event/id e))
+                                     :namespace sign/namespace-event})]]
+                (when holds? (swap! pq-ok conj (:event/id e)))
+                (check holds?
                        (str (shash (:event/id e)) "… post-quantum signed by "
-                            (:event/actor e))))))))
+                            (:event/actor e)))))))
+        ;; ADR 0036 point 7: an ML-DSA-65 countersignature over an event
+        ;; seals its whole ancestry
+        (doseq [[e name] witnesses
+                :let [who (when registry
+                            (pqsig/check-witness
+                             registry
+                             {:fpr (pqsig/sidecar-fpr name)
+                              :signature (store/read-sidecar s id name)
+                              :event-bytes (store/event-bytes s id (:event/id e))}))]]
+          (when who (swap! anchors conj (:event/id e)))
+          (check (some? who)
+                 (str (shash (:event/id e)) "… post-quantum witnessed"
+                      (if who (str " by " who " (whole ancestry)")
+                          " by a key pq-signers does not allow to witness"))))
+        (when policy
+          (println "L1 signature policy (signatures.edn)")
+          (let [verified (into {} (for [e evs
+                                        :let [i (:event/id e)]]
+                                    [i (cond-> #{}
+                                         (@classical-ok i) (conj :ssh-ed25519)
+                                         (@pq-ok i) (conj :ml-dsa-65))]))
+                rows (sigpolicy/judge policy evs {:verified verified :anchors @anchors})
+                failed (remove :ok? rows)]
+            (doseq [{:keys [msg]} failed] (check false msg))
+            (when (empty? failed)
+              (println (str "  ok    every event meets signatures.edn ("
+                            (count evs) " checked)")))))))
       (println "L3 provenance (witness countersignatures)")
       (let [signers (io/file (root) "actors")
             heads (dag/heads evs)

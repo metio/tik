@@ -36,6 +36,7 @@
             [tik.lint :as lint]
             [tik.process :as process]
             [tik.pqsig :as pqsig]
+            [tik.sigpolicy :as sigpolicy]
             [tik.reduce :as red]
             [tik.sign :as sign]
             [tik.stage :as stage]
@@ -270,6 +271,7 @@
        :blobs-dir (io/file tdir "blobs")
        :actors (io/file dir "actors")
        :pq-signers (io/file dir "pq-signers")
+       :signature-policy (io/file dir "signatures.edn")
        :delegation-policy (io/file dir "delegation.edn")
        :roles (io/file dir "roles.edn")
        :identity-dir (io/file dir "identity")
@@ -469,6 +471,85 @@
                (bad (str (.getName f) " does not verify post-quantum as its"
                          " event's actor (" actor ")"))))))))
 
+(defn- pq-registry [{:keys [pq-signers]}]
+  (when (.isFile ^File pq-signers)
+    (try (pqsig/parse-registry (slurp pq-signers))
+         (catch clojure.lang.ExceptionInfo _ nil))))
+
+(defn- event-bytes ^bytes [events-dir id]
+  (java.nio.file.Files/readAllBytes (.toPath (io/file events-dir (str id ".edn")))))
+
+(defn- classical-verified?
+  "Whether some `.sig.` sidecar of `e` verifies as its own actor, directly
+  or through a delegation that covers it."
+  [{:keys [events-dir actors]} delegations e]
+  (let [bytes (event-bytes events-dir (:event/id e))]
+    (boolean
+     (and (string? (:event/actor e)) (.isFile ^File actors)
+          (some (fn [^File sig]
+                  (let [sb (java.nio.file.Files/readAllBytes (.toPath sig))]
+                    (or (true? (try (sign/verify-bytes actors bytes sb (:event/actor e))
+                                    (catch Exception _ false)))
+                        (some? (delegation-trust/credit @delegations e bytes sb)))))
+                (sidecar-files events-dir (:event/id e) "sig"))))))
+
+(defn- pq-verified? [{:keys [events-dir]} registry e]
+  (let [bytes (event-bytes events-dir (:event/id e))]
+    (boolean
+     (some (fn [^File f]
+             (pqsig/check-event registry {:actor (:event/actor e)
+                                          :fpr (pqsig/sidecar-fpr (.getName f))
+                                          :signature (java.nio.file.Files/readAllBytes (.toPath f))
+                                          :event-bytes bytes
+                                          :namespace sign/namespace-event}))
+           (sidecar-files events-dir (:event/id e) "pqsig")))))
+
+(defn pq-witness-checks
+  "L3, post-quantum half (ADR 0036 point 7): every `.pqwitness.` sidecar
+  verifies through a pq-signers key allowed to witness."
+  [{:keys [events-dir] :as layout*} events]
+  (let [registry (pq-registry layout*)]
+    (vec (for [e events
+               ^File f (sidecar-files events-dir (:event/id e) "pqwitness")
+               :let [who (when registry
+                           (pqsig/check-witness registry
+                                                {:fpr (pqsig/sidecar-fpr (.getName f))
+                                                 :signature (java.nio.file.Files/readAllBytes (.toPath f))
+                                                 :event-bytes (event-bytes events-dir (:event/id e))}))]]
+           (if who
+             (ok (str (.getName f) " witnesses post-quantum as " who " (whole ancestry)"))
+             (bad (str (.getName f) " is not a post-quantum countersignature by a key"
+                       " pq-signers allows to witness")))))))
+
+(defn policy-checks
+  "What signatures.edn asks of these events (ADR 0036 points 4 and 7):
+  every signature it requires, by the event's own actor, and an ML-DSA-65
+  witness anchoring each event claimed before it took effect."
+  [{:keys [signature-policy events-dir] :as layout*} events]
+  (if-not (.isFile ^File signature-policy)
+    []
+    (let [policy (sigpolicy/parse (slurp signature-policy))
+          registry (pq-registry layout*)
+          delegations (delay (judged-delegations layout*))
+          verified (into {} (for [e events]
+                              [(:event/id e)
+                               (cond-> #{}
+                                 (classical-verified? layout* delegations e) (conj :ssh-ed25519)
+                                 (and registry (pq-verified? layout* registry e)) (conj :ml-dsa-65))]))
+          anchors (for [e events
+                        ^File f (sidecar-files events-dir (:event/id e) "pqwitness")
+                        :when (and registry
+                                   (pqsig/check-witness registry
+                                                        {:fpr (pqsig/sidecar-fpr (.getName f))
+                                                         :signature (java.nio.file.Files/readAllBytes (.toPath f))
+                                                         :event-bytes (event-bytes events-dir (:event/id e))}))]
+                    (:event/id e))
+          rows (sigpolicy/judge policy events {:verified verified :anchors anchors})
+          failed (remove :ok? rows)]
+      (if (seq failed)
+        (mapv #(bad (:msg %)) failed)
+        [(ok (str "every event meets signatures.edn (" (count events) " checked)"))]))))
+
 (defn witness-checks
   "L3: countersignatures over a head. One signature timestamps the whole
   ancestry that head commits to."
@@ -667,8 +748,10 @@
                (dag-checks events)
                (authorship-checks layout* events)
                (pq-checks layout* events)
+               (policy-checks layout* events)
                (binding-checks layout*)
-               (witness-checks layout* events))))
+               (witness-checks layout* events)
+               (pq-witness-checks layout* events))))
 
 ;; --------------------------------------------------- what a consumer expects
 
