@@ -208,7 +208,12 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   issuer and subject that file permits for the actor, with a token signed
   by an issuer key in the `jwks/` beside the file (the reader's own pins,
   never the keys the bundle ships). Exits 1
-  when the bundle fails to verify or an expectation is unmet. It never runs the
+  when the bundle fails to verify or an expectation is unmet. A `roles.edn`
+  that is present but does not parse or is not a `{:role {:members […]}}`
+  register refuses the bundle (exit 1, HTTP 400 under `--serve`) instead of
+  falling back to the definition's members; an absent one leaves those members
+  standing. The store's own `roles.edn` is refused the same way by every
+  derivation (`ls`, `status`, `explain`, `next`, `verify`). It never runs the
   bundle's own `verify.sh`, unpacks the archive itself (refusing traversal,
   symlinks and unbounded expansion), and refuses a pinned definition that does
   not lint. `--serve [--port N]` is the same over HTTP —

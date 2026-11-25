@@ -75,6 +75,18 @@ delegation covering one of its events, and `delegation.edn`
 policy. A bundle without `delegation.edn` credits delegations without a
 touch requirement, as a store without a policy does.
 
+**The role register travels where the store keeps one.** `roles.edn`
+maps each role to its members in the shape a definition declares,
+`{:role {:members ["actor" …]} …}`, and replaces the definition's
+members role by role. A bundle without `roles.edn` re-derives under the
+definition's members, as a store without a register does. A `roles.edn`
+that is present and does not parse, does not have that shape, or is not
+a regular file makes the bundle unreadable: a reader refuses it rather
+than fall back to the definition's members, because the register is how
+a member's departure is expressed. The file carries no content address
+and no signature, so it states the membership the producing store held
+without proving it.
+
 **`bundle.edn` declares the packaging version and nothing else.** The
 ticket, the head, the definition and the stage are derivable from the
 files, so the manifest names none of them and nothing in it is trusted.

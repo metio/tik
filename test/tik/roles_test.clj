@@ -7,8 +7,10 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [tik.cli-core :as cli-core]
             [tik.harness :as h]
-            [tik.process :as process]))
+            [tik.process :as process]
+            [tik.serve :as serve]))
 
 (deftest a-role-the-register-does-not-name-keeps-its-declared-members
   (let [pinned {:triager {:members ["seb"]} :billing {:members ["bill"]}}]
@@ -96,3 +98,79 @@
       (is (approved-on-board?) "the cached row does not outlive the register it was derived under")
       (run "roles" "remove" "approver" "ana")
       (is (not (approved-on-board?))))))
+
+;; ---------------------------------------- a register that does not read
+
+(def ^:private broken-registers
+  "Ways a store's roles.edn can be present without being a register."
+  {"EDN that does not parse" #(spit % "{:approver {:members [\"ana\"]")
+   "EDN that is not a register" #(spit % "{:approver [\"ana\"]}")
+   "an empty file" #(spit % "")
+   "a directory" #(do (io/delete-file %) (.mkdirs ^java.io.File %))})
+
+(defn- departed-approver-store!
+  "A store whose definition declares seb the approver and whose register
+  leaves seb out of the role, with seb's sign-off on one ticket. The
+  intact register denies :approved; the definition's members alone
+  would grant it."
+  []
+  (let [root (h/temp-dir! "tik-roles-departed")
+        env {:root (str root) :actor "seb"}
+        run (fn [& args] (apply h/run-tik! env args))]
+    (write-process! root)
+    (run "init")
+    (write-process! root)
+    (let [id (second (re-find #"([0-9a-f]{8})" (:out (run "new" "approval" "--title" "t"))))]
+      (run "set" id "ok=true")
+      (spit (io/file root "roles.edn") (pr-str {:approver {:members ["ana"]}}))
+      {:root root :id id :run run})))
+
+(defn- approved? [out] (boolean (re-find #"stage:[^\n]*approved" (str out))))
+
+(deftest a-store-register-that-does-not-read-refuses-every-derivation
+  (let [{:keys [root id run]} (departed-approver-store!)
+        roles (io/file root "roles.edn")
+        intact (slurp roles)]
+    (testing "the intact register denies the stage"
+      (let [r (run "status" id)]
+        (is (zero? (:exit r)) (:err r))
+        (is (not (approved? (:out r))))))
+    (doseq [[how alter!] broken-registers]
+      (testing how
+        (alter! roles)
+        (doseq [argv [["ls"] ["ls" "--all" "--edn"] ["status" id] ["explain" id]
+                      ["next"] ["verify"]]]
+          (let [{:keys [exit out err]} (apply run argv)]
+            (is (pos? exit) (str argv " exited 0: " out))
+            (is (str/includes? (str err out) "malformed role register")
+                (str argv ": " err out))
+            (is (not (re-find #"stage:.*approved" (str out)))
+                (str argv " granted the stage the intact register denies"))))
+        (when (.isDirectory roles) (.delete roles))
+        (spit roles intact)))
+    (testing "and an absent register leaves the definition's members standing"
+      (.delete roles)
+      (is (approved? (:out (run "status" id)))))))
+
+(deftest the-board-server-grants-nothing-under-a-register-that-does-not-read
+  (let [{:keys [root id]} (departed-approver-store!)
+        roles (io/file root "roles.edn")
+        handler (serve/request-handler {:host "127.0.0.1" :port 7777 :board? true})
+        get* (fn [uri] (handler {:uri uri :headers {"host" "127.0.0.1:7777"}}))]
+    (with-redefs [cli-core/root (constantly (str root))]
+      (let [full (some #(when (str/starts-with? (.getName ^java.io.File %) id) (.getName ^java.io.File %))
+                       (.listFiles (io/file root "tickets")))
+            explain (str "/explain/" full ".edn")]
+        (testing "the intact register"
+          (is (= 200 (:status (get* explain))))
+          (is (not (re-find #":approved" (:body (get* "/tickets.edn"))))))
+        (doseq [[how alter!] (dissoc broken-registers "a directory")]
+          (testing how
+            (alter! roles)
+            (let [r (get* explain)]
+              (is (= 500 (:status r)) "the explanation is refused, not derived")
+              (is (str/includes? (:body r) "tik exit 1")))
+            (doseq [uri ["/" "/tickets.edn"]]
+              (is (not (re-find #":approved|>approved<" (str (:body (get* uri)))))
+                  (str uri " granted the stage the intact register denies")))
+            (spit roles (pr-str {:approver {:members ["ana"]}}))))))))

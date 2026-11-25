@@ -42,6 +42,11 @@ when the bundle fails to verify — a derivation over bytes that are not
 what they claim to be is worth nothing. `--edn` prints the same result as
 data.
 
+A bundle whose `roles.edn` is present but does not read as a role
+register is refused with exit 1 and nothing derived from it; the service
+answers such a bundle with status 400. Without `roles.edn`, the
+definition's members stand (see [Bundle format](/evidence/bundle-format/)).
+
 ## Derivation names its instant
 
 `reached` above is what the pinned rules grant **at the instant printed

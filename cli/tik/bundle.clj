@@ -720,10 +720,30 @@
                         (str/join "; " (map :msg errors)))))
         proc))))
 
-(defn- role-register [{:keys [roles]}]
-  (when (.isFile ^File roles)
-    (let [r (try (canonical/parse (slurp roles)) (catch Exception _ nil))]
-      (when (process/valid-role-bindings? r) r))))
+(defn role-register
+  "The bundle's role register, or nil when the bundle carries none.
+
+  An absent `roles.edn` means the producing store keeps no register, so
+  the pinned definition's members stand, exactly as they do in that store
+  (ADR 0025). A `roles.edn` that is present and does not parse, or parses
+  to something other than a register, is refused. The register replaces
+  a definition's members role by role, so it is how a departure is
+  expressed; reading a broken one as absent would hand every removed
+  member their authority back, and a supplier could reach a stage the
+  intact register denies by corrupting one file."
+  [{:keys [^File roles]}]
+  (when (.exists roles)
+    (when-not (.isFile roles)
+      (refuse! "the bundle's roles.edn is not a regular file"))
+    (let [r (try (canonical/parse (slurp roles))
+                 (catch Exception e
+                   (refuse! (str "the bundle's roles.edn does not parse ("
+                                 (or (ex-message e) (.getName (class e)))
+                                 "), so nothing can say who is in a role"))))]
+      (when-not (process/valid-role-bindings? r)
+        (refuse! (str "the bundle's roles.edn is not a role register"
+                      " (expected {:role {:members [\"actor\" ...]} ...})")))
+      r)))
 
 (defn stage-report
   "Each reached stage with the guards that judged it, and whether they
