@@ -8,7 +8,9 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [clojure.edn :as edn]
             [tik.bridge-sync :as sync]
+            [tik.canonical :as canonical]
             [tik.cli-core :as core]
             [tik.harness :as h]
             [tik.odoo :as od]
@@ -93,6 +95,52 @@
 
 (deftest odoo_datetimes_are_utc
   (is (= (Instant/parse "2024-01-15T10:51:11Z") (od/odoo-instant "2024-01-15 10:51:11"))))
+
+;; ---------------------------------------------------------------- golden
+
+(def ^:private golden-file (io/file "test/tik/odoo_golden.edn"))
+
+(defn golden-scenarios
+  "Scenario -> the canonical bytes of the events and blobs the project.task
+  mapping mints for it. `odoo_golden.edn` pins these bytes, so a change to
+  the mapping that moves a single event fails here, whatever the reason."
+  []
+  (let [mint (fn [c tk ms] (canonical/emit (od/task-events c tk ms)))
+        reopened (assoc task :stage_id [12 "In Progress"])
+        handed-on (assoc task :user_id [46 "Markus Otto"])]
+    (into (sorted-map)
+          {:full (mint (ctx) task messages)
+           :without-creation-message (mint (ctx) task (vec (rest messages)))
+           :waiting (mint (ctx) (assoc task :stage_id [47 "Waiting / Blocked"] :name "login aktualisieren")
+                          (vec (butlast messages)))
+           :reopened (mint (ctx) reopened
+                           (conj messages (msg 41060 "2024-02-05 08:00:00"
+                                               :tracking [(tv 10 "Stufe" "Done" "In Progress")])))
+           :handed-on (mint (ctx) handed-on
+                            (conj messages (msg 41070 "2024-02-06 08:00:00"
+                                                :tracking [(tv 11 "Zugewiesen an" "Sebastian Hoß" "Markus Otto")])))
+           :no-chatter (mint (ctx) task [])
+           :english-labels-only (mint (assoc (ctx) :labels (od/label-table [fields-en])) task messages)
+           :unset-assignee (mint (ctx) (assoc task :user_id false)
+                                 (conj messages (msg 41080 "2024-02-07 08:00:00"
+                                                     :tracking [(tv 12 "Zugewiesen an" "Sebastian Hoß" "")])))
+           :email-and-empty-comment (mint (ctx) task
+                                          (conj messages
+                                                (msg 41090 "2024-02-08 08:00:00" :type "email"
+                                                     :body "<p>Hallo,<br>danke!</p>")
+                                                (msg 41091 "2024-02-08 08:01:00" :type "comment" :body "<p> </p>")))
+           :trailing-slash-url (mint (assoc (ctx) :url "https://odoo.example/") task messages)})))
+
+(deftest project_task_events_are_byte_identical_to_the_pinned_golden_file
+  (let [pinned (edn/read-string (slurp golden-file))
+        now (golden-scenarios)]
+    (is (= (set (keys pinned)) (set (keys now))))
+    (doseq [[k bytes] now]
+      (is (= (get pinned k) bytes) (str "scenario " k)))))
+
+(deftest ticket_ids_are_the_pinned_name_uuids_of_host_model_and_id
+  (is (= #uuid "61c94174-c871-85d4-b375-c205184be9d5" (od/ticket-id "odoo.example" 1249)))
+  (is (= #uuid "ebbd6a9f-2ca5-8e43-b18b-7d96efa8bfcc" (od/ticket-id "erp.example.org" 7))))
 
 ;; ---------------------------------------------------------------- sync
 
