@@ -18,8 +18,9 @@
             [tik.github :as gh]
             [tik.gitlab :as gl]
             [tik.odoo :as od]
+            [tik.odoo-describe :as odd]
             [tik.redmine :as rm]
-            [tik.render :refer [sid]]
+            [tik.render :as render :refer [sid]]
             [tik.secret :as secret]
             [tik.store.protocol :as store]
             [tik.text :refer [safe-name]])
@@ -527,3 +528,49 @@
                                          :when n]
                                      [n actor])))]
     (finish! "odoo" (odoo-poll! s x cfg ctx opts))))
+
+(defn odoo-describe-settings
+  "The connection settings `tik bridge odoo describe` reads from an
+  odoo.edn `cfg`, or throws an ex-info naming what is missing or wrong.
+  The password must be a secret spec, never a literal in the file."
+  [cfg]
+  (doseq [k [:url :db :user]]
+    (when-not (get cfg k)
+      (throw (ex-info (str "the odoo config needs " k) {:reason :odoo/bad-config :key k}))))
+  (when (string? (:password cfg))
+    (throw (ex-info (str "the odoo config's :password must be a secret spec such as"
+                         " {:env \"ODOO_PASSWORD\"} or {:command \"…\"}, not a literal")
+                    {:reason :odoo/bad-config :key :password})))
+  {:url (:url cfg) :db (:db cfg) :user (:user cfg)
+   :password (or (:password cfg) {:env "ODOO_PASSWORD"})})
+
+(defn cmd-bridge-odoo-describe
+  "bridge odoo describe --model <model> [--config odoo.edn] [--edn | --format json]
+  The model's fields as the Odoo server describes them through the
+  read-only fields_get: type, label, selection values, relation and the
+  tracked flag, and how the registered profile of that model fits them.
+  Every call goes through `odd/read-only-call`, so no write is reachable,
+  and nothing printed carries the password."
+  [opts]
+  (let [model (:model opts)
+        _ (when-not (odd/model-name? model)
+            (die "usage: tik bridge odoo describe --model <model> [--config odoo.edn] [--edn | --format json]"))
+        fmt (render/output-format opts)
+        cfg (read-config opts "odoo.edn"
+                         (str "need {:url \"https://odoo.example\" :db \"…\" :user \"…\""
+                              " :password <secret spec>}"))
+        settings (try (odoo-describe-settings cfg)
+                      (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
+        user (secret/resolve1 "user" (:user settings))
+        password (secret/resolve1 "password" (:password settings))
+        call (forge/json-rpc-caller "Odoo API" (str (str/replace (:url settings) #"/+$" "") "/jsonrpc"))
+        described (try (odd/fetch call {:db (:db settings) :user user :password password
+                                        :model model :host (od/host-of (:url settings))})
+                       (catch Exception e
+                         (die (odd/redact password (or (ex-message e) (.getSimpleName (class e)))))))
+        profile (get od/profiles model)
+        result (cond-> described
+                 profile (assoc :coverage (odd/profile-coverage
+                                           profile described (odd/config-stage-sets profile cfg))))]
+    (println (odd/redact password (odd/render-result fmt result)))
+    (exit! 0)))

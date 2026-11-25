@@ -276,7 +276,7 @@
                     (.timeout (Duration/ofSeconds 60))
                     (.POST (HttpRequest$BodyPublishers/ofString
                             (render {:jsonrpc "2.0" :method "call" :id 1
-                                     :params {:service service :method method :args args}})))
+                                     :params {:service service :method method :args (vec args)}})))
                     (.build))
             resp (send-with-retry req)
             status (.statusCode resp)

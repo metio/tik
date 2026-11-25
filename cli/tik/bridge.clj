@@ -813,7 +813,10 @@
   (when (= "github" (first pos)) (sync/cmd-bridge-github opts))
   (when (= "gitlab" (first pos)) (sync/cmd-bridge-gitlab opts))
   (when (= "redmine" (first pos)) (sync/cmd-bridge-redmine opts))
-  (when (= "odoo" (first pos)) (sync/cmd-bridge-odoo opts))
+  (when (= "odoo" (first pos))
+    (if (= "describe" (second pos))
+      (sync/cmd-bridge-odoo-describe opts)
+      (sync/cmd-bridge-odoo opts)))
   (when-not (= "email" (first pos))
     (die (str "usage: tik bridge email [--config bridge.edn] < message\n"
               "       tik bridge imap [--config imap.edn]\n"
@@ -822,6 +825,7 @@
               "       tik bridge gitlab [--config gitlab.edn]\n"
               "       tik bridge redmine [--config redmine.edn]\n"
               "       tik bridge odoo [--config odoo.edn]\n"
+              "       tik bridge odoo describe --model M [--config odoo.edn] [--edn | --format json]\n"
               "       tik bridge jwks --issuer <url>\n"
               "       tik bridge workload --github|--token-file F|--token-env VAR\n"
               "       tik bridge oidc [--config oidc.edn] [--registry ID] [--actor A]\n"

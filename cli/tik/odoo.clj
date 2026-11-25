@@ -8,7 +8,9 @@
   A profile describes one Odoo model as data: which fields become which
   facts, which field derives a state and from which config lists, how the
   ticket title is formed and which chatter messages become artifacts.
-  `profiles` holds every model the bridge mirrors; the mapping below reads
+  An optional :types names the Odoo type each field is expected to have;
+  the mapping ignores it and `tik bridge odoo describe` checks it against
+  a server (tik.odoo-describe). `profiles` holds every model the bridge mirrors; the mapping below reads
   only the profile, so another model is another profile.
 
   Every event is a pure function of the record and its chatter (ADR 0021).
@@ -49,6 +51,11 @@
             "stage_id" [:odoo :stage]
             "user_id" [:odoo :assignee]
             "project_id" [:odoo :project]}
+   :types {"create_date" "datetime"
+           "name" "char"
+           "stage_id" "many2one"
+           "user_id" "many2one"
+           "project_id" "many2one"}
    :actors #{"user_id"}
    :state {:field "stage_id"
            :fact [:odoo :state]
@@ -87,7 +94,7 @@
 (defn profile-problems
   "Why `p` cannot serve as a profile, as messages; empty for a sound one."
   [p]
-  (let [{:keys [model process created fields actors state title chatter domain]} p
+  (let [{:keys [model process created fields types actors state title chatter domain]} p
         field-facts (vals fields)]
     (cond-> []
       (not (map? p)) (conj "a profile is a map")
@@ -101,6 +108,11 @@
       (conj ":fields asserts one fact path from two fields")
       (some reserved-facts field-facts)
       (conj ":fields must not assert [:odoo :id] or [:odoo :url]")
+      (and (some? types)
+           (not (and (map? types)
+                     (every? #(or (= created %) (contains? fields %)) (keys types))
+                     (every? word? (vals types)))))
+      (conj ":types must map :created or fields from :fields to Odoo field types")
       (not (and (set? actors) (every? #(contains? fields %) actors)))
       (conj ":actors must be a set of fields from :fields")
       (and (some? state)
