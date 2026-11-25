@@ -1613,3 +1613,37 @@ the interesting part:
 What stays open is the half no design settles: adoption. A format
 nobody publishes verifies nothing, and the wedge is still one-line CI
 integration over evidence a project already produces.
+
+## Parquet for long-term storage and large data (unjudged)
+
+Parquet does not fit as a third live backend beside the file store and
+SQLite. At most it fits as a one-way `tik store export --to parquet` of
+settled tickets, for analytics and cold storage.
+
+ADR 0007 makes the stored bytes the hashed, signed bytes, and the file
+store verifies with coreutils `sha256sum` because the filename is the
+hash. A Parquet store would have to carry each event's exact bytes as a
+binary column, since decomposed columns could not recompute ids or
+check signatures, and checking it would need a Parquet reader, which
+loses the coreutils property. The file store therefore stays the
+interchange and audit format. Parquet files are immutable, so a writer
+needs segments plus compaction, which suits sealed tickets and not live
+ones. The common Java writer (parquet-java) pulls in Hadoop
+dependencies, heavy beside the embedded SQLite driver in the native
+binary; a lighter writer was not checked. `actors`, `roles.edn`,
+definitions and signature sidecars stay outside it either way.
+
+Capacity is not the pressure: on 2026-11-25 the metio store held 6,782
+events in 633 tickets, 52 MB, and SQLite handles far more.
+
+Where an export would help:
+
+- **Analytics across the store.** Extracted columns (ticket, process,
+  actor, fact path, time) next to the raw-bytes column are queryable
+  with DuckDB without running derivation.
+- **Cold storage on object stores**, which ties to the deferred S3
+  backend idea. An export stays checkable against its source because it
+  carries the raw bytes.
+
+For pure archival a zstd tar of the file store per period is simpler
+and keeps the `sha256sum` check.
