@@ -80,6 +80,7 @@ so a checkout and this site carry the same record.
 | [0036](/decisions/0036-post-quantum-signatures-are-hybrid/) | Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG, with a store policy, a witness anchor, and the content hash as a parameter of the format version. |
 | [0038](/decisions/0038-one-shared-server-holds-no-keys/) | One shared server per organisation holds no signing keys; agents sign their own events, prove their actor per connection, and receive work through roles. |
 | [0037](/decisions/0037-a-batch-review-is-a-scoped-delegation/) | One signature approves a reviewed batch, through a delegation scoped to the shown heads and the verdict fact, valid for at most five minutes. |
+| [0039](/decisions/0039-the-role-register-is-a-signed-log/) | Proposed: the role register is a log of edits signed by authorities its genesis names by key, and a role a definition reserves for humans refuses agent actors. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
 | [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |
