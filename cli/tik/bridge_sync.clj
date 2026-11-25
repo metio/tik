@@ -437,13 +437,20 @@
 ;; ---------------------------------------------------------------- odoo
 
 (defn- mirrored-record-ids
-  "Ids of the records of `model` from the Odoo at `url` this store
-  already holds."
-  [s url model]
-  (let [[pre post] (str/split (od/record-url url model "ID") #"ID")]
-    (mirrored-ids s [:odoo :url]
-                  (re-pattern (str (java.util.regex.Pattern/quote pre) "(\\d+)"
-                                   (java.util.regex.Pattern/quote post))))))
+  "Ids of the records of `model` from the Odoo at `host` this store
+  already holds: every ticket whose [:odoo :id] fact names a record whose
+  ticket id is that ticket's own (see `od/mirrored-id`). The ticket id is
+  the identity `sync-record!` writes under, so a record is found exactly
+  when its ticket exists, whatever text the server URL carries, and a
+  ticket of another host or model never stands in for one."
+  [s host model]
+  (set (for [id (store/ticket-ids s)
+             e (store/events s id)
+             :when (and (= :fact/assert (:event/type e))
+                        (= [:odoo :id] (get-in e [:event/body :fact/path])))
+             :let [n (od/mirrored-id host model id (get-in e [:event/body :fact/value]))]
+             :when n]
+         n)))
 
 (defn sync-record!
   "Mirror one record (with its chatter) into the store; returns an outcome
@@ -465,7 +472,7 @@
   [s x cfg {:keys [profile] :as ctx} opts]
   (let [{:keys [tally bump report]} (tallying)
         listed (od/list-records x profile (or (:domain cfg) (od/default-domain profile (:uid ctx))))
-        known (remove (set (map :id listed)) (mirrored-record-ids s (:url cfg) (:model profile)))
+        known (remove (set (map :id listed)) (mirrored-record-ids s (:host ctx) (:model profile)))
         records (into listed (when (seq known) (od/records-by-id x profile (sort known))))
         ctx (assoc ctx :labels (od/fetch-labels x profile))]
     (doseq [record (sort-by :id records)]
