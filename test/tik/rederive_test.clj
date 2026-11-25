@@ -26,17 +26,18 @@
 
 (def ^:private repo (System/getProperty "user.dir"))
 
-(defn- signed-store!
-  "A store with one signed ticket on `process`, and the facts in `sets`."
-  [process & sets]
+(defn- signed-store-on!
+  "A store with one signed ticket on `process`, whose definition is the
+  text `definition`, and the facts in `sets`."
+  [process definition sets]
   (let [root (h/temp-dir! "tik-rederive")
         key (io/file root "id_test")
         _ (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "k" "-f" (str key))
         env {"TIK_KEY" (str key)}
         run (fn [& args] (apply h/tik! {:root root :actor "seb" :env env} args))
-        _ (io/copy (io/file repo "processes" (str (name process) ".edn"))
-                   (io/file (doto (io/file root "processes") (.mkdirs))
-                            (str (name process) ".edn")))
+        _ (spit (io/file (doto (io/file root "processes") (.mkdirs))
+                         (str (name process) ".edn"))
+                definition)
         _ (run "actor" "add" "seb" (str key ".pub"))
         ;; the definitions ship their roles empty — who is in one lives in
         ;; the store's register, so a store that means to reach a signature
@@ -47,6 +48,14 @@
         id (str/trim (:out (run "new" (name process) "--title" "bundled")))]
     (when (seq sets) (apply run "set" id sets))
     {:root root :id id :run run :key key :env env}))
+
+(defn- signed-store!
+  "A store with one signed ticket on the shipped definition of
+  `process`, and the facts in `sets`."
+  [process & sets]
+  (signed-store-on! process
+                    (slurp (io/file repo "processes" (str (name process) ".edn")))
+                    sets))
 
 (defn- as-actor
   "A runner for a second actor in the same store, signing with the same
@@ -143,8 +152,8 @@
   ;; re-derives under different membership than the store it came from —
   ;; exactly the drift evidence exists to rule out.
   (let [store (signed-store! :support-request)
-        ;; the definition declares seb as the only triager, so a fact from
-        ;; ci gates :triaged on the REGISTER and nothing else
+        ;; the definition declares no triager, so a fact from ci gates
+        ;; :triaged on the REGISTER and nothing else
         ci (as-actor store "ci")
         _ (ci "set" (:id store) "category=:billing" "severity=:low")
         _ ((:run store) "roles" "add" "triager" "ci")
@@ -158,6 +167,140 @@
       (.delete (io/file dest "roles.edn"))
       (is (not (contains? (:reached (bundle/read-bundle dest)) ":triaged"))
           "so shipping it is what keeps the two derivations equal"))))
+
+;; ------------------------------------------- a register that is present
+
+(defn- departed-triager-store!
+  "A store whose support-request definition declares ci a triager and
+  whose register leaves ci out of that role, with ci's category and
+  severity on the ticket. The intact register denies :triaged; the
+  definition's members alone would grant it."
+  []
+  (let [shipped (slurp (io/file repo "processes" "support-request.edn"))
+        definition (str/replace shipped "{:triager {:members []}"
+                                "{:triager {:members [\"ci\"]}")
+        _ (assert (not= shipped definition) "the definition names ci a triager")
+        store (signed-store-on! :support-request definition [])
+        ci (as-actor store "ci")]
+    (ci "set" (:id store) "category=:billing" "severity=:low")
+    store))
+
+(def ^:private broken-registers
+  "Ways a bundle's roles.edn can be present without being a register."
+  {"EDN that does not parse" #(spit % "{:triager {:members [\"ci\"]")
+   "EDN that is not a register" #(spit % "{:triager [\"ci\"]}")
+   "an empty file" #(spit % "")
+   "a directory" #(do (io/delete-file %) (.mkdirs ^File %))})
+
+(defn- unpacked!
+  "The bundle `tgz` unpacked into a fresh directory, with `alter!`
+  applied to its roles.edn."
+  ^File [tgz alter!]
+  (let [dest (h/temp-dir! "tik-rederive-register")]
+    (bundle/untar-gz! tgz dest)
+    (alter! (io/file dest "roles.edn"))
+    dest))
+
+(defn- repacked
+  "`dir` as a gzipped tar, the way `tik bundle` writes one."
+  ^File [^File dir]
+  (let [f (h/temp-file! "tik-repacked" ".tgz")]
+    (sh/sh "tar" "czf" (str f) "-C" (str dir) ".")
+    f))
+
+(defn- refusal
+  "The message `read-bundle` refuses `src` with, or nil when it reads it."
+  [src]
+  (try (bundle/read-bundle src) nil
+       (catch clojure.lang.ExceptionInfo e
+         (when (= :bundle/malformed (:reason (ex-data e))) (ex-message e)))))
+
+(deftest a_present_register_that_does_not_read_is_refused
+  (let [tgz (bundle! (departed-triager-store!))]
+    (doseq [[how alter!] broken-registers]
+      (testing how
+        (let [msg (refusal (unpacked! tgz alter!))]
+          (is (some? msg) "the bundle is refused rather than re-derived")
+          (is (str/includes? (str msg) "roles.edn") msg))))
+    (testing "a register that reads is used"
+      (is (nil? (refusal (unpacked! tgz identity)))))
+    (testing "an absent register leaves the definition's members standing"
+      (let [r (bundle/read-bundle (unpacked! tgz io/delete-file))]
+        (is (:verified? r))
+        (is (contains? (:reached r) ":triaged")
+            "absent means the store keeps no register (ADR 0025)")))))
+
+(deftest a_corrupted_register_cannot_grant_what_the_intact_one_denies
+  (let [tgz (bundle! (departed-triager-store!))
+        intact (bundle/read-bundle tgz)]
+    (is (:verified? intact) (pr-str (remove :ok? (:checks intact))))
+    (is (not (contains? (:reached intact) ":triaged"))
+        "the register leaves ci out of :triager, so ci's facts grant nothing")
+    (doseq [[how alter!] broken-registers
+            :let [dir (unpacked! tgz alter!)
+                  run (fn [src] (tik.cli/run-argv ["rederive" (str src)
+                                                   "--expect-stage" ":triaged"]))]]
+      (testing (str how ", through the library")
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"roles\.edn"
+                              (bundle/read-bundle dir))))
+      (testing (str how ", through the CLI over a directory")
+        (let [r (run dir)]
+          (is (= 1 (:exit r)))
+          (is (not (str/includes? (:out r) "stage :triaged is reached")) (:out r))
+          (is (str/includes? (:err r) "roles.edn") (:err r))))
+      (when-not (= "a directory" how)
+        (testing (str how ", through the CLI over an archive")
+          (let [r (run (repacked dir))]
+            (is (= 1 (:exit r)))
+            (is (str/includes? (:err r) "roles.edn") (:err r))))))))
+
+(deftest the_cli_answers_each_register_state
+  (let [tgz (bundle! (departed-triager-store!))
+        run (fn [src & args] (tik.cli/run-argv (into ["rederive" (str src)] args)))]
+    (testing "a register that reads: verified, and the stage it denies is unmet"
+      (is (zero? (:exit (run tgz))))
+      (is (= 1 (:exit (run tgz "--expect-stage" ":triaged")))))
+    (testing "an absent register: verified under the definition's members"
+      (let [dir (unpacked! tgz io/delete-file)]
+        (is (zero? (:exit (run dir "--expect-stage" ":triaged"))))))
+    (testing "malformed EDN"
+      (let [r (run (repacked (unpacked! tgz (get broken-registers "EDN that does not parse"))))]
+        (is (= 1 (:exit r)))
+        (is (str/includes? (:err r) "not a readable evidence bundle"))
+        (is (str/includes? (:err r) "roles.edn does not parse"))))
+    (testing "EDN that is not a register"
+      (let [r (run (repacked (unpacked! tgz (get broken-registers "EDN that is not a register"))))]
+        (is (= 1 (:exit r)))
+        (is (str/includes? (:err r) "roles.edn is not a role register"))))))
+
+(deftest the_service_refuses_a_bundle_whose_register_does_not_read
+  (let [tgz (bundle! (departed-triager-store!))
+        post (fn [^File f] (rederive/handler {:request-method :post :uri "/rederive"
+                                              :body (io/input-stream f)}))
+        fetched (fn [uri ^File f]
+                  ;; the handler deletes what it fetched, so it gets a copy
+                  (let [copy (h/temp-file! "tik-fetched" ".tgz")]
+                    (io/copy f copy)
+                    (with-redefs [rederive/fetch! (fn [_] copy)]
+                      (rederive/handler {:request-method :get :uri uri
+                                         :query-string "bundle=https%3A%2F%2Fexample.org%2Fb.tgz"}))))]
+    (testing "a register that reads"
+      (let [r (post tgz)]
+        (is (= 200 (:status r)))
+        (is (not (contains? (:reached (canonical/parse (:body r))) ":triaged"))))
+      (is (= 200 (:status (fetched "/badge.svg" tgz))))
+      (is (= 200 (:status (fetched "/derivation" tgz)))))
+    (testing "an absent register"
+      (let [r (post (repacked (unpacked! tgz io/delete-file)))]
+        (is (= 200 (:status r)))
+        (is (contains? (:reached (canonical/parse (:body r))) ":triaged"))))
+    (doseq [how ["EDN that does not parse" "EDN that is not a register" "an empty file"]
+            :let [broken (repacked (unpacked! tgz (get broken-registers how)))]]
+      (testing how
+        (doseq [r [(post broken) (fetched "/badge.svg" broken)
+                   (fetched "/derivation" broken)]]
+          (is (= 400 (:status r)))
+          (is (str/includes? (str (:body r)) "roles.edn") (str (:body r))))))))
 
 ;; ------------------------------------------------ what a consumer asserts
 

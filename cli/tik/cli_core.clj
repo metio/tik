@@ -273,14 +273,19 @@
 
   A malformed register is refused rather than ignored: it decides who
   may sign, so silently falling back to the pinned members would widen
-  authority exactly where a typo is most expensive."
+  authority exactly where a typo is most expensive. A file that does not
+  parse is refused the same way as one that parses to the wrong shape."
   []
-  (let [f (roles-file)]
+  (let [f (roles-file)
+        refuse #(die (str "malformed role register " f "\n"
+                          (when % (str "  " % "\n"))
+                          "  expected {:role {:members [\"actor\" ...]} ...}"))]
     (when (.exists f)
-      (let [register (read-edn-file f)]
+      (let [register (try (read-edn-file f)
+                          (catch clojure.lang.ExceptionInfo e
+                            (refuse (ex-message e))))]
         (when-not (process/valid-role-bindings? register)
-          (die (str "malformed role register " f "\n"
-                    "  expected {:role {:members [\"actor\" ...]} ...}")))
+          (refuse nil))
         register))))
 
 (defn process-name
