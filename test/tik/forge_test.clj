@@ -82,6 +82,12 @@
     (is (re-find #"\"service\":\"common\"" body))
     (is (re-find #"\"args\":\[\"db\",\"u\",\"p\"\]" body))))
 
+(deftest a-json-rpc-call-without-arguments-sends-an-empty-args-list
+  (let [[result [body]] (with-rpc-server 200 "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+                          #(% "common" "version"))]
+    (is (= {} result))
+    (is (re-find #"\"args\":\[\]" body) "Odoo spreads args into the method, so null would fail")))
+
 (deftest a-json-rpc-error-is-an-ex-info-with-its-message
   (let [[result] (with-rpc-server 200 (str "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":"
                                            "{\"message\":\"Odoo Server Error\","

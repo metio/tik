@@ -147,6 +147,9 @@
                                                 mirroring status, assignee and notes
   tik bridge odoo [--config odoo.edn]           Odoo project tasks -> odoo-task tickets
                                                 mirroring stage, assignee and messages
+  tik bridge odoo describe --model M            a model's fields as Odoo's read-only
+                  [--config odoo.edn]           fields_get reports them (type, selection,
+                  [--edn | --format json]       tracked), and how its profile fits
   tik bridge oidc [--registry ID] [--actor A]   identity rung 2: device-flow login ->
                   [--user U]                    a signed key-binding attestation on the
                   [--password-command C |       registry ticket; verification never
@@ -397,7 +400,7 @@
     "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"
     "key"
-    "links" "list" "long" "mcp-token-file" "name" "no-repo" "out" "params" "parent" "parent-title"
+    "links" "list" "long" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "population" "port" "pricing" "public-key" "published-only"
     "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"

@@ -5,7 +5,8 @@ tags: [odoo, bridge, sync]
 ---
 
 ```sh
-tik bridge odoo --config odoo.edn   # poll once
+tik bridge odoo --config odoo.edn                               # poll once
+tik bridge odoo describe --model project.task --config odoo.edn # read a model's fields
 ```
 
 `tik bridge odoo` mirrors Odoo project tasks into the store as tickets
@@ -73,6 +74,45 @@ Every profile also asserts `odoo.id` and `odoo.url`, whose URL names the
 model. The ticket id is a name-based UUID over the Odoo host, the model and
 the record id, so records of two models with the same id become two
 tickets.
+
+## Describing a model
+
+```sh
+tik bridge odoo describe --model helpdesk.ticket --config odoo.edn
+tik bridge odoo describe --model project.task --edn
+tik bridge odoo describe --model project.task --format json
+```
+
+`tik bridge odoo describe` asks the server how it defines one model's
+fields and prints, for each field, its type, label, whether it is required
+or read-only, the model a relation points at, the values of a selection,
+and whether Odoo tracks it. Only tracked fields can be mirrored with their
+history, so this is the list to read before writing a profile for a new
+model. The output also says whether the model inherits `mail.thread`.
+
+The command writes nothing to Odoo or to the store. It logs in and calls
+`version`, `login` and `fields_get`, and refuses every other call before it
+leaves tik, so a write method cannot be reached from it. It reads `:url`,
+`:db`, `:user` and `:password` from the same `odoo.edn` as the bridge;
+`:password` has to be a secret spec such as `{:env "ODOO_PASSWORD"}` or
+`{:command "pasejo secret show …"}`, and a literal password in the file is
+refused. Neither the output nor an error message carries the password.
+
+Odoo 12 reports the tracking flag as `track_visibility`, later versions as
+`tracking`; the command asks for both and names the one the server
+answered with. When the server reports neither, every field's tracked flag
+reads `unknown`. Whether `message_post` accepts a `message_id` argument
+also reads `unknown`: `fields_get` describes fields, and Odoo offers no
+read-only call that reports a method's arguments.
+
+When the model has a profile, the output ends with how the profile fits
+the server: the fields it reads that the server lacks, fields whose type
+differs from the one the profile declares, actor fields that do not point
+at `res.users`, mirrored fields the server does not track, and, for a
+state read from a selection field, the selection values no configuration
+list names, which fall to the profile's default state. A stage field such
+as `stage_id` is a relation, so its stage names are records that
+`fields_get` cannot list.
 
 ## History
 
