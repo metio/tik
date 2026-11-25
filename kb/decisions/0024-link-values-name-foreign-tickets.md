@@ -37,7 +37,8 @@ the work yet" — the same shape, two very different answers.
 
 ## Context
 
-The cross-store gate design (docs/IDEAS.md) named this as the decision
+The cross-store gate design (kajero entry
+a9f26afe-1009-40d5-a74c-75fbc958f2ff) named this as the decision
 everything else waits behind, and warned that the choice is inherited by
 every later integration — bundles, the registry, the external tracker
 adapters all want to name a foreign ticket. It offered two shapes: a

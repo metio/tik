@@ -21,8 +21,9 @@ who proved it, and can anyone reproduce the conclusion?"
 
 The elevator version lives in [docs/PITCH.md](docs/PITCH.md).
 Full design: [docs/PLAN.md](docs/PLAN.md).
-Decisions and concepts live in the OKF bundle under [kb/](kb/index.md);
-unjudged ideas under [docs/IDEAS.md](docs/IDEAS.md).
+Decisions and concepts live in the OKF bundle under [kb/](kb/index.md).
+Unjudged ideas live in metio's kajero notebook as `kind=idea` entries
+labelled `component=tik`, not in this repository.
 
 ## Claude Code
 
@@ -144,7 +145,6 @@ corpus/             conformance corpus: event files + expected derivations —
 spec/               TLA+ models (TLC-checked via `bb tla`)
 kb/                 OKF knowledge bundle: decisions (ADRs), concepts
 docs/PLAN.md        the full design; §19 is the ledger of settled verdicts
-docs/IDEAS.md       unjudged ideas, no commitments
 ```
 
 ## The one rule

@@ -1,8 +1,8 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.reach-prototype-test
-  "PROTOTYPE (IDEAS.md: 'Formal verification of the user's process
-  definition'). A process definition is a small state machine over a
+  "PROTOTYPE of formal verification of a user's process definition.
+  A process definition is a small state machine over a
   CLOSED guard basis, so 'can this stage ever fire?' is a decidable
   satisfiability question — answered here in pure Clojure, no external
   solver, over a definition alone (authoring-time analysis, ADR 0009;

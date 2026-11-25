@@ -466,8 +466,8 @@
 (defn cmd-bridge-oid4vci
   "bridge oid4vci: ingest a Verifiable Credential (an OID4VCI issuance
   output — JWT-VC or SD-JWT-VC) as a bridge-signed ATTESTATION on the
-  registry ticket. A VC is a signed attestation with an external issuer
-  (docs/IDEAS.md): the issuer signature is verified at INGEST against the
+  registry ticket. A VC is a signed attestation with an external issuer:
+  the issuer signature is verified at INGEST against the
   issuer's JWKS (fetched over TLS from `<issuer>/.well-known/jwks.json`,
   or `--jwks-url`, or a local `--jwks <file>`), then the bridge signs its
   OWN attestation carrying the credential (raw included for re-audit).
