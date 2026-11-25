@@ -172,6 +172,15 @@
 (defn ticket-id [host model record-id]
   (forge/name-uuid (str "tik/odoo " host " " model " " record-id)))
 
+(defn mirrored-id
+  "The record id `value`, a ticket's [:odoo :id] fact, when the ticket `id`
+  is that record's ticket for `host` and `model`; nil otherwise. The ticket
+  id is the record's identity, so a fact on any other ticket, or one naming
+  another record, never claims the record."
+  [host model id value]
+  (when (and (integer? value) (= id (ticket-id host model value)))
+    (long value)))
+
 (defn record-fields
   "The fields `search_read` returns for a record of `profile`."
   [{:keys [created fields]}]

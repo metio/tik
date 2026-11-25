@@ -48,7 +48,11 @@ closed stages explicitly.
 
 Each sweep syncs every task the domain selects, plus every task the store
 already mirrors, so a task that is reassigned or archived keeps its ticket
-current. `:users` renders an Odoo user as a tik actor in `odoo.assignee`;
+current. A task counts as mirrored when the store holds its own ticket, the
+one whose id the host of `:url`, the model and `odoo.id` name; `odoo.url`
+plays no part, so changing the scheme, port or path of `:url` on the same
+host keeps every task, and a ticket of another host or model is never
+taken for one. `:users` renders an Odoo user as a tik actor in `odoo.assignee`;
 other users appear under the name Odoo shows.
 
 ## Profiles
