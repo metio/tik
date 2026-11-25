@@ -3,8 +3,8 @@
 (ns tik.bridge-sync
   "The polling bridges that mirror another system into the store:
   `bridge github` and `bridge gitlab` (CI failure streaks, tik.forge),
-  `bridge redmine` (issues, tik.redmine) and `bridge odoo` (project tasks,
-  tik.odoo). Each mints events that are a
+  `bridge redmine` (issues, tik.redmine) and `bridge odoo` (Odoo records
+  through a per-model profile, tik.odoo). Each mints events that are a
   pure function of the remote history and appends the ones the store
   lacks, so a re-poll writes nothing and replicas converge by union
   (ADR 0021). The remote enters as an injected `get-json`, which keeps the
@@ -436,20 +436,21 @@
 
 ;; ---------------------------------------------------------------- odoo
 
-(defn- mirrored-task-ids
-  "Ids of the tasks from the Odoo at `url` this store already holds."
-  [s url]
-  (let [[pre post] (str/split (od/task-url url "ID") #"ID")]
+(defn- mirrored-record-ids
+  "Ids of the records of `model` from the Odoo at `url` this store
+  already holds."
+  [s url model]
+  (let [[pre post] (str/split (od/record-url url model "ID") #"ID")]
     (mirrored-ids s [:odoo :url]
                   (re-pattern (str (java.util.regex.Pattern/quote pre) "(\\d+)"
                                    (java.util.regex.Pattern/quote post))))))
 
-(defn sync-task!
-  "Mirror one task (with its chatter) into the store; returns an outcome
+(defn sync-record!
+  "Mirror one record (with its chatter) into the store; returns an outcome
   map or nil when nothing was new."
-  [s ctx task messages opts]
-  (let [ctx (pinned-ctx s ctx (od/ticket-id (:host ctx) (:id task)))
-        {:keys [id events blobs]} (od/task-events ctx task messages)
+  [s ctx record messages opts]
+  (let [ctx (pinned-ctx s ctx (od/ticket-id (:host ctx) (get-in ctx [:profile :model]) (:id record)))
+        {:keys [id events blobs]} (od/record-events ctx record messages)
         created? (nil? (create-id s id))]
     (doseq [[h t] blobs] (forge/write-blob! (root) id h t))
     (let [n (append-fresh! s events opts)]
@@ -457,35 +458,47 @@
         {:outcome (if created? :ticket :update) :id id :events n}))))
 
 (defn odoo-poll!
-  "One sweep: every task the :domain selects (by default the tasks
-  assigned to the bridge's Odoo user) plus every task already mirrored,
-  each fetched with its chatter and synced in isolation."
-  [s x cfg ctx opts]
+  "One sweep: every record the :domain selects (by default the profile's,
+  for project.task the tasks assigned to the bridge's Odoo user) plus
+  every record already mirrored, each fetched with its chatter and synced
+  in isolation."
+  [s x cfg {:keys [profile] :as ctx} opts]
   (let [{:keys [tally bump report]} (tallying)
-        listed (od/list-tasks x (or (:domain cfg) [["user_id" "=" (:uid ctx)]]))
-        known (remove (set (map :id listed)) (mirrored-task-ids s (:url cfg)))
-        tasks (into listed (when (seq known) (od/tasks-by-id x (sort known))))
-        ctx (assoc ctx :labels (od/fetch-labels x))]
-    (doseq [task (sort-by :id tasks)]
+        listed (od/list-records x profile (or (:domain cfg) (od/default-domain profile (:uid ctx))))
+        known (remove (set (map :id listed)) (mirrored-record-ids s (:url cfg) (:model profile)))
+        records (into listed (when (seq known) (od/records-by-id x profile (sort known))))
+        ctx (assoc ctx :labels (od/fetch-labels x profile))]
+    (doseq [record (sort-by :id records)]
       (try
-        (when-let [r (sync-task! s ctx task (od/task-messages x (:id task)) opts)]
+        (when-let [r (sync-record! s ctx record (od/record-messages x profile (:id record)) opts)]
           (bump (:outcome r))
-          (println (str (outcome-line r) " #" (:id task))))
+          (println (str (outcome-line r) " #" (:id record))))
         (catch Exception e
-          (report (str "#" (:id task)) e))))
+          (report (str "#" (:id record)) e))))
     @tally))
+
+(defn odoo-config
+  "The profile and stage sets an odoo.edn `cfg` selects, or throws an
+  ex-info naming what is missing or wrong."
+  [cfg]
+  (doseq [k [:url :db :user]]
+    (when-not (get cfg k)
+      (throw (ex-info (str "the odoo config needs " k) {:reason :odoo/bad-config :key k}))))
+  (let [profile (od/resolve-profile cfg)]
+    {:profile profile :stage-sets (od/stage-sets profile cfg)}))
 
 (defn cmd-bridge-odoo
   "bridge odoo [--config odoo.edn]
-  Odoo project tasks become odoo-task tickets mirroring the task's title,
+  Odoo records become tickets through the profile the config names, by
+  default project tasks as odoo-task tickets mirroring the task's title,
   stage, assignee and project, with its conversation as artifacts. Polls
   once and exits."
   [opts]
   (let [cfg (read-config opts "odoo.edn"
                          (str "need {:url \"https://odoo.example\" :db \"…\" :user \"…\""
                               " :password <secret spec> :closed-stages [\"Done\" …]}"))
-        _ (doseq [k [:url :db :user :closed-stages]]
-            (when-not (get cfg k) (die (str "the odoo config needs " k))))
+        {:keys [profile stage-sets]} (try (odoo-config cfg)
+                                          (catch clojure.lang.ExceptionInfo e (die (ex-message e))))
         s (the-store)
         call (forge/json-rpc-caller "Odoo API" (str (str/replace (:url cfg) #"/+$" "") "/jsonrpc"))
         user (secret/resolve1 "user" (:user cfg))
@@ -494,13 +507,14 @@
                 (die (str "Odoo refused the login of " user " to database " (:db cfg))))
         x (od/executor call (:db cfg) uid password)
         names (od/user-names x (keys (:users cfg)))
-        ctx (assoc (bridge-ctx {:process (or (:process cfg) :odoo-task)
+        ctx (assoc (bridge-ctx {:process (or (:process cfg) (:process profile))
                                 :actor (or (:actor cfg) "odoo")}
                                opts)
+                   :profile profile
                    :host (od/host-of (:url cfg))
                    :url (:url cfg)
                    :uid uid
-                   :closed (set (:closed-stages cfg))
+                   :stage-sets stage-sets
                    :users (into {} (for [[id actor] (:users cfg)
                                          :let [n (get names id)]
                                          :when n]
