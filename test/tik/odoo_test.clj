@@ -26,7 +26,7 @@
   {:name {:string "Title"} :stage_id {:string "Stage"} :user_id {:string "Assigned to"}
    :project_id {:string "Project"} :manager_id {:string "Project Manager"}})
 
-(def ^:private labels (od/label-table [fields-de fields-en]))
+(def ^:private labels (od/label-table od/project-task [fields-de fields-en]))
 
 (defn- tv [id label old new]
   {:id id :changed_field label :old_value old :new_value new :field_type "many2one"})
@@ -59,38 +59,41 @@
 
 (def ^:private closed #{"Done" "Dismissed"})
 
+(def ^:private stage-sets {:closed-stages closed})
+
 (defn- ctx []
   {:host "odoo.example" :url "https://odoo.example" :actor "odoo"
    :process :odoo-task :version 1 :process-hash "sha256-x" :clamp identity
-   :labels labels :users {"Sebastian Hoß" "seb"} :closed closed})
+   :labels labels :users {"Sebastian Hoß" "seb"} :stage-sets stage-sets
+   :profile od/project-task})
 
 (deftest a_label_two_fields_share_is_left_out
   (is (= {"Titel" "name" "Title" "name" "Stufe" "stage_id" "Stage" "stage_id"
           "Zugewiesen an" "user_id" "Assigned to" "user_id" "Projekt" "project_id"
           "Project" "project_id"}
          labels))
-  (is (not (contains? (od/label-table [fields-de {:x_area {:string "Projekt"}}]) "Projekt"))))
+  (is (not (contains? (od/label-table od/project-task [fields-de {:x_area {:string "Projekt"}}]) "Projekt"))))
 
 (deftest the_opening_values_are_the_current_ones_with_the_chatter_undone
   (is (= {"name" nil "stage_id" nil "user_id" nil "project_id" nil}
-         (od/initial-values labels task messages))
+         (od/initial-values od/project-task labels task messages))
       "the creation message tracked every field from nothing")
   (is (= {"name" "login aktualisieren" "stage_id" "Backlog" "user_id" "Sebastian Hoß"
           "project_id" "Operations"}
-         (od/initial-values labels task (rest messages)))
+         (od/initial-values od/project-task labels task (rest messages)))
       "without it, the opening values are the values before the first change"))
 
 (deftest only_the_configured_stages_are_closed
-  (is (= :closed (od/state-of closed "Done")))
-  (is (= :open (od/state-of closed "Waiting / Blocked")))
-  (is (= :open (od/state-of closed "Backlog")) "a folded stage is not a closed one")
-  (is (nil? (od/state-of closed nil))))
+  (is (= :closed (od/state-of (:state od/project-task) stage-sets "Done")))
+  (is (= :open (od/state-of (:state od/project-task) stage-sets "Waiting / Blocked")))
+  (is (= :open (od/state-of (:state od/project-task) stage-sets "Backlog")) "a folded stage is not a closed one")
+  (is (nil? (od/state-of (:state od/project-task) stage-sets nil))))
 
 (deftest task_events_are_a_pure_function_of_the_task
-  (let [a (od/task-events (ctx) task messages)
-        b (od/task-events (ctx) task (reverse messages))]
+  (let [a (od/record-events (ctx) task messages)
+        b (od/record-events (ctx) task (reverse messages))]
     (is (= (map :event/id (:events a)) (map :event/id (:events b))))
-    (is (= (od/ticket-id "odoo.example" 1249) (:id a)))
+    (is (= (od/ticket-id "odoo.example" "project.task" 1249) (:id a)))
     (is (= "#1249 login aktualisieren" (get-in (first (:events a)) [:event/body :ticket/title])))))
 
 (deftest odoo_datetimes_are_utc
@@ -105,7 +108,7 @@
   mapping mints for it. `odoo_golden.edn` pins these bytes, so a change to
   the mapping that moves a single event fails here, whatever the reason."
   []
-  (let [mint (fn [c tk ms] (canonical/emit (od/task-events c tk ms)))
+  (let [mint (fn [c tk ms] (canonical/emit (od/record-events c tk ms)))
         reopened (assoc task :stage_id [12 "In Progress"])
         handed-on (assoc task :user_id [46 "Markus Otto"])]
     (into (sorted-map)
@@ -120,7 +123,7 @@
                             (conj messages (msg 41070 "2024-02-06 08:00:00"
                                                 :tracking [(tv 11 "Zugewiesen an" "Sebastian Hoß" "Markus Otto")])))
            :no-chatter (mint (ctx) task [])
-           :english-labels-only (mint (assoc (ctx) :labels (od/label-table [fields-en])) task messages)
+           :english-labels-only (mint (assoc (ctx) :labels (od/label-table od/project-task [fields-en])) task messages)
            :unset-assignee (mint (ctx) (assoc task :user_id false)
                                  (conj messages (msg 41080 "2024-02-07 08:00:00"
                                                      :tracking [(tv 12 "Zugewiesen an" "Sebastian Hoß" "")])))
@@ -139,8 +142,8 @@
       (is (= (get pinned k) bytes) (str "scenario " k)))))
 
 (deftest ticket_ids_are_the_pinned_name_uuids_of_host_model_and_id
-  (is (= #uuid "61c94174-c871-85d4-b375-c205184be9d5" (od/ticket-id "odoo.example" 1249)))
-  (is (= #uuid "ebbd6a9f-2ca5-8e43-b18b-7d96efa8bfcc" (od/ticket-id "erp.example.org" 7))))
+  (is (= #uuid "61c94174-c871-85d4-b375-c205184be9d5" (od/ticket-id "odoo.example" "project.task" 1249)))
+  (is (= #uuid "ebbd6a9f-2ca5-8e43-b18b-7d96efa8bfcc" (od/ticket-id "erp.example.org" "project.task" 7))))
 
 ;; ---------------------------------------------------------------- sync
 
@@ -182,7 +185,8 @@
       (with-redefs [core/now (constantly t)]
         (let [c (assoc (sync/bridge-ctx {:process :odoo-task :actor "odoo"} {})
                        :host "odoo.example" :url "https://odoo.example" :uid 45
-                       :closed closed :users {"Sebastian Hoß" "seb"})]
+                       :profile od/project-task :stage-sets stage-sets
+                       :users {"Sebastian Hoß" "seb"})]
           (binding [*out* (java.io.StringWriter.)]
             (sync/odoo-poll! store (executor assigned tasks chatter)
                              {:url "https://odoo.example"} c {})))))))
@@ -200,7 +204,7 @@
 
 (deftest a_task_syncs_with_its_history_and_its_stage_follows_the_stage
   (let [st (store-with-process!)
-        id (od/ticket-id "odoo.example" 1249)]
+        id (od/ticket-id "odoo.example" "project.task" 1249)]
     (is (= {:ticket 1} (poll! st [1249] {1249 task} {1249 messages})))
     (let [{:keys [stages fact artifacts]} (view st id)]
       (is (= #{:closed} stages))
@@ -223,7 +227,7 @@
 
 (deftest a_waiting_task_is_open
   (let [st (store-with-process!)
-        id (od/ticket-id "odoo.example" 1249)
+        id (od/ticket-id "odoo.example" "project.task" 1249)
         waiting (assoc task :stage_id [47 "Waiting / Blocked"] :name "login aktualisieren")]
     (poll! st [1249] {1249 waiting} {1249 (vec (butlast messages))})
     (is (= #{:open} (:stages (view st id))))
@@ -239,7 +243,7 @@
 
 (deftest a_task_moved_back_is_open_again_and_only_the_new_change_is_added
   (let [st (store-with-process!)
-        id (od/ticket-id "odoo.example" 1249)
+        id (od/ticket-id "odoo.example" "project.task" 1249)
         reopened (assoc task :stage_id [12 "In Progress"])
         more (conj messages (msg 41060 "2024-02-05 08:00:00"
                                  :tracking [(tv 10 "Stufe" "Done" "In Progress")]))]
@@ -251,7 +255,7 @@
 
 (deftest a_task_that_leaves_the_query_keeps_being_mirrored
   (let [st (store-with-process!)
-        id (od/ticket-id "odoo.example" 1249)
+        id (od/ticket-id "odoo.example" "project.task" 1249)
         handed-on (assoc task :user_id [46 "Markus Otto"])
         more (conj messages (msg 41070 "2024-02-06 08:00:00"
                                  :tracking [(tv 11 "Zugewiesen an" "Sebastian Hoß" "Markus Otto")]))]

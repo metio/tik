@@ -23,7 +23,8 @@ move the mirrored stages.
 ## Configuration
 
 ```clojure
-{:url           "https://odoo.example"
+{:profile       "project.task"             ; optional; the Odoo model to mirror
+ :url           "https://odoo.example"
  :db            "odoo"                     ; the database name
  :user          "you@example.com"          ; a string or a secret spec
  :password      {:env "ODOO_PASSWORD"}     ; a secret spec
@@ -49,6 +50,25 @@ Each sweep syncs every task the domain selects, plus every task the store
 already mirrors, so a task that is reassigned or archived keeps its ticket
 current. `:users` renders an Odoo user as a tik actor in `odoo.assignee`;
 other users appear under the name Odoo shows.
+
+## Profiles
+
+A profile describes how one Odoo model becomes tickets: which tracked
+fields become which facts, which field derives the ticket's state and from
+which configuration lists, how the ticket title is formed, which chatter
+messages become artifacts, the default domain and the process. `:profile`
+names the profile by its model, as a string or a keyword, and defaults to
+`"project.task"`. A configuration that names a model without a profile is
+refused when it loads, with the list of profiles there are.
+
+| Profile | Facts | State | Title | Configuration |
+|---|---|---|---|---|
+| `project.task` | `odoo.title`, `odoo.stage`, `odoo.assignee`, `odoo.project` | `odoo.state`: `:closed` for a stage in `:closed-stages`, else `:open` | `#<id> <title the task was created with>` | `:closed-stages` |
+
+Every profile also asserts `odoo.id` and `odoo.url`, whose URL names the
+model. The ticket id is a name-based UUID over the Odoo host, the model and
+the record id, so records of two models with the same id become two
+tickets.
 
 ## History
 
