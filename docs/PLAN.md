@@ -46,7 +46,7 @@ a general evidence-derivation engine — immutable claims in, explainable
 decisions out — and the ticket is its first projection, chosen because
 H1 (§16) makes it falsifiable. The same kernel projects onto compliance
 records, provenance chains, and agent accountability trails (§19,
-IDEAS); those stay projections-in-waiting until the first one has
+and the unjudged ideas in kajero); those stay projections-in-waiting until the first one has
 earned its keep. Stated once, precisely: **the kernel is intentionally
 more general than its first application, and the project is
 intentionally not marketed as a platform until that application proves
@@ -65,9 +65,9 @@ one below:
 - **Automation** — effect planners and agents that observe derivation
   and emit new signed claims, never mutations (§12 Effects, §13).
 - **Commercialization** — witnessing, anchoring, evidence bundles,
-  signed process libraries (§10, IDEAS).
+  signed process libraries (§10, kajero ideas).
 - **Research** — candidate domains that may, or may not, validate the
-  kernel's generality (IDEAS: kernel validation hypotheses).
+  kernel's generality (kajero ideas: kernel validation hypotheses).
 
 Most review cycles end by changing the edges, not the center — that is
 the layering working: once core semantics are small and explicit, new
@@ -963,7 +963,7 @@ Classes, with dispositions:
   processes and must not try; the counterweight is authoring tooling —
   complexity lints and analyses, deferred in §19 — plus the checkbox
   degeneration this enables in explain (a ten-approval stage renders
-  ten missing reasons; ranking is a lens concern, IDEAS).
+  ten missing reasons; ranking is a lens concern, kajero ideas).
 - **Stale evidence.** A replayed attestation ("CI green", yesterday) is
   cryptographically valid and semantically stale. Freshness is a real
   gap in the guard basis: a recency guard (attestation observed within
@@ -1028,7 +1028,7 @@ Classes, with dispositions:
   changed meaning either); the defenses are governance: signed
   definition ownership (§6), process review and explicit migration
   (§6), fact schemas that constrain values (§5 `:malli`), and the
-  authoring-layer fact-reuse analyses (IDEAS) that surface when one
+  authoring-layer fact-reuse analyses (kajero ideas) that surface when one
   path is doing several jobs.
 
 The pattern across all of these, worth stating because three
@@ -1038,7 +1038,7 @@ semantics, process governance, and presentation. That is the intended
 boundary, not a gap: the kernel's job is to make the upward-migrated
 attacks *visible and attributable* (every one of the classes above
 leaves signed, inspectable traces), and the governance-observability
-lenses (IDEAS) exist to turn those traces into measurements. Rough
+lenses (kajero ideas) exist to turn those traces into measurements. Rough
 severity order, per the reviews: semantic drift, authority inflation,
 bad definitions, evidence manipulation, write volume — with
 cryptographic attacks last, which is where a design like this wants
@@ -1297,7 +1297,7 @@ discussions. The follow-up question that keeps it honest: **can the
 kernel (or a lens) make the governance failure more *visible* without
 taking the governance decision itself?** Capability-filtered explain is
 the template — derivation unchanged, presentation carries the burden;
-the governance-observability lenses in IDEAS (semantic hotspots, role
+the governance-observability lenses among the kajero ideas (semantic hotspots, role
 concentration, dead evidence) are the same move applied to drift,
 approval inflation, and evidence theater. Making governance failures
 observable is "derived beats declared" applied to the organization
@@ -1308,4 +1308,5 @@ Graphical editors, rule builders, templates, LLM-drafted definitions —
 none of these touch verification if they compile to canonical EDN. The
 standing posture: **the kernel is extremely conservative; the authoring
 experience is aggressively experimental.** A "no" in this section must
-name the law it defends; if it can't, it belongs in IDEAS, not here.
+name the law it defends; if it can't, it belongs among the unjudged
+ideas in kajero, not here.

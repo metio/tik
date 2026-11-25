@@ -42,8 +42,12 @@ derivations.
 already-litigated ideas (deferred vs rejected-on-principle, each with the
 law it failed against) — **read §19 before proposing a new feature or
 event type**; most "obvious" extensions are already there with a verdict.
-ADRs live in `kb/decisions/`. Unjudged ideas go to `docs/IDEAS.md`, not
-into the plan.
+ADRs live in `kb/decisions/`. Unjudged ideas go to kajero, not into the
+plan or this repository: one entry per idea, labelled `kind=idea`,
+`project=metio`, `system=tik`, `component=tik` and a `status`
+(`open`, `parked`, `banked`, `deferred` or `done`). Search them with
+`kajero_search {"selector": "label:kind=idea label:component=tik"}`
+and search there before proposing a feature, the same way as §19.
 
 ## Commands
 

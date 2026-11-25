@@ -5,7 +5,7 @@
   normalized shape tik mints as an ATTESTATION event — the porcelain
   half of a would-be `tik bridge oid4vci`. A verifiable credential IS,
   in tik's ontology, a signed attestation whose claim is an external
-  fact and whose signer is a third-party issuer (see docs/IDEAS.md); so
+  fact and whose signer is a third-party issuer; so
   the kernel needs nothing — this ns only structures the credential, and
   the bridge mints `credential-claim` via the existing attestation event.
 
