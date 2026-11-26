@@ -35,6 +35,11 @@ Claude drives a store correctly — recording evidence and letting stages derive
 /plugin install tik@tik
 ```
 
+A tik MCP server (`tik mcp`, `tik serve --mcp-token-file F`) also serves
+the skill through the MCP Skills extension, so a client that registers
+the server gets the skill matching that server's version, with a signed
+manifest `tik skill verify` checks.
+
 ## Quickstart
 
 New here? [Getting started](docs/getting-started.md) builds you a

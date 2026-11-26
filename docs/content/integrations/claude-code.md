@@ -33,6 +33,17 @@ Claude activates the skill whenever a repository holds a `tickets/` or
 `.tik/` directory, an `actors` registry, or `processes/*.edn` — or when
 you mention tik, tickets, processes, or stages.
 
+## From the MCP server
+
+A tik MCP server also serves the skill, through the MCP Skills extension
+(`io.modelcontextprotocol/skills`). With the server registered, Claude
+Code v2.1.331 or later lists the skill as `<server>:tik`, for example
+`tik:tik`, and loads the copy built into that server, so it matches the
+server's version without a plugin install. Claude Code lists MCP skills
+only over MCP revision 2026-07-28, which `tik mcp` and `tik serve` speak.
+See [MCP server](/integrations/mcp-server/#agent-skill) for how the
+manifest is signed and checked.
+
 ## What it grants Claude
 
 The skill teaches the CLI surface and the model behind it:

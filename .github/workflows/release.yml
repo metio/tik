@@ -33,7 +33,7 @@ jobs:
         # actually moved since the last tag.
         uses: metio/ci/needs-release@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
-          paths: deps.edn bb.edn build.clj src cli Containerfile dev/build-native.sh
+          paths: deps.edn bb.edn build.clj src cli skills Containerfile dev/build-native.sh
       - id: version
         if: steps.gate.outputs.needed == 'true'
         # Calendar version (YYYY.M.D + UTC time), shared across every metio artifact.
@@ -65,6 +65,10 @@ jobs:
         # The same toolchain developers run locally — produces target/tik.jar
         # (portable, any JDK) and target/tik (glibc-dynamic linux/amd64 native).
         run: sh dev/build-native.sh
+      - name: The native binary serves the skills in skills/ byte for byte
+        # native-image carries only what its build captured; a skill that
+        # did not make it into the image would ship as an empty listing.
+        run: sh dev/native-skill-smoke.sh target/tik
       - name: Run the container image
         # The runner has libraries the image may lack, so the binary passing
         # here says nothing about the image.

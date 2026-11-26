@@ -352,6 +352,12 @@ which admits exactly the actions its actor may take on a ticket right now.
   `--surfaces http,mcp` (the read-only board, MCP, or both). When such a
   server is registered in your session (its `tik_*` tools are listed), use
   it rather than shelling out: every call is signed as the server's actor.
+- Both servers also serve this skill over MCP (the Skills extension,
+  `skill://tik/SKILL.md`), so a client that registers one lists it as
+  `<server>:tik`, the copy matching that server's version. Its manifest
+  is signed with `TIK_KEY`; `tik skill verify <mcp-url> --token-file F`
+  checks the signature against the store's `actors` and every file
+  against the manifest, and exits 1 for anything unsigned or changed.
 - `tik_new` mints a ticket over MCP: `{"process": "change", "title": "…",
   "repo": "kajero"}`. Name the git repository directly below the store
   that the work happens in as `repo`, or omit it for work without one: the
