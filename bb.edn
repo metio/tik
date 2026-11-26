@@ -1,6 +1,6 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
-{:paths ["src" "cli"]
+{:paths ["src" "cli" "skills"]
  :deps {metosin/malli {:mvn/version "0.20.3"}}
  :tasks
  {tik  {:doc "Run the tik CLI (bb tik -- status <id>)"

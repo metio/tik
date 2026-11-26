@@ -120,6 +120,9 @@
             [--surfaces http,mcp]               and MCP on /mcp behind a bearer token
   tik mcp                                        MCP server over stdio: the frontier as an
                                                 agent's gated tool surface (TIK_ACTOR/TIK_KEY)
+  tik skill verify <mcp-url|entry.json>         check the agent skills an MCP server serves:
+            [--token-file F] [--signers F]      the manifest signature against the actors
+                                                file, and every file against the manifest
   tik backend [--config pipelines.edn]          the supervised server: run your pipelines as
                                                 a delegate — continuous (serve, imap --watch)
                                                 and scheduled (recur/probe/pop3/effects on an
@@ -402,7 +405,7 @@
     "key"
     "links" "list" "long" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "population" "port" "pricing" "public-key" "published-only"
-    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "split" "sqlite" "stage" "store" "surfaces" "template"
+    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
@@ -470,6 +473,9 @@
       "debug"   (design/cmd-debug parsed)
       "board"   (query/cmd-board parsed)
       "serve"   (serve/cmd-serve parsed)
+      ;; resolved lazily so no other verb loads the served skill's bytes;
+      ;; tik.main force-requires it for the native image.
+      "skill"   ((requiring-resolve 'tik.skill-verify/cmd-skill) parsed)
       ;; the MCP stdio loop lives in tik.mcp (which requires this ns);
       ;; resolve it lazily to avoid the require cycle — tik.main force-
       ;; requires tik.mcp so the native image can resolve it here too.
