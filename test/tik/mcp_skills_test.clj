@@ -180,6 +180,26 @@
                                                  :body (json/generate-string {"jsonrpc" "2.0" "id" 1 "method" "tools/list"
                                                                               "params" {"_meta" (assoc modern-meta "io.modelcontextprotocol/protocolVersion" "1900-01-01")}})}))))
   (is (= 404 (:status (post "nope/nothing" {}))))
+  (testing "a modern request missing a required _meta field is malformed: 400 with -32602"
+    (doseq [[why meta] [["no clientCapabilities" (dissoc modern-meta "io.modelcontextprotocol/clientCapabilities")]
+                        ["no protocolVersion" (dissoc modern-meta "io.modelcontextprotocol/protocolVersion")]
+                        ["no _meta at all" nil]]]
+      (let [resp (mcp/http-response config {:request-method :post
+                                            :headers {"authorization" (str "Bearer " (:token config))
+                                                      "mcp-protocol-version" "2026-07-28" "mcp-method" "tools/list"}
+                                            :body (json/generate-string {"jsonrpc" "2.0" "id" 1 "method" "tools/list"
+                                                                         "params" (if meta {"_meta" meta} {})})})]
+        (is (= 400 (:status resp)) why)
+        (is (= -32602 (get-in (json/parse-string (:body resp)) ["error" "code"])) why))))
+  (testing "an unknown skill is an error in the body, not an HTTP failure"
+    (let [{:keys [status json]} (post "skills/get" {"uri" "skill://nope/SKILL.md"})]
+      (is (= 200 status))
+      (is (= -32602 (get-in json ["error" "code"])))))
+  (testing "a legacy request over HTTP keeps answering 200"
+    (is (= 200 (:status (mcp/http-response config {:request-method :post
+                                                   :headers {"authorization" (str "Bearer " (:token config))
+                                                             "mcp-protocol-version" "2025-06-18"}
+                                                   :body "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"bogus\"}"})))))
   (testing "the bearer token still guards the modern era"
     (is (= 401 (:status (post "skills/list" {} {"authorization" nil}))))))
 

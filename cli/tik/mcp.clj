@@ -166,10 +166,12 @@
   ([id code message data] (assoc-in (error id code message) [:error :data] data)))
 
 (defn- rpc-error!
-  "Answer the request with a JSON-RPC error instead of a result."
-  ([code message] (rpc-error! code message nil))
-  ([code message data]
-   (throw (ex-info message {::code code ::data data}))))
+  "Answer the request with a JSON-RPC error instead of a result. `status`
+  is the HTTP status a modern request answers with; a legacy request
+  always answers 200."
+  ([code message] (rpc-error! code message nil 200))
+  ([code message data status]
+   (throw (ex-info message {::code code ::data data ::status status}))))
 
 (defn- signer [] {:key (System/getenv "TIK_KEY") :actor (actor)})
 
@@ -243,7 +245,7 @@
   body carries must also stand in the headers, unchanged, so nothing
   routing on the headers sees another request than we execute."
   [headers method params version]
-  (let [mismatch #(rpc-error! -32020 (str "header mismatch: " %))]
+  (let [mismatch #(rpc-error! -32020 (str "header mismatch: " %) nil 400)]
     (when-not (= version (get headers "mcp-protocol-version"))
       (mismatch "MCP-Protocol-Version must equal the request's protocol version"))
     (when-not (= method (get headers "mcp-method"))
@@ -265,11 +267,14 @@
   previous request said is consulted. `headers` is nil on stdio."
   [id method params headers]
   (let [version (get-in params ["_meta" meta-version])]
+    ;; a request missing a required _meta field is malformed: -32602, 400
+    (when-not (string? version)
+      (rpc-error! -32602 (str "the request's _meta needs " meta-version) nil 400))
     (when-not (some #{version} modern-versions)
       (rpc-error! -32022 "Unsupported protocol version"
-                  {:supported modern-versions :requested version}))
+                  {:supported modern-versions :requested version} 400))
     (when-not (map? (get-in params ["_meta" meta-capabilities]))
-      (rpc-error! -32602 (str "the request's _meta needs " meta-capabilities)))
+      (rpc-error! -32602 (str "the request's _meta needs " meta-capabilities) nil 400))
     (when headers (check-headers! headers method params version))
     (when id
       (cond
@@ -280,7 +285,7 @@
                                           :instructions instructions})))
         (contains? handlers method)
         (result id (modern-result ((get handlers method) params)))
-        :else (rpc-error! -32601 (str "method not found: " method))))))
+        :else (rpc-error! -32601 (str "method not found: " method) nil 404)))))
 
 (defn- legacy [id method params]
   (case method
@@ -296,14 +301,11 @@
       (result id (f params))
       (when id (result id {})))))
 
-(def ^:private http-status
-  "The HTTP status a modern error answers with; anything else is 200."
-  {-32022 400 -32020 400 -32601 404})
-
 (defn handle-message
   "{:response r :status s} for one JSON-RPC message: r is nil for a
   notification, s the HTTP status it calls for. A message whose `_meta`
-  names a protocol version is a modern request; everything else,
+  names a protocol version, or an HTTP request whose MCP-Protocol-Version
+  header names a modern one, is a modern request; everything else,
   initialize first, is the legacy handshake era. Each message is fully
   isolated: one that is not JSON, not a map, or whose handling raises
   answers with a JSON-RPC error object, so the session survives whatever
@@ -318,22 +320,18 @@
        (let [{:strs [id method params]} msg
              params (if (map? params) params {})
              modern? (and (not= "initialize" method)
-                          (some? (get-in params ["_meta" meta-version])))]
+                          (or (some? (get-in params ["_meta" meta-version]))
+                              (some #{(get headers "mcp-protocol-version")} modern-versions)))]
          (try
            {:response (if modern?
                         (modern id method params headers)
                         (legacy id method params))
             :status 200}
            (catch Throwable e
-             (let [{::keys [code data]} (ex-data e)]
+             (let [{::keys [code data status]} (ex-data e)]
                (if code
                  {:response (if data (error id code (ex-message e) data) (error id code (ex-message e)))
-                  :status (if modern?
-                            (get http-status code
-                                 (if (and (= -32602 code)
-                                          (str/includes? (ex-message e) meta-capabilities))
-                                   400 200))
-                            200)}
+                  :status (if modern? status 200)}
                  {:response (error id -32603
                                    (str "internal error: "
                                         (or (ex-message e)
