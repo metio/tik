@@ -13,6 +13,7 @@
             [tik.cli :as cli]
             [tik.cli-core :refer [process-exit!]]
             [tik.mcp]
+            [tik.notifier]
             [tik.skill-verify]
             [tik.store.sqlite-jdbc])
   (:gen-class))

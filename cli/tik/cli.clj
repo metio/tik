@@ -127,6 +127,14 @@
                                                 a delegate — continuous (serve, imap --watch)
                                                 and scheduled (recur/probe/pop3/effects on an
                                                 :every interval). signs with TIK_KEY
+  tik notify [run] [--config notify.edn]       push a HINT of every verified stage change
+             [--socket P]                       to local subscribers on a private Unix
+                                                socket (no network); restarts resume from
+                                                a cursor instead of repeating old hints
+  tik notify watch [--store S] [--where SEL]    subscribe: one JSON line per hint, for
+                   [--socket P] [--ttl PT1H]    Claude Code's Monitor tool or a script
+  tik notify channel [--store S] [--where SEL]  subscribe as a Claude Code channel: a stdio
+                                                MCP server forwarding each hint
   tik bridge email [--config F] < msg           mail in: sender->actor per config;
                                                 [tik <id>] comments that ticket and
                                                 tik> key=value lines become facts;
@@ -405,9 +413,9 @@
     "key"
     "links" "list" "long" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "population" "port" "pricing" "public-key" "published-only"
-    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "split" "sqlite" "stage" "store" "surfaces" "template"
+    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "socket" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"
-    "to" "token-env" "token-file" "until" "user" "verbose" "watch" "webhook" "where"
+    "to" "token-env" "token-file" "ttl" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
     "witness" "yes"})
 
@@ -484,6 +492,9 @@
       ;; ns to reuse run-argv); resolve it lazily to avoid the require cycle,
       ;; exactly like mcp. tik.main force-requires it for the native image.
       "backend" ((requiring-resolve 'tik.backend/cmd-backend) parsed)
+      ;; the notifier holds a socket and threads; resolved lazily so no
+      ;; other verb loads it. tik.main force-requires it for the native image.
+      "notify"  ((requiring-resolve 'tik.notifier/cmd-notify) parsed)
       "bridge"  (bridge/cmd-bridge parsed)
       "effects" (effects/cmd-effects parsed)
       "verify"  (audit/cmd-verify parsed)

@@ -57,12 +57,18 @@
 
 (def ^:private discovered-root (delay (discover-root)))
 
+(def ^:dynamic *root*
+  "A store root bound for one stretch of work inside a process that serves
+  several stores (the notifier); nil everywhere else."
+  nil)
+
 (defn root
-  "The store root: TIK_ROOT always wins (scripts, multi-store work);
-  else discovery; else the cwd — which is what makes a fresh directory
-  become a store the moment `tik new` runs in it."
+  "The store root: a bound *root* first, so one process can derive several
+  stores in turn; then TIK_ROOT (scripts, multi-store work); else
+  discovery; else the cwd — which is what makes a fresh directory become
+  a store the moment `tik new` runs in it."
   []
-  (or (System/getenv "TIK_ROOT") @discovered-root "."))
+  (or *root* (System/getenv "TIK_ROOT") @discovered-root "."))
 
 (defn store-established?
   "Is a real store reachable — a marker found on the upward walk, or
