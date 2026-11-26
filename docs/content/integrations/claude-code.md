@@ -64,6 +64,39 @@ It also knows when *not* to act: an unreachable step in `explain` means
 waiting is pointless and the definition or the role register needs
 fixing, not patience.
 
+## Hearing about changes
+
+`tik notify` runs a local notifier that re-derives and verifies every
+ticket whose log changed and pushes a hint of each stage change to the
+sessions that asked for it, over a Unix socket only your user can reach:
+
+```sh
+tik notify --config ~/.config/tik/notify.edn
+```
+
+```clojure
+{:stores {"metio" "~/git/github.com/metio/.tik"}
+ :window "PT5S"
+ :sinks [{:store "metio" :where "stage=:asked"
+          :command ["notify-send" "tik" "{line}"]}]}
+```
+
+A Claude Code session subscribes by running `tik notify watch` under the
+Monitor tool, which feeds each output line back to Claude:
+
+```sh
+tik notify watch --store metio --where "fact:request.from=infra.run"
+```
+
+Each line is one JSON hint naming the store, the ticket, its title, the
+stages it left and entered, and the actor of the event that moved it. A
+hint holds no fact values and is never evidence: Claude re-derives with
+`tik status` before acting on it. `tik notify channel` delivers the same
+hints as a Claude Code channel to a session started with
+`--dangerously-load-development-channels server:<name>`. Hints sent while
+nobody was subscribed are not replayed, so keep a slow fallback poll. The
+decisions behind this are in [ADR 0040](/decisions/0040-a-notifier-pushes-hints-not-evidence/).
+
 ## For agents generally
 
 The skill is one surface over a derivation every tool can read. The gated
