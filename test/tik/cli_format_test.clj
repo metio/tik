@@ -30,7 +30,7 @@
   #{"actor" "adopt" "anchor" "attach" "attest" "author" "backend" "board" "bridge" "bundle"
     "comment" "debug" "dispute" "effects" "export" "gallery" "gc" "import" "init"
     "lint" "mcp" "new" "pack" "probe" "process" "recur" "rederive" "retract"
-    "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "store" "test"
+    "reprocess" "rollout" "root" "serve" "set" "show" "sign" "sim" "skill" "store" "test"
     "verify" "witness"})
 
 (def ^:private machine-invocations
