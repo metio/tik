@@ -179,6 +179,10 @@ reached stages that cannot express "moved back".
 - The fingerprint reads names, not bytes. A signature replaced in place
   under the same name is judged at the next real change, and `tik
   verify` remains the audit.
+- A write appends its event before its signature sidecar. A poll that
+  falls between the two logs a refusal for the unsigned event; the
+  sidecar then changes the fingerprint, and the next poll verifies the
+  ticket and sends the hint.
 - Several notifiers on one estate do not coordinate. Each keeps its own
   cursor and socket, which ADR 0021 permits for delivery. A user runs
   one per machine.
