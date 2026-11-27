@@ -143,7 +143,8 @@ $ bb test          # JVM test suite (kaocha): golden canonical-form tests,
 $ bb lint          # clj-kondo (0 errors, 0 warnings)
 $ bb tla           # TLC over the TLA+ specs in spec/ — merge convergence,
                    # fixpoint semantics (one model is REQUIRED to fail:
-                   # it documents a counterexample)
+                   # it documents a counterexample) — and Apalache proofs
+                   # of their inductive invariants
 $ reuse lint       # license compliance
 ```
 
@@ -163,7 +164,7 @@ cli/tik/cli.clj     babashka CLI
 processes/          process definitions + scripted process tests (EDN)
 corpus/             conformance corpus: event files + expected derivations —
                     the corpus, not the Clojure, is the definition of tik
-spec/               TLA+ models (TLC-checked via `bb tla`)
+spec/               TLA+ models (TLC-checked, Apalache-proved via `bb tla`)
 kb/                 OKF knowledge bundle: decisions (ADRs), concepts
 docs/PLAN.md        the full design; §19 is the ledger of settled verdicts
 ```

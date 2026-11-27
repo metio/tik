@@ -62,10 +62,15 @@ breto run <cmd>                   # or eval "$(breto env)" once; every command b
 - Single test namespace: `clojure -M:test --focus tik.stage-test`
 - Single test var: `clojure -M:test --focus tik.stage-test/sticky-milestone-survives-retraction`
 - `bb lint` / `clj-kondo --lint src cli test` — must be 0 errors, 0 warnings.
-- `bb tla` / `bash spec/check.sh` — TLC model checks. Merge and
-  SweepFixpoint must pass; **ChaoticFixpoint must FAIL** (the script
-  asserts the violation — a "passing" chaotic model means a documented
-  counterexample was lost).
+- `bb tla` / `bash spec/check.sh [all|tlc|apalache] [MODULE]` — TLC
+  model checks and Apalache proofs. The TLC models must pass;
+  **ChaoticFixpoint must FAIL** (the script asserts the violation — a
+  "passing" chaotic model means a documented counterexample was lost).
+  Each `spec/*Inductive.tla` must prove `Init => IndInv` and
+  `IndInv /\ Next => IndInv'` with its properties, and the refutations
+  (non-inductive invariants, the chaotic evaluator) must each find a
+  violation. `bash spec/check-controls.sh` checks that every model is
+  covered and that a broken model fails the script.
 - `reuse lint` — every file needs SPDX headers (0BSD); non-commentable
   formats go through `REUSE.toml`.
 - `bb tik test processes/support-request.tests.edn` — scripted process
@@ -193,7 +198,9 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   generators biased toward timestamp ties). The optimized single-fold
   `evolve` must agree with it. explain has property-tested soundness and
   completeness laws.
-- **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics.
+- **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics:
+  TLC explores one concrete instance of each, and Apalache proves an
+  inductive invariant over every process or graph of a bounded size.
 - **Fuzzing** (`test/tik/fuzz_test.clj`) — the other layers feed VALID
   inputs and check the answers; this one feeds garbage and checks the
   manner of failure. The contract is *fail well*: ex-info or schema

@@ -19,10 +19,12 @@ jobs:
     with:
       kondo-paths: src cli test
   tla:
-    # Merge and SweepFixpoint must pass; ChaoticFixpoint must FAIL — the
-    # script asserts the documented counterexample is still found.
+    # The TLC models must pass and ChaoticFixpoint must FAIL — the script
+    # asserts the documented counterexample is still found. Apalache must
+    # prove every inductive invariant and refute every control; the
+    # controls script checks that a broken model fails check.sh.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -31,6 +33,7 @@ jobs:
         with:
           registries: github:metio/toolchains
       - run: bash spec/check.sh
+      - run: bash spec/check-controls.sh
   process-tests:
     # Scripted process tests: steps in, expected derived stages out,
     # explain printed on failure. The process definitions' own suite.
