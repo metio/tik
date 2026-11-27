@@ -294,6 +294,16 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   content address; `:delete true` removes a message only after it ingests
   cleanly, so a mid-poll crash loses nothing (the next poll re-fetches,
   dedups, then deletes).
+- A mailbox with `:reporter {:key <secret-spec> :table <dir>}` records the
+  DKIM-authenticated sender of each NEW ticket as the fact `[:reporter
+  :id]`, `hmac-sha256:<hex>` of the address under that key; the address
+  goes only to the 0700 table outside the store. The receiving process
+  must declare the fact (`[:re "^hmac-sha256:[0-9a-f]{64}$"]`) or the
+  bridge refuses to start. `:block {:addresses … :domains … :pseudonyms
+  …}` refuses a sender before anything is written (a domain covers its
+  subdomains). `tik reporter show <p>`, `tik reporter forget
+  <address|p>` (erasure) and `tik reporter stats` read the table (ADR
+  0043).
 - `tik bridge oidc [--registry ID] [--actor A]` — identity rung 2 (§9): a
   device-flow (or `--user` + a password) login binds an IdP subject to a
   signing key as an attestation on the registry ticket; verification never

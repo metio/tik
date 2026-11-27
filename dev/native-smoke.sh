@@ -502,7 +502,8 @@ kill "${ms_pid}" 2>/dev/null || true
 # second, so its runs would overlap without the guard; :stuck sweeps a
 # GitHub that never answers, so its timeout must kill it and the failure
 # report must fire; :mail watches an IMAP mailbox over IDLE with DKIM
-# required at a pinned verifier.
+# required at a pinned verifier, records each new ticket's sender as a
+# pseudonym and refuses a blocked sender.
 bp="${work}/bp/smoke"
 mkdir -p "${bp}"
 (cd "${bp}" && "${bin}" init) > "${work}/bp-init.out" 2>&1 || fail "pipelines: init" "${work}/bp-init.out"
@@ -526,10 +527,19 @@ cat > "${work}/github-stuck.edn" <<EOF
 {:repos ["acme/widgets"] :api "${fake}/hang-github" :actor "bridge"
  :token {:command "printf %s gh-smoke-token"} :actions {:lookback "P14D"}}
 EOF
+cat > "${bp}/processes/mailed-report.edn" <<EOF
+{:process/id :mailed-report :process/version 1 :process/guard-vocab 2
+ :process/purpose "a report mailed to the smoke desk"
+ :process/facts {[:reporter :id] [:re "^hmac-sha256:[0-9a-f]{64}\$"]}
+ :process/stages [{:stage/id :reported :guards [[:fact [:reporter :id]]]}]}
+EOF
+openssl rand -hex 32 > "${work}/reporter.key"
 cat > "${bp}/imap.edn" <<EOF
 {:dkim {:require true :authserv-id "mx.smoke.test"}
  :default-actor "mail"
- :mailboxes [{:id "support-smoke" :process :track
+ :reporter {:key {:file "${work}/reporter.key"} :table "${work}/reporters"}
+ :block {:addresses ["pest@example.org"]}
+ :mailboxes [{:id "support-smoke" :process :mailed-report
               :imap {:host "127.0.0.1" :port ${imap_port} :tls false :poll-ms 2000
                      :user "support@smoke.test" :password {:command ["printf" "%s" "support-smoke-pw"]}}}]}
 EOF
@@ -568,12 +578,25 @@ if wait_on "${bp_pid}" 30 test -f "${work}/failed-bp-stuck" \
 else
   fail "pipelines: the timeout or the failure report" "${work}/bp-backend.out"
 fi
-if wait_on "${bp_pid}" 30 grep -q '^\[bp/mail\] support-smoke: uid 3: new ticket' "${work}/bp-backend.out" \
+if wait_on "${bp_pid}" 30 grep -q '^\[bp/mail\] support-smoke: uid 4: new ticket' "${work}/bp-backend.out" \
    && grep -q '^\[bp/mail\] support-smoke: skip uid 2: refusing boss@example.org' "${work}/bp-backend.out" \
    && grep -q '^imap IDLE' "${work}/requests.log"; then
   ok "pipelines: the mailbox took pushed mail over IDLE and refused a verdict from another verifier"
 else
   fail "pipelines: the mailbox watch" "${work}/bp-backend.out" "${work}/requests.log"
+fi
+if grep -q '^\[bp/mail\] support-smoke: uid 1: new ticket [0-9a-f]* from hmac-sha256:[0-9a-f]\{8\}' "${work}/bp-backend.out" \
+   && grep -q '^\[bp/mail\] support-smoke: skip uid 3: refusing a blocked sender: address #1 of :block :addresses' "${work}/bp-backend.out" \
+   && ! grep -q 'pest@example.org' "${work}/bp-backend.out" \
+   && grep -rq 'Please send help' "${bp}" \
+   && ! grep -rq 'alice@example.org' "${bp}" \
+   && [ "$(stat -c %a "${work}/reporters")" = 700 ] \
+   && (cd "${bp}" && env -u TIK_ROOT "${bin}" reporter stats --table "${work}/reporters") > "${work}/bp-reporters.out" 2>&1 \
+   && grep -q '^ *1  hmac-sha256:[0-9a-f]\{64\}  alice@example.org$' "${work}/bp-reporters.out" \
+   && grep -q '^ *1  hmac-sha256:[0-9a-f]\{64\}  carol@example.org$' "${work}/bp-reporters.out"; then
+  ok "pipelines: the mailbox recorded senders as pseudonyms outside the store and refused a blocked one"
+else
+  fail "pipelines: the reporter pseudonym or the block list" "${work}/bp-backend.out" "${work}/bp-reporters.out"
 fi
 kill "${bp_pid}" 2>/dev/null || true
 

@@ -42,7 +42,8 @@
    "whatif" [:id "sev=high"] "roles" [] "causal" [:id]
    "stats" ["--by" "kind" "--until" ":done"]
    "work" ["week" "--actor" "seb"] "agent" ["actions" :id "--actor" "seb"]
-   "review" ["review.verdict=approved" "--list"]})
+   "review" ["review.verdict=approved" "--list"]
+   "reporter" ["stats" "--table" "/nonexistent/tik-reporter-table"]})
 
 (deftest every_documented_flag_is_accepted
   ;; check-flags! refuses any flag nothing reads, and refusing one the

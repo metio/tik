@@ -28,12 +28,13 @@
   (:require [clojure.string :as str]
             [tik.mail :as mail]
             [tik.netmail :refer [loopback-host?]]
+            [tik.reporter :as reporter]
             [tik.secret :as secret]))
 
 (def mailbox-id-pattern #"[a-z0-9][a-z0-9._-]{0,62}")
 
 (def ^:private mailbox-keys
-  #{:id :imap :process :default-actor :from->actor :dkim})
+  #{:id :imap :process :default-actor :from->actor :dkim :reporter :block})
 
 (def ^:private imap-keys
   #{:host :port :tls :user :password :mailbox :search :poll-ms})
@@ -157,6 +158,11 @@
 
         (sequential? (:mailboxes cfg (vector)))
         (into (mapcat #(mailbox-problems strict? %) mbs))
+
+        ;; tik.reporter judges :reporter and :block (ADR 0043)
+        (sequential? (:mailboxes cfg (vector)))
+        (into (mapcat #(reporter/config-problems (str "mailbox " (pr-str (:id %))) %)
+                      (filter map? mbs)))
 
         true
         (into (for [[id n] (frequencies (keep #(when (map? %) (:id %)) mbs)) :when (< 1 n)]

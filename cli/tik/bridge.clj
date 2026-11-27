@@ -31,7 +31,9 @@
             [tik.oid4vci :as oid4vci]
             [tik.oidc :as oidc]
             [tik.pop3 :as pop3]
+            [tik.process :as process]
             [tik.render :refer [shash sid]]
+            [tik.reporter :as reporter]
             [tik.secret :as secret]
             [tik.stage :as stage]
             [tik.store.protocol :as store]
@@ -603,6 +605,72 @@
         :let [path (parse-key k)]]
     [path (typed-value proc path (str/trim v))]))
 
+(defn prepare-reporter
+  "A mailbox (or bridge.edn) config ready for `ingest-message!`: its
+  `:reporter` and `:block` checked, the reporter key resolved once and
+  kept under ::reporter-key, and the receiving process checked to declare
+  the reporter fact with a schema a pseudonym satisfies. `key-cache` is an atom
+  of resolved keys by spec, so mailboxes sharing a key resolve it once.
+  Throws ex-info on anything that would let the bridge start unsound."
+  [cfg store-root key-cache]
+  (let [{:keys [reporter block]} cfg
+        p (str "mailbox " (pr-str (or (:id cfg) "default")))]
+    (when-let [problems (seq (reporter/config-problems p cfg))]
+      (throw (ex-info (str/join "; " problems) {:reason :reporter/config})))
+    (if-not (or (map? reporter) (seq (:pseudonyms block)))
+      cfg
+      (let [spec (:key reporter)
+            k (or (get @key-cache spec)
+                  (let [k (reporter/resolve-key spec)] (swap! key-cache assoc spec k) k))
+            table (reporter/table-of reporter)
+            fact (reporter/fact-of reporter)
+            canon #(.getCanonicalPath (io/file %))
+            root (canon store-root)
+            t (canon table)]
+        (when (or (= t root) (str/starts-with? t (str root java.io.File/separator)))
+          (throw (ex-info (str p ": :reporter :table " table " lies inside the store " store-root
+                               "; it must stay outside it, so no address is committed or pushed")
+                          {:reason :reporter/table-in-store})))
+        (let [proc (load-process (safe-name (:process cfg)))
+              schema (get (:process/facts proc) fact)
+              sample (reporter/pseudonym k "sample@example.org")]
+          (cond
+            (nil? schema)
+            (throw (ex-info (str p ": process " (safe-name (:process cfg)) " does not declare the fact "
+                                 fact " in :process/facts; declare it, for example "
+                                 (pr-str [fact [:re (str "^" reporter/pseudonym-prefix "[0-9a-f]{64}$")]]))
+                            {:reason :reporter/undeclared-fact}))
+            (not (true? (process/schema-holds? schema sample)))
+            (throw (ex-info (str p ": process " (safe-name (:process cfg)) " declares " fact " as "
+                                 (pr-str schema) ", which a pseudonym (" reporter/pseudonym-prefix
+                                 "<64 hex>) does not satisfy")
+                            {:reason :reporter/fact-schema}))))
+        (assoc cfg ::reporter-key k)))))
+
+(defn- reporter-key
+  "The resolved key of a config that needs one, or nil when it needs none.
+  A config with `:reporter` that `prepare-reporter` never saw fails closed."
+  [cfg]
+  (when (or (contains? cfg :reporter) (seq (get-in cfg [:block :pseudonyms])))
+    (or (::reporter-key cfg)
+        (throw (ex-info "the :reporter key was not resolved; refusing to ingest"
+                        {:reason :reporter/unprepared})))))
+
+(defn- refuse-blocked!
+  "Refuse a sender the config's `:block` names, before anything is
+  written. The refusal names the rule, never the body or the address."
+  [cfg k from]
+  (when-let [hit (reporter/blocked (:block cfg) k from)]
+    (throw (ex-info (str "refusing a blocked sender: " (reporter/describe-block hit))
+                    {:reason :mail/blocked :rule (:rule hit)}))))
+
+(defn- reporter-facts
+  "The fact paths a `tik>` line in a mail may never set: the reporter's
+  identity comes only from an authenticated From."
+  [cfg]
+  (cond-> #{reporter/default-fact}
+    (map? (:reporter cfg)) (conj (reporter/fact-of (:reporter cfg)))))
+
 (defn ingest-message!
   "Ingest ONE raw RFC822 message as signed events, with the loop guards
   that keep an email desk from melting down. Returns {:outcome … :id …
@@ -619,7 +687,11 @@
              are applied — so it drives no derivation and provokes no
              reply. This is the loop break.
   - :comment / :ticket — a genuine message: a comment on its ticket (plus
-             any tik> facts) or a new ticket under :process."
+             any tik> facts) or a new ticket under :process.
+
+  A sender `:block` names is refused after the DKIM gate and before any
+  of these. With `:reporter`, a new ticket from a sender the DKIM gate
+  authenticated carries the sender's pseudonym as a fact (ADR 0043)."
   [s cfg raw opts]
   (let [{:keys [from subject body message-id] :as msg} (parse-rfc822 raw)
         msgid (or (not-empty message-id)
@@ -628,7 +700,11 @@
       {:outcome :own :msgid msgid}
       (do
         (require-dkim! cfg msg)
-        (let [actor-name (or (get-in cfg [:from->actor from])
+        (let [;; require-dkim! returned, so with :require true the From passed
+              authenticated? (true? (get-in cfg [:dkim :require]))
+              rkey (reporter-key cfg)
+              _ (refuse-blocked! cfg rkey from)
+              actor-name (or (get-in cfg [:from->actor from])
                              (:default-actor cfg)
                              (throw (ex-info (str "unknown sender " (or from "<none>")
                                                   " and no :default-actor")
@@ -651,7 +727,9 @@
             existing
             (do
               (mail-blob! s existing actor-name at path (str subject "\n\n" body) opts)
-              (let [facts (when-not auto? (tik-facts (:process (ticket-ctx s existing)) body))]
+              (let [facts (when-not auto?
+                            (remove (comp (reporter-facts cfg) first)
+                                    (tik-facts (:process (ticket-ctx s existing)) body)))]
                 (doseq [[p v] facts]
                   (append!* s (event/assert-fact
                                {:ticket existing :actor actor-name :at at
@@ -679,17 +757,30 @@
                                                (throw (ex-info "no :process in config for a new-ticket mail"
                                                                {:reason :mail/no-process}))))
                       proc (load-process proc-name)
+                      reporter-id (when (and authenticated? rkey (map? (:reporter cfg)) from)
+                                    (reporter/pseudonym rkey from))
+                      ;; the row first: a ticket whose pseudonym nobody
+                      ;; can resolve is worse than a row with no ticket
+                      _ (when reporter-id
+                          (reporter/remember! (reporter/table-of (:reporter cfg)) reporter-id from (now)))
                       e (event/create-ticket {:ticket id :actor actor-name :at at
                                               :title (or (not-empty subject) "(no subject)")
                                               :process (keyword proc-name)
                                               :version (:process/version proc)
                                               :process-hash (archive-process! proc)})]
                   (append!* s e opts)
+                  (when reporter-id
+                    (append!* s (event/assert-fact
+                                 {:ticket id :actor actor-name :at at
+                                  :parents (dag/heads (store/events s id))
+                                  :path (reporter/fact-of (:reporter cfg)) :value reporter-id})
+                              opts))
                   ;; always attach the mail artifact — the readable comment
                   ;; and the mail/<message-id> marker, present even when the
                   ;; body is empty
                   (mail-blob! s id actor-name at path (str subject "\n\n" body) opts)
-                  {:outcome (if auto? :auto :ticket) :id id :msgid msgid :actor actor-name})))))))))
+                  (cond-> {:outcome (if auto? :auto :ticket) :id id :msgid msgid :actor actor-name}
+                    reporter-id (assoc :reporter reporter-id)))))))))))
 
 (defn- ingest-one!
   "Ingest one FETCHED message in isolation: record its outcome in `tally`,
@@ -702,7 +793,7 @@
   (let [bump #(swap! tally update % (fnil inc 0))
         pfx (some-> (::label cfg) (str ": "))]
     (try
-      (let [{:keys [outcome id msgid facts]} (ingest-message! s cfg raw opts)]
+      (let [{:keys [outcome id msgid facts reporter]} (ingest-message! s cfg raw opts)]
         (bump outcome)
         (println (str pfx (case outcome
                    :own (str "uid " uid ": dropped our own mail (loop guard)")
@@ -710,7 +801,8 @@
                    :auto (str "uid " uid ": recorded auto-reply -> " (sid id) " (no cascade)")
                    :comment (str "uid " uid ": comment -> " (sid id)
                                  (when (pos? (long (or facts 0))) (str " (+" facts " fact(s))")))
-                   :ticket (str "uid " uid ": new ticket " (sid id))
+                   :ticket (str "uid " uid ": new ticket " (sid id)
+                                (when reporter (str " from " (subs reporter 0 (+ 8 (count reporter/pseudonym-prefix))) "…")))
                    (str "uid " uid ": " outcome))))
         true)
       (catch clojure.lang.ExceptionInfo e
@@ -810,6 +902,8 @@
         list? (contains? cfg :mailboxes)
         mbs (or (mailbox/select (mailbox/mailboxes cfg) (:mailbox opts))
                 (die (str "no mailbox " (pr-str (:mailbox opts)) " in " cfg-file)))
+        rkeys (atom {})
+        mbs (mapv #(prepare-reporter % (root) rkeys) mbs)
         s (the-store)
         tally (atom {})
         lock (Object.)
@@ -861,7 +955,7 @@
         _ (when-not (.exists (io/file cfg-file))
             (die (str "no pop3 config at " cfg-file
                       " (need {:pop3 {:host … :user … :password …} :process … :default-actor …})")))
-        cfg (read-edn-file (io/file cfg-file))
+        cfg (prepare-reporter (read-edn-file (io/file cfg-file)) (root) (atom {}))
         s (the-store)
         tally (atom {})]
     (pop3/process-mailbox (secret/resolve-secrets (:pop3 cfg))
@@ -910,9 +1004,10 @@
               "       tik bridge oid4vci --credential vc.jwt --registry ID"
               " [--jwks-url URL | --jwks FILE]")))
   (let [cfg-file (or (:config opts) (str (io/file (root) "bridge.edn")))
-        cfg (if (.exists (io/file cfg-file))
-              (read-edn-file (io/file cfg-file))
-              {})
+        cfg (prepare-reporter (if (.exists (io/file cfg-file))
+                                (read-edn-file (io/file cfg-file))
+                                {})
+                              (root) (atom {}))
         {:keys [outcome id msgid facts actor]} (ingest-message! (the-store) cfg (slurp *in*) opts)]
     (cache-flush!)
     (println (case outcome
