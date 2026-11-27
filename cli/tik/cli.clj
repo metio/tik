@@ -546,6 +546,11 @@
          " it belongs on that\n  ticket and ingest it with an explicit"
          " X-Tik-Ticket header if so.")
 
+    :forge/unreachable
+    (str "  nothing was written. Check the URL and the network; a TLS failure"
+         " means\n  the server's certificate does not chain to a CA this host"
+         " trusts.")
+
     nil))
 
 (defn- dispatch-guarded

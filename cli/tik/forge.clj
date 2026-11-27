@@ -214,15 +214,32 @@
 
 (def ^:private transient-status #{500 502 503 504})
 
+(defn- send!
+  "The response to `req`. A server that cannot be reached - refused, timed
+  out, or failing the TLS handshake - is an operational fault of that
+  server or of this host's trust store, so it becomes an ex-info naming
+  the API, the address and the cause instead of escaping as an exception
+  without a message."
+  ^HttpResponse [label ^HttpRequest req]
+  (try
+    (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))
+    (catch java.io.IOException e
+      (let [u (.uri req)]
+        (throw (ex-info (str label " unreachable at " (.getScheme u) "://" (.getHost u)
+                             (when (pos? (.getPort u)) (str ":" (.getPort u)))
+                             ": " (.getSimpleName (class e))
+                             (when-let [m (not-empty (ex-message e))] (str ": " m)))
+                        {:reason :forge/unreachable :url (str u)} e))))))
+
 (defn- send-with-retry
   "The response to `req`, repeating it after each of `*retry-pauses*` while
   the server answers with a gateway or internal error. Forges return these
   for a few requests a week and answer the same request a moment later;
   every request here reads (a GET, or an RPC call to a read-only method),
-  so a repeat cannot double an effect."
-  ^HttpResponse [req]
+  so a repeat cannot double an effect. `label` names the API in errors."
+  ^HttpResponse [label req]
   (loop [pauses (seq *retry-pauses*)]
-    (let [resp (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))]
+    (let [resp (send! label req)]
       (if (and pauses (transient-status (.statusCode resp)))
         (do (Thread/sleep (long (first pauses)))
             (recur (next pauses)))
@@ -231,7 +248,8 @@
 (defn json-getter
   "A `get-json` ((path query-map) -> parsed JSON) over the API at `base`,
   sending `headers` with every request. `label` names the API in errors,
-  which carry {:reason :forge/http :status n} or {:reason :forge/json}.
+  which carry {:reason :forge/http :status n}, {:reason :forge/json} or
+  {:reason :forge/unreachable}.
   A transient server error is retried before it becomes one."
   [label base headers]
   (let [parse (requiring-resolve 'cheshire.core/parse-string)
@@ -244,7 +262,7 @@
                           b (assoc headers "User-Agent" "tik-bridge"))
                   (.timeout ^java.net.http.HttpRequest$Builder b (Duration/ofSeconds 60))
                   (.build ^java.net.http.HttpRequest$Builder b))
-            resp (send-with-retry req)
+            resp (send-with-retry label req)
             status (.statusCode resp)
             body (str (.body resp))]
         (when (>= status 400)
@@ -262,7 +280,8 @@
   "A `call` ((service method & args) -> result) over the JSON-RPC 2.0
   endpoint at `url`, Odoo's `/jsonrpc` shape: params {:service :method
   :args}. `label` names the API in errors, which carry {:reason
-  :forge/http :status n}, {:reason :forge/json} or {:reason :forge/rpc}.
+  :forge/http :status n}, {:reason :forge/json}, {:reason :forge/rpc} or
+  {:reason :forge/unreachable}.
   Only read-only methods may go through it, because a transient server
   error is retried."
   [label url]
@@ -278,7 +297,7 @@
                             (render {:jsonrpc "2.0" :method "call" :id 1
                                      :params {:service service :method method :args (vec args)}})))
                     (.build))
-            resp (send-with-retry req)
+            resp (send-with-retry label req)
             status (.statusCode resp)
             body (str (.body resp))
             _ (when (>= status 400)
