@@ -783,6 +783,8 @@
 
   or several under :mailboxes, each with an :id and its own :imap and
   :process, the other top-level keys serving as defaults (tik.mailbox).
+  :authserv-id is a string, an anchored {:pattern \"mx[0-9]+\\\\.example\\\\.org\"}
+  or a list of both; only the topmost Authentication-Results header counts.
   A :mailboxes list must require DKIM against a pinned :authserv-id and
   take its password from a secret spec. Plaintext (:tls false) is refused
   for any host that is not a loopback address. --mailbox reads only the

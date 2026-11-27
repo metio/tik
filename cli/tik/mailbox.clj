@@ -21,10 +21,12 @@
 
   A mailbox in a `:mailboxes` list, and every mailbox a backend watches,
   must hold to the strict rules: DKIM is required against a pinned
-  authserv-id, the password is a secret spec that is neither a literal
+  authserv-id (a string, a sound `{:pattern …}` or a list of them; see
+  `tik.mail/authserv-id-problems`), the password is a secret spec that is neither a literal
   nor an environment variable, and plaintext IMAP is only for a loopback
   address."
   (:require [clojure.string :as str]
+            [tik.mail :as mail]
             [tik.netmail :refer [loopback-host?]]
             [tik.secret :as secret]))
 
@@ -60,13 +62,19 @@
     (contains? pw :env) (str p ": :password {:env …} is refused; every process of the backend inherits its environment")))
 
 (defn- dkim-problem [p {:keys [dkim]}]
-  (let [ids (let [a (:authserv-id dkim)] (if (coll? a) a [a]))]
-    (cond
-      (not (true? (:require dkim)))
-      (str p ": needs :dkim {:require true :authserv-id …}, so a forged From is never credited to anybody")
+  (if-not (true? (:require dkim))
+    (str p ": needs :dkim {:require true :authserv-id …}, so a forged From is never credited to anybody")
+    (when-let [ps (seq (mail/authserv-id-problems (:authserv-id dkim)))]
+      (str p ": " (str/join "; " ps)))))
 
-      (not (and (seq ids) (every? #(and (string? %) (not (str/blank? %))) ids)))
-      (str p ": :dkim needs :authserv-id, the id the receiving MX stamps on Authentication-Results"))))
+(defn- pattern-problem
+  "A refused `{:pattern …}` or a wrongly shaped id in a mailbox that is not
+  held to the strict rules: such a config never runs, strict or not."
+  [p {:keys [dkim]}]
+  (when (some? (:authserv-id dkim))
+    (when-let [ps (seq (remove #(str/includes? % "needs :authserv-id")
+                               (mail/authserv-id-problems (:authserv-id dkim))))]
+      (str p ": " (str/join "; " ps)))))
 
 (defn mailbox-problems
   "What is wrong with one mailbox (merged with its defaults), as strings."
@@ -121,7 +129,10 @@
         (conj (str p ": :from->actor must map addresses to actor names"))
 
         (and strict? (dkim-problem p mb))
-        (conj (dkim-problem p mb))))))
+        (conj (dkim-problem p mb))
+
+        (and (not strict?) (pattern-problem p mb))
+        (conj (pattern-problem p mb))))))
 
 (defn problems
   "Every problem of a parsed `bridge imap` config, as strings; empty when

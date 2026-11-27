@@ -300,11 +300,60 @@ mailbox a backend watches, must:
 
 - require DKIM at a pinned verifier, `:dkim {:require true :authserv-id
   …}`, the id your receiving MX stamps on `Authentication-Results`, so a
-  forged From is never credited to anybody;
+  forged From is never credited to anybody (see below);
 - take its password from `{:command …}`, `{:credential …}` or `{:file
   …}`, never a literal and never `{:env …}`;
 - under a backend, be signed by a key the store grants to every actor a
   mailbox records mail as: `:default-actor` and each `:from->actor` value.
+
+#### The DKIM verdict
+
+tik reads only the topmost `Authentication-Results` header of a message,
+the first one in its header block. The MTA that delivered the message
+prepended that header above every header the sender wrote, so a sender
+cannot place a header above it. When the topmost header names a verifier
+other than `:authserv-id`, the message is refused, even if a header
+further down claims the trusted id and `dkim=pass`. The From domain must
+then be the `header.d` of a `dkim=pass` in that header, or a subdomain
+of it.
+
+This holds only when your receiving MTA stamps every message it
+delivers. A message it delivers without a header of its own keeps the
+sender's headers on top, and a forged header there is read as the
+verdict. Check how your provider treats mail between two of its own
+customers before you rely on the gate.
+
+`:authserv-id` takes one of:
+
+- a string, compared with the whole id, ignoring case:
+  `"mx.example.org"`;
+- a pattern, `{:pattern "mx[0-9]+\\.example\\.org"}`, matched against
+  the whole id, ignoring case;
+- a list of both: `["mx.example.org" {:pattern "…"}]`.
+
+A pattern always matches the whole id, so `mx[0-9]+\.example\.org`
+never accepts `evil.mx1.example.org` or `mx1.example.org.attacker.test`.
+It may use letters, digits and `-`, `\.` for a dot, `\d`, character
+classes such as `[0-9]`, groups with alternatives such as `(mx|smtp)`,
+and the quantifiers `?`, `*`, `+` and `{n,m}`. It must end in a literal
+domain of at least two labels, such as `\.example\.org`. An unescaped
+`.`, `^`, `$`, a top-level `|`, inline flags and any other construct are
+refused when the config loads, and so is a pattern that matches an empty
+id.
+
+Some providers stamp the name of the receiving MX host rather than one
+id for the domain. Migadu stamps `mx13.migadu.com` or a sibling host,
+whichever received the message, so pin it with a pattern:
+
+```clojure
+{:dkim {:require true :authserv-id {:pattern "mx[0-9]+\\.migadu\\.com"}}}
+```
+
+Migadu was seen adding no `Authentication-Results` header to mail sent
+from one Migadu mailbox to another, so such mail is refused. If Migadu
+also keeps an `Authentication-Results` header that a Migadu-hosted
+sender wrote into such a mail, that forged header is the topmost one;
+whether it does has not been checked.
 
 Every IMAP and POP3 connection checks that the server's certificate is
 trusted and names the host, and plaintext (`:tls false`) is refused for

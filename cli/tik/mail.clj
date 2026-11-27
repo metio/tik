@@ -5,8 +5,8 @@
   the sender's true addr-spec, robust ticket association, and the DKIM
   gate. Pure over the message text — tik does not re-implement DKIM's
   fragile canonicalization; it CONSUMES the standard Authentication-
-  Results verdict of the MTA it runs behind (RFC 8601), pinned to a
-  trusted authserv-id. A leaf: no store, no process control (the DKIM
+  Results verdict of the MTA it runs behind (RFC 8601): the topmost
+  header only, stamped by a trusted authserv-id. A leaf: no store, no process control (the DKIM
   refusal throws an ex-info dispatch-guarded turns into `tik: …` + exit 1)."
   (:require [clojure.string :as str]
             [tik.mime :as mime])
@@ -178,30 +178,196 @@
                second)
       (second (re-find #"\[tik ([0-9a-f-]+)\]" (str subject)))))
 
+;; ---------------------------------------------------------------- authserv-id
+;; `:authserv-id` names the verifier whose Authentication-Results tik
+;; trusts: a string (exact, case-insensitive), a `{:pattern "…"}` map, or
+;; a collection of both. A pattern is matched against the WHOLE id, never
+;; a part of it, and is held to a small grammar that can only describe
+;; host names under a fixed domain: literal letters, digits and `-`, `\.`,
+;; `\d`, character classes of letters, digits and `-`, groups with `|`
+;; inside them, and the quantifiers `? * + {n} {n,} {n,m}`. It must end in
+;; a literal `\.label\.label`, so every id it accepts ends in that domain.
+;; `.`, `^`, `$`, a top-level `|`, inline flags and every other construct
+;; are refused: each would let a pattern accept ids nobody meant to trust.
+
+(defn- pattern-tokens
+  "The tokens of a pattern source under the grammar above, or a string
+  saying what is refused. Each token is [kind text], kind one of :lit
+  (one literal character, an escaped dot read as `.`), :class, :quant, :open,
+  :close and :alt."
+  [^String src]
+  (let [n (count src)
+        lit? #(re-matches #"[A-Za-z0-9-]" (str %))]
+    (loop [i 0 acc []]
+      (if (>= i n)
+        acc
+        (let [c (.charAt src i)]
+          (cond
+            (lit? c) (recur (inc i) (conj acc [:lit (str c)]))
+
+            (= c \\)
+            (case (when (< (inc i) n) (.charAt src (inc i)))
+              \. (recur (+ i 2) (conj acc [:lit "."]))
+              \d (recur (+ i 2) (conj acc [:class "\\d"]))
+              (str "the escape " (subs src i (min n (+ i 2))) " is not allowed; only \\. and \\d are"))
+
+            (= c \[)
+            (let [close (str/index-of src "]" i)
+                  body (when close (subs src (inc i) close))]
+              (if (and body (re-matches #"[A-Za-z0-9-]+" body))
+                (recur (inc close) (conj acc [:class (subs src i (inc close))]))
+                "a character class may hold only letters, digits and ranges, as in [0-9]"))
+
+            (#{\? \* \+} c) (recur (inc i) (conj acc [:quant (str c)]))
+
+            (= c \{)
+            (if-let [[q] (re-find #"^\{[0-9]+(,[0-9]*)?\}" (subs src i))]
+              (recur (+ i (count q)) (conj acc [:quant q]))
+              "a { must start a quantifier such as {1,3}")
+
+            (= c \()
+            (if (str/starts-with? (subs src i) "(?:")
+              (recur (+ i 3) (conj acc [:open "(?:"]))
+              (if (= (when (< (inc i) n) (.charAt src (inc i))) \?)
+                "inline flags and look-arounds are not allowed; use (…) or (?:…)"
+                (recur (inc i) (conj acc [:open "("]))))
+
+            (= c \)) (recur (inc i) (conj acc [:close ")"]))
+            (= c \|) (recur (inc i) (conj acc [:alt "|"]))
+            (#{\^ \$} c) (str c " is not allowed; a pattern always matches the whole id")
+            (= c \.) "an unescaped . matches any character; write \\. for a dot"
+            :else (str "the character " (pr-str (str c)) " is not allowed")))))))
+
+(defn- structure-problem
+  "What is wrong with a token list's structure: unbalanced groups, a
+  top-level `|`, a quantifier with nothing to repeat, or a tail that does
+  not fix the domain."
+  [tokens]
+  (let [depths (reductions (fn [d [k]] (case k :open (inc d) :close (dec d) d)) 0 tokens)]
+    (cond
+      (some neg? depths) "a ) closes no group"
+      (not (zero? (last depths))) "a ( is never closed"
+      (some (fn [[[k] d]] (and (= k :alt) (zero? d))) (map vector tokens depths))
+      "a top-level | would accept either side on its own; put the alternatives in a group"
+      (some (fn [[[a] [b]]] (and (= b :quant) (#{:quant :open :alt} a)))
+            (partition 2 1 (cons [:open] tokens)))
+      "a quantifier must follow a character, a class or a group"
+      :else
+      (let [tail (->> (reverse tokens)
+                      (take-while (fn [[k]] (= k :lit)))
+                      reverse
+                      (map second)
+                      str/join)]
+        (when-not (re-matches #"[A-Za-z0-9-]*\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+" tail)
+          (str "a pattern must end in a literal domain such as \\.example\\.org,"
+               " so every id it accepts ends in that domain"))))))
+
+(defn pattern-problem
+  "Why a `{:pattern …}` source is refused as an authserv-id pattern, or
+  nil when it is sound."
+  [src]
+  (cond
+    (not (string? src)) ":pattern must be a string"
+    (str/blank? src) ":pattern must not be blank"
+    :else
+    (let [tokens (pattern-tokens src)
+          problem (if (string? tokens) tokens (structure-problem tokens))
+          compiled (when-not problem
+                     (try (java.util.regex.Pattern/compile src java.util.regex.Pattern/CASE_INSENSITIVE)
+                          (catch java.util.regex.PatternSyntaxException e (ex-message e))))]
+      (cond
+        problem (str ":pattern " (pr-str src) ": " problem)
+        (string? compiled) (str ":pattern " (pr-str src) " does not compile: " compiled)
+        (.matches (.matcher ^java.util.regex.Pattern compiled ""))
+        (str ":pattern " (pr-str src) " matches the empty id")))))
+
+(defn- id-specs
+  "The entries of an `:authserv-id` value: a collection's elements, or the
+  value itself. A `{:pattern …}` map is one entry, not a collection."
+  [a]
+  (if (and (coll? a) (not (map? a))) (vec a) [a]))
+
+(defn authserv-id-problems
+  "Every problem of an `:authserv-id` value, as strings; empty when it may
+  be used. Strict: a blank or missing id is a problem, as is anything
+  that is neither a string nor a sound `{:pattern …}` map."
+  [a]
+  (let [specs (id-specs a)]
+    (if (or (nil? a) (empty? specs))
+      [":dkim needs :authserv-id, the id the receiving MX stamps on Authentication-Results"]
+      (vec (distinct
+            (keep (fn [spec]
+                    (cond
+                      (string? spec)
+                      (when (str/blank? spec)
+                        ":dkim needs :authserv-id, the id the receiving MX stamps on Authentication-Results")
+
+                      (map? spec)
+                      (if (not= #{:pattern} (set (keys spec)))
+                        (str ":authserv-id map " (pr-str spec) " must be {:pattern \"…\"} and nothing else")
+                        (pattern-problem (:pattern spec)))
+
+                      :else
+                      (str ":authserv-id " (pr-str spec)
+                           " must be a string, a {:pattern \"…\"} map or a collection of them")))
+                  specs))))))
+
+(defn authserv-matcher
+  "A predicate over an authserv-id (already lower-cased) that holds when
+  the id is trusted by an `:authserv-id` value, or nil when the value
+  names no id at all. Blank strings are dropped, so a nil or blank id
+  never survives as a match for a forged blank one. A refused pattern or
+  a value of the wrong kind throws: the gate fails closed on a config it
+  cannot read."
+  [a]
+  (let [specs (remove #(and (string? %) (str/blank? %)) (when (some? a) (id-specs a)))
+        bad (seq (remove #(re-find #"needs :authserv-id" %) (authserv-id-problems specs)))]
+    (when bad
+      (throw (ex-info (str "the :dkim :authserv-id is refused: " (str/join "; " bad))
+                      {:reason :dkim/bad-authserv-id})))
+    (when (seq specs)
+      (let [exact (into #{} (comp (filter string?) (map str/lower-case)) specs)
+            patterns (mapv #(java.util.regex.Pattern/compile
+                             (:pattern %) java.util.regex.Pattern/CASE_INSENSITIVE)
+                           (filter map? specs))]
+        (fn [id]
+          (boolean
+           (and (string? id) (not (str/blank? id))
+                (or (contains? exact id)
+                    (some #(.matches (.matcher ^java.util.regex.Pattern % ^String id)) patterns)))))))))
+
+(defn authserv-id-of
+  "The authserv-id of one Authentication-Results value, lower-cased: the
+  first whitespace token before the first `;` (RFC 8601 allows a version
+  token after it). nil for a blank or all-`;` header."
+  [ar]
+  (some-> (first (str/split (str ar) #";")) str/trim (str/split #"\s+")
+          first not-empty str/lower-case))
+
 (defn dkim-passing-domains
-  "The domains that pass DKIM per the message's `Authentication-Results`
-  headers, considering ONLY headers stamped by a trusted verifier
-  (authserv-id ∈ `trusted`). tik does not re-implement DKIM's fragile
-  canonicalization — it consumes the standard verdict of the MTA it runs
-  behind (RFC 8601). SECURITY: that MTA MUST strip inbound A-R headers
-  bearing its own authserv-id (RFC 8601 §5), or an attacker forges the
-  verdict; pinning `trusted` to your MTA's id is what makes this sound."
-  [{:keys [auth-results]} trusted]
-  (set
-   (for [ar auth-results
-         :let [fields (str/split (str ar) #";")
-               ;; RFC 8601: `authserv-id [version]` before the first ';',
-               ;; so the id is the FIRST whitespace token — not the whole
-               ;; field (a version token would else reject legit mail). An
-               ;; all-`;`/empty header splits to no fields; guard the nil.
-               authserv (some-> (first fields) str/trim (str/split #"\s+")
-                                first str/lower-case)]
-         :when (and (not (str/blank? authserv)) (contains? trusted authserv))
-         method (rest fields)
-         :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
-         :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
-         :when d]
-     (str/lower-case d))))
+  "The domains that pass DKIM per the TOPMOST `Authentication-Results`
+  header of the message, when its authserv-id is trusted (`trusted?`, a
+  predicate over the lower-cased id; a set of ids works as one).
+
+  Only the topmost header counts, the first in header order: the MTA
+  that delivered the message prepended it after every header the sender
+  wrote, so a sender cannot place one above it. A header lower down may
+  claim any id, including ours, and is never read; when the topmost one
+  is not trusted the message has no verdict, whatever sits below it.
+  This holds only when the receiving MTA stamps every message it
+  delivers; one that delivers some mail without a header of its own
+  leaves the sender's forgery on top."
+  [{:keys [auth-results]} trusted?]
+  (let [top (first auth-results)
+        authserv (authserv-id-of top)]
+    (if-not (and authserv (trusted? authserv))
+      #{}
+      (set
+       (for [method (rest (str/split (str top) #";"))
+             :when (re-find #"(?i)\bdkim\s*=\s*pass\b" method)
+             :let [d (second (re-find #"(?i)header\.d\s*=\s*([\w.-]+)" method))]
+             :when d]
+         (str/lower-case d))))))
 
 (defn dkim-aligned?
   "Is `from-domain` authenticated by one of the `passing` DKIM domains —
@@ -218,24 +384,25 @@
 (defn require-dkim!
   "When `bridge.edn` carries `:dkim {:require true :authserv-id …}`, gate
   the sender BEFORE its From→actor mapping is trusted: the From domain
-  must be DKIM-authenticated by a trusted verifier, else refuse — the
-  sender→actor binding becomes cryptographic, not header-trusting."
+  must be DKIM-authenticated by the topmost Authentication-Results header,
+  stamped by a trusted verifier, else refuse — the sender→actor binding
+  becomes cryptographic, not header-trusting."
   [{:keys [dkim]} {:keys [from] :as msg}]
   (when (:require dkim)
-    (let [;; a nil/blank :authserv-id must NOT survive as #{""} — that
-          ;; would fail OPEN (matching a blank authserv in a forged A-R).
-          ;; Drop blanks so a missing id yields #{} and the guard fires.
-          trusted (into #{} (comp (map (comp str/lower-case str))
-                                  (remove str/blank?))
-                        (let [a (:authserv-id dkim)] (if (coll? a) a [a])))
+    (let [trusted? (authserv-matcher (:authserv-id dkim))
           from-domain (some-> from (str/split #"@") second str/lower-case)]
-      (when (empty? trusted)
+      (when-not trusted?
         (throw (ex-info ":dkim {:require true} needs :authserv-id (your MTA's verifier id)"
                         {:reason :dkim/no-authserv-id})))
-      (let [passing (dkim-passing-domains msg trusted)]
+      (let [passing (dkim-passing-domains msg trusted?)
+            top (authserv-id-of (first (:auth-results msg)))]
         (when-not (and from-domain (dkim-aligned? from-domain passing))
           (throw (ex-info (str "refusing " (or from "an unsigned sender") ": no dkim=pass"
-                               " for " (or from-domain "its domain") " from a trusted"
-                               " verifier " trusted
-                               (when (seq passing) (str " (passing: " passing ")")))
+                               " for " (or from-domain "its domain")
+                               " in the topmost Authentication-Results from a trusted verifier "
+                               (pr-str (:authserv-id dkim))
+                               (cond
+                                 (nil? top) " (the message has none)"
+                                 (not (trusted? top)) (str " (the topmost is stamped by " top ")")
+                                 (seq passing) (str " (passing: " passing ")")))
                           {:reason :dkim/unaligned :from from})))))))
