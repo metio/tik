@@ -40,6 +40,22 @@ the skill through the MCP Skills extension, so a client that registers
 the server gets the skill matching that server's version, with a signed
 manifest `tik skill verify` checks.
 
+## Running it as a local service
+
+The native binary (`tik-linux-amd64-glibc` on the releases page) runs the
+board, MCP, the bridges, `tik backend` and `tik notify` on its own:
+
+```sh
+export TIK_ROOT=~/work/.tik TIK_ACTOR=claude TIK_KEY=~/.config/tik/claude_ed25519
+tik serve --host 127.0.0.1 --port 7777 --mcp-token-file ~/.local/state/tik/mcp-token --surfaces http,mcp
+TIK_KEY=~/.config/tik/github_ed25519 tik bridge github   # github.edn; token via :token or GITHUB_TOKEN
+```
+
+The [Local service](docs/content/integrations/local-service.md) page has
+every environment variable the bridges read and systemd units for the
+board and one timer per bridge. `dev/native-smoke.sh` checks all of it
+against a built binary; the release runs it.
+
 ## Quickstart
 
 New here? [Getting started](docs/getting-started.md) builds you a
