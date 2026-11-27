@@ -4,10 +4,10 @@
 (*                                                                          *)
 (* The SAME stratified process as SweepFixpoint.tla, under a plausible-    *)
 (* but-wrong reading of "iterate to closure": fire ONE enabled stage at a  *)
-(* time, in any order. TLC is EXPECTED to violate UniqueFixpoint here      *)
-(* (spec/check.sh asserts the violation): the order a,b,d fires d while c  *)
-(* is not yet reached, then c fires — terminal {a,b,c,d}; the order a,c,…  *)
-(* blocks d — terminal {a,b,c}.                                            *)
+(* time, in any order. TLC and Apalache are EXPECTED to violate            *)
+(* UniqueFixpoint here (spec/check.sh asserts both violations): the order  *)
+(* a,b,d fires d while c is not yet reached, then c fires — terminal      *)
+(* {a,b,c,d}; the order a,c,… blocks d — terminal {a,b,c}.                 *)
 (*                                                                          *)
 (* The moral, and the reason this module exists: stratification of the    *)
 (* PROCESS (ADR 0005) is necessary but not sufficient — determinism also   *)
@@ -27,7 +27,9 @@ After(s) == CASE s = "a" -> {}
 
 Neg(s) == IF s = "d" THEN {"c"} ELSE {}
 
-VARIABLE reached
+VARIABLE
+    \* @type: Set(Str);
+    reached
 
 Enabled(s) == /\ s \notin reached
               /\ After(s) \subseteq reached

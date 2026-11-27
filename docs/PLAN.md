@@ -473,8 +473,16 @@ Three commitments extend the ladder inward:
   and the check suite *requires* it to. Determinism additionally needs
   synchronous-sweep evaluation, which is therefore a normative part of
   the derivation semantics, pinned executably by the corpus case
-  `sweep-order-negation` (ADR 0005). Machine-checked proofs (Lean)
-  remain banked.
+  `sweep-order-negation` (ADR 0005). Apalache proves an inductive
+  invariant beside each TLC model (`spec/*Inductive.tla`): the merge
+  laws over any event universe of up to 50 events, the sweep fixpoint
+  over every stratified process of up to 6 stages, the monotone
+  fixpoint over every negation-free process of up to 6 stages, and plan
+  readiness over every dependency graph of up to 10 nodes, each with a
+  symbolic process or graph rather than one enumerated instance. It
+  also finds, unprompted, a stratified process on which
+  fire-one-stage-at-a-time iteration diverges. Machine-checked proofs
+  (Lean) remain banked.
 
 ## 9. Identity
 
