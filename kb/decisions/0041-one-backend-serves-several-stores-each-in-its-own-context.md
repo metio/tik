@@ -32,7 +32,7 @@ from the environment as before.
  :serve {:host "127.0.0.1" :port 7777}
  :notify {:poll "PT2S"}
  :pipelines [{:id :github-metio :store :metio :every "PT10M"
-              :run ["bridge" "github" "--config" "github.edn"]}]}
+              :config "github.edn" :run ["bridge" "github"]}]}
 ```
 
 1. **A thread-bound store context.** `tik.context/*store*` holds `{:name
