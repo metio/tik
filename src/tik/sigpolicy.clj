@@ -22,9 +22,9 @@
 
   Everything here is pure: the caller says which signatures verified and
   which events a witness anchored."
-  (:require [clojure.edn :as edn]
-            [clojure.set :as set]
-            [clojure.string :as str])
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
+            [tik.canonical :as canonical])
   (:import (java.time Instant)
            (java.util Date)))
 
@@ -62,7 +62,7 @@
   {::malformed \"why\"}. nil text is no policy and reads as nil."
   [text]
   (when (some? text)
-    (let [form (try (edn/read-string {:readers {'inst str}} (str text))
+    (let [form (try (canonical/parse (str text) {'inst str})
                     (catch Exception e {::unreadable (ex-message e)}))
           bad (fn [why] {::malformed why})]
       (cond

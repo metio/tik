@@ -68,9 +68,9 @@
   signed — a real consequence, and the reason re-pinning merges. Keys
   merge by kid and key material (ADR 0027), so new material under a kid
   already pinned joins the old key instead of replacing it."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [tik.canonical :as canonical]
             [tik.identity :as identity]
             [tik.jwks :as jwks]
             [tik.sign :as sign])
@@ -196,7 +196,7 @@
   [root]
   (let [f (io/file root "oidc.edn")]
     (when (.exists f)
-      (try (:audience (edn/read-string (slurp f)))
+      (try (:audience (canonical/parse (slurp f)))
            (catch Exception _ nil)))))
 
 (defn key-commitment
@@ -216,7 +216,7 @@
   [root]
   (let [f (io/file root "oidc.edn")]
     (not (and (.exists f)
-              (= :optional (try (:key-commitment (edn/read-string (slurp f)))
+              (= :optional (try (:key-commitment (canonical/parse (slurp f)))
                                 (catch Exception _ nil)))))))
 
 (defn- audience-base
@@ -250,7 +250,7 @@
   "The `:bindings` policy in the text of an `oidc.edn`, nil when it
   declares none, or `::malformed-policy` when it does not parse."
   [text]
-  (let [cfg (try (edn/read-string (str text))
+  (let [cfg (try (canonical/parse (str text))
                  (catch Exception _ ::malformed-policy))]
     (cond
       (not (map? cfg)) ::malformed-policy

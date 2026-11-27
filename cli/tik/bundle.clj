@@ -21,8 +21,7 @@
   the archive is unpacked by this namespace rather than by `tar`, the
   shipped `verify.sh` is never executed, and the definition must lint
   before it is allowed to judge anything."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.dag :as dag]
@@ -304,7 +303,7 @@
   (if-not (.isFile ^File delegation-policy)
     {:require-touch false}
     (delegation-trust/policy-of
-     {:delegation (try (edn/read-string (slurp delegation-policy))
+     {:delegation (try (canonical/parse (slurp delegation-policy))
                        (catch Exception _ ::unreadable))})))
 
 (defn- judged-delegations

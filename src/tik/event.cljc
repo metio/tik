@@ -15,9 +15,7 @@
   Merkle DAG — one head commits to all of history. Parents are for
   integrity, concurrency detection, and sync; deliberately NOT for
   reduction order, which stays (at, id) over the event set."
-  (:require #?(:clj [clojure.edn :as edn]
-               :cljs [cljs.reader :as edn])
-            [malli.core :as m]
+  (:require [malli.core :as m]
             [tik.canonical :as canonical]
             [tik.shape :as shape]))
 
@@ -76,7 +74,9 @@
     ;; forever (a keyword with a space, an unprintable value). Refusing
     ;; at mint closes corrupt-on-write for every producer at once.
     (let [bytes (canonical/emit (dissoc e :event/id))
-          reread (try (edn/read-string {:readers canonical/edn-readers} bytes)
+          ;; through the store's own guarded read, so a value the store
+          ;; would refuse to read back is refused here
+          reread (try (canonical/parse bytes)
                       (catch #?(:clj Exception :cljs :default) _ ::unreadable))]
       ;; what parses back must re-emit to the very same bytes AND be the
       ;; very same value: a keyword or symbol is printed by its bare name,

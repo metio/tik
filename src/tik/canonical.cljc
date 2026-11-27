@@ -40,21 +40,32 @@
   {'inst (fn [s] (Instant/parse s))
    'uuid (fn [s] (java.util.UUID/fromString s))})
 
-(declare check-nesting)
+(declare check-nesting too-deep)
 
 (defn parse
-  "The one guarded EDN read: nesting depth precheck (a 100k-deep vector
-  overflows the recursive reader with an Error no fail-well guard
-  catches), then edn/read-string with the canonical readers. Fails WELL
-  — any rejection is an ex-info {:reason :edn/malformed}; callers wrap
-  with their own context (which file, which row, which argument)."
-  [text]
-  (check-nesting text)
-  (try (edn/read-string {:readers edn-readers} text)
-       (catch #?(:clj Exception :cljs :default) e
-         (throw (ex-info (str "malformed EDN — " (ex-message e))
-                         {:reason :edn/malformed}
-                         e)))))
+  "The one guarded EDN read: a nesting scan (check-nesting) refuses text
+  the recursive reader could overflow on, then edn/read-string reads it
+  with the canonical readers, or with `readers` (a map from tag symbol
+  to function) for a file whose tags mean something else. Fails WELL:
+  text nesting too deep is an ex-info {:reason :canonical/too-deep}, any
+  other rejection an ex-info {:reason :edn/malformed}; callers wrap with
+  their own context (which file, which row, which argument). A
+  StackOverflowError is an Error no `catch Exception` sees, so the read
+  refuses one as too deep as well, for a thread whose stack is smaller
+  than max-depth levels need."
+  ([text] (parse text edn-readers))
+  ([text readers]
+   (when-not (and (shape/plain-map? readers)
+                  (every? (fn [[k f]] (and (symbol? k) (fn? f))) readers))
+     (shape/reject :readers :tag-readers readers))
+   (check-nesting text)
+   (try (edn/read-string {:readers readers} text)
+        #?(:clj (catch StackOverflowError _
+                  (throw (too-deep "nesting too deep to read safely"))))
+        (catch #?(:clj Exception :cljs :default) e
+          (throw (ex-info (str "malformed EDN — " (ex-message e))
+                          {:reason :edn/malformed}
+                          e))))))
 
 (defn normalize-inst
   "An instant at the precision the canonical form commits to —
@@ -81,45 +92,160 @@
   values deeper than this are rejected with a clean ex-info."
   512)
 
+(defn- too-deep
+  "The refusal of text or a value that nests deeper than max-depth."
+  [message]
+  (ex-info message {:reason :canonical/too-deep :max-depth max-depth}))
+
+;; The nesting scan
+;;
+;; clojure.edn's reader recurses once per level of nesting, and a level is
+;; not only a collection: a prefix the reader handles by reading further
+;; forms inside the same call recurses as well. The scan mirrors that
+;; recursion, so the levels it counts bound the reader's call depth. It
+;; may count more levels than the reader uses, never fewer, and has to be
+;; exact only up to the reader's first syntax error, since the reader
+;; reads nothing after it. The prefixes, from the reader's macro and
+;; dispatch tables:
+;;
+;;   #tag x    reads x, and the tagged literal is a form itself
+;;   ##x       reads x (##Inf), and the value is a form itself
+;;   #_ x      reads x, and the discard yields no form
+;;   ^m x      reads m, then x; also #^m x
+;;   #:ns {}   reads ns, then the map, which is a collection of its own,
+;;             so a namespaced map counts two levels
+;;
+;; Strings, `;` comments and character literals are skipped, so neither a
+;; bracket nor a quote inside them changes the count.
+
+(def ^:private level-collection 1)
+(def ^:private level-form-prefix 2) ; #tag and ##: completing x completes a form
+(def ^:private level-discard 3)     ; #_: completing x completes nothing
+(def ^:private level-two-forms 4)   ; ^ and #: before their first form
+(def ^:private level-one-form 5)    ; ^ and #: before their second form
+
+(defn- edn-whitespace? [c]
+  (or (Character/isWhitespace (char c)) (= c \,)))
+
+(defn- terminating?
+  "Whether c ends a token: whitespace or one of the reader's terminating
+  macro characters (# and ' are constituents)."
+  [c]
+  (or (edn-whitespace? c)
+      (case (char c)
+        (\" \; \^ \( \) \[ \] \{ \} \\) true
+        false)))
+
+(defn- token-end ^long [^String s ^long i]
+  (let [n (.length s)]
+    (loop [j i]
+      (if (and (< j n) (not (terminating? (.charAt s j))))
+        (recur (inc j))
+        j))))
+
+(defn- string-end
+  "The index after the string literal whose opening quote is at i, or the
+  length of s when it is unterminated."
+  ^long [^String s ^long i]
+  (let [n (.length s)]
+    (loop [j (inc i)]
+      (if (< j n)
+        (case (.charAt s j)
+          \\ (recur (+ j 2))
+          \" (inc j)
+          (recur (inc j)))
+        n))))
+
+(defn- line-end ^long [^String s ^long i]
+  (let [n (.length s)]
+    (loop [j i]
+      (if (and (< j n)
+               (not= \newline (.charAt s j))
+               (not= \return (.charAt s j)))
+        (recur (inc j))
+        j))))
+
 (defn check-nesting
-  "Reject a raw EDN string whose bracket nesting exceeds max-depth
-  BEFORE it reaches a recursive reader. Linear scan, aware of string
-  literals and character escapes so brackets inside them don't count.
-  nil reads as empty text."
+  "Reject a raw EDN string that nests deeper than max-depth BEFORE it
+  reaches the recursive reader, as an ex-info {:reason
+  :canonical/too-deep}. Counts collections and the prefixes the reader
+  recurses on (tags, ##, discards, metadata, namespaced maps), and skips
+  strings, comments and character literals. Linear in the length of the
+  text, and never recursive. nil reads as empty text."
   [^String s]
   (when-not (or (nil? s) (string? s))
     (shape/reject :text :string s))
-  (loop [i 0 depth 0 in-string false]
-    (when (< i (count s))
-      (let [c (.charAt s i)]
-        (cond
-          in-string
-          (case c
-            \\ (recur (+ i 2) depth true)
-            \" (recur (inc i) depth false)
-            (recur (inc i) depth true))
-
-          (= c \") (recur (inc i) depth true)
-          (= c \\) (recur (+ i 2) depth false)   ; char literal: \[ \{ …
-
-          (or (= c \[) (= c \{) (= c \())
-          (let [d (inc depth)]
-            (when (> d max-depth)
-              (throw (ex-info "nesting too deep to read safely"
-                              {:reason :canonical/too-deep
-                               :max-depth max-depth})))
-            (recur (inc i) d in-string))
-
-          (or (= c \]) (= c \}) (= c \)))
-          (recur (inc i) (dec depth) in-string)
-
-          :else (recur (inc i) depth in-string))))))
+  (when s
+    (let [limit (long max-depth)
+          n (.length s)
+          stack (int-array (inc (min limit n)))
+          depth (volatile! 0)
+          push! (fn [kind]
+                  (let [d (long @depth)]
+                    (when (>= d limit)
+                      (throw (too-deep "nesting too deep to read safely")))
+                    (aset stack d (int kind))
+                    (vreset! depth (inc d))))
+          ;; A form ended: pop the prefixes it completes.
+          complete! (fn []
+                      (let [d (long @depth)]
+                        (when (pos? d)
+                          (let [top (aget stack (dec d))]
+                            (cond
+                              (= top level-form-prefix) (do (vreset! depth (dec d)) (recur))
+                              (= top level-discard) (vreset! depth (dec d))
+                              (= top level-two-forms) (aset stack (dec d) (int level-one-form))
+                              (= top level-one-form) (do (vreset! depth (dec d)) (recur))
+                              :else nil)))))
+          ;; A closing delimiter: drop the prefixes still waiting for a
+          ;; form (the reader refuses those) and the collection it closes.
+          close! (fn []
+                   (let [d (long @depth)]
+                     (when (pos? d)
+                       (let [top (aget stack (dec d))]
+                         (vreset! depth (dec d))
+                         (if (= top level-collection)
+                           (complete!)
+                           (recur))))))]
+      (loop [i 0]
+        (when (< i n)
+          (let [c (.charAt s i)]
+            (cond
+              (edn-whitespace? c) (recur (inc i))
+              (= c \;) (recur (line-end s i))
+              (= c \") (do (complete!) (recur (string-end s i)))
+              ;; a character literal: the character after the backslash,
+              ;; whatever it is, then the rest of the token
+              (= c \\) (let [end (if (< (inc i) n) (token-end s (+ i 2)) n)]
+                         (complete!)
+                         (recur (long end)))
+              (or (= c \() (= c \[) (= c \{))
+              (do (push! level-collection) (recur (inc i)))
+              (or (= c \)) (= c \]) (= c \}))
+              (do (close!) (recur (inc i)))
+              (= c \^) (do (push! level-two-forms) (recur (inc i)))
+              (= c \#)
+              (if (< (inc i) n)
+                (let [d (.charAt s (inc i))]
+                  (cond
+                    (= d \{) (do (push! level-collection) (recur (+ i 2)))
+                    (= d \_) (do (push! level-discard) (recur (+ i 2)))
+                    (or (= d \^) (= d \:)) (do (push! level-two-forms) (recur (+ i 2)))
+                    (= d \#) (do (push! level-form-prefix) (recur (+ i 2)))
+                    (Character/isLetter d)
+                    (do (push! level-form-prefix) (recur (token-end s (inc i))))
+                    ;; the reader refuses any other dispatch character and
+                    ;; reads nothing after it
+                    :else (recur (+ i 2))))
+                (recur (inc i)))
+              :else (let [end (token-end s i)]
+                      (complete!)
+                      (recur end)))))))))
 
 (defn- emit*
   ^String [x depth]
   (when (> depth max-depth)
-    (throw (ex-info "value nests too deeply for canonical EDN"
-                    {:reason :canonical/too-deep :max-depth max-depth})))
+    (throw (too-deep "value nests too deeply for canonical EDN")))
   (cond
     (nil? x)     "nil"
     (boolean? x) (str x)

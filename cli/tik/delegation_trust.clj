@@ -12,9 +12,9 @@
   also come from a security key, whose touch tik.sshsig already requires.
   An `oidc.edn` that does not parse trusts no delegation, because a typo
   must not reopen what the setting closes."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [tik.canonical :as canonical]
             [tik.delegation :as delegation]
             [tik.sign :as sign]
             [tik.sshsig :as sshsig]
@@ -42,7 +42,7 @@
   (let [f (io/file root "oidc.edn")]
     (if-not (.exists f)
       {:require-touch false}
-      (policy-of (try (edn/read-string (slurp f)) (catch Exception _ ::malformed))))))
+      (policy-of (try (canonical/parse (slurp f)) (catch Exception _ ::malformed))))))
 
 (defn- sig-names [s ticket target]
   (filterv #(str/starts-with? % (str target ".sig.")) (store/sidecar-names s ticket)))

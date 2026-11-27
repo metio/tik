@@ -81,6 +81,9 @@
                                           :readers canonical/edn-readers} r)
                           rest (edn/read {:eof ::eof} r)]
                       [form (= ::eof rest)]))
+                  ;; the scan bounds the reader's depth; a thread with a
+                  ;; smaller stack than that bound needs still lands here
+                  (catch StackOverflowError _ [nil false])
                   (catch Exception _ [nil false]))]
     (cond
       ;; A parse failure, or empty/whitespace-only input that reads as the eof
