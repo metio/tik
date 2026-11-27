@@ -11,6 +11,8 @@ agent's authorization boundary.
 - [Claude Code skill](/integrations/claude-code/) — install the plugin and
   Claude drives a store correctly, recording evidence rather than setting
   statuses.
+- [Local service](/integrations/local-service/) — the board, MCP, the
+  bridges, backend and notify from the native binary, under systemd.
 - [MCP server](/integrations/mcp-server/) — the frontier as a gated tool
   surface over stdio.
 - [GitHub Actions](/integrations/github-actions/) — failed workflow runs as
