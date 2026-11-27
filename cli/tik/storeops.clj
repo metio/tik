@@ -11,6 +11,7 @@
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [tik.context :as context]
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
             [tik.cli-core :refer [all-ticket-ctx append!* archive-process! available-processes blob-dir
                                   cache-flush!
@@ -235,7 +236,7 @@
         argv (if (.exists f) ["sh" (str f)] ["sh" "-c" scope])
         r (try (apply sh/sh (concat argv
                                     [:dir (str (if repo (io/file holder repo) holder))
-                                     :env (cond-> (assoc (into {} (System/getenv))
+                                     :env (cond-> (assoc (context/child-env)
                                                          "TIK_SUBJECT" subject)
                                             repo (assoc "TIK_REPO" repo))]))
                (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
@@ -740,7 +741,7 @@
                                       ;; the reserved names land LAST: a
                                       ;; fact can add to the probe's world,
                                       ;; never rewrite which ticket it is
-                                      :env (cond-> (merge (into {} (System/getenv))
+                                      :env (cond-> (merge (context/child-env)
                                                           facts
                                                           {"TIK_TICKET" (str id)})
                                              repo-name (assoc "TIK_REPO" repo-name)

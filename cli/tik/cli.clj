@@ -126,7 +126,9 @@
   tik backend [--config pipelines.edn]          the supervised server: run your pipelines as
                                                 a delegate — continuous (serve, imap --watch)
                                                 and scheduled (recur/probe/pop3/effects on an
-                                                :every interval). signs with TIK_KEY
+                                                :every interval). signs with TIK_KEY;
+                                                a config with :stores serves several stores,
+                                                each with its own key, actor, board and MCP
   tik notify [run] [--config notify.edn]       push a HINT of every verified stage change
              [--socket P]                       to local subscribers on a private Unix
                                                 socket (no network); restarts resume from

@@ -5,8 +5,9 @@
 # Drive a built binary through everything a long-running local install
 # uses: `serve` answering the board and MCP in both protocol eras, one
 # sweep of each sync bridge (github, gitlab, redmine, odoo) and of
-# `bridge imap`, `backend` firing a scheduled bridge sweep, and `notify`
-# delivering one hint to `notify watch`. The remote systems are the
+# `bridge imap`, `backend` firing a scheduled bridge sweep, `notify`
+# delivering one hint to `notify watch`, and one multi-store backend
+# serving two stores with their own keys and MCP tokens. The remote systems are the
 # loopback fakes in dev/native-smoke/fakes.clj (run with babashka), so
 # nothing real is contacted. native-image carries only what its build
 # reached, so a namespace, class or resource the build missed fails here
@@ -373,6 +374,112 @@ if wait_on "${notify_pid}" 30 test -S "${sock}"; then
 else
   fail "notify: the socket never appeared" "${work}/notify.out"
 fi
+
+# ------------------------------------------------------------- multi-store backend
+
+# One backend serves two stores, each signing with its own key as its own
+# claude, each answering MCP on its own path with its own token (ADR 0041).
+# Store alpha's key arrives through {:command …} and lands in a private
+# runtime file; beta's is a plain path. The backend refuses TIK_ROOT in
+# its environment, so it runs without the one this script exports.
+fpr() { awk '{print $2}' "$1" | base64 -d | sha256sum | cut -c1-16; }
+for s in alpha beta; do
+  mkdir -p "${work}/ms/${s}"
+  (cd "${work}/ms/${s}" && "${bin}" init) > "${work}/ms-init-${s}.out" 2>&1 \
+    || fail "multi-store: init ${s}" "${work}/ms-init-${s}.out"
+  ssh-keygen -q -t ed25519 -N "" -C "claude-${s}" -f "${work}/ms-${s}-claude"
+  {
+    echo "claude namespaces=\"tik-*\" $(cat "${work}/ms-${s}-claude.pub")"
+    echo "smoke namespaces=\"tik-*\" $(cat "${work}/smoke_key.pub")"
+  } > "${work}/ms/${s}/actors"
+  # the maintainer (smoke) publishes track, so claude may mint it over MCP
+  TIK_ROOT="${work}/ms/${s}" as_smoke new track --title "seed ${s}" --no-repo > /dev/null 2>&1 || true
+  TIK_ROOT="${work}/ms/${s}" as_smoke process sign track > "${work}/ms-sign-${s}.out" 2>&1 \
+    || fail "multi-store: publish track in ${s}" "${work}/ms-sign-${s}.out"
+  openssl rand -hex 32 > "${work}/ms-${s}-token"
+  chmod 600 "${work}/ms-${s}-token"
+done
+ms_port=$(free_port)
+ms_sock="${work}/run/ms/notify.sock"
+cat > "${work}/backend.edn" <<EOF
+{:stores {:alpha {:root "${work}/ms/alpha" :org "alpha" :actor "claude"
+                  :key {:command ["cat" "${work}/ms-alpha-claude"]}
+                  :mcp-token-file "${work}/ms-alpha-token"}
+          :beta {:root "${work}/ms/beta" :org "beta" :actor "claude"
+                 :key "${work}/ms-beta-claude"
+                 :mcp-token-file "${work}/ms-beta-token"}}
+ :serve {:host "127.0.0.1" :port ${ms_port}}
+ :notify {:socket "${ms_sock}" :window "PT1S"}
+ :pipelines [{:id :weekly :store :beta :every "PT1H" :run ["recur" "track"] :period :iso-week}]}
+EOF
+env -u TIK_ROOT "${bin}" backend --config "${work}/backend.edn" > "${work}/ms-backend.out" 2>&1 &
+ms_pid=$!
+pids="${pids} ${ms_pid}"
+ms_base="http://127.0.0.1:${ms_port}"
+# ms_mcp <store> <whose token> <json>: prints the HTTP status; the body
+# lands in ms-<store>-<whose token>.json
+ms_mcp() {
+  curl -sS -o "${work}/ms-$1-$2.json" -w '%{http_code}' -X POST "${ms_base}/s/$1/mcp" \
+    -H 'Content-Type: application/json' -H "Authorization: Bearer $(cat "${work}/ms-$2-token")" -d "$3"
+}
+mint() {
+  printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tik_new","arguments":{"process":"track","title":"%s"}}}' "$1"
+}
+tickets_in() { find "${work}/ms/$1/tickets" -mindepth 1 -maxdepth 1 -type d | wc -l; }
+if wait_on "${ms_pid}" 60 curl -fsS -o /dev/null "${ms_base}/s/alpha/" \
+   && grep -q '2 store(s) (alpha, beta)' "${work}/ms-backend.out"; then
+  ok "multi-store: one backend serves alpha and beta"
+  ms_watch_pid=""
+  if wait_on "${ms_pid}" 30 test -S "${ms_sock}"; then
+    "${bin}" notify watch --socket "${ms_sock}" --store alpha > "${work}/ms-watch.out" 2>"${work}/ms-watch.err" &
+    ms_watch_pid=$!
+    pids="${pids} ${ms_watch_pid}"
+    sleep 2
+  fi
+  a_code=$(ms_mcp alpha alpha "$(mint 'written to alpha')")
+  b_code=$(ms_mcp beta beta "$(mint 'written to beta')")
+  fa=$(fpr "${work}/ms-alpha-claude.pub")
+  fb=$(fpr "${work}/ms-beta-claude.pub")
+  if [ "${a_code}" = 200 ] && [ "${b_code}" = 200 ] \
+     && jq -e '.result.isError == false' "${work}/ms-alpha-alpha.json" >/dev/null \
+     && jq -e '.result.isError == false' "${work}/ms-beta-beta.json" >/dev/null \
+     && [ -n "$(find "${work}/ms/alpha" -name "*.sig.${fa}")" ] \
+     && [ -n "$(find "${work}/ms/beta" -name "*.sig.${fb}")" ] \
+     && [ -z "$(find "${work}/ms/alpha" -name "*.sig.${fb}")" ] \
+     && [ -z "$(find "${work}/ms/beta" -name "*.sig.${fa}")" ]; then
+    ok "multi-store: MCP writes to each store, each signed with its own store's key only"
+  else
+    fail "multi-store: MCP writes (alpha ${a_code}, beta ${b_code})" "${work}/ms-alpha-alpha.json" \
+      "${work}/ms-beta-beta.json" "${work}/ms-backend.out"
+  fi
+  before=$(tickets_in beta)
+  x_code=$(ms_mcp beta alpha "$(mint 'alpha token on beta')")
+  if [ "${x_code}" = 401 ] && [ "$(tickets_in beta)" = "${before}" ]; then
+    ok "multi-store: alpha's token cannot write to beta"
+  else
+    fail "multi-store: a cross-store write answered ${x_code}" "${work}/ms-beta-alpha.json"
+  fi
+  if TIK_ROOT="${work}/ms/alpha" "${bin}" verify > "${work}/ms-verify-alpha.out" 2>&1 \
+     && TIK_ROOT="${work}/ms/beta" "${bin}" verify > "${work}/ms-verify-beta.out" 2>&1 \
+     && curl -fsS "${ms_base}/s/alpha/tickets.edn" > "${work}/ms-alpha.edn" \
+     && grep -q 'written to alpha' "${work}/ms-alpha.edn" \
+     && ! grep -q 'written to beta' "${work}/ms-alpha.edn" \
+     && grep -q '^\[beta/weekly\] recur track .* -> ok' "${work}/ms-backend.out"; then
+    ok "multi-store: both stores verify, each board shows its own store, beta's pipeline ran in beta"
+  else
+    fail "multi-store: verify, boards or pipeline" "${work}/ms-verify-alpha.out" "${work}/ms-verify-beta.out" \
+      "${work}/ms-alpha.edn" "${work}/ms-backend.out"
+  fi
+  if [ -n "${ms_watch_pid}" ] && wait_on "${ms_watch_pid}" 30 grep -q '"store":"alpha"' "${work}/ms-watch.out"; then
+    ok "notify: the multi-store backend's notifier sent a hint for alpha"
+  else
+    fail "notify: no hint from the multi-store backend's notifier" "${work}/ms-backend.out" "${work}/ms-watch.out" \
+      "${work}/ms-watch.err"
+  fi
+else
+  fail "multi-store: the backend did not serve both stores" "${work}/ms-backend.out"
+fi
+kill "${ms_pid}" 2>/dev/null || true
 
 if [ "${failures}" -gt 0 ]; then
   echo "${failures} check(s) failed"

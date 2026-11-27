@@ -10,6 +10,7 @@
   tik.cli-core plus the pure parsers in tik.mail / tik.oidc / tik.oid4vci."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [tik.context :as context]
             [tik.args :refer [actor parse-key parse-value read-edn-file
                               slurp-existing typed-value]]
             [tik.canonical :as canonical]
@@ -79,7 +80,7 @@
                                    "then pass --registry <its id>")))
         who (actor opts)
         key-file (or (:key opts)
-                     (some-> (System/getenv "TIK_KEY") (str ".pub"))
+                     (some-> (context/env "TIK_KEY") (str ".pub"))
                      (die "which key binds to this login? --key <pubkey.pub> or set TIK_KEY"))
         public-key (str/trim (slurp-existing "key" key-file))
         s (the-store)
@@ -402,7 +403,7 @@
                                      "then pass --registry <its id>"))))
         who (actor opts)
         key-file (or (:public-key opts) (:key opts)
-                     (some-> (System/getenv "TIK_KEY") (str ".pub"))
+                     (some-> (context/env "TIK_KEY") (str ".pub"))
                      (die (str "which key binds to this workload?"
                                " --public-key <key.pub> or set TIK_KEY")))
         public-key (str/trim (slurp-existing "key" key-file))
