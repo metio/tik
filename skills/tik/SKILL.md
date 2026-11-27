@@ -260,9 +260,15 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   Config adds an `:imap {:host … :user … :password <secret-spec> :mailbox
   "INBOX" :search "UNSEEN"}` block (the password resolves via `tik.secret` —
   `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`). TLS is implicit
-  and on by default (IMAPS 993 / POP3S 995); set `:tls false` in the `:imap`/
-  `:pop3` block only for a loopback or trusted-relay mailbox (an in-pod
-  stunnel/gateway sidecar), which switches to plaintext 143/110. Atom-bomb proof:
+  and on by default (IMAPS 993 / POP3S 995), and the certificate must name
+  the host; `:tls false` switches to plaintext 143/110 and is refused for
+  any host not written as a loopback address (`localhost`, `127.x.x.x`,
+  `::1`), so a remote mailbox is reached over TLS or through a local
+  stunnel. Several mailboxes go under `:mailboxes [{:id … :imap {…}
+  :process …} …]`, the other top-level keys serving as defaults for each;
+  such a list must require DKIM at a pinned `:authserv-id` and take its
+  password from `{:command …}`, `{:credential …}` or `{:file …}` (no
+  literal, no `{:env …}`), and `--mailbox <id>` reads one of them. Atom-bomb proof:
   every message is ingested in isolation (a refusal/error skips one with a
   clean stderr line, the poll continues), idempotent (content-addressed, so
   re-polling dedups), and loop-safe — our own returned mail is dropped and
@@ -388,7 +394,16 @@ which admits exactly the actions its actor may take on a ticket right now.
   `:store`. Every write signs with its store's key only; a store whose key
   its own `actors` file does not grant to its actor refuses the whole
   backend. Through the MCP server of such a backend you are that store's
-  actor and no other store's.
+  actor and no other store's. In such a backend every run is a child
+  process of the same binary (ADR 0042) that sees only its store's root,
+  key and actor: bridges and mailboxes run there as pipelines instead of
+  systemd timers, with `:config` (relative to the store), `:jitter`
+  (default one minute), `:timeout` (default `:every`), no overlapping runs
+  of one pipeline, one catch-up run after a suspend, lines labelled
+  `[store/pipeline]`, and `:on-failure {:run [...]}` reporting a failed or
+  timed-out run. An IMAP pipeline's mailboxes are checked before the
+  backend starts: DKIM at a pinned verifier, a secret-spec password, and a
+  key the store grants to every actor a mailbox records mail as.
 - `tik notify [--config notify.edn]` — a local notifier (ADR 0040) that
   re-derives and verifies every changed ticket, then pushes a **hint** of
   each stage change to subscribers on a private Unix socket. A hint carries

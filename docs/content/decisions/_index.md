@@ -83,6 +83,7 @@ so a checkout and this site carry the same record.
 | [0039](/decisions/0039-the-role-register-is-a-signed-log/) | Proposed: the role register is a log of edits signed by authorities its genesis names by key, and a role a definition reserves for humans refuses agent actors. |
 | [0040](/decisions/0040-a-notifier-pushes-hints-not-evidence/) | Proposed: a local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, never evidence. |
 | [0041](/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/) | Proposed: one backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token, and refuses to start when any store fails to open. |
+| [0042](/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/) | Proposed: a multi-store backend runs each pipeline as a child process on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes only with DKIM at a pinned verifier and TLS that names the host. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
 | [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |

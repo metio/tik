@@ -207,15 +207,147 @@ tik backend --config ~/.config/tik/backend.edn
   path is refused with 401.
 - A pipeline names its `:store`. It runs as that store's actor, or as
   `:as`, which that store's `actors` file must grant the key to. It may
-  not pass `--key` or `--actor`, and may not run `serve`, `notify`,
-  `mcp` or `backend`, which the backend provides for every store itself.
+  not pass `--key`, `--actor` or `--config`, and may not run `serve`,
+  `notify`, `mcp` or `backend`, which the backend provides for every
+  store itself.
 - `:notify` takes the settings of a `notify.edn` and watches every store
   of the backend.
 - `TIK_ROOT`, `TIK_KEY`, `TIK_PQ_KEY` and `TIK_ACTOR` must not be set in
-  the backend's environment.
+  the backend's environment, and neither may `GITHUB_TOKEN`,
+  `GITHUB_WEBHOOK_SECRET`, `GITLAB_TOKEN`, `REDMINE_API_KEY` or
+  `ODOO_PASSWORD`: every pipeline inherits the environment, so a token
+  meant for one store's bridge would reach all of them. Name the secret
+  in the bridge's config instead.
 
 Any problem with any store refuses the whole backend and lists every
 problem, so a running backend always serves every store it names.
+
+## Bridges and mailboxes as pipelines
+
+A multi-store backend replaces one systemd timer per bridge. Each run of
+a pipeline is a child process of the same binary that sees only its own
+store's root, key and actor, so a bridge signs as its own delegate in its
+own store, and nothing one run keeps in memory reaches another store's.
+
+```clojure
+{:stores {...}
+ :on-failure {:run ["notify-send" "--urgency=critical" "tik {store}/{pipeline}" "{reason}"]
+              :repeat "PT1H"}
+ :pipelines
+ [{:id :github-work :store :work :every "PT10M" :as "github"
+   :key {:credential "github-work-key"} :config "github.edn" :run ["bridge" "github"]}
+  {:id :redmine-work :store :work :every "PT10M" :jitter "PT2M" :timeout "PT5M" :as "redmine"
+   :key {:credential "redmine-work-key"} :run ["bridge" "redmine"]}
+  {:id :support-mail :store :work :watch true :as "mail"
+   :key {:credential "mail-work-key"} :config "imap.edn" :run ["bridge" "imap" "--watch"]}]}
+```
+
+| Key | Meaning | Default |
+|---|---|---|
+| `:every` | The interval of a scheduled pipeline, as an ISO-8601 duration. Fires sit on a grid from the backend's start, so they do not drift by the run time. | |
+| `:jitter` | Each fire lands at a random point within this window after its grid point. | `PT1M`, at most half of `:every` |
+| `:timeout` | A run still going after this is stopped (SIGTERM, then SIGKILL five seconds later) and counts as failed. | `:every` |
+| `:watch` | A continuous pipeline, restarted after 1 s, doubling to 60 s while it keeps failing fast, and back to 1 s once a run lasted a minute. | |
+| `:config` | The verb's config file, relative to the store's root, absolute, or `~/…`; it must exist when the backend starts. | the verb's default file at the store's root |
+| `:as`, `:key` | The delegate the run signs as, and its key, which the store's `actors` file must grant to it. | the store's actor and key |
+
+The backend's own keys:
+
+- **No overlap.** A pipeline due while its previous run still goes is not
+  started again; the skip is logged and the next fire is its next grid
+  point. Different pipelines run at the same time.
+- **Catch-up.** Fires missed while the backend was stopped or the machine
+  slept collapse into one run, which lands within the jitter window of the
+  moment the backend noticed, at most 30 seconds after a resume.
+- **`:on-failure`** runs a command, without a shell, when a run fails or
+  times out, with `{store}`, `{pipeline}`, `{exit}` and `{reason}` filled
+  in. A pipeline is reported when it starts failing and again every
+  `:repeat` while it keeps failing; `"PT0S"` reports every failure, as a
+  unit's `OnFailure=` does.
+- **The journal.** Every line is labelled `[store/pipeline]`, and under
+  systemd it carries a priority, so `journalctl --user -u tik-backend -p
+  warning` shows the pipelines' error output and the failure reports.
+- **`:exec`** names the command that runs this tik. The native binary and
+  babashka find themselves; set it when neither applies.
+
+Two pipelines of stores with different `:org` may not sign with the same
+key unless `:allow-shared-keys` names the pair of stores: one
+organisation's delegate never signs for another's.
+
+### Mailboxes
+
+`bridge imap` reads one mailbox under `:imap`, or several under
+`:mailboxes`. Every other top-level key is a default for each mailbox, so
+adding a support address is one more list entry:
+
+```clojure
+;; imap.edn at the store's root
+{:dkim {:require true :authserv-id "mx.example.org"}
+ :default-actor "mail"
+ :mailboxes
+ [{:id "support-example-org" :process :support
+   :imap {:host "imap.example.org" :user "support@example.org"
+          :password {:command ["pass" "show" "mail/support@example.org"]}}}
+  {:id "support-app" :process :app-support
+   :imap {:host "imap.example.org" :user "support@app.example"
+          :password {:credential "support-app-imap"}}}]}
+```
+
+Each mailbox has its own connection, its own backoff and its own
+`:process`, and its lines are labelled with its `:id`. `bridge imap
+--mailbox <id>` reads only that one. A `:mailboxes` list, and every
+mailbox a backend watches, must:
+
+- require DKIM at a pinned verifier, `:dkim {:require true :authserv-id
+  …}`, the id your receiving MX stamps on `Authentication-Results`, so a
+  forged From is never credited to anybody;
+- take its password from `{:command …}`, `{:credential …}` or `{:file
+  …}`, never a literal and never `{:env …}`;
+- under a backend, be signed by a key the store grants to every actor a
+  mailbox records mail as: `:default-actor` and each `:from->actor` value.
+
+Every IMAP and POP3 connection checks that the server's certificate is
+trusted and names the host, and plaintext (`:tls false`) is refused for
+any host that is not written as a loopback address (`localhost`,
+`127.x.x.x`, `::1`).
+
+### Under systemd
+
+One unit replaces the board's service and every bridge timer. The keys
+of the delegates arrive as credentials; the store keys come from a
+password manager here, and `{:credential …}` works for them as well:
+
+```ini
+# ~/.config/systemd/user/tik-backend.service
+[Unit]
+Description=tik: the boards, MCP, bridges, mailboxes and notifier of every local store
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/tik backend --config %h/.config/tik/backend.edn
+LoadCredential=github-work-key:%h/.config/tik/github-work_ed25519
+LoadCredential=redmine-work-key:%h/.config/tik/redmine-work_ed25519
+LoadCredential=mail-work-key:%h/.config/tik/mail-work_ed25519
+LoadCredential=support-app-imap:%h/.config/tik/support-app-imap
+# the MCP tokens live here; the backend refuses a token others can read
+StateDirectory=tik-backend
+StateDirectoryMode=0700
+# tik exits with 143 on the SIGTERM of a stop, which is no failure.
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+# a stop also ends every run the backend started
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
+```
+
+The backend refuses `TIK_ROOT` and the bridges' token variables, so the
+unit sets none of them. Disable the bridge timers and the old board
+service when it starts, and point MCP clients at `/s/<store>/mcp`.
 
 ## Hints
 
