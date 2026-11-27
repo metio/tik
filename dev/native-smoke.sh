@@ -118,6 +118,34 @@ else
   fail "--help" "${work}/help.out"
 fi
 
+# ------------------------------------------------------------- deep EDN
+
+# The EDN reader recurses per collection and per prefix (tag, ##, discard,
+# metadata, namespaced map); a chain of any of them past the depth limit
+# must be refused as too deep, not overflow the native stack.
+chain() { yes "$1" | head -n 200000 | tr -d '\n'; printf '%s' "$2"; }
+deep_ok=0
+for kind in vector discard meta tag symbolic nsmap comment; do
+  f="${work}/deep-${kind}.edn"
+  case "${kind}" in
+    vector) chain '[' '1' > "${f}" ;;
+    discard) chain '#_ ' '{}' > "${f}" ;;
+    meta) chain '^:a ' '{}' > "${f}" ;;
+    tag) chain '#foo ' '{}' > "${f}" ;;
+    symbolic) chain '## ' 'Inf' > "${f}" ;;
+    nsmap) chain '#:a{:b ' '1' > "${f}" ;;
+    comment) { printf ';"\n'; chain '[' '1'; } > "${f}" ;;
+  esac
+  if "${bin}" lint "${f}" > "${f}.out" 2>&1; then
+    deep_ok=1
+    fail "deep EDN: lint accepted the ${kind} chain" "${f}.out"
+  elif ! grep -q 'nesting too deep' "${f}.out" || grep -q 'bug in tik' "${f}.out"; then
+    deep_ok=1
+    fail "deep EDN: the ${kind} chain was not refused as too deep" "${f}.out"
+  fi
+done
+[ "${deep_ok}" -eq 0 ] && ok "deep EDN: every chain past the depth limit is refused as too deep"
+
 # ------------------------------------------------------------- the fakes
 
 # exec, so the pid below is babashka's own and cleanup stops it.

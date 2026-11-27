@@ -20,9 +20,9 @@
   Also the block list a mailbox refuses senders by, and the pure
   analytics over recorded pseudonyms. No store access here: the bridge
   and `tik reporter` bring the tickets."
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [tik.canonical :as canonical]
             [tik.secret :as secret])
   (:import (java.io File)
            (java.nio.channels FileChannel)
@@ -281,7 +281,7 @@
 
 (defn- read-row [^Path f]
   (check-private! f "row")
-  (let [m (try (edn/read-string (slurp (.toFile f))) (catch Exception _ nil))]
+  (let [m (try (canonical/parse (slurp (.toFile f))) (catch Exception _ nil))]
     (when-not (and (map? m) (string? (:address m)))
       (throw (ex-info (str "the reporter table row " f " is not a map with :address")
                       {:reason :reporter/table-unreadable})))
