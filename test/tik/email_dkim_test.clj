@@ -41,11 +41,16 @@
              (dkim-passing-domains
               (ar "mx.trusted; dkim=fail header.d=customer.example")
               #{"mx.trusted"}))))
-    (testing "multiple A-R headers: only the trusted-verifier passes count"
-      (is (= #{"good.example"}
+    (testing "multiple A-R headers: only the topmost counts, and only when trusted"
+      (is (= #{}
              (dkim-passing-domains
               (ar "evil; dkim=pass header.d=spoof.example"
                   "mx.trusted; dkim=pass header.d=good.example")
+              #{"mx.trusted"})))
+      (is (= #{"good.example"}
+             (dkim-passing-domains
+              (ar "mx.trusted; dkim=pass header.d=good.example"
+                  "mx.trusted; dkim=pass header.d=spoof.example")
               #{"mx.trusted"}))))
     (testing "an optional RFC 8601 version token after the authserv-id is
               ignored — the id is the first whitespace token, not the field"

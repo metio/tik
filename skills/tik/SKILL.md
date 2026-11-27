@@ -251,9 +251,19 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   sink stamped), or a `[tik <id>]` subject tag — else it opens a new ticket.
   A reply's `tik> key=value` lines become signed facts; everything else is a
   comment. With `:dkim {:require true :authserv-id "your-mx"}` in the config,
-  the sender's From must be DKIM-authenticated (a `dkim=pass` from your MTA's
-  own `Authentication-Results`, pinned by `authserv-id` so a forged verdict
-  is ignored) before it is trusted enough to attribute events to an actor.
+  the sender's From must be DKIM-authenticated before it is trusted enough
+  to attribute events to an actor: the topmost `Authentication-Results`
+  header, the one your MTA prepended, must carry a trusted authserv-id and a
+  `dkim=pass` aligned with the From domain. Lower headers never count, so a
+  forged verdict below the real one is ignored; this relies on the MTA
+  stamping every message it delivers. `:authserv-id` is a string (exact,
+  case-insensitive), `{:pattern "mx[0-9]+\\.example\\.org"}` (matched
+  against the whole id; only letters, digits, `-`, `\.`, `\d`, classes,
+  groups and quantifiers, ending in a literal domain; anything else is
+  refused at config load), or a list of both. Provider note: Migadu stamps
+  the receiving MX host (`mx13.migadu.com` and its siblings), so use
+  `{:pattern "mx[0-9]+\\.migadu\\.com"}`; Migadu-to-Migadu mail carries no
+  header and is refused.
 - `tik bridge imap [--config imap.edn]` — poll an IMAP mailbox over TLS and
   ingest new mail through the same routing, DKIM gate, and MIME decoding
   (multipart/HTML → text) as `bridge email`, so a cron/timer runs the inbox.
