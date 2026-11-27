@@ -381,7 +381,14 @@ which admits exactly the actions its actor may take on a ticket right now.
   fire self-heals. A scheduled `rollout` needs a `:period` (the backend
   refuses one without): `--period` pins the claimed instant and the minted
   ticket ids, so replicas running the same rollout mint identical events. This is the all-in-one deployment; the chart can also run
-  the slices as separate workloads.
+  the slices as separate workloads. A config with `:stores` (ADR 0041)
+  serves several stores from one process: each store names its root,
+  organisation, actor and key, its board and MCP answer below
+  `/s/<store>/` with that store's own token, and each pipeline names its
+  `:store`. Every write signs with its store's key only; a store whose key
+  its own `actors` file does not grant to its actor refuses the whole
+  backend. Through the MCP server of such a backend you are that store's
+  actor and no other store's.
 - `tik notify [--config notify.edn]` — a local notifier (ADR 0040) that
   re-derives and verifies every changed ticket, then pushes a **hint** of
   each stage change to subscribers on a private Unix socket. A hint carries

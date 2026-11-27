@@ -172,6 +172,51 @@ TIK_ROOT=~/work/.tik TIK_KEY=~/.config/tik/backend_ed25519 tik backend
 A failing pipeline logs and the others carry on; a `:watch` pipeline is
 restarted with backoff when it exits.
 
+## Several stores in one backend
+
+A config with `:stores` serves several stores from one process. Each
+store signs with its own key as its own actor, and its board and MCP
+answer below `/s/<store>/` with that store's own token:
+
+```clojure
+;; ~/.config/tik/backend.edn
+{:stores {:work {:root "~/work/.tik" :org "work" :actor "claude"
+                 :key {:credential "tik-work-key"}
+                 :mcp-token-file "~/.local/state/tik/mcp-token-work"}
+          :home {:root "~/home/.tik" :org "home" :actor "claude"
+                 :key {:command ["pass" "show" "tik/home"]}}}
+ :serve {:host "127.0.0.1" :port 7777}
+ :notify {}
+ :pipelines [{:id :github-work :store :work :every "PT10M" :run ["bridge" "github"]}]}
+```
+
+```sh
+tik backend --config ~/.config/tik/backend.edn
+```
+
+- `:key` is a path, `{:file …}`, `{:credential …}` or `{:command …}`.
+  A command's whole output is written to an owner-only file below
+  `XDG_RUNTIME_DIR` for as long as the backend runs. `{:env …}` is
+  refused.
+- At start, each key must sign as the store's `:actor` according to that
+  store's own `actors` file. Two stores with different `:org` may not
+  resolve to the same key unless `:allow-shared-keys [[:work :home]]`
+  says so.
+- An MCP token file must hold at least 32 characters and be readable by
+  you only, and each store needs its own. A token sent to another store's
+  path is refused with 401.
+- A pipeline names its `:store`. It runs as that store's actor, or as
+  `:as`, which that store's `actors` file must grant the key to. It may
+  not pass `--key` or `--actor`, and may not run `serve`, `notify`,
+  `mcp` or `backend`, which the backend provides for every store itself.
+- `:notify` takes the settings of a `notify.edn` and watches every store
+  of the backend.
+- `TIK_ROOT`, `TIK_KEY`, `TIK_PQ_KEY` and `TIK_ACTOR` must not be set in
+  the backend's environment.
+
+Any problem with any store refuses the whole backend and lists every
+problem, so a running backend always serves every store it names.
+
 ## Hints
 
 ```sh

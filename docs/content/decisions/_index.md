@@ -82,6 +82,7 @@ so a checkout and this site carry the same record.
 | [0037](/decisions/0037-a-batch-review-is-a-scoped-delegation/) | One signature approves a reviewed batch, through a delegation scoped to the shown heads and the verdict fact, valid for at most five minutes. |
 | [0039](/decisions/0039-the-role-register-is-a-signed-log/) | Proposed: the role register is a log of edits signed by authorities its genesis names by key, and a role a definition reserves for humans refuses agent actors. |
 | [0040](/decisions/0040-a-notifier-pushes-hints-not-evidence/) | Proposed: a local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, never evidence. |
+| [0041](/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/) | Proposed: one backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token, and refuses to start when any store fails to open. |
 | [0027](/decisions/0027-a-pinned-issuer-key-is-its-kid-and-its-material/) | A pinned issuer key is identified by its kid and its key material; a reused kid keeps both keys. |
 | [0028](/decisions/0028-a-spiffe-jwt-svid-binds-like-an-oidc-token/) | A SPIFFE JWT-SVID binds like an OIDC token; its trust domain is its issuer. |
 | [0029](/decisions/0029-relations-are-events-no-stage-reads/) | A relation between tickets is its own event kind, with a closed vocabulary that no stage reads. |
