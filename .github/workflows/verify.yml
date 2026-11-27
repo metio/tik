@@ -116,6 +116,22 @@ jobs:
           bundle: ${{ runner.temp }}/evidence.tgz
           expect-stage: ":received,:triaged"
           expect-definition: ${{ steps.bundle.outputs.hash }}
+  native-smoke:
+    # The release runs dev/native-smoke.sh against the native binary. Its
+    # controls run here on every pull request, against this checkout under
+    # babashka: the script must pass a working tik, fail a binary that
+    # exits 1, and pin a broken verb on its own check.
+    name: Native smoke controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
+        with:
+          registries: github:metio/toolchains
+      - run: sh dev/native-smoke-controls.sh
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -133,7 +149,7 @@ jobs:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.
     name: Verify
-    needs: [clojure, tla, process-tests, evidence, lint]
+    needs: [clojure, tla, process-tests, evidence, native-smoke, lint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
