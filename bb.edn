@@ -22,6 +22,8 @@
         :task (shell "clj-kondo --lint src cli test")}
   tla  {:doc "Model-check the TLA+ specs with TLC and prove their inductive invariants with Apalache (spec/); `bb tla tlc` or `bb tla apalache` runs one tool"
         :task (apply shell "bash spec/check.sh" *command-line-args*)}
+  lean {:doc "Build the Lean model of the derivation function, check its proofs and run it against the kernel as a differential oracle (formal/lean); `bb lean controls` checks that every step can fail"
+        :task (apply shell "bash formal/lean/check.sh" *command-line-args*)}
   analyze {:doc "Deep static analysis (eastwood + splint)"
            :task (do (shell "clojure -M:eastwood")
                      (shell "clojure -M:splint"))}

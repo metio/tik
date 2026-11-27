@@ -71,6 +71,10 @@ breto run <cmd>                   # or eval "$(breto env)" once; every command b
   (non-inductive invariants, the chaotic evaluator) must each find a
   violation. `bash spec/check-controls.sh` checks that every model is
   covered and that a broken model fails the script.
+- `bb lean` / `bash formal/lean/check.sh` — build the Lean model, check
+  its proofs (no `sorry`, only Lean's standard axioms, `leanchecker`) and
+  run it against the kernel as a differential oracle; needs the pinned
+  `lean` on PATH. `bb lean controls` checks that each step can fail.
 - `reuse lint` — every file needs SPDX headers (0BSD); non-commentable
   formats go through `REUSE.toml`.
 - `bb tik test processes/support-request.tests.edn` — scripted process
@@ -79,7 +83,7 @@ breto run <cmd>                   # or eval "$(breto env)" once; every command b
   (scratch ticket, auto-reloading definition).
 
 The full gate before calling work done: kaocha + kondo + eastwood +
-splint + cljfmt + tla + reuse + typos + markdown + `tik test`. All
+splint + cljfmt + tla + lean + reuse + typos + markdown + `tik test`. All
 green on main; keep them green.
 
 ## Dogfood store (H1)
@@ -186,7 +190,7 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
   side-effect *delivery* that cannot be made idempotent — a narrow
   per-pipeline lease may serialize delivery there, never the log.
 
-### The test stack (six independent layers)
+### The test stack (seven independent layers)
 
 - Golden byte tests + coreutils checks (`canonical_test.clj`, `verify` L0).
 - The **conformance corpus** (`corpus/`) — event files + expected
@@ -201,6 +205,15 @@ authoritative state. (Someone will eventually propose `:ticket/current-stage`
 - **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics:
   TLC explores one concrete instance of each, and Apalache proves an
   inductive invariant over every process or graph of a bounded size.
+- **A Lean 4 model** (`formal/lean/`) of `reached-set`, `evolve` and
+  `effective-reached`, with machine-checked proofs that derivation does not
+  depend on event or stage-list order, that a stratified process has
+  exactly one fixpoint, and that adding facts never removes a positively
+  guarded stage. `bb lean` builds it, refuses any proof resting on more
+  than Lean's three standard axioms, and runs its executable beside the
+  kernel over the corpus, the process tests and generated cases
+  (`test/tik/lean_oracle.clj`); `bb lean controls` plants a `sorry` and
+  runs four broken models, each of which must fail.
 - **Fuzzing** (`test/tik/fuzz_test.clj`) — the other layers feed VALID
   inputs and check the answers; this one feeds garbage and checks the
   manner of failure. The contract is *fail well*: ex-info or schema

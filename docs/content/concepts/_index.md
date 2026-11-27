@@ -15,6 +15,8 @@ enumerable: seven event types, twelve guard operators, five fact statuses.
 - [Guards](/concepts/guards/) — the closed operator vocabulary.
 - [Explain](/concepts/explain/) — the product surface: what is missing and
   who can act.
+- [Machine-checked proofs](/concepts/proofs/) — what a Lean model proves
+  about derivation, and how CI ties it to the kernel.
 - [Replication](/concepts/replication/) — merging by set union, with no
   leader and no lock.
 - [The event log](/concepts/event-log/) — the storage contract in detail.
