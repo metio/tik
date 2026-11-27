@@ -398,6 +398,66 @@ The backend refuses `TIK_ROOT` and the bridges' token variables, so the
 unit sets none of them. Disable the bridge timers and the old board
 service when it starts, and point MCP clients at `/s/<store>/mcp`.
 
+### Reporter pseudonyms and block lists
+
+A mailbox can record who sent each report without writing the address
+into the store, and refuse senders who only send garbage. Both keys go
+on a mailbox or at the top level as a default for all of them:
+
+```clojure
+{:reporter {:key {:credential "reporter-key"}
+            :table "~/.local/state/tik/reporters"
+            :fact [:reporter :id]}
+ :block {:addresses ["noise@example.net"]
+         :domains ["spam.example"]
+         :pseudonyms ["hmac-sha256:<64 hex digits>"]}}
+```
+
+With `:reporter`, a new ticket from a sender the DKIM gate authenticated
+carries the fact `[:reporter :id]` (or the `:fact` you name) holding
+`hmac-sha256:` and the hex HMAC-SHA256 of the lower-cased address under
+your key. Without the key nobody can reverse it; with it, a guessed
+address can be checked, so guard the key like a signing key. It comes
+from `{:command …}`, `{:credential …}` or `{:file …}`, holds at least 32
+bytes (`openssl rand -hex 32` prints 64), and is resolved once when the
+bridge starts. The bridge refuses to start when `:reporter` lacks a key,
+lacks `:dkim {:require true …}`, puts its table inside the store, or
+names a process that does not declare the fact with a schema a
+pseudonym satisfies:
+
+```clojure
+:process/facts {[:reporter :id] [:re "^hmac-sha256:[0-9a-f]{64}$"]}
+```
+
+A comment on an existing ticket records no pseudonym, and a `tik>` line
+in a mail can never set the reporter fact.
+
+The table maps each pseudonym to its address and the time it was first
+seen. It is a directory only you can enter (0700), one file per
+pseudonym (0600), and it stays on this machine, outside the store, so it
+is never committed or pushed:
+
+- `tik reporter show <pseudonym>` resolves one;
+- `tik reporter forget <address|pseudonym>` deletes its rows for an
+  erasure request, after which the pseudonym on the tickets resolves to
+  nothing (backups of the table keep what they hold until they expire);
+- `tik reporter stats [--format json]` counts tickets per pseudonym,
+  showing the address where a row exists and `(forgotten)` where none
+  does.
+
+Each takes `--table <dir>`, or reads the table from `--config <imap.edn>`
+(by default `imap.edn`, else `bridge.edn`, at the store's root) with
+`--mailbox <id>` when the config names several.
+
+`:block` refuses a sender after the DKIM gate and before anything is
+written; the poll logs the rule that matched, never the address or the
+body, and goes on with the next message. A domain matches itself and
+every subdomain on a label boundary, so `spam.example` also blocks
+`mail.spam.example` and not `nospam.example`. Listing `:pseudonyms`
+keeps plaintext out of the config and needs `:reporter`, whose key
+computes a sender's pseudonym; a block by pseudonym still holds after
+the sender's row was forgotten.
+
 ## Hints
 
 ```sh

@@ -25,6 +25,7 @@
             [tik.linting :as linting]
             [tik.query :as query]
             [tik.rederive :as rederive]
+            [tik.reporter-cmd :as reporter-cmd]
             [tik.review :as review]
             [tik.serve :as serve]
             [tik.storeops :as storeops]
@@ -148,6 +149,12 @@
                                                 IDLE) and ingests the instant mail arrives
   tik bridge pop3 [--config pop3.edn]           same, for POP3 mailboxes (:delete false by
                                                 default — dedup makes a re-fetch harmless)
+  tik reporter show <pseudonym>                 resolve a mail reporter's pseudonym through
+               [--table DIR | --config F]       the local table outside the store
+  tik reporter forget <address|pseudonym>       delete its rows (an erasure request); the
+                                                pseudonym on the tickets stops resolving
+  tik reporter stats [--mailbox ID]             tickets per reporter pseudonym, resolved
+                                                where a row exists, else (forgotten)
   tik bridge github [--config github.edn]       failed GitHub Actions runs -> ci-failure
                     [--webhook [--port N]]      tickets, one per failure streak of a
                                                 workflow on a branch; a green run closes
@@ -415,7 +422,7 @@
     "key"
     "links" "list" "long" "mailbox" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "population" "port" "pricing" "public-key" "published-only"
-    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "socket" "split" "sqlite" "stage" "store" "surfaces" "template"
+    "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "socket" "split" "sqlite" "stage" "store" "surfaces" "table" "template"
     "threshold" "title"
     "to" "token-env" "token-file" "ttl" "until" "user" "verbose" "watch" "webhook" "where"
     "withdraw"
@@ -498,6 +505,7 @@
       ;; other verb loads it. tik.main force-requires it for the native image.
       "notify"  ((requiring-resolve 'tik.notifier/cmd-notify) parsed)
       "bridge"  (bridge/cmd-bridge parsed)
+      "reporter" (reporter-cmd/cmd-reporter parsed)
       "effects" (effects/cmd-effects parsed)
       "verify"  (audit/cmd-verify parsed)
       "root"    (audit/cmd-root parsed)

@@ -213,16 +213,19 @@
   "Each user's messages. desk@ holds one plain message for a single
   sweep. support@ is the watched mailbox: a message DKIM-signed as seen
   by the pinned verifier mx.smoke.test, one whose verdict another
-  verifier stamped, and a third that arrives while the watch idles."
+  verifier stamped, a signed one from a sender the mailbox blocks, and a
+  fourth that arrives while the watch idles."
   (atom {(:imap-user secrets) [(message {:from "Alice <alice@example.org>" :subject "The printer is on fire"
                                          :id "smoke-1"})]
          (:support-user secrets) [(message {:from "Alice <alice@example.org>" :subject "Signed and welcome"
                                             :id "dkim-1" :authserv "mx.smoke.test"})
                                   (message {:from "Boss <boss@example.org>" :subject "Wire the money"
-                                            :id "forged-2" :authserv "mx.elsewhere.test"})]}))
+                                            :id "forged-2" :authserv "mx.elsewhere.test"})
+                                  (message {:from "Pest <pest@example.org>" :subject "Buy now"
+                                            :id "blocked-3" :authserv "mx.smoke.test"})]}))
 
 (def ^:private pushed
-  (message {:from "Carol <carol@example.org>" :subject "Pushed while idling" :id "pushed-3"
+  (message {:from "Carol <carol@example.org>" :subject "Pushed while idling" :id "pushed-4"
             :authserv "mx.smoke.test"}))
 
 (defn- literal [n ^String raw]
@@ -267,10 +270,10 @@
                                                      (range lo (inc (min hi (count box)))))
                                              [(str tag " OK FETCH completed")]))
                         (recur user))
-              ;; the first IDLE of the watched mailbox delivers the third
+              ;; the first IDLE of the watched mailbox delivers the fourth
               ;; message after a second, as a push
               "IDLE" (do (send! "+ idling")
-                         (when (and (= user (:support-user secrets)) (= 2 (count box)))
+                         (when (and (= user (:support-user secrets)) (= 3 (count box)))
                            (Thread/sleep 1000)
                            (swap! mailboxes update user conj pushed)
                            (send! (str "* " (count (get @mailboxes user)) " EXISTS")))
