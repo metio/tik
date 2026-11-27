@@ -25,6 +25,7 @@
             [tik.imap :as imap]
             [tik.jwks :as jwks]
             [tik.link :as link]
+            [tik.mailbox :as mailbox]
             [tik.mail :refer [auto-generated? own-message? parse-date parse-rfc822
                               require-dkim! ticket-ref-of]]
             [tik.oid4vci :as oid4vci]
@@ -698,26 +699,27 @@
   swallowed so a batch poll continues past one bad message. This is the
   atom-bomb-proof heart shared by every mailbox protocol."
   [s cfg opts uid raw tally]
-  (let [bump #(swap! tally update % (fnil inc 0))]
+  (let [bump #(swap! tally update % (fnil inc 0))
+        pfx (some-> (::label cfg) (str ": "))]
     (try
       (let [{:keys [outcome id msgid facts]} (ingest-message! s cfg raw opts)]
         (bump outcome)
-        (println (case outcome
+        (println (str pfx (case outcome
                    :own (str "uid " uid ": dropped our own mail (loop guard)")
                    :dup (str "uid " uid ": already ingested " msgid)
                    :auto (str "uid " uid ": recorded auto-reply -> " (sid id) " (no cascade)")
                    :comment (str "uid " uid ": comment -> " (sid id)
                                  (when (pos? (long (or facts 0))) (str " (+" facts " fact(s))")))
                    :ticket (str "uid " uid ": new ticket " (sid id))
-                   (str "uid " uid ": " outcome)))
+                   (str "uid " uid ": " outcome))))
         true)
       (catch clojure.lang.ExceptionInfo e
         (bump :skip)
-        (binding [*out* *err*] (println (str "skip uid " uid ": " (ex-message e))))
+        (binding [*out* *err*] (println (str pfx "skip uid " uid ": " (ex-message e))))
         false)
       (catch Throwable e
         (bump :error)
-        (binding [*out* *err*] (println (str "error uid " uid ": " (ex-message e))))
+        (binding [*out* *err*] (println (str pfx "error uid " uid ": " (ex-message e))))
         false))))
 
 (defn- report! [tally]
@@ -725,44 +727,117 @@
   (println (str "ingest complete: " (into (sorted-map) @tally)))
   (exit! 0))
 
+(defn- resolve-mailbox
+  "A mailbox's IMAP settings with its secrets resolved, retried with
+  backoff while the secret source fails (a locked password manager) when
+  `retry?`, else thrown at once."
+  [mb retry?]
+  (loop [backoff 1000]
+    (let [r (try {:ok (secret/resolve-secrets (:imap mb))}
+                 (catch clojure.lang.ExceptionInfo e
+                   (if retry? {:retry (ex-message e)} (throw e))))]
+      (or (:ok r)
+        (do (binding [*out* *err*]
+              (println (str (:id mb) ": " (:retry r) "; retrying in " (quot backoff 1000) " s")))
+            (Thread/sleep (long backoff))
+            (recur (min (* 2 backoff) 60000)))))))
+
+(defn- watch-mailboxes!
+  "Watch every mailbox at once, one thread each, ingesting through
+  `handle`. Returns the mailboxes whose watch ended with an error; with
+  production settings a watch only ends that way."
+  [mbs handle]
+  (let [failed (atom [])
+        threads (mapv (fn [mb]
+                        ;; bound-fn: the thread sees this one's output streams
+                        ;; (and, in tests, its bound watch-cycle cap)
+                        (let [^Runnable f
+                              (bound-fn []
+                                (try
+                                  (let [conn (resolve-mailbox mb true)]
+                                    (println (str (:id mb) ": watching " (:user conn) " on " (:host conn)
+                                                  " over IMAP IDLE"))
+                                    (imap/watch conn #(handle mb %1 %2)))
+                                  (catch Throwable e
+                                    (swap! failed conj (:id mb))
+                                    (binding [*out* *err*]
+                                      (println (str (:id mb) ": the watch ended: " (ex-message e)))))))]
+                          (doto (Thread. f (str "tik-imap-" (:id mb)))
+                            (.setDaemon true)
+                            (.start))))
+                      mbs)]
+    (doseq [^Thread t threads] (.join t))
+    @failed))
+
 (defn cmd-bridge-imap
-  "bridge imap [--config imap.edn]
-  Poll an IMAP mailbox over TLS and ingest new mail — the inbound
-  complement to the email sink. Config at the store root:
+  "bridge imap [--config imap.edn] [--mailbox <id>] [--watch]
+  Poll IMAP mailboxes over TLS and ingest new mail — the inbound
+  complement to the email sink. Config at the store root, one mailbox:
 
     {:imap {:host \"imap.example.com\" :user \"desk@example.com\"
-            :password {:credential \"imap-pw\"}  ; or {:command …}/{:file …}/{:env …}
+            :password {:credential \"imap-pw\"}  ; or {:command …}/{:file …}
             :mailbox \"INBOX\" :search \"UNSEEN\"}
      :process :support :default-actor \"inbound\"
      :from->actor {\"vip@corp.com\" \"vip\"}
      :dkim {:require true :authserv-id \"mx.example.com\"}}
 
+  or several under :mailboxes, each with an :id and its own :imap and
+  :process, the other top-level keys serving as defaults (tik.mailbox).
+  A :mailboxes list must require DKIM against a pinned :authserv-id and
+  take its password from a secret spec. Plaintext (:tls false) is refused
+  for any host that is not a loopback address. --mailbox reads only the
+  one it names.
+
   Every message is ingested in ISOLATION (see ingest-one!): loop-safe,
   idempotent (BODY.PEEK never marks \\Seen; content addressing dedups a
   re-fetch), so a cron/timer can run it as often as you like.
 
-  With --watch it does NOT return: it holds the connection open and uses
-  IMAP IDLE (RFC 2177) to ingest mail the instant it arrives, reconnecting
-  with backoff on any drop — the long-running mode for a service unit.
-  Same isolated, idempotent, loop-safe ingest; only the delivery timing
-  differs."
+  With --watch it does NOT return: it holds one connection per mailbox
+  open and uses IMAP IDLE (RFC 2177) to ingest mail the instant it
+  arrives, reconnecting with backoff on any drop — the long-running mode
+  for a backend pipeline or a service unit."
   [{:keys [opts]}]
   (let [cfg-file (or (:config opts) (str (io/file (root) "imap.edn")))
         _ (when-not (.exists (io/file cfg-file))
             (die (str "no imap config at " cfg-file
-                      " (need {:imap {:host … :user … :password …} :process … :default-actor …})")))
+                      " (need {:imap {:host … :user … :password …} :process … :default-actor …}"
+                      " or {:mailboxes [ … ]})")))
         cfg (read-edn-file (io/file cfg-file))
-        imapcfg (secret/resolve-secrets (:imap cfg))
+        _ (when-let [problems (seq (mailbox/problems cfg false))]
+            (die (str "refusing " cfg-file ":\n  " (str/join "\n  " problems))))
+        list? (contains? cfg :mailboxes)
+        mbs (or (mailbox/select (mailbox/mailboxes cfg) (:mailbox opts))
+                (die (str "no mailbox " (pr-str (:mailbox opts)) " in " cfg-file)))
         s (the-store)
         tally (atom {})
-        handle (fn [uid raw] (let [r (ingest-one! s cfg opts uid raw tally)] (cache-flush!) r))]
+        lock (Object.)
+        handle (fn [mb uid raw]
+                 (locking lock
+                   (let [r (ingest-one! s (cond-> mb list? (assoc ::label (:id mb))) opts uid raw tally)]
+                     (cache-flush!)
+                     r)))]
     (if (:watch opts)
-      (do (println (str "watching " (:host imapcfg) " over IMAP IDLE (Ctrl-C to stop) …"))
-          (imap/watch imapcfg handle)
-          (report! tally))                                ; reached only if watch returns
-      (do (doseq [{:keys [uid raw]} (imap/fetch-messages imapcfg)]
-            (handle uid raw))
-          (report! tally)))))
+      (let [failed (watch-mailboxes! mbs handle)]
+        (cache-flush!)
+        (println (str "ingest complete: " (into (sorted-map) @tally)))
+        (exit! (if (seq failed) 1 0)))
+      (let [failed (doall
+                    (for [mb mbs
+                          :let [ok? (try
+                                      (doseq [{:keys [uid raw]} (imap/fetch-messages (resolve-mailbox mb false))]
+                                        (handle mb uid raw))
+                                      true
+                                      (catch clojure.lang.ExceptionInfo e
+                                        (if list?
+                                          (do (binding [*out* *err*]
+                                                (println (str (:id mb) ": " (ex-message e))))
+                                              false)
+                                          (throw e))))]
+                          :when (not ok?)]
+                      (:id mb)))]
+        (cache-flush!)
+        (println (str "ingest complete: " (into (sorted-map) @tally)))
+        (exit! (if (seq failed) 1 0))))))
 
 (defn cmd-bridge-pop3
   "bridge pop3 [--config pop3.edn]

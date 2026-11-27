@@ -26,7 +26,8 @@
   "The credentials the smoke script's bridge configs resolve."
   {:github "gh-smoke-token" :gitlab "gl-smoke-token" :redmine "rm-smoke-key"
    :odoo-user "smoke@example.org" :odoo-password "odoo-smoke-pw"
-   :imap-user "desk@example.org" :imap-password "imap-smoke-pw"})
+   :imap-user "desk@example.org" :imap-password "imap-smoke-pw"
+   :support-user "support@smoke.test" :support-password "support-smoke-pw"})
 
 (def ^:private log-file (atom nil))
 
@@ -164,9 +165,28 @@
 
 ;; ------------------------------------------------------------- http
 
+(def ^:private inflight (atom 0))
+
+(defn- slow-redmine
+  "Redmine again, below /slow-redmine/, with the first issue listing of a
+  sweep taking 2.5 s. It logs how many requests are in flight at once,
+  so two runs of one pipeline overlapping would show as inflight=2."
+  [{:keys [uri query-string] :as req}]
+  (let [n (swap! inflight inc)]
+    (try
+      (log! "slow-redmine" (str "inflight=" n))
+      (when (and (= uri "/slow-redmine/issues.json")
+                 (zero? (parse-long (or (:offset (query query-string)) "0"))))
+        (Thread/sleep 2500))
+      (redmine (assoc req :uri (str/replace-first uri "/slow-redmine/" "/redmine/")))
+      (finally (swap! inflight dec)))))
+
 (defn- handler [{:keys [request-method uri] :as req}]
   (let [resp (try
                (cond
+                 (str/starts-with? uri "/slow-redmine/") (slow-redmine req)
+                 ;; never answers in time: the pipeline's timeout must stop it
+                 (str/starts-with? uri "/hang-github/") (do (Thread/sleep 30000) not-found)
                  (str/starts-with? uri "/github/") (github req)
                  (str/starts-with? uri "/gitlab/") (gitlab req)
                  (str/starts-with? uri "/redmine/") (redmine req)
@@ -178,15 +198,36 @@
 
 ;; ------------------------------------------------------------- imap
 
-(def ^:private mail
-  (str "From: Alice <alice@example.org>\r\n"
+(defn- message [{:keys [from subject id authserv]}]
+  (str (when authserv (str "Authentication-Results: " authserv "; dkim=pass header.d=example.org\r\n"))
+       "From: " from "\r\n"
        "To: desk@example.org\r\n"
-       "Subject: The printer is on fire\r\n"
+       "Subject: " subject "\r\n"
        "Date: Thu, 26 Nov 2026 10:00:00 +0000\r\n"
-       "Message-ID: <smoke-1@example.org>\r\n"
+       "Message-ID: <" id "@example.org>\r\n"
        "Content-Type: text/plain; charset=utf-8\r\n"
        "\r\n"
        "Please send help.\r\n"))
+
+(def ^:private mailboxes
+  "Each user's messages. desk@ holds one plain message for a single
+  sweep. support@ is the watched mailbox: a message DKIM-signed as seen
+  by the pinned verifier mx.smoke.test, one whose verdict another
+  verifier stamped, and a third that arrives while the watch idles."
+  (atom {(:imap-user secrets) [(message {:from "Alice <alice@example.org>" :subject "The printer is on fire"
+                                         :id "smoke-1"})]
+         (:support-user secrets) [(message {:from "Alice <alice@example.org>" :subject "Signed and welcome"
+                                            :id "dkim-1" :authserv "mx.smoke.test"})
+                                  (message {:from "Boss <boss@example.org>" :subject "Wire the money"
+                                            :id "forged-2" :authserv "mx.elsewhere.test"})]}))
+
+(def ^:private pushed
+  (message {:from "Carol <carol@example.org>" :subject "Pushed while idling" :id "pushed-3"
+            :authserv "mx.smoke.test"}))
+
+(defn- literal [n ^String raw]
+  [(str "* " n " FETCH (UID " n " BODY[] {" (count (.getBytes raw StandardCharsets/ISO_8859_1)) "}")
+   (str raw ")")])
 
 (defn- imap-session [^Socket sock]
   (with-open [sock sock]
@@ -194,31 +235,51 @@
           ^OutputStream out (.getOutputStream sock)
           send! (fn [& lines]
                   (doseq [l lines] (.write out (.getBytes (str l "\r\n") StandardCharsets/ISO_8859_1)))
-                  (.flush out))]
+                  (.flush out))
+          logins {(pr-str (:imap-user secrets)) [(:imap-user secrets) (:imap-password secrets)]
+                  (pr-str (:support-user secrets)) [(:support-user secrets) (:support-password secrets)]}]
       (send! "* OK fake IMAP ready")
-      (loop [authed? false]
+      (loop [user nil]
         (when-let [line (.readLine in)]
           (let [[tag verb & more] (str/split line #" ")
-                rest-line (str/join " " more)]
+                rest-line (str/join " " more)
+                box (get @mailboxes user [])]
             (log! "imap" (str/upper-case (str verb)) (if (= "LOGIN" (str/upper-case (str verb))) "<credentials>" rest-line))
             (case (str/upper-case (str verb))
-              "LOGIN" (if (= rest-line (str (pr-str (:imap-user secrets)) " " (pr-str (:imap-password secrets))))
-                        (do (send! (str tag " OK LOGIN completed")) (recur true))
-                        (do (send! (str tag " NO LOGIN failed")) (recur false)))
-              "SELECT" (do (send! "* 1 EXISTS" (str tag (if authed? " OK [READ-WRITE] SELECT completed" " NO not authenticated")))
-                           (recur authed?))
+              "LOGIN" (let [[u p] (get logins (first more))]
+                        (if (and u (= (second more) (pr-str p)))
+                          (do (send! (str tag " OK LOGIN completed")) (recur u))
+                          (do (send! (str tag " NO LOGIN failed")) (recur nil))))
+              "SELECT" (do (send! (str "* " (count box) " EXISTS")
+                                  (str tag (if user " OK [READ-WRITE] SELECT completed" " NO not authenticated")))
+                           (recur user))
               "UID" (let [[sub & args] more]
                       (case (str/upper-case sub)
-                        "SEARCH" (send! "* SEARCH 1" (str tag " OK SEARCH completed"))
-                        "FETCH" (if (= "1" (first args))
-                                  (send! (str "* 1 FETCH (UID 1 BODY[] {" (count (.getBytes ^String mail StandardCharsets/ISO_8859_1)) "}")
-                                         (str mail ")")
-                                         (str tag " OK FETCH completed"))
-                                  (send! (str tag " OK FETCH completed")))
+                        "SEARCH" (send! (str "* SEARCH " (str/join " " (range 1 (inc (count box)))))
+                                        (str tag " OK SEARCH completed"))
+                        "FETCH" (let [n (parse-long (first args))]
+                                  (apply send! (concat (when (<= 1 n (count box)) (literal n (nth box (dec n))))
+                                                       [(str tag " OK FETCH completed")])))
                         (send! (str tag " BAD unknown UID command")))
-                      (recur authed?))
+                      (recur user))
+              "FETCH" (let [[lo hi] (map parse-long (str/split (first more) #":"))]
+                        (apply send! (concat (mapcat #(literal % (nth box (dec %)))
+                                                     (range lo (inc (min hi (count box)))))
+                                             [(str tag " OK FETCH completed")]))
+                        (recur user))
+              ;; the first IDLE of the watched mailbox delivers the third
+              ;; message after a second, as a push
+              "IDLE" (do (send! "+ idling")
+                         (when (and (= user (:support-user secrets)) (= 2 (count box)))
+                           (Thread/sleep 1000)
+                           (swap! mailboxes update user conj pushed)
+                           (send! (str "* " (count (get @mailboxes user)) " EXISTS")))
+                         (let [done (.readLine in)]
+                           (log! "imap" (str done)))
+                         (send! (str tag " OK IDLE terminated"))
+                         (recur user))
               "LOGOUT" (send! "* BYE" (str tag " OK LOGOUT completed"))
-              (do (send! (str tag " BAD unknown command")) (recur authed?)))))))))
+              (do (send! (str tag " BAD unknown command")) (recur user)))))))))
 
 (defn- serve-imap! ^ServerSocket []
   (let [ss (ServerSocket. 0 50 (InetAddress/getLoopbackAddress))]

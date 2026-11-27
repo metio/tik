@@ -16,7 +16,7 @@
      :serve {:host \"127.0.0.1\" :port 7777}
      :notify {:poll \"PT2S\"}
      :pipelines [{:id :github-metio :store :metio :every \"PT10M\"
-                  :run [\"bridge\" \"github\" \"--config\" \"github.edn\"]}]}
+                  :config \"github.edn\" :run [\"bridge\" \"github\"]}]}
 
   `check` is pure: it takes the parsed config and returns every problem it
   finds, so a config is judged as a whole and each refusal is tested on
@@ -30,6 +30,8 @@
             [tik.args :as args]
             [tik.context :as context]
             [tik.identity :as identity]
+            [tik.mailbox :as mailbox]
+            [tik.schedule :as schedule]
             [tik.secret :as secret]
             [tik.sign :as sign])
   (:import (java.io File)
@@ -38,11 +40,26 @@
 
 (def store-name-pattern #"[a-z0-9][a-z0-9._-]{0,62}")
 
-(def ^:private top-keys #{:stores :pipelines :serve :notify :allow-shared-keys})
+(def ^:private top-keys #{:stores :pipelines :serve :notify :allow-shared-keys :exec :on-failure})
 (def ^:private store-keys #{:root :org :actor :key :mcp-token-file :board})
 (def ^:private serve-keys #{:host :port})
 (def ^:private notify-keys #{:socket :state-dir :poll :window :rate :sinks})
-(def ^:private pipeline-keys #{:id :store :run :every :watch :period :as :key})
+(def ^:private pipeline-keys #{:id :store :run :every :watch :period :as :key :config :jitter :timeout})
+(def ^:private on-failure-keys #{:run :repeat})
+
+(def bridge-secret-variables
+  "Variables a bridge falls back to for its remote's secret. A
+  multi-store backend refuses them in its environment: every pipeline
+  inherits it, so a token meant for one organisation's bridge would
+  reach every other store's too. Name the secret in the bridge's config
+  instead."
+  #{"GITHUB_TOKEN" "GITHUB_WEBHOOK_SECRET" "GITLAB_TOKEN" "REDMINE_API_KEY" "ODOO_PASSWORD"})
+
+(defn- duration-ms
+  "Milliseconds of an ISO-8601 duration string, or nil."
+  [x]
+  (when (string? x)
+    (try (.toMillis (java.time.Duration/parse x)) (catch Exception _ nil))))
 
 (def ^:private verbs-the-backend-owns
   "Verbs a multi-store pipeline may not run: the backend itself serves the
@@ -151,7 +168,52 @@
           (conj (str p ": :as must be a principal of letters, digits and ._@+-"))
 
           (and (contains? pl :key) (not (key-spec? (:key pl))))
-          (conj (str p ": :key must be a file path, {:file …}, {:credential …} or {:command …}")))))))
+          (conj (str p ": :key must be a file path, {:file …}, {:credential …} or {:command …}"))
+
+          (and parsed (contains? (:opts parsed) :config))
+          (conj (str p ": :run may not pass --config, which would resolve against the backend's"
+                     " working directory; name the file with :config, relative to the store"))
+
+          (and (contains? pl :config) (not (and (string? (:config pl)) (not (str/blank? (:config pl))))))
+          (conj (str p ": :config must be a path, relative to the store's root or absolute"))
+
+          (and (contains? pl :jitter) (nil? (duration-ms (:jitter pl))))
+          (conj (str p ": :jitter " (pr-str (:jitter pl)) " is not an ISO-8601 duration"))
+
+          (and (contains? pl :jitter) (:watch pl))
+          (conj (str p ": :jitter is for a scheduled pipeline; a :watch pipeline runs continuously"))
+
+          (and (duration-ms (:jitter pl)) (duration-ms (:every pl))
+               (<= (duration-ms (:every pl)) (duration-ms (:jitter pl))))
+          (conj (str p ": :jitter must be shorter than :every"))
+
+          (and (contains? pl :timeout) (:watch pl))
+          (conj (str p ": :timeout is for a scheduled pipeline; a :watch pipeline runs until it exits"))
+
+          (and (contains? pl :timeout) (not (pos? (or (duration-ms (:timeout pl)) 0))))
+          (conj (str p ": :timeout " (pr-str (:timeout pl)) " is not a positive ISO-8601 duration"))
+
+          (and (not (:watch pl)) (some? (duration-ms (:every pl))) (not (pos? (duration-ms (:every pl)))))
+          (conj (str p ": :every must be a positive duration")))))))
+
+(defn- check-exec [problems exec]
+  (cond-> problems
+    (not (and (vector? exec) (seq exec) (every? #(and (string? %) (not (str/blank? %))) exec)))
+    (conj ":exec must be a non-empty vector of strings: the command that runs this tik")))
+
+(defn- check-on-failure [problems of]
+  (cond-> problems
+    (not (map? of))
+    (conj ":on-failure must be a map such as {:run [\"notify-send\" \"tik: {store}/{pipeline} failed\"]}")
+
+    (and (map? of) (seq (remove on-failure-keys (keys of))))
+    (conj (str ":on-failure has unknown key(s) " (str/join ", " (sort (map pr-str (remove on-failure-keys (keys of)))))))
+
+    (and (map? of) (not (and (vector? (:run of)) (seq (:run of)) (every? string? (:run of)))))
+    (conj ":on-failure needs :run, a vector of strings run without a shell")
+
+    (and (map? of) (contains? of :repeat) (nil? (duration-ms (:repeat of))))
+    (conj ":on-failure :repeat must be an ISO-8601 duration (PT0S reports every failure)")))
 
 (defn- check-shared-keys [problems stores allowed]
   (cond-> problems
@@ -219,6 +281,8 @@
         (if (contains? cfg :allow-shared-keys)
           (check-shared-keys problems stores-map (:allow-shared-keys cfg))
           problems)
+        (if (contains? cfg :exec) (check-exec problems (:exec cfg)) problems)
+        (if (contains? cfg :on-failure) (check-on-failure problems (:on-failure cfg)) problems)
         (cond-> problems
           (and (empty? pipelines) (nil? serve) (nil? notify))
           (conj "nothing to run: no :pipelines, no :serve and no :notify"))))))
@@ -328,32 +392,110 @@
            " (" (:org (:ctx (val b))) ") resolve to the same key; one organisation's key"
            " never signs another's store unless :allow-shared-keys names [" (key a) " " (key b) "]"))))
 
+(defn config-path
+  "Where a pipeline's `:config` lies: an absolute path or `~/…` as
+  written, anything else relative to its store's root. nil when the
+  pipeline names none, and the verb then reads its default file at the
+  store's root."
+  [root config]
+  (when config
+    (let [e (expand-home config)
+          f (io/file e)]
+      (str (if (.isAbsolute f) f (io/file root e))))))
+
+(defn- imap-pipeline? [{:keys [run]}]
+  (let [pos (:pos (args/parse-args (mapv str run)))]
+    (= ["bridge" "imap"] (take 2 pos))))
+
+(defn- mailbox-problems
+  "What keeps an IMAP pipeline's mailboxes from running under this
+  backend: its config must exist and hold to the strict mailbox rules,
+  and the pipeline's key must sign as every actor a mailbox may record
+  mail as, or what it ingests would not verify."
+  [p root cfg-path key-path]
+  (let [f (io/file (or cfg-path (str (io/file root "imap.edn"))))]
+    (if-not (.isFile f)
+      [(str p ": its mailbox config " f " does not exist")]
+      (let [cfg (try (args/read-edn-file f) (catch Exception e {::unreadable (ex-message e)}))]
+        (if (::unreadable cfg)
+          [(str p ": cannot read " f ": " (::unreadable cfg))]
+          (let [problems (mailbox/problems cfg true)]
+            (if (seq problems)
+              (mapv #(str p ": " f ": " %) problems)
+              (vec (for [mb (mailbox/mailboxes cfg)
+                         a (mailbox/attributed-actors mb)
+                         :when (not (signs-as? root key-path a))]
+                     (str p ": mailbox " (:id mb) " records mail as " a
+                          ", but the pipeline's key is not granted to " a " in " (io/file root "actors")))))))))))
+
+(defn schedule-settings
+  "The milliseconds the scheduler works with, from a checked pipeline."
+  [{:keys [every jitter timeout watch]}]
+  (when-not watch
+    (let [every-ms (duration-ms every)]
+      {:every-ms every-ms
+       :jitter-ms (schedule/jitter-ms every-ms (duration-ms jitter))
+       :timeout-ms (duration-ms timeout)})))
+
+(defn pipeline-key-problems
+  "Pipelines of stores with different organisations that resolve to one
+  key: one organisation's delegate key never signs for another's, unless
+  :allow-shared-keys names the pair of stores."
+  [pipelines opened orgs allowed]
+  (let [ok (set (map set allowed))
+        rows (for [[pl {:keys [fingerprint]}] (map vector pipelines opened) :when fingerprint]
+               {:id (:id pl) :store (:store pl) :fpr fingerprint})]
+    (distinct
+     (for [[_ group] (group-by :fpr rows)
+           a group b group
+           :when (and (neg? (compare (str (:id a)) (str (:id b))))
+                      (not= (orgs (:store a)) (orgs (:store b)))
+                      (not (ok #{(:store a) (:store b)})))]
+       (str "pipelines " (pr-str (:id a)) " (" (orgs (:store a)) ") and " (pr-str (:id b))
+            " (" (orgs (:store b)) ") sign with the same key; give each organisation its own"
+            " delegate key, or name [" (:store a) " " (:store b) "] in :allow-shared-keys")))))
+
 (defn- open-pipeline
   "A pipeline's context: its store's, with :as as the actor and its own
   :key when it names one, checked against that store's actors file."
-  [dir stores {:keys [id store as] pkey :key :as pl}]
+  [dir stores {:keys [id store as config] pkey :key :as pl}]
   (let [{:keys [ctx]} (get stores store)
         actor (or as (:actor ctx))
         p (str "pipeline " (pr-str id))
         key-path (if pkey
                    (try (secret/materialize-file (str p " :key") pkey dir (str "pipeline-" (name id) ".key"))
                         (catch clojure.lang.ExceptionInfo e {:problem (ex-message e)}))
-                   (:key ctx))]
+                   (:key ctx))
+        cfg-path (config-path (:root ctx) config)]
     (cond
       (map? key-path) {:problems [(:problem key-path)]}
       (not (signs-as? (:root ctx) key-path actor))
       {:problems [(str p ": its key is not granted to " actor " in store " (:name ctx) "'s actors file")]}
-      :else {:pipeline (assoc pl :as actor
-                              :tik/store (assoc ctx :actor actor :key (str key-path)))
-             :fingerprint (fingerprint-of key-path)})))
+      (and cfg-path (not (.isFile (io/file cfg-path))))
+      {:problems [(str p ": its :config " cfg-path " does not exist")]}
+      :else
+      (let [mail (when (imap-pipeline? pl) (mailbox-problems p (:root ctx) cfg-path key-path))]
+        (if (seq mail)
+          {:problems mail}
+          {:pipeline (merge (assoc pl :as actor
+                                   :tik/store (assoc ctx :actor actor :key (str key-path)))
+                            (when cfg-path {:config-path cfg-path})
+                            (schedule-settings pl))
+           :fingerprint (fingerprint-of key-path)})))))
 
 (defn environment-problems
   "A multi-store backend refuses to start with a store variable in its
-  environment: code that runs outside a store context would read it."
+  environment, since code that runs outside a store context would read
+  it, or with a bridge's secret variable, which every store's pipelines
+  would inherit."
   [env]
-  (for [n (sort context/store-variables) :when (some? (get env n))]
-    (str n " is set; a multi-store backend takes every store, key and actor from its config,"
-         " so unset it")))
+  (concat
+   (for [n (sort context/store-variables) :when (some? (get env n))]
+     (str n " is set; a multi-store backend takes every store, key and actor from its config,"
+          " so unset it"))
+   (for [n (sort bridge-secret-variables) :when (some? (get env n))]
+     (str n " is set; every store's pipelines would inherit it, so name the secret in the"
+          " bridge's config ({:command …} or {:credential …}) and unset it"))))
 
 (defn open-stores!
   "Open every store and pipeline of a checked config. Returns
@@ -379,7 +521,8 @@
                                     :when (and (= fingerprint other)
                                                (not= (orgs n) (orgs (:store pl))))]
                                 (str "pipeline " (pr-str (:id pl)) " signs with the key of store "
-                                     (name n) ", another organisation's")))
+                                     (name n) ", another organisation's"))
+                              (pipeline-key-problems (:pipelines cfg) pls orgs (:allow-shared-keys cfg [])))
                 problems (concat (mapcat :problems pls) key-problems)]
             (if (seq problems)
               {:problems (vec problems)}

@@ -208,19 +208,25 @@
   uid raw)` per message), then loops: IDLE until the server pushes a new
   `* n EXISTS` (or `:poll-ms`, default 25 min, elapses — re-issuing IDLE
   before the ~29-min server drop), then FETCH the newly-arrived sequence
-  range and hand each message off. Any failure closes the socket and
-  reconnects with exponential backoff, re-sweeping on reconnect. Runs
-  until the process is killed. Correctness is the caller's `handle`
-  (idempotent, loop-safe); this only decides WHEN to deliver, so a
-  dropped connection or a missed push never loses or double-books mail —
-  the re-sweep and the cursor fetch cover it, and dedup absorbs overlap."
+  range and hand each message off. Any failure closes the socket, says
+  why on `*err*`, and reconnects with exponential backoff (1 s doubling to
+  60 s, back to 1 s once a session got as far as IDLE), re-sweeping on
+  reconnect. Runs until the process is killed. Correctness is the
+  caller's `handle` (idempotent, loop-safe); this only decides WHEN to
+  deliver, so a dropped connection or a missed push never loses or
+  double-books mail — the re-sweep and the cursor fetch cover it, and
+  dedup absorbs overlap.
+
+  A refusal that no retry can fix — plaintext to a remote host — ends
+  the watch by throwing instead of retrying forever."
   [{:keys [mailbox search poll-ms] :as conn} handle]
   (let [poll (int (or poll-ms (* 25 60 1000)))
         remaining (atom *watch-cycles*)
         more? #(or (nil? @remaining) (pos? @remaining))]
     (loop [backoff 1000]
       (when (more?)
-        (let [reconnect?
+        (let [idled? (atom false)
+              reconnect?
               (try
                 (let [{:keys [^Socket socket session]} (connect conn)]
                   (try
@@ -233,6 +239,7 @@
                         (if (more?)
                           (do (when @remaining (swap! remaining dec))
                               (let [n (idle! session)]
+                                (reset! idled? true)
                                 (recur (if (and n (> (long n) (long seen)))
                                          (do (doseq [{:keys [uid raw]}
                                                      (fetch-seq-range session (inc (long seen)) n)]
@@ -243,7 +250,17 @@
                       false)
                     (finally
                       (try (.close socket) (catch Exception _ nil)))))
-                (catch Exception _ true))]               ; drop/auth failure: reconnect
+                (catch clojure.lang.ExceptionInfo e
+                  (when (= :mail/plaintext-refused (:reason (ex-data e))) (throw e))
+                  (binding [*out* *err*] (println (str (ex-message e) "; reconnecting")))
+                  true)
+                (catch Exception e
+                  (binding [*out* *err*]
+                    (println (str "imap: connection to " (:host conn) " dropped ("
+                                  (.getSimpleName (class e)) (some->> (ex-message e) (str ": "))
+                                  "); reconnecting")))
+                  true))
+              backoff (if @idled? 1000 backoff)]
           (when (and reconnect? (more?))
-            (Thread/sleep backoff)
+            (Thread/sleep (long backoff))
             (recur (min (* backoff 2) 60000))))))))
