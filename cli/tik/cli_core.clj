@@ -16,6 +16,7 @@
             [clojure.walk :as walk]
             [tik.args :refer [read-edn-file]]
             [tik.canonical :as canonical]
+            [tik.context :as context]
             [tik.store.sqlite :as sqlite]
             [tik.templates :as templates]
             [tik.dag :as dag]
@@ -63,12 +64,18 @@
   nil)
 
 (defn root
-  "The store root: a bound *root* first, so one process can derive several
-  stores in turn; then TIK_ROOT (scripts, multi-store work); else
-  discovery; else the cwd — which is what makes a fresh directory become
-  a store the moment `tik new` runs in it."
+  "The store root: the bound store context's (tik.context, one store of a
+  multi-store backend) first; then a bound *root*, so one process can
+  derive several stores in turn; then TIK_ROOT (scripts, multi-store
+  work); else discovery; else the cwd — which is what makes a fresh
+  directory become a store the moment `tik new` runs in it. A strict
+  multi-store process outside any store context throws instead of
+  discovering, so a write that forgot its store lands nowhere."
   []
-  (or *root* (System/getenv "TIK_ROOT") @discovered-root "."))
+  (cond
+    context/*store* (:root context/*store*)
+    *root* *root*
+    :else (or (context/env "TIK_ROOT") @discovered-root ".")))
 
 (defn store-established?
   "Is a real store reachable — a marker found on the upward walk, or
@@ -76,7 +83,7 @@
   empty-board guidance leads with `tik init` only when it is NOT, so a
   fresh directory is told how to become a store deliberately."
   []
-  (boolean (or (System/getenv "TIK_ROOT") @discovered-root)))
+  (boolean (or context/*store* (context/env "TIK_ROOT") @discovered-root)))
 
 (def ^:private last-now
   "The last instant `now` handed out, so the next one is never the same."
@@ -367,9 +374,19 @@
     (sqlite/sqlite-store db)
     (fstore/file-store (root))))
 
-(defn signing-key [opts]
-  (let [k (or (:key opts) (System/getenv "TIK_KEY"))]
-    (when-not (str/blank? k) k)))
+(defn signing-key
+  "The key file a write signs with: --key, else TIK_KEY. Inside a store
+  context of a multi-store backend it is that store's key and nothing
+  else: a --key naming another file is refused, so no argument can make
+  one store's event carry another store's signature."
+  [opts]
+  (let [bound (when context/*store* (context/env "TIK_KEY"))
+        given (:key opts)]
+    (when (and context/*store* (some? given) (not= (str given) (str bound)))
+      (die (str "store " (:name context/*store*) " signs only with its own key;"
+                " --key is refused here")))
+    (let [k (if context/*store* bound (or given (context/env "TIK_KEY")))]
+      (when-not (str/blank? k) k))))
 
 (defn put-signature!
   "Sign `bytes` and store the detached sidecar through the backend seam —
@@ -400,7 +417,7 @@
   "The ML-DSA-65 key file TIK_PQ_KEY names (ADR 0036 point 5). `opts` is
   taken for symmetry with `signing-key`; there is no flag for it."
   [_opts]
-  (let [k (System/getenv "TIK_PQ_KEY")]
+  (let [k (context/env "TIK_PQ_KEY")]
     (when-not (str/blank? k) k)))
 
 (defn pq-sidecar
@@ -608,7 +625,15 @@
                  nil)))
         (store/ticket-ids s)))
 
-(def cache-state (atom nil))   ; {:entries {} :dirty? bool}
+(def cache-state
+  "The derived-row cache of every store this process has read, by store
+  root: {root {:entries {} :dirty? bool}}. Keyed by root because one
+  process may serve several stores (the notifier, a multi-store backend),
+  and one store's rows, titles included, must never be served from or
+  flushed into another store's cache file."
+  (atom {}))
+
+(defn- cache-key [] (str (root)))
 
 (defn cache-file ^File [] (io/file (root) ".derived-cache.json"))
 
@@ -632,30 +657,34 @@
     (sequential? x) (mapv cache-decode x)
     :else x))
 
+(defn- read-cache-file
+  "The entries of this store's cache file; a missing or corrupt file is a
+  miss, never an error."
+  []
+  (or (try
+        (when (.exists (cache-file))
+          (let [parse (requiring-resolve 'cheshire.core/parse-string)]
+            (into {}
+                  (map (fn [[id v]] [id (cache-decode v)]))
+                  (parse (slurp (cache-file))))))
+        (catch Exception _ nil))
+      {}))
+
 (defn cache-entries []
-  (:entries
-   (or @cache-state
-       (reset! cache-state
-               {:dirty? false
-                :entries
-                (or (try
-                      (when (.exists (cache-file))
-                        (let [parse (requiring-resolve
-                                     'cheshire.core/parse-string)]
-                          (into {}
-                                (map (fn [[k v]] [k (cache-decode v)]))
-                                (parse (slurp (cache-file))))))
-                      ;; a corrupt cache is not an error, it is a miss
-                      (catch Exception _ nil))
-                    {})}))))
+  (let [k (cache-key)]
+    (:entries
+     (or (get @cache-state k)
+         (let [loaded {:dirty? false :entries (read-cache-file)}]
+           (get (swap! cache-state #(if (contains? % k) % (assoc % k loaded))) k))))))
 
 (defn cache-flush! []
-  (when (:dirty? @cache-state)
-    (let [emit (requiring-resolve 'cheshire.core/generate-string)]
-      (spit (cache-file) (emit (into {}
-                                     (map (fn [[k v]] [k (cache-encode v)]))
-                                     (:entries @cache-state)))))
-    (swap! cache-state assoc :dirty? false)))
+  (let [k (cache-key)]
+    (when (get-in @cache-state [k :dirty?])
+      (let [emit (requiring-resolve 'cheshire.core/generate-string)]
+        (spit (cache-file) (emit (into {}
+                                       (map (fn [[id v]] [id (cache-encode v)]))
+                                       (get-in @cache-state [k :entries])))))
+      (swap! cache-state assoc-in [k :dirty?] false))))
 
 (defn event-ids-fingerprint
   "sha256 over the ticket's sorted event filenames and the store's role
@@ -902,11 +931,12 @@
                         (or (nil? vu) (< (inst-ms t) vu)))))
           (:row entry)
           (let [{:keys [valid-until row]} (compute-row s t id)]
-            (swap! cache-state #(-> %
-                                    (assoc-in [:entries (str id)]
-                                              {:fp fp :valid-until valid-until
-                                               :row row})
-                                    (assoc :dirty? true)))
+            (let [k (cache-key)]
+              (swap! cache-state #(-> %
+                                      (assoc-in [k :entries (str id)]
+                                                {:fp fp :valid-until valid-until
+                                                 :row row})
+                                      (assoc-in [k :dirty?] true))))
             row)))
       (:row (compute-row s t id)))
     (catch Exception e

@@ -29,8 +29,10 @@
       {:id :notify      :every \"PT5M\" :run [\"effects\"] :as \"tik-backend\"}]}"
   (:require [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
+            [tik.backend-stores :as stores]
             [tik.cli :as cli]
-            [tik.cli-core :refer [die now root]])
+            [tik.cli-core :refer [die now root]]
+            [tik.context :as context])
   (:import (java.io File)
            (java.time Duration Instant LocalDate ZoneOffset)
            (java.time.temporal IsoFields)))
@@ -39,8 +41,6 @@
   "nil in production (the scheduler runs forever); a positive integer in
   tests caps the number of scheduled fires so the loop terminates."
   nil)
-
-(def ^:private period-kinds #{:iso-week :month :quarter :day :year})
 
 (defn period-label
   "The current period LABEL for a recur pipeline, computed from the
@@ -66,14 +66,22 @@
     as (into ["--actor" (str as)])
     period (into ["--period" (period-label today period)])))
 
-(defn- label [p] (str "[" (name (:id p)) "]"))
+(defn- label [p] (str "[" (when-let [s (:tik/store p)] (str (:name s) "/")) (name (:id p)) "]"))
+
+(defn- in-store
+  "Call `f` inside the store context of a multi-store pipeline (its
+  :tik/store), or as it is for a single-store one."
+  [p f]
+  (if-let [s (:tik/store p)]
+    (context/with-store s (f))
+    (f)))
 
 (defn- fire!
   "Run one pipeline verb in ISOLATION — a failure logs and the scheduler
   moves on, never aborting the loop (atom-bomb proof, like mail ingest)."
   [p]
   (let [argv (tick-argv (LocalDate/now ZoneOffset/UTC) p)
-        {:keys [exit out err]} (try (cli/run-argv argv)
+        {:keys [exit out err]} (try (in-store p #(cli/run-argv argv))
                                     (catch Throwable e {:exit 1 :err (ex-message e)}))
         tail (some-> out str/split-lines first str/trim not-empty)]
     (println (str (label p) " " (str/join " " argv) " -> "
@@ -89,7 +97,7 @@
   captured run would hold a bad config's message until the verb ends and
   then drop it."
   [p out err]
-  (let [code (try (cli/run-argv-to (tick-argv (LocalDate/now ZoneOffset/UTC) p) out err)
+  (let [code (try (in-store p #(cli/run-argv-to (tick-argv (LocalDate/now ZoneOffset/UTC) p) out err))
                   (catch Throwable e
                     (binding [*out* err] (println (label p) "watcher threw:" (ex-message e)))
                     1))]
@@ -146,45 +154,97 @@
 (defn- validate!
   "Fail closed on a malformed pipeline before anything starts."
   [pipelines]
-  (doseq [{:keys [id run watch every period] :as p} pipelines]
-    (when-not id (die (str "backend pipeline missing :id: " (pr-str p))))
-    (when-not (and (sequential? run) (seq run))
-      (die (str (label p) " needs a non-empty :run vector")))
-    (when-not (or watch every)
-      (die (str (label p) " needs :every <ISO-8601 duration> or :watch true")))
-    (when (and every (not watch))
-      (try (Duration/parse every)
-           (catch Exception _ (die (str (label p) " :every " (pr-str every)
-                                        " is not an ISO-8601 duration (e.g. PT5M, PT1H, P1D)")))))
-    (when (and period (not (period-kinds period)))
-      (die (str (label p) " :period must be one of " period-kinds)))
-    ;; rollout mints tickets; without a period each replica claims its own
-    ;; wall clock, and concurrent backends mint duplicate children (ADR 0021)
-    (when (and (= "rollout" (str (first run))) (not watch) (not period))
-      (die (str (label p) " runs rollout, which needs a :period so every"
-                " replica mints the same events")))))
+  (doseq [p pipelines]
+    (when-not (:id p) (die (str "backend pipeline missing :id: " (pr-str p))))
+    (when (contains? p :store)
+      (die (str (label p) " names a :store, but this config has no :stores;"
+                " a single-store backend runs against TIK_ROOT")))
+    (when-let [problem (first (stores/pipeline-problems p))]
+      (die (str (label p) " " problem)))))
+
+(defn- start-thread!
+  "A daemon thread running `f` with this thread's output streams."
+  [thread-name f]
+  (let [out *out* err *err*]
+    (doto (Thread. ^Runnable (fn [] (binding [*out* out *err* err] (f))) ^String thread-name)
+      (.setDaemon true)
+      (.start))))
+
+(defn- start-notifier!
+  "Run the notifier over the backend's stores, restarted with backoff if
+  it ever ends. It derives each store under its own root and signs
+  nothing, so it runs outside every store context."
+  [notify-cfg opened]
+  (let [cfg ((requiring-resolve 'tik.notifier/config-from)
+             (assoc notify-cfg :stores (into {} (for [[n {:keys [ctx]}] opened] [n (:root ctx)])))
+             {})
+        notify! (requiring-resolve 'tik.notifier/notify-forever!)]
+    (start-thread! "tik-backend-notify"
+                   (fn []
+                     (loop [backoff 1000]
+                       (try (notify! cfg)
+                            (catch Throwable e
+                              (binding [*out* *err*] (println "[notify] stopped:" (ex-message e)))))
+                       (Thread/sleep backoff)
+                       (recur (min (* 2 backoff) 60000)))))))
+
+(defn run-stores
+  "Run a multi-store backend config (ADR 0041) until killed: check it,
+  open every store or refuse them all, then serve, notify and run the
+  pipelines, each inside its store's context. Returns only in tests, when
+  *backend-ticks* caps the scheduler and nothing else blocks."
+  [cfg cfg-file]
+  (when-let [problems (seq (stores/check cfg))]
+    (die (str "refusing to start " cfg-file ":\n  " (str/join "\n  " problems))))
+  (let [{:keys [problems] opened :stores pipelines :pipelines} (stores/open-stores! cfg (into {} (System/getenv)))]
+    (when (seq problems)
+      (die (str "refusing to start " cfg-file "; no store was started:\n  " (str/join "\n  " problems))))
+    (context/strict!)
+    (let [{watchers true scheduled false} (group-by (comp boolean :watch) pipelines)
+          {:keys [host port] :or {host "127.0.0.1" port 7777}} (:serve cfg)
+          stop (when (:serve cfg)
+                 ((requiring-resolve 'tik.serve/start-store-router!)
+                  {:host host :port port :stores opened}))]
+      (println (str "tik backend: " (count opened) " store(s) (" (str/join ", " (sort (keys opened))) "), "
+                    (count watchers) " continuous, " (count scheduled) " scheduled pipeline(s)"
+                    (when stop (str "; serving http://" host ":" port "/s/<store>/"))))
+      (doseq [[n {:keys [ctx token]}] (sort opened)]
+        (println (str "  " n ": " (:root ctx) " as " (:actor ctx) " (" (:org ctx) ")"
+                      (when stop (str ", board /s/" n "/")) (when token (str ", MCP /s/" n "/mcp")))))
+      (flush)
+      (when (:notify cfg) (start-notifier! (:notify cfg) opened))
+      (doseq [p watchers] (start-watcher! p))
+      (cond
+        (seq scheduled) (run-scheduler scheduled)
+        (and *backend-ticks* (empty? scheduled)) nil
+        :else @(promise))
+      (when stop (stop)))))
 
 (defn cmd-backend
-  "backend [--config pipelines.edn]
+  "backend [--config pipelines.edn|backend.edn]
   Run the configured pipelines as a supervised delegated-agent server:
   continuous pipelines (serve, bridge imap --watch) each get a restart-on-
   exit thread; scheduled pipelines fire on their :every interval. Set
   TIK_KEY to the delegate's key so every produced event is signed by the
   delegate (authorized by a delegation attestation on the registry).
-  Blocks until killed."
+  A config with :stores serves several stores from one process instead
+  (ADR 0041, tik.backend-stores). Blocks until killed."
   [{:keys [opts]}]
   (let [cfg-file (or (:config opts) (str (File. ^String (root) "pipelines.edn")))
         _ (when-not (.exists (File. ^String cfg-file))
             (die (str "no backend config at " cfg-file
                       " (need {:pipelines [{:id … :every|:watch … :run [\"…\"]} …]})")))
-        pipelines (:pipelines (read-edn-file (File. ^String cfg-file)))
-        _ (when-not (seq pipelines) (die (str "no :pipelines in " cfg-file)))
-        _ (validate! pipelines)
-        {watchers true scheduled false} (group-by (comp boolean :watch) pipelines)]
-    (println (str "tik backend: " (count watchers) " continuous, "
-                  (count scheduled) " scheduled pipeline(s)"))
-    (doseq [p watchers] (start-watcher! p))
-    (cond
-      (seq scheduled) (run-scheduler scheduled)
-      (seq watchers) @(promise)                            ; only watchers: block on them
-      :else (die "no pipelines to run"))))
+        cfg (read-edn-file (File. ^String cfg-file))]
+    (if (stores/multi-store? cfg)
+      (run-stores cfg cfg-file)
+      (let [pipelines (:pipelines cfg)
+            _ (when-not (seq pipelines) (die (str "no :pipelines in " cfg-file)))
+            _ (validate! pipelines)
+            {watchers true scheduled false} (group-by (comp boolean :watch) pipelines)]
+        (println (str "tik backend: " (count watchers) " continuous, "
+                      (count scheduled) " scheduled pipeline(s)"))
+        (doseq [p watchers] (start-watcher! p))
+        (cond
+          (seq scheduled) (run-scheduler scheduled)
+          (seq watchers) @(promise)                            ; only watchers: block on them
+          :else (die "no pipelines to run"))))))

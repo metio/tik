@@ -451,13 +451,20 @@
   (let [f (.getAbsoluteFile (io/file (str root)))]
     (if (= ".tik" (.getName f)) (.getName (.getParentFile f)) (.getName f))))
 
+(declare config-from)
+
 (defn config
   "The notifier's settings from notify.edn (`--config`) and the flags.
   Without a config it serves the one store tik would act on here."
   [opts]
-  (let [file (:config opts)
-        c (if file (read-edn-file (io/file (str file))) {})
-        stores (or (:stores c) {(or (:store opts) (store-name-of (core/root))) (str (core/root))})]
+  (let [file (:config opts)]
+    (config-from (if file (read-edn-file (io/file (str file))) {}) opts)))
+
+(defn config-from
+  "The notifier's settings from a parsed notify.edn `c` and the flags. A
+  multi-store backend passes its own stores as `c`'s :stores."
+  [c opts]
+  (let [stores (or (:stores c) {(or (:store opts) (store-name-of (core/root))) (str (core/root))})]
     (when-not (and (map? stores) (seq stores) (every? string? (keys stores)))
       (die "notify.edn :stores must map store names to store roots"))
     {:stores (into {} (for [[k v] stores]
@@ -585,9 +592,10 @@
 
 ;; ------------------------------------------------------------ the verb
 
-(defn cmd-run [opts]
-  (let [cfg (config opts)
-        st (new-state (read-cursor (io/file (:cursor-file cfg))))
+(defn notify-forever!
+  "Notify for the stores of `cfg` (see config-from) until the process ends."
+  [cfg]
+  (let [st (new-state (read-cursor (io/file (:cursor-file cfg))))
         _ (add-configured-sinks! st cfg)
         ss (open-socket! (:socket cfg))]
     (accept-loop! st cfg ss)
@@ -601,6 +609,8 @@
       (tick! st cfg (java.time.Instant/now))
       (Thread/sleep (long (:poll-ms cfg)))
       (recur))))
+
+(defn cmd-run [opts] (notify-forever! (config opts)))
 
 (defn cmd-notify
   "notify [run] | notify watch | notify channel"

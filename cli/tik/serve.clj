@@ -10,6 +10,7 @@
   resolved lazily so the namespace loads on babashka."
   (:require [clojure.string]
             [tik.cli-core :refer [*exit-fn* die resolve-id-soft the-store]]
+            [tik.context :as context]
             [tik.inspect :as inspect]
             [tik.query :as query]))
 (defn loopback-refusal
@@ -83,6 +84,39 @@
                :headers {"Content-Type" "text/plain; charset=utf-8"}
                :body (str "tik: " (or (ex-message e)
                                       (.getName (class e))) "\n")})))))
+
+(defn store-router
+  "The ring handler a multi-store backend serves (ADR 0041). Each store
+  answers below /s/<name>/ only — its board, /tickets.edn, /explain/…
+  and, with a token, /mcp — and every request for it runs inside that
+  store's context, so its derivation reads only that store and an MCP
+  write signs only with that store's key as that store's actor. Each
+  store's MCP checks its own bearer token, so a token opens exactly one
+  store whichever path it is sent to. `stores` maps a name to
+  {:ctx :token :board?}."
+  [{:keys [host port stores]}]
+  (let [mcp-response (when (some :token (vals stores)) (requiring-resolve 'tik.mcp/http-response))
+        handlers (into {}
+                       (for [[n {:keys [ctx token board?]}] stores]
+                         [n {:ctx ctx
+                             :handler (request-handler {:host host :port port :board? board?
+                                                        :mcp (when token {:token token :port port})
+                                                        :mcp-response mcp-response})}]))]
+    (fn [{:keys [uri] :as request}]
+      (if-let [refusal (loopback-refusal host port request)]
+        refusal
+        (let [[_ n rest] (re-matches #"/s/([^/]+)(/.*)?" (str uri))]
+          (if-let [{:keys [ctx handler]} (get handlers n)]
+            (context/with-store ctx (handler (assoc request :uri (or rest "/"))))
+            {:status 404
+             :headers {"Content-Type" "text/plain; charset=utf-8"}
+             :body "tik: not found; a store answers below /s/<store>/\n"}))))))
+
+(defn start-store-router!
+  "Serve `stores` on host:port; returns the function that stops it."
+  [{:keys [host port] :as opts}]
+  (let [run-server (requiring-resolve 'org.httpkit.server/run-server)]
+    (run-server (store-router opts) {:port port :ip host})))
 
 (defn cmd-serve
   "serve [--port N] [--host H] [--mcp-token-file F] [--surfaces http,mcp]:

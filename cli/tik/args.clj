@@ -14,6 +14,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
+            [tik.context :as context]
             [tik.shape :as shape])
   (:import (java.io File PushbackReader StringReader)))
 
@@ -60,7 +61,7 @@
           (recur (rest more) pos (assoc opts (keyword (subs a 2)) (first more))))))))
 
 (defn actor [opts]
-  (or (:actor opts) (System/getenv "TIK_ACTOR")
+  (or (:actor opts) (context/env "TIK_ACTOR")
       (System/getProperty "user.name")))
 
 (defn parse-key [s] (mapv keyword (str/split (shape/string :key s) #"\.")))

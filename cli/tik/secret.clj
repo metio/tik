@@ -153,3 +153,74 @@
      (seq? x)    (doall (map #(resolve-secrets what %) x))
      (set? x)    (into #{} (map #(resolve-secrets what %)) x)
      :else       x)))
+
+(defn- owner-only-file!
+  "A new file `name` in `dir` holding `content`, readable by its owner
+  only from the moment it exists."
+  [^java.io.File dir ^String name ^String content]
+  (let [p (.toPath (io/file dir name))
+        attrs (into-array java.nio.file.attribute.FileAttribute
+                          [(java.nio.file.attribute.PosixFilePermissions/asFileAttribute
+                            (java.nio.file.attribute.PosixFilePermissions/fromString "rw-------"))])]
+    (java.nio.file.Files/createFile p attrs)
+    (spit (.toFile p) content)
+    (str p)))
+
+(defn materialize-file
+  "Resolve a secret whose consumer needs a FILE, such as an SSH private
+  key handed to `ssh-keygen -f`, and return that file's path. `what`
+  names it for errors, which never carry the secret itself.
+
+    \"/path\" or {:file \"/path\"}   that file, used where it lies
+    {:credential \"NAME\"}           the systemd credential's file
+    {:command [...]} or {:command \"...\"}
+                                     the command's whole stdout, written
+                                     as `name` into `dir`, a directory the
+                                     caller made private
+
+  {:env …} is refused: a key in a variable is inherited by every child
+  the process starts. A missing file or failing command throws."
+  [what spec ^java.io.File dir name]
+  (cond
+    (or (string? spec) (and (spec? spec) (contains? spec :file)))
+    (let [path (if (string? spec) spec (:file spec))]
+      (if (and (string? path) (.isFile (io/file path)))
+        path
+        (throw (ex-info (str what " file " (pr-str path) " does not exist")
+                        {:secret what :file path}))))
+
+    (and (spec? spec) (contains? spec :credential))
+    (let [n (:credential spec)
+          dir* (getenv "CREDENTIALS_DIRECTORY")]
+      (resolve1 what spec)                     ; refuses a bad name or a missing file
+      (str (io/file dir* n)))
+
+    (and (spec? spec) (contains? spec :command))
+    (let [c (:command spec)
+          argv (cond
+                 (string? c) ["sh" "-c" c]
+                 (and (sequential? c) (seq c) (every? string? c)) (vec c)
+                 :else (throw (ex-info (str what " :command must be a shell string"
+                                            " or a non-empty vector of strings")
+                                       {:secret what})))
+          r (try (apply sh/sh argv)
+                 (catch Exception e
+                   (throw (ex-info (str what " command " (pr-str c)
+                                        " could not be run: " (.getMessage e))
+                                   {:secret what :command c}))))]
+      (cond
+        (not (zero? (:exit r)))
+        (throw (ex-info (str what " command " (pr-str c) " failed: "
+                             (str/trim (str (:err r))))
+                        {:secret what :command c :exit (:exit r)}))
+        (str/blank? (:out r))
+        (throw (ex-info (str what " command " (pr-str c) " printed nothing")
+                        {:secret what :command c}))
+        :else
+        (owner-only-file! dir name (let [o (str (:out r))]
+                                     (if (str/ends-with? o "\n") o (str o "\n"))))))
+
+    :else
+    (throw (ex-info (str what " must be a file path, {:file …}, {:credential …}"
+                         " or {:command …}; {:env …} is refused for a key")
+                    {:secret what}))))

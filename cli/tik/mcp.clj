@@ -32,6 +32,7 @@
   `tik serve --mcp-token-file F` for one shared server on /mcp."
   (:require [clojure.string :as str]
             [tik.cli :as cli]
+            [tik.context :as context]
             [tik.skills :as skills]))
 
 ;; cheshire is resolved lazily so JVM tooling can load this namespace
@@ -86,7 +87,7 @@
                                :claim {:type "string"}}
                   :required ["ticket" "claim"]}}])
 
-(defn- actor [] (or (System/getenv "TIK_ACTOR") "agent"))
+(defn- actor [] (or (context/env "TIK_ACTOR") "agent"))
 
 (defn- need
   "The named string arguments, or an :err when any is blank/missing —
@@ -173,7 +174,7 @@
   ([code message data status]
    (throw (ex-info message {::code code ::data data ::status status}))))
 
-(defn- signer [] {:key (System/getenv "TIK_KEY") :actor (actor)})
+(defn- signer [] {:key (context/env "TIK_KEY") :actor (actor)})
 
 (defn- skill-resource [skill uri {:keys [path bytes mime]}]
   (cond-> {:uri uri :name path :mimeType mime :size (count bytes)}

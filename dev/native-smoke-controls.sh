@@ -73,10 +73,10 @@ else
   failed=$(grep '^FAIL ' "${work}/no-notify.out" | grep -v 'check(s) failed' || true)
   case "${failed}" in
     "FAIL notify:"*)
-      if [ "$(printf '%s\n' "${failed}" | wc -l)" -eq 1 ]; then
-        echo "ok   a tik without notify fails the notify check and no other"
+      if ! printf '%s\n' "${failed}" | grep -qv '^FAIL notify:'; then
+        echo "ok   a tik without notify fails the notify checks and no other"
       else
-        echo "FAIL a tik without notify failed more than the notify check:"
+        echo "FAIL a tik without notify failed more than the notify checks:"
         printf '%s\n' "${failed}" | sed 's/^/     | /'
         status=1
       fi
