@@ -32,7 +32,8 @@
             [tik.backend-stores :as stores]
             [tik.cli :as cli]
             [tik.cli-core :refer [die now root]]
-            [tik.context :as context])
+            [tik.context :as context]
+            [tik.pipeline-run :as run])
   (:import (java.io File)
            (java.time Duration Instant LocalDate ZoneOffset)
            (java.time.temporal IsoFields)))
@@ -159,6 +160,8 @@
     (when (contains? p :store)
       (die (str (label p) " names a :store, but this config has no :stores;"
                 " a single-store backend runs against TIK_ROOT")))
+    (when-let [k (first (filter #{:config :jitter :timeout} (keys p)))]
+      (die (str (label p) " names " k ", which only a multi-store backend (a config with :stores) honours")))
     (when-let [problem (first (stores/pipeline-problems p))]
       (die (str (label p) " " problem)))))
 
@@ -188,6 +191,20 @@
                        (Thread/sleep backoff)
                        (recur (min (* 2 backoff) 60000)))))))
 
+(defn- self-of [cfg]
+  (run/self-command (:exec cfg) (run/runtime-properties)))
+
+(defn- run-env
+  "What the pipeline runner needs from the config: how to start this tik,
+  the properties a run inherits, the argv of a fire, the failure report
+  and how often a pipeline that keeps failing is reported again."
+  [cfg]
+  {:self (self-of cfg)
+   :props (run/runtime-properties)
+   :tick-argv tick-argv
+   :on-failure (:on-failure cfg)
+   :repeat-ms (or (some-> cfg :on-failure :repeat Duration/parse .toMillis) 3600000)})
+
 (defn run-stores
   "Run a multi-store backend config (ADR 0041) until killed: check it,
   open every store or refuse them all, then serve, notify and run the
@@ -199,8 +216,14 @@
   (let [{:keys [problems] opened :stores pipelines :pipelines} (stores/open-stores! cfg (into {} (System/getenv)))]
     (when (seq problems)
       (die (str "refusing to start " cfg-file "; no store was started:\n  " (str/join "\n  " problems))))
+    (when (and (seq pipelines) (nil? (self-of cfg)))
+      (die (str "refusing to start " cfg-file ": this tik cannot name its own executable to run"
+                " pipelines with; set :exec [\"/path/to/tik\"]")))
     (context/strict!)
-    (let [{watchers true scheduled false} (group-by (comp boolean :watch) pipelines)
+    (let [remaining (atom *backend-ticks*)
+          more? #(or (nil? @remaining) (pos? (long @remaining)))
+          on-fire #(when @remaining (swap! remaining dec))
+          {watchers true scheduled false} (group-by (comp boolean :watch) pipelines)
           {:keys [host port] :or {host "127.0.0.1" port 7777}} (:serve cfg)
           stop (when (:serve cfg)
                  ((requiring-resolve 'tik.serve/start-store-router!)
@@ -213,11 +236,12 @@
                       (when stop (str ", board /s/" n "/")) (when token (str ", MCP /s/" n "/mcp")))))
       (flush)
       (when (:notify cfg) (start-notifier! (:notify cfg) opened))
-      (doseq [p watchers] (start-watcher! p))
-      (cond
-        (seq scheduled) (run-scheduler scheduled)
-        (and *backend-ticks* (empty? scheduled)) nil
-        :else @(promise))
+      (let [env (run-env cfg)]
+        (doseq [p watchers] (run/start-watcher! p env))
+        (cond
+          (seq scheduled) (run/run-scheduled! scheduled (assoc env :more? more? :on-fire on-fire))
+          (and *backend-ticks* (empty? scheduled)) nil
+          :else @(promise)))
       (when stop (stop)))))
 
 (defn cmd-backend

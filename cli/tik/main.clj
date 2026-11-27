@@ -14,6 +14,7 @@
             [tik.cli-core :refer [process-exit!]]
             [tik.mcp]
             [tik.notifier]
+            [tik.process-tree]
             [tik.serve]
             [tik.skill-verify]
             [tik.store.sqlite-jdbc])

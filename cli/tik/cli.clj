@@ -413,7 +413,7 @@
     "expect-bindings" "expect-definition" "expect-stage" "force"
     "format" "from" "github" "help" "hidden" "host" "intro" "issuer" "jwks" "jwks-url"
     "key"
-    "links" "list" "long" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
+    "links" "list" "long" "mailbox" "mcp-token-file" "model" "name" "no-repo" "out" "params" "parent" "parent-title"
     "password" "password-command" "password-file" "period" "population" "port" "pricing" "public-key" "published-only"
     "reason" "registry" "repo" "retire" "role" "scope" "serve" "sign" "signers" "socket" "split" "sqlite" "stage" "store" "surfaces" "template"
     "threshold" "title"

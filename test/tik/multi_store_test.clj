@@ -391,12 +391,16 @@
     (spit cfg-file (pr-str (-> (cfg-for fx)
                                (update :stores update-vals #(dissoc % :mcp-token-file))
                                (dissoc :serve)
-                               (assoc :pipelines [{:id :weekly-a :store :alpha :every "PT0.05S" :run ["recur" "track"] :period :iso-week}
-                                                  {:id :weekly-b :store :beta :every "PT0.05S" :run ["recur" "track"] :period :iso-week}]))))
+                               ;; each run is a child process of tik: here babashka on this checkout
+                               (assoc :exec (h/bb-command "--config" (str (System/getProperty "user.dir") "/bb.edn") "tik"))
+                               (assoc :pipelines [{:id :weekly-a :store :alpha :every "PT0.05S" :timeout "PT60S"
+                                                   :run ["recur" "track"] :period :iso-week}
+                                                  {:id :weekly-b :store :beta :every "PT0.05S" :timeout "PT60S"
+                                                   :run ["recur" "track"] :period :iso-week}]))))
     (let [r (binding [backend/*backend-ticks* 2] (cli/run-argv ["backend" "--config" (str cfg-file)]))]
       (is (zero? (:exit r)) (:err r))
-      (is (str/includes? (:out r) "2 store(s) (alpha, beta)"))
-      (is (str/includes? (:out r) "[alpha/weekly-a] recur track"))
+      (is (str/includes? (:out r) "2 store(s) (alpha, beta)") (:err r))
+      (is (str/includes? (:out r) "[alpha/weekly-a] recur track") (:err r))
       (is (str/includes? (:out r) "[beta/weekly-b] recur track")))
     (doseq [s [a b]]
       (let [sigs (filter #(= "claude" (:actor %)) (every-signature (:root s)))]

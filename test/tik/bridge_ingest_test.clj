@@ -198,7 +198,8 @@
         good2 (email {:from "alice@customer.example" :subject "two"
                       :ar ar :msgid "<g2@x>" :body "world"})]
     (spit (io/file (str root) "imap.edn")
-          (pr-str {:process :track :default-actor "inbound"
+          (pr-str {:imap {:host "127.0.0.1" :tls false :user "desk" :password "unused"}
+                   :process :track :default-actor "inbound"
                    :dkim {:require true :authserv-id "mx.example"}}))
     (with-redefs [tik.imap/fetch-messages
                   (fn [_] [{:uid 1 :raw good1} {:uid 2 :raw bad} {:uid 3 :raw good2}])]

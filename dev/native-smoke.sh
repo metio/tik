@@ -6,8 +6,10 @@
 # uses: `serve` answering the board and MCP in both protocol eras, one
 # sweep of each sync bridge (github, gitlab, redmine, odoo) and of
 # `bridge imap`, `backend` firing a scheduled bridge sweep, `notify`
-# delivering one hint to `notify watch`, and one multi-store backend
-# serving two stores with their own keys and MCP tokens. The remote systems are the
+# delivering one hint to `notify watch`, one multi-store backend
+# serving two stores with their own keys and MCP tokens, and one running
+# two bridge pipelines and an IMAP watch as child processes, which never
+# overlap a pipeline's runs and report the one that times out. The remote systems are the
 # loopback fakes in dev/native-smoke/fakes.clj (run with babashka), so
 # nothing real is contacted. native-image carries only what its build
 # reached, so a namespace, class or resource the build missed fails here
@@ -377,6 +379,15 @@ fi
 
 # ------------------------------------------------------------- multi-store backend
 
+# A multi-store backend refuses the store variables and the bridges' secret
+# variables in its environment, and labels its lines for the journal when
+# JOURNAL_STREAM says it writes to one; none of them belong to this script.
+backend_env() {
+  env -u TIK_ROOT -u TIK_KEY -u TIK_ACTOR -u TIK_PQ_KEY -u JOURNAL_STREAM \
+    -u GITHUB_TOKEN -u GITHUB_WEBHOOK_SECRET -u GITLAB_TOKEN -u REDMINE_API_KEY -u ODOO_PASSWORD \
+    "${bin}" "$@"
+}
+
 # One backend serves two stores, each signing with its own key as its own
 # claude, each answering MCP on its own path with its own token (ADR 0041).
 # Store alpha's key arrives through {:command …} and lands in a private
@@ -410,9 +421,9 @@ cat > "${work}/backend.edn" <<EOF
                  :mcp-token-file "${work}/ms-beta-token"}}
  :serve {:host "127.0.0.1" :port ${ms_port}}
  :notify {:socket "${ms_sock}" :window "PT1S"}
- :pipelines [{:id :weekly :store :beta :every "PT1H" :run ["recur" "track"] :period :iso-week}]}
+ :pipelines [{:id :weekly :store :beta :every "PT1H" :jitter "PT0S" :run ["recur" "track"] :period :iso-week}]}
 EOF
-env -u TIK_ROOT "${bin}" backend --config "${work}/backend.edn" > "${work}/ms-backend.out" 2>&1 &
+backend_env backend --config "${work}/backend.edn" > "${work}/ms-backend.out" 2>&1 &
 ms_pid=$!
 pids="${pids} ${ms_pid}"
 ms_base="http://127.0.0.1:${ms_port}"
@@ -459,6 +470,8 @@ if wait_on "${ms_pid}" 60 curl -fsS -o /dev/null "${ms_base}/s/alpha/" \
   else
     fail "multi-store: a cross-store write answered ${x_code}" "${work}/ms-beta-alpha.json"
   fi
+  # a run is a child process, so its line may trail the MCP writes
+  wait_on "${ms_pid}" 30 grep -q '^\[beta/weekly\] recur track .* -> ok' "${work}/ms-backend.out" || true
   if TIK_ROOT="${work}/ms/alpha" "${bin}" verify > "${work}/ms-verify-alpha.out" 2>&1 \
      && TIK_ROOT="${work}/ms/beta" "${bin}" verify > "${work}/ms-verify-beta.out" 2>&1 \
      && curl -fsS "${ms_base}/s/alpha/tickets.edn" > "${work}/ms-alpha.edn" \
@@ -480,6 +493,89 @@ else
   fail "multi-store: the backend did not serve both stores" "${work}/ms-backend.out"
 fi
 kill "${ms_pid}" 2>/dev/null || true
+
+# ------------------------------------------------------------- bridge pipelines
+
+# The local estate's shape: bridges and a mailbox as pipelines of one
+# multi-store backend, each run a child process signing as its own
+# delegate. :slow sweeps a Redmine whose first listing takes 2.5 s every
+# second, so its runs would overlap without the guard; :stuck sweeps a
+# GitHub that never answers, so its timeout must kill it and the failure
+# report must fire; :mail watches an IMAP mailbox over IDLE with DKIM
+# required at a pinned verifier.
+bp="${work}/bp/smoke"
+mkdir -p "${bp}"
+(cd "${bp}" && "${bin}" init) > "${work}/bp-init.out" 2>&1 || fail "pipelines: init" "${work}/bp-init.out"
+ssh-keygen -q -t ed25519 -N "" -C bp-claude -f "${work}/bp-claude"
+ssh-keygen -q -t ed25519 -N "" -C bp-mail -f "${work}/bp-mail"
+{
+  echo "claude namespaces=\"tik-*\" $(cat "${work}/bp-claude.pub")"
+  echo "bridge namespaces=\"tik-*\" $(cat "${work}/bridge_key.pub")"
+  echo "mail namespaces=\"tik-*\" $(cat "${work}/bp-mail.pub")"
+} > "${bp}/actors"
+cp "${store}/roles.edn" "${bp}/roles.edn"
+for p in ci-failure redmine-issue; do
+  mkdir -p "${bp}/processes"
+  cp "processes/${p}.edn" "${bp}/processes/"
+done
+cat > "${bp}/redmine-slow.edn" <<EOF
+{:url "${fake}/slow-redmine" :actor "bridge" :key {:credential "redmine-key"}
+ :query {:assigned_to_id "me"} :users {11 "smoke"}}
+EOF
+cat > "${work}/github-stuck.edn" <<EOF
+{:repos ["acme/widgets"] :api "${fake}/hang-github" :actor "bridge"
+ :token {:command "printf %s gh-smoke-token"} :actions {:lookback "P14D"}}
+EOF
+cat > "${bp}/imap.edn" <<EOF
+{:dkim {:require true :authserv-id "mx.smoke.test"}
+ :default-actor "mail"
+ :mailboxes [{:id "support-smoke" :process :track
+              :imap {:host "127.0.0.1" :port ${imap_port} :tls false :poll-ms 2000
+                     :user "support@smoke.test" :password {:command ["printf" "%s" "support-smoke-pw"]}}}]}
+EOF
+cat > "${work}/bp-backend.edn" <<EOF
+{:stores {:bp {:root "${bp}" :org "smoke" :actor "claude" :key "${work}/bp-claude"}}
+ :on-failure {:run ["touch" "${work}/failed-{store}-{pipeline}"]}
+ :pipelines [{:id :slow :store :bp :every "PT1S" :jitter "PT0S" :timeout "PT30S" :as "bridge"
+              :key "${work}/bridge_key" :config "redmine-slow.edn" :run ["bridge" "redmine"]}
+             {:id :stuck :store :bp :every "PT1H" :jitter "PT0S" :timeout "PT2S" :as "bridge"
+              :key "${work}/bridge_key" :config "${work}/github-stuck.edn" :run ["bridge" "github"]}
+             {:id :mail :store :bp :watch true :as "mail" :key "${work}/bp-mail"
+              :run ["bridge" "imap" "--watch"]}]}
+EOF
+backend_env backend --config "${work}/bp-backend.edn" > "${work}/bp-backend.out" 2>&1 &
+bp_pid=$!
+pids="${pids} ${bp_pid}"
+slow_runs() { grep -c '^\[bp/slow\] bridge redmine --actor bridge -> ok' "${work}/bp-backend.out"; }
+if wait_on "${bp_pid}" 90 sh -c "[ \$(grep -c '^\[bp/slow\] bridge redmine --actor bridge -> ok' '${work}/bp-backend.out') -ge 2 ]" \
+   && grep -q '^\[bp/mail\] support-smoke: uid 1: new ticket' "${work}/bp-backend.out"; then
+  ok "pipelines: two bridge pipelines and an IMAP watch ran as children of one backend"
+else
+  fail "pipelines: the bridge pipelines or the mailbox did not run" "${work}/bp-backend.out"
+fi
+if [ "$(slow_runs)" -ge 2 ] \
+   && grep -q '^\[bp/slow\] skipped: the previous run is still running' "${work}/bp-backend.out" \
+   && grep -q '^slow-redmine inflight=1' "${work}/requests.log" \
+   && ! grep -q '^slow-redmine inflight=[2-9]' "${work}/requests.log"; then
+  ok "pipelines: a pipeline whose runs outlast its interval never overlaps itself"
+else
+  fail "pipelines: overlap" "${work}/bp-backend.out" "${work}/requests.log"
+fi
+if wait_on "${bp_pid}" 30 test -f "${work}/failed-bp-stuck" \
+   && grep -q '^\[bp/stuck\] FAILED: timed out after 2 s and was killed' "${work}/bp-backend.out" \
+   && [ ! -f "${work}/failed-bp-slow" ]; then
+  ok "pipelines: a run past its timeout is killed and the failure report names it"
+else
+  fail "pipelines: the timeout or the failure report" "${work}/bp-backend.out"
+fi
+if wait_on "${bp_pid}" 30 grep -q '^\[bp/mail\] support-smoke: uid 3: new ticket' "${work}/bp-backend.out" \
+   && grep -q '^\[bp/mail\] support-smoke: skip uid 2: refusing boss@example.org' "${work}/bp-backend.out" \
+   && grep -q '^imap IDLE' "${work}/requests.log"; then
+  ok "pipelines: the mailbox took pushed mail over IDLE and refused a verdict from another verifier"
+else
+  fail "pipelines: the mailbox watch" "${work}/bp-backend.out" "${work}/requests.log"
+fi
+kill "${bp_pid}" 2>/dev/null || true
 
 if [ "${failures}" -gt 0 ]; then
   echo "${failures} check(s) failed"
