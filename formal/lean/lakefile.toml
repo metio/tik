@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: The tik Authors
+# SPDX-License-Identifier: 0BSD
+
+name = "tik-model"
+version = "0.1.0"
+defaultTargets = ["TikModel", "tik-lean"]
+
+[[lean_lib]]
+name = "TikModel"
+
+[[lean_exe]]
+name = "tik-lean"
+root = "Main"

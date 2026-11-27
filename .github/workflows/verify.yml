@@ -34,6 +34,26 @@ jobs:
           registries: github:metio/toolchains
       - run: bash spec/check.sh
       - run: bash spec/check-controls.sh
+  lean:
+    # The Lean model of the derivation function (formal/lean): its proofs
+    # build without sorry and rest only on Lean's three standard axioms,
+    # leanchecker replays them, and the model agrees with the Clojure kernel
+    # on the corpus, every scripted process test and generated cases. The
+    # controls plant a sorry and run four broken models, each of which must
+    # fail. Lean is installed for this job alone, since its release is
+    # several hundred megabytes that no other job needs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: metio/ci/breto@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
+        with:
+          registries: github:metio/toolchains
+          packages: lean4@4.36.0 @graalvm @clojure
+      - run: bash formal/lean/check.sh
+      - run: bash formal/lean/check.sh controls
   process-tests:
     # Scripted process tests: steps in, expected derived stages out,
     # explain printed on failure. The process definitions' own suite.
@@ -152,7 +172,7 @@ jobs:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.
     name: Verify
-    needs: [clojure, tla, process-tests, evidence, native-smoke, lint]
+    needs: [clojure, tla, lean, process-tests, evidence, native-smoke, lint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

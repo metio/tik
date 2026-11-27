@@ -52,7 +52,7 @@ clojure -M:test --focus tik.stage-test/sticky-milestone-survives-retraction
 Dependencies point one way: porcelain depends on the kernel, never the
 reverse. The kernel speaks EDN; English prose belongs in lenses.
 
-## Five test layers
+## Six test layers
 
 Each has caught a real bug the others missed, so a change to kernel
 semantics extends the layer that would have caught its bug:
@@ -65,7 +65,11 @@ semantics extends the layer that would have caught its bug:
    prefix-replay implementation the optimized fold must agree with, with
    generators biased toward timestamp ties.
 4. **TLA+ models** (`spec/`) for merge convergence and fixpoint semantics.
-5. **Fuzzing** — the other layers feed valid input and check the answers;
+5. **A Lean 4 model** (`formal/lean/`) with machine-checked proofs of order
+   independence, the unique stratified fixpoint and monotonicity, run beside
+   the kernel as a differential oracle (`bb lean`, see
+   [Machine-checked proofs](/concepts/proofs/)).
+6. **Fuzzing** — the other layers feed valid input and check the answers;
    this one feeds garbage and checks the *manner* of failure. The contract
    is to fail well: structured rejection, never a raw exception, never a
    silent pass.
