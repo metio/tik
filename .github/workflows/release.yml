@@ -69,6 +69,12 @@ jobs:
         # native-image carries only what its build captured; a skill that
         # did not make it into the image would ship as an empty listing.
         run: sh dev/native-skill-smoke.sh target/tik
+      - name: The native binary runs the local service, the bridges, backend and notify
+        # serve (board and MCP, both eras), one sweep of every bridge against
+        # loopback fakes, TLS against an untrusted and a trusted certificate,
+        # a scheduled backend pipeline and one notify hint. A namespace,
+        # class or resource the image build missed fails here.
+        run: sh dev/native-smoke.sh target/tik
       - name: Run the container image
         # The runner has libraries the image may lack, so the binary passing
         # here says nothing about the image.
