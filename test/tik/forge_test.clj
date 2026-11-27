@@ -100,3 +100,55 @@
   (let [[result seen] (with-rpc-server 502 "bad gateway" #(% "object" "execute_kw"))]
     (is (= 502 (:status (ex-data result))))
     (is (= 3 (count seen)))))
+
+(defn- closed-port
+  "A loopback port nothing listens on."
+  []
+  (with-open [s (java.net.ServerSocket. 0 1 (java.net.InetAddress/getLoopbackAddress))]
+    (.getLocalPort s)))
+
+(defn- with-non-tls-server
+  "Calls `f` with the port of a loopback server that answers every
+  connection with plain text, so a TLS client fails its handshake."
+  [f]
+  (let [ss (java.net.ServerSocket. 0 50 (java.net.InetAddress/getLoopbackAddress))
+        worker (future
+                 (try
+                   (loop []
+                     (with-open [c (.accept ss)]
+                       (doto (.getOutputStream c)
+                         (.write (.getBytes "this is not TLS\r\n" StandardCharsets/US_ASCII))
+                         (.flush)))
+                     (recur))
+                   (catch java.io.IOException _ nil)))]
+    (try (f (.getLocalPort ss))
+         (finally (.close ss) (future-cancel worker)))))
+
+(defn- attempt [f]
+  (binding [forge/*retry-pauses* [0 0]]
+    (try (f) nil (catch clojure.lang.ExceptionInfo e e))))
+
+(deftest a-refused-connection-is-an-ex-info-naming-the-api-and-address
+  (let [port (closed-port)
+        e (attempt #((forge/json-getter "Test API" (str "http://127.0.0.1:" port) {}) "/runs" {}))]
+    (is (= :forge/unreachable (:reason (ex-data e))))
+    (is (= (str "Test API unreachable at http://127.0.0.1:" port ": ConnectException")
+           (ex-message e))
+        "the class names the cause even when the exception carries no message")
+    (is (instance? java.net.ConnectException (ex-cause e)))))
+
+(deftest a-refused-json-rpc-connection-is-an-ex-info-naming-the-api
+  (let [port (closed-port)
+        e (attempt #((forge/json-rpc-caller "Test RPC" (str "http://127.0.0.1:" port "/jsonrpc"))
+                     "common" "version"))]
+    (is (= :forge/unreachable (:reason (ex-data e))))
+    (is (re-find #"^Test RPC unreachable at http://127\.0\.0\.1:\d+: ConnectException" (ex-message e)))))
+
+(deftest a-failed-tls-handshake-is-an-ex-info-naming-the-api
+  (with-non-tls-server
+    (fn [port]
+      (let [e (attempt #((forge/json-getter "Test API" (str "https://127.0.0.1:" port) {}) "/runs" {}))]
+        (is (= :forge/unreachable (:reason (ex-data e))))
+        (is (= (str "https://127.0.0.1:" port "/runs") (:url (ex-data e))))
+        (is (instance? javax.net.ssl.SSLException (ex-cause e)))
+        (is (re-find #"^Test API unreachable at https://127\.0\.0\.1:\d+: SSL" (ex-message e)))))))

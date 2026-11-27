@@ -8,6 +8,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.bridge-sync :as sync]
+            [tik.cli]
             [tik.cli-core :as core]
             [tik.harness :as h]
             [tik.redmine :as rm]
@@ -192,3 +193,18 @@
     (is (= "seb" ((:fact (view st id)) [:redmine :assignee])))
     (poll! st [] {4711 handed-on})
     (is (= "Alex" ((:fact (view st id)) [:redmine :assignee])))))
+
+(deftest an_unreachable_redmine_fails_the_sweep_with_a_named_cause
+  (let [{:keys [root store]} (store-with-process!)
+        port (with-open [s (java.net.ServerSocket. 0 1 (java.net.InetAddress/getLoopbackAddress))]
+               (.getLocalPort s))
+        cfg (io/file root "redmine.edn")]
+    (spit cfg (pr-str {:url (str "http://127.0.0.1:" port) :key "k"}))
+    (let [r (h/with-cli-root root #(tik.cli/run-argv ["bridge" "redmine" "--config" (str cfg)]))]
+      (is (= 1 (:exit r)))
+      (is (str/includes? (:err r) (str "tik: Redmine API unreachable at http://127.0.0.1:" port
+                                       ": ConnectException"))
+          (:err r))
+      (is (str/includes? (:err r) "nothing was written"))
+      (is (not (str/includes? (:err r) "bug in tik")) (:err r))
+      (is (empty? (store/ticket-ids store))))))
