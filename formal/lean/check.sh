@@ -24,6 +24,15 @@ mode=${1:-all}
 say() { printf 'lean: %s\n' "$*"; }
 fail() { printf 'lean: FAIL %s\n' "$*" >&2; exit 1; }
 
+# The Clojure CLI runs through babashka's deps.clj from the repository root.
+# A breto `clojure` command runs in the directory of the breto project that
+# defines it, which in CI is a scratch project of the job's packages, so it
+# would read no deps.edn of ours.
+run_oracle() {
+  (cd "${repo}" && bb clojure -M:dev -m tik.lean-oracle --lean "${dir}/.lake/build/bin/tik-lean" \
+    --generated "${generated}" "$@")
+}
+
 toolchain() {
   command -v lean > /dev/null || fail "lean is not on PATH (breto installs it)"
   local want have
@@ -78,10 +87,8 @@ oracle() {
   local out
   out=$(mktemp -d)
   trap 'rm -rf "${out}"' RETURN
-  (cd "${repo}" && clojure -M:dev -m tik.lean-oracle --lean "${dir}/.lake/build/bin/tik-lean" \
-    --generated "${generated}" --echo --out "${out}") || fail "the interchange round trip"
-  (cd "${repo}" && clojure -M:dev -m tik.lean-oracle --lean "${dir}/.lake/build/bin/tik-lean" \
-    --generated "${generated}" --out "${out}") || fail "the model and the kernel disagree"
+  run_oracle --echo --out "${out}" || fail "the interchange round trip"
+  run_oracle --out "${out}" || fail "the model and the kernel disagree"
 }
 
 controls() {
@@ -105,8 +112,7 @@ controls() {
   local out m
   out=$(mktemp -d)
   for m in chaotic seed-carry no-after keep-retracted; do
-    (cd "${repo}" && clojure -M:dev -m tik.lean-oracle --lean "${dir}/.lake/build/bin/tik-lean" \
-      --generated "${generated}" --mutant "${m}" --expect-disagreement --out "${out}") \
+    run_oracle --mutant "${m}" --expect-disagreement --out "${out}" \
       || fail "control: the mutant ${m} agreed with the kernel on every case"
     say "control: the mutant ${m} disagrees with the kernel"
   done
