@@ -132,7 +132,11 @@ working directory in the ticket's `[:repo]` repository, and changed values
 land as ordinary signed facts, so a ticket regresses on its own when
 reality does. The environment carries `TIK_TICKET`, `TIK_REPO`, and every
 present fact as `TIK_FACT_<PATH>`, which is what lets one repository hold
-many subjects — a package, tenant, or workload per ticket.
+many subjects — a package, tenant, or workload per ticket. A probe has ten
+minutes and 1 MiB of output: past the deadline it and every process it
+started are killed and the probe counts as failed, and longer output is
+refused rather than cut. Scope scripts and population commands get the same
+ten minutes.
 
 ## Recurring and bulk work
 

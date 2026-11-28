@@ -106,6 +106,9 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   subjects, a package or tenant or workload per ticket, each probe told which
   subject it is running for. Naming an id refuses with a reason when that
   ticket cannot be probed; the whole-store sweep skips and counts instead.
+  A probe, a scope script and a population command each have ten minutes;
+  past that the script and its process tree are killed and it counts as
+  failed. A probe printing more than 1 MiB fails instead of being cut.
 - `tik rollout <process> [--scope C] [--period L]` — one ticket per git
   repository under the store, linked from a parent whose `status` counts the
   children per stage. The process's `:scope` (or `--scope`) narrows the
@@ -147,7 +150,7 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
 - `tik verify` — audit the whole store (hashes, signatures, re-derivation).
   Signature checking is IN PROCESS for the Ed25519 keys tik mints and for
   Ed25519 security keys (`sk-ssh-ed25519@openssh.com`, e.g. a YubiKey)
-  (`tik.sshsig` reads OpenSSH's SSHSIG format), so verification needs no
+  (`briko.sshsig` reads OpenSSH's SSHSIG format), so verification needs no
   `ssh-keygen` on the host — which the distroless container has none of.
   A security-key signature counts only when the key reports a touch (the
   user-presence flag); `ssh-keygen -Y verify` ignores that flag, so tik and
@@ -274,8 +277,9 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   ingest new mail through the same routing, DKIM gate, and MIME decoding
   (multipart/HTML → text) as `bridge email`, so a cron/timer runs the inbox.
   Config adds an `:imap {:host … :user … :password <secret-spec> :mailbox
-  "INBOX" :search "UNSEEN"}` block (the password resolves via `tik.secret` —
-  `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`). TLS is implicit
+  "INBOX" :search "UNSEEN"}` block (the password resolves via `briko.secret` —
+  `{:credential …}`/`{:command …}`/`{:file …}`/`{:env …}`; an empty value,
+  a command past one minute and a file over 64 KiB are refused). TLS is implicit
   and on by default (IMAPS 993 / POP3S 995), and the certificate must name
   the host; `:tls false` switches to plaintext 143/110 and is refused for
   any host not written as a loopback address (`localhost`, `127.x.x.x`,

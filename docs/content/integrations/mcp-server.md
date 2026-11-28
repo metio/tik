@@ -49,7 +49,9 @@ as built into the binary, through the MCP Skills extension
   without the extension sees them as ordinary resources, and the server
   instructions name `skill://tik/SKILL.md`.
 - A URI with a `..` or `.` segment, an empty segment or an escaped
-  character is refused, as is any file the manifest does not list.
+  character is refused, as is a skill name other than lowercase letters,
+  digits and single inner hyphens, and any file the manifest does not
+  list.
 
 The extension's digests only show that a file matches the manifest, and
 whoever runs the server writes both. tik therefore signs the manifest
@@ -67,7 +69,11 @@ It checks the signature, then reads every file and compares its bytes,
 and the SKILL.md frontmatter, with the manifest. It exits 1 for an
 unsigned manifest, a signature no registered actor made, or any file
 that differs. Given a saved `skills/list` or `skills/get` response
-instead of a URL, it checks the signature alone.
+instead of a URL, it checks the signature alone. It accepts signatures in
+the namespaces `tik-skill-manifest` and `kajero-skill-manifest`, and a
+manifest that lists more than 512 files, declares a skill over 16 MiB,
+names an entry URI other than the skill's `SKILL.md` or lists a file of
+another skill is malformed.
 
 The signed bytes are the manifest in a fixed form, one line each:
 `skill-manifest v1`, `skill <SKILL.md URI>`, then
