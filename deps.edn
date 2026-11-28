@@ -7,7 +7,7 @@
         ;; HTTP requests with deadlines and body limits (briko.http); it
         ;; brings babashka.fs and babashka.process for the JVM, which bb
         ;; carries itself
-        io.github.metio/briko {:git/sha "bd41fc529215975a2c8a5277bfb66ec596e0238d"}
+        io.github.metio/briko {:git/sha "e1fb8e8495db1a33d805e42f5f7a071eceee037d"}
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.
@@ -62,7 +62,7 @@
                           com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}}
              :main-opts ["-m" "eastwood.lint"
                          "{:source-paths [\"src\" \"cli\"] :test-paths [\"test\"]}"]}
-  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.25.0"}}
+  :splint {:extra-deps {io.github.noahtheduke/splint {:mvn/version "1.26.0"}}
            :main-opts ["-m" "noahtheduke.splint" "src" "cli" "test"]}
   :cljfmt {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.16.6"}}
            :main-opts ["-m" "cljfmt.main"]}
