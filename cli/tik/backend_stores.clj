@@ -25,14 +25,15 @@
   against that store's own actors file, and reads the MCP tokens. Any
   problem refuses the whole backend (fail closed); see the ADR for why a
   half-up backend is not offered."
-  (:require [clojure.java.io :as io]
+  (:require [briko.paths :as paths]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :as args]
             [tik.context :as context]
             [tik.identity :as identity]
             [tik.mailbox :as mailbox]
             [tik.schedule :as schedule]
-            [tik.secret :as secret]
+            [briko.secret :as secret]
             [tik.sign :as sign])
   (:import (java.io File)
            (java.nio.file Files LinkOption)
@@ -290,14 +291,14 @@
 ;; ------------------------------------------------------------ opening stores
 
 (defn- expand-home [s]
-  (str/replace-first (str s) #"^~(?=/|$)" (System/getProperty "user.home")))
+  (paths/expand-home (str s)))
 
 (defn private-runtime-dir!
   "A fresh directory only this user can enter, below XDG_RUNTIME_DIR when
   there is one: resolved keys live there while the backend runs. It is
   removed on exit."
   ^File []
-  (let [base (or (not-empty (System/getenv "XDG_RUNTIME_DIR")) (System/getProperty "java.io.tmpdir"))
+  (let [base (or (paths/runtime-dir) (System/getProperty "java.io.tmpdir"))
         p (Files/createTempDirectory (.toPath (io/file base)) "tik-backend."
                                      (into-array FileAttribute
                                                  [(PosixFilePermissions/asFileAttribute

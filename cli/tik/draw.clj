@@ -99,7 +99,7 @@
         all-stages (if (sequential? raw-stages) (vec raw-stages) [])
         ;; depths and walk recurse per chain length, so an unbounded stage
         ;; list is a stack bomb — a flat 50k-stage vector clears
-        ;; check-nesting (it is not deeply NESTED) yet overflows the
+        ;; the nesting scan (it is not deeply NESTED) yet overflows the
         ;; layout. No real process approaches this; a pathological one is
         ;; drawn to the cap with a note rather than crashing `tik show`.
         truncated? (> (count all-stages) max-stages)

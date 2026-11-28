@@ -20,9 +20,10 @@
 
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
-  (:require [briko.json :as json]
+  (:require [briko.digest :as digest]
+            [briko.json :as json]
             [clojure.string :as str])
-  (:import (java.security KeyFactory MessageDigest Signature)
+  (:import (java.security KeyFactory Signature)
            (java.security.spec X509EncodedKeySpec)
            (java.util Base64)))
 
@@ -103,9 +104,8 @@
                        (str/join "," (for [k members]
                                        (str "\"" (name k) "\":" (json (get jwk k)))))
                        "}")
-            digest (.digest (MessageDigest/getInstance "SHA-256")
-                            (.getBytes canon "UTF-8"))]
-        (.encodeToString (.withoutPadding (Base64/getUrlEncoder)) digest)))))
+            d (digest/sha256 canon)]
+        (.encodeToString (.withoutPadding (Base64/getUrlEncoder)) d)))))
 
 (defn- first-verifying
   "Whether any of `candidates` verifies, by `check`. Each candidate is a

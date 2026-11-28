@@ -20,10 +20,12 @@
   Also the block list a mailbox refuses senders by, and the pure
   analytics over recorded pseudonyms. No store access here: the bridge
   and `tik reporter` bring the tickets."
-  (:require [clojure.java.io :as io]
+  (:require [briko.paths :as paths]
+            [briko.digest :as digest]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
-            [tik.secret :as secret])
+            [briko.secret :as secret])
   (:import (java.io File)
            (java.nio.channels FileChannel)
            (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption
@@ -60,12 +62,6 @@
       (str/trim inner)
       t)))
 
-(defn- hex ^String [^bytes b]
-  (let [sb (StringBuilder.)]
-    (doseq [x b]
-      (.append sb (format "%02x" (bit-and 0xff (long x)))))
-    (str sb)))
-
 (defn pseudonym
   "The keyed pseudonym of `address` under `key` (bytes). Without the key
   it cannot be reversed or recomputed; with it, a guessed address can be
@@ -74,12 +70,12 @@
   (let [mac (doto (Mac/getInstance "HmacSHA256")
               (.init (SecretKeySpec. key "HmacSHA256")))]
     (str pseudonym-prefix
-         (hex (.doFinal mac (.getBytes ^String (normalise-address address) "UTF-8"))))))
+         (digest/hex (.doFinal mac (.getBytes ^String (normalise-address address) "UTF-8"))))))
 
 ;; ---------------------------------------------------------------- config
 
 (defn expand-home ^String [s]
-  (str/replace-first (str s) #"^~(?=/|$)" (System/getProperty "user.home")))
+  (paths/expand-home (str s)))
 
 (defn key-problem
   "Why a `:reporter :key` spec is refused, or nil. A literal key would sit

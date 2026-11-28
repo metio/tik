@@ -242,7 +242,7 @@
 
 (deftest oidc_password_prefers_a_secret_source_over_argv
   ;; the resource-owner password must not ride in argv (ps/proc); it
-  ;; resolves — through the unified tik.secret resolver — from a password
+  ;; resolves — through the unified briko.secret resolver — from a password
   ;; manager command, a file, the environment, or (last, with a warning)
   ;; a literal flag. nil when none is given (the caller uses device flow).
   (let [resolve-pw #'tik.bridge/resolve-oidc-password]

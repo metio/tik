@@ -35,14 +35,14 @@
             [tik.process :as process]
             [tik.render :refer [shash sid]]
             [tik.reporter :as reporter]
-            [tik.secret :as secret]
+            [briko.secret :as secret]
             [tik.stage :as stage]
             [tik.store.protocol :as store]
             [tik.text :refer [safe-name]]))
 
 (defn resolve-oidc-password
   "The resource-owner password, from the most secure source available,
-  through the unified secret resolver (tik.secret): --password-command (a
+  through the unified secret resolver (briko.secret): --password-command (a
   shell command line run through a password manager — pass/passage/gopass/
   `op read` — whose first stdout line is the secret), then --password-file,
   then the TIK_OIDC_PASSWORD environment variable, and last a literal

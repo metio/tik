@@ -1,7 +1,8 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.canonical-depth-test
-  "The nesting scan in front of the EDN reader. clojure.edn recurses once
+  "The nesting scan briko.edn runs in front of the EDN reader, as
+  tik.canonical/parse uses it. clojure.edn recurses once
   per collection and once per prefix it reads further forms for (tags,
   ##, discards, metadata, namespaced maps), and its StackOverflowError is
   an Error no `catch Exception` sees. Every chain of those beyond
@@ -62,10 +63,29 @@
                     (str (str/join frags) (rep pad "[") "1" (rep pad "]")
                          (str/join (map close (reverse frags))))))})
 
-(defn- scan [text] (outcome #(c/check-nesting text)))
+(def ^:private scan-readers
+  "The canonical readers plus #t, the tag the generated syntax uses, so a
+  refusal of #t text can only be about its depth."
+  (assoc c/edn-readers 't identity))
+
+(defn- scan
+  "How parse answers text as far as depth goes: :canonical/too-deep, or
+  :read for anything else (a value, or a refusal of the syntax)."
+  [text]
+  (let [o (outcome #(c/parse text scan-readers))]
+    (if (= :canonical/too-deep o) o :read)))
+
+(def ^:private refused-by-name
+  "Kinds whose tag no reader names: briko.edn's scan refuses the first such
+  tag, so the text is refused as malformed before its depth is reached."
+  #{:unknown-tag})
+
+(deftest a_tag_no_reader_names_is_refused_at_any_depth
+  (doseq [n [1 c/max-depth (+ 2 c/max-depth) 200000]]
+    (is (= :edn/malformed (outcome #(c/parse ((:unknown-tag levels) n)))) n)))
 
 (deftest each_kind_of_level_is_refused_one_past_the_limit
-  (doseq [[kind text-of] levels]
+  (doseq [[kind text-of] (apply dissoc levels refused-by-name)]
     (testing kind
       (is (= :read (scan (text-of c/max-depth))) "at the limit the scan passes")
       (is (not (#{:canonical/too-deep "java.lang.StackOverflowError"}
@@ -82,7 +102,7 @@
     (is (map? (c/parse ((:namespaced-map levels) c/max-depth))))))
 
 (deftest one_level_past_the_limit_is_refused
-  (doseq [kind [:vector :tag :unknown-tag :symbolic :discard :meta :hash-meta]]
+  (doseq [kind [:vector :tag :symbolic :discard :meta :hash-meta]]
     (testing kind
       (is (= :canonical/too-deep (scan ((levels kind) (inc c/max-depth))))))))
 
@@ -92,7 +112,7 @@
   (into {} (map (fn [[k f]] [k (f 200000)])) levels))
 
 (deftest every_chain_bomb_is_refused_with_too_deep
-  (doseq [[kind text] bombs]
+  (doseq [[kind text] (apply dissoc bombs refused-by-name)]
     (testing kind
       (is (= :canonical/too-deep (outcome #(c/parse text)))))))
 
@@ -257,7 +277,8 @@
         result (edn/read-string (last (str/split-lines (str/trim (:out r)))))]
     (is (zero? (:exit r)) (:err r))
     (is (= 9 (count result)))
-    (is (every? #{:canonical/too-deep} (vals result)) (pr-str result))))
+    (is (= :edn/malformed (:tag result)) "a tag no reader names is refused by name")
+    (is (every? #{:canonical/too-deep} (vals (dissoc result :tag))) (pr-str result))))
 
 (deftest the_cli_refuses_a_chain_bomb_file_cleanly
   (let [f (h/temp-file! "bomb" ".edn")]

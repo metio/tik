@@ -25,11 +25,11 @@
   `tik verify` ultimately checks is the bridge's OWN signature over the
   minted attestation, plus the issuer registered in `actors` — never the
   issuer online (offline-forever, like the OIDC/email bridges)."
-  (:require [briko.json :as json]
+  (:require [briko.digest :as digest]
+            [briko.json :as json]
             [clojure.string :as str]
             [tik.oidc :as oidc])
-  (:import (java.security MessageDigest)
-           (java.util Base64)))
+  (:import (java.util Base64)))
 
 (defn- fail! [msg & {:as data}]
   (throw (ex-info msg (merge {:reason :oid4vci/malformed} data))))
@@ -60,8 +60,7 @@
   "An SD-JWT disclosure's digest: base64url(SHA-256(ascii(disclosure)))
   without padding — what the issuer JWT's `_sd` array holds."
   [^String disclosure]
-  (let [d (.digest (MessageDigest/getInstance "SHA-256")
-                   (.getBytes disclosure "US-ASCII"))]
+  (let [d (digest/sha256 (.getBytes disclosure "US-ASCII"))]
     (.encodeToString (.withoutPadding (Base64/getUrlEncoder)) d)))
 
 (defn- parse-disclosure

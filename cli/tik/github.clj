@@ -5,7 +5,8 @@
   forge-neutral run shape, repository discovery, and the webhook
   signature check. GitHub enters as an injected `get-json`, so all of it
   is testable without a network."
-  (:require [clojure.string :as str]
+  (:require [briko.digest :as digest]
+            [clojure.string :as str]
             [tik.forge :as forge])
   (:import (java.security MessageDigest)
            (java.time Instant)
@@ -51,8 +52,7 @@
    (when (and (seq secret) (string? header) (str/starts-with? header "sha256="))
      (let [mac (doto (Mac/getInstance "HmacSHA256")
                  (.init (SecretKeySpec. (.getBytes ^String secret "UTF-8") "HmacSHA256")))
-           want (.getBytes (str "sha256=" (str/join (map #(format "%02x" (bit-and % 0xff))
-                                                         (.doFinal mac body))))
+           want (.getBytes (str "sha256=" (digest/hex (.doFinal mac body)))
                            "UTF-8")]
        (MessageDigest/isEqual want (.getBytes ^String header "UTF-8"))))))
 

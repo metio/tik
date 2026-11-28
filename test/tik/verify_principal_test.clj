@@ -15,7 +15,7 @@
             [tik.event :as event]
             [tik.harness :as h]
             [tik.sign :as sign]
-            [tik.sshsig :as sshsig]
+            [briko.sshsig :as sshsig]
             [tik.store.protocol :as store]))
 
 (def ^:private not-principals [nil "" "   " :alice 42])
@@ -70,7 +70,7 @@
               (str "verify-text, " label " registry, principal " (pr-str p))))))))
 
 (deftest the-ssh-keygen-fallback-refuses-a-principal-that-names-nobody
-  ;; ecdsa is a key type tik.sshsig does not read, so every verdict here
+  ;; ecdsa is a key type briko.sshsig does not read, so every verdict here
   ;; comes from ssh-keygen
   (let [dir (h/temp-dir! "principal-fallback")
         msg "endorsed bytes"

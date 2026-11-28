@@ -19,9 +19,10 @@
   Verification is fail-closed and pure: bytes in, a boolean out. A
   malformed registry line is refused with its line number, because a
   registry that is half read grants less than its author believes."
-  (:require [clojure.string :as str]
+  (:require [briko.digest :as digest]
+            [clojure.string :as str]
             [tik.identity :as identity])
-  (:import (java.security KeyFactory MessageDigest Signature)
+  (:import (java.security KeyFactory Signature)
            (java.security.spec PKCS8EncodedKeySpec X509EncodedKeySpec)
            (java.util Arrays Base64)))
 
@@ -58,8 +59,7 @@
 (defn fingerprint
   "The hex SHA-256 of a DER SubjectPublicKeyInfo: the `<fpr>` of a sidecar."
   ^String [^bytes der]
-  (str/join (map #(format "%02x" %)
-                 (.digest (MessageDigest/getInstance "SHA-256") der))))
+  (digest/sha256-hex der))
 
 (defn- prefixed ^bytes [^bytes domain ^bytes event-bytes]
   (let [out (byte-array (+ (alength domain) (alength event-bytes)))]
