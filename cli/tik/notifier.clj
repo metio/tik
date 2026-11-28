@@ -35,16 +35,18 @@
             [tik.reduce :as red]
             [tik.select :as select]
             [tik.store.protocol :as store])
-  (:import (java.io BufferedReader File InputStreamReader OutputStream)
+  (:import (clojure.lang ExceptionInfo)
+           (java.io BufferedReader File InputStreamReader OutputStream Reader)
            (java.net StandardProtocolFamily UnixDomainSocketAddress)
            (java.nio.channels Channels ServerSocketChannel SocketChannel)
            (java.nio.file Files LinkOption Path StandardCopyOption)
            (java.nio.file.attribute FileAttribute PosixFilePermissions)
            (java.time Duration)))
 
-;; Lines on the socket and on stdio are read within briko's default
-;; bounds; a subscription request is already capped at
-;; tik.notify/max-request-bytes before it is parsed.
+;; Lines on the socket are read within briko's default bounds; a
+;; subscription request is already capped at tik.notify/max-request-bytes
+;; before it is parsed. Lines on the channel's stdin are capped at
+;; max-channel-line-bytes (see cmd-channel).
 (defn- json-parse [s] (json/parse-string s))
 (defn- json-emit [x] (json/write-string x))
 
@@ -571,27 +573,101 @@
       :else {:jsonrpc "2.0" :id id
              :error {:code -32601 :message (str "method not found: " method)}})))
 
+(def max-channel-line-bytes
+  "The longest JSON-RPC message `tik notify channel` reads from stdin, in
+  UTF-8 bytes: the 1 MiB `tik mcp` allows."
+  (* 1024 1024))
+
+(defn- line-reader
+  "A function returning the next line of `r` on each call: the line
+  without its newline (and one carriage return before it), ::too-long for
+  a line of more than `limit` characters, or nil once `r` ends. It holds
+  at most `limit` + 1 characters of a line plus one read buffer; the rest
+  of a line that is too long is read and dropped, so an endless line
+  costs time and never memory. A line of more than `limit` characters has
+  more than `limit` UTF-8 bytes, so `limit` bounds the bytes as well."
+  [^Reader r ^long limit]
+  (let [buf (char-array 8192)
+        ;; [next unread index, end of the characters buf holds]
+        ix (long-array 2)
+        finish (fn [^StringBuilder sb over?]
+                 (let [n (.length sb)
+                       n (if (and (pos? n) (= \return (.charAt sb (dec n)))) (dec n) n)]
+                   (if (or over? (> n limit)) ::too-long (.substring sb 0 n))))]
+    (fn next-line []
+      (let [sb (StringBuilder.)]
+        (loop [over? false]
+          (let [pos (aget ix 0)
+                end (aget ix 1)]
+            (if (< pos end)
+              (let [at (.indexOf (String. buf (int pos) (int (- end pos))) 10)
+                    nl (if (neg? at) -1 (+ pos at))
+                    stop (if (neg? nl) end nl)
+                    n (- stop pos)
+                    ;; limit + 1 leaves room for a carriage return
+                    over? (or over? (> (+ (.length sb) n) (inc limit)))]
+                (if over?
+                  (.setLength sb 0)
+                  (.append sb buf (int pos) (int n)))
+                (aset ix 0 (if (neg? nl) end (inc nl)))
+                (if (neg? nl) (recur over?) (finish sb over?)))
+              (let [n (.read r buf 0 (alength buf))]
+                (if (neg? n)
+                  (when (or over? (pos? (.length sb))) (finish sb over?))
+                  (do (aset ix 0 0)
+                      (aset ix 1 n)
+                      (recur over?)))))))))))
+
+(defn- parse-error
+  "The -32700 answer to a line briko.json refused (`e`) or one that is too
+  long (nil). It names the rule and never quotes the line."
+  [^ExceptionInfo e]
+  (let [message (if e (ex-message e) (format "the input is larger than %d bytes" max-channel-line-bytes))
+        data (if e
+               (merge {:rule (name (:type (ex-data e)))} (select-keys (ex-data e) [:line :column]))
+               {:rule "too-large"})]
+    {:jsonrpc "2.0" :id nil
+     :error {:code -32700 :message (str "parse error: " message) :data data}}))
+
+(defn- read-channel-message
+  "The JSON value `line` holds, or the briko.json refusal of it."
+  [line]
+  (try (json/parse-string line {:max-bytes max-channel-line-bytes})
+       (catch ExceptionInfo e
+         (if (json/refusal? e) e (throw e)))))
+
 (defn cmd-channel
   "notify channel: a stdio MCP server Claude Code spawns as a channel; it
   subscribes to the notifier once the client is initialized and forwards
-  each hint as notifications/claude/channel."
+  each hint as notifications/claude/channel. A line over
+  max-channel-line-bytes, or one briko.json refuses, answers -32700 with a
+  null id, and the next line is read as usual; a blank line is skipped."
   [opts]
   (let [[path store where ttl] (subscriber-args opts)
         out *out*
         emit! (fn [m] (locking out (binding [*out* out] (println (json-emit m)) (flush))))
-        started (atom false)]
+        started (atom false)
+        next-line (line-reader *in* max-channel-line-bytes)]
     (loop []
-      (when-let [l (read-line)]
-        (let [msg (try (json-parse l) (catch Exception _ nil))]
-          (when-let [resp (channel-response msg)] (emit! resp))
-          (when (and (= "notifications/initialized" (get msg "method"))
-                     (compare-and-set! started false true))
-            (future
-              (try (let [[r _] (subscribe-over-socket! path store where ttl)]
-                     (doseq [h (hint-lines r)]
-                       (emit! (n/channel-notification
-                               (into {} (map (fn [[k v]] [(keyword k) v])) h)))))
-                   (catch Throwable e (log "channel:" (ex-message e)))))))
+      (when-let [l (next-line)]
+        (cond
+          (= ::too-long l) (emit! (parse-error nil))
+          (str/blank? l) nil
+          :else
+          (let [msg (read-channel-message l)]
+            (if (instance? ExceptionInfo msg)
+              (emit! (parse-error msg))
+              (do
+                (when-let [resp (channel-response msg)] (emit! resp))
+                (when (and (map? msg)
+                           (= "notifications/initialized" (get msg "method"))
+                           (compare-and-set! started false true))
+                  (future
+                    (try (let [[r _] (subscribe-over-socket! path store where ttl)]
+                           (doseq [h (hint-lines r)]
+                             (emit! (n/channel-notification
+                                     (into {} (map (fn [[k v]] [(keyword k) v])) h)))))
+                         (catch Throwable e (log "channel:" (ex-message e))))))))))
         (recur)))))
 
 ;; ------------------------------------------------------------ the verb
