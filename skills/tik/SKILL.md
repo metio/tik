@@ -397,7 +397,11 @@ which admits exactly the actions its actor may take on a ticket right now.
   identity; with `TIK_KEY` set each accepted call is signed. It runs from the
   shipped binary (`tik mcp`) — the enforcement is the derivation, so it holds
   whatever the client sends. A message over 1 MiB, or one naming a key
-  twice, answers a JSON-RPC parse error (-32700).
+  twice, answers a JSON-RPC parse error (-32700) whose `data.rule` names
+  the rule it broke. An unknown tool, or `arguments` that are not an
+  object, answers -32602 instead of a tool result; an unknown method
+  answers -32601; a notification (a message without `id`) runs nothing
+  and is never answered, so a `tools/call` needs an `id` to act.
 - `tik serve --mcp-token-file F` — the same MCP surface over HTTP on `/mcp`,
   so one long-running server serves every client instead of one process
   per session: `claude mcp add --transport http tik http://127.0.0.1:7777/mcp
