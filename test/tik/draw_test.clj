@@ -69,7 +69,7 @@
   ;; `tik show` draws an UNLINTED definition, and depths/walk recurse per
   ;; chain length while the guard gloss recurses per :and/:or/:not nesting
   ;; — both stack bombs without a bound. A flat 50k-stage vector even
-  ;; clears check-nesting (it is not deeply nested), so the cap must live
+  ;; clears the nesting scan (it is not deeply nested), so the cap must live
   ;; in the renderer.
   (testing "a deeply nested guard tree glosses to an ellipsis, never overflows"
     (let [deep (reduce (fn [g _] [:not g]) [:fact [:x]] (range 100000))

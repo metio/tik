@@ -13,7 +13,7 @@
             [tik.harness :as h]
             [tik.sign :as sign]
             [tik.sk-fixture :as sk]
-            [tik.sshsig :as sshsig]))
+            [briko.sshsig :as sshsig]))
 
 (def ^:private msg (.getBytes "the bytes that were endorsed" "UTF-8"))
 

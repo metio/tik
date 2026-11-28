@@ -10,7 +10,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [tik.effects]
-            [tik.secret :as secret]))
+            [briko.secret :as secret]))
 
 (def ^:private payload #'tik.effects/effect-payload)
 
@@ -110,7 +110,7 @@
 
 (deftest a_whole_sink_resolves_its_secrets_before_firing
   ;; every secret-bearing field of a sink — not just headers — flows
-  ;; through the unified resolver (tik.secret): a webhook :url, a :token,
+  ;; through the unified resolver (briko.secret): a webhook :url, a :token,
   ;; and header values may each be a literal, {:env …}, {:command …}, or
   ;; {:file …}. The exhaustive per-source behavior lives in secret-test;
   ;; here we pin that the effects layer resolves the sink as a whole.

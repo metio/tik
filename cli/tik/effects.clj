@@ -4,11 +4,12 @@
   "The outbound alerts bridge (ADR 0019): derived stage transitions
   fanned to slack/discord/webhook/email/command/... sinks. Each sink is a
   pure payload mapping; the :command sink pipes the webhook JSON to any
-  program; secrets in any sink field resolve through tik.secret at send
+  program; secrets in any sink field resolve through briko.secret at send
   time. Delivery state is disposable — the ledger makes it at-least-once,
   and truth is never touched."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [briko.process :as proc]
+            [briko.secret :as secret]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
             [tik.canonical :as canonical]
@@ -16,7 +17,6 @@
                                   root the-store]]
             [tik.explain :as explain]
             [tik.render :refer [sid]]
-            [tik.secret :as secret]
             [tik.stage :as stage]
             [tik.text :refer [safe-name]]))
 
@@ -164,6 +164,21 @@
                       {:status (:status r) :host (redact-url url)})))
     r))
 
+(def sink-timeout-ms
+  "How long an :email or :command sink's program may run before it and its
+  process tree are killed: one minute, briko.process's default. A wedged
+  sendmail then counts as one failed delivery instead of holding the run."
+  60000)
+
+(defn- sink-problem
+  "Why the briko.process result `r` of a sink program is a failed
+  delivery, or nil when it exited 0."
+  [r]
+  (cond
+    (:timed-out? r) (str "ran longer than " (quot (long sink-timeout-ms) 1000) " s and was stopped")
+    (not (zero? (long (:exit r)))) (str/trim (str "exit " (:exit r) " " (:err r)))
+    :else nil))
+
 (defn cmd-effects
   "effects run [--config effects.edn] [--dry-run]
   Fire configured sinks for every newly derived stage transition.
@@ -218,7 +233,7 @@
         (try
           ;; resolve secrets ONLY now, at real send: any sink field (a
           ;; webhook :url, pushover :token/:user, a header value) may be a
-          ;; {:env}/{:command}/{:file} spec (tik.secret). The dedup key
+          ;; {:env}/{:command}/{:file} spec (briko.secret). The dedup key
           ;; above hashes the UNRESOLVED sink, so a rotated secret keeps
           ;; the same effect identity and a dry-run never calls `pass`.
           (let [sink (secret/resolve-secrets sink)]
@@ -232,24 +247,25 @@
                           (explain/render
                            (explain/explain process events (now) roles)))
                     cmdv (or (:command sink) ["sendmail" "-t"])
-                    r (apply sh/sh (concat cmdv [:in text]))]
+                    r (proc/run cmdv {:in text :timeout-ms sink-timeout-ms})]
                 ;; throw, don't die: die -> System/exit would abort the
                 ;; WHOLE run (remaining sinks/tickets) on the native binary;
                 ;; the catch below counts this one failed and continues
-                (when-not (zero? (:exit r))
-                  (throw (ex-info (str "email sink failed: " (:err r))
+                (when-let [problem (sink-problem r)]
+                  (throw (ex-info (str "email sink failed: " problem)
                                   {:sink :email}))))
               ;; the universal escape hatch: the webhook JSON on stdin
               ;; to ANY program — notify-send wrappers, SMS gateways,
               ;; syslog, a shop's existing paging script
               :command
-              (let [r (apply sh/sh (concat (:command sink)
-                                           [:in (json-str
-                                                 (effect-payload
-                                                  (assoc sink :type :webhook)
-                                                  tr))]))]
-                (when-not (zero? (:exit r))
-                  (throw (ex-info (str "command sink failed: " (:err r))
+              (let [r (proc/run (:command sink)
+                                {:in (json-str
+                                      (effect-payload
+                                       (assoc sink :type :webhook)
+                                       tr))
+                                 :timeout-ms sink-timeout-ms})]
+                (when-let [problem (sink-problem r)]
+                  (throw (ex-info (str "command sink failed: " problem)
                                   {:sink :command}))))
               (post! (:url sink) (json-str (effect-payload sink tr))
                      (:headers sink))))

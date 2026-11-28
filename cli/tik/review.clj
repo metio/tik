@@ -21,8 +21,8 @@
 
   Porcelain over explain and the whatif fold: it reads derivations and
   writes ordinary signed facts, and stores nothing of its own."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [briko.process :as proc]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :refer [actor parse-key typed-value]]
             [tik.cli-core :refer [append!* archive-process! available-processes call-with-temp-dir
@@ -203,8 +203,8 @@
   "A fresh Ed25519 key in a new directory only this user can read."
   [dir]
   (let [k (io/file dir "key")
-        r (sh/sh "ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "tik-batch" "-f" (str k))]
-    (when-not (zero? (:exit r))
+        r (proc/run ["ssh-keygen" "-q" "-t" "ed25519" "-N" "" "-C" "tik-batch" "-f" (str k)])]
+    (when-not (zero? (long (:exit r)))
       (die (str "could not make the throwaway key: " (str/trim (:err r)))))
     k))
 

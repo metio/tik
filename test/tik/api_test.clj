@@ -5,7 +5,8 @@
   read-only, and agrees with `tik status --edn` and `tik verify` on every
   ticket of the corpus stores, a copy of the repository's own store and
   two built fixture stores, one file-backed and one SQLite-backed."
-  (:require [clojure.edn :as edn]
+  (:require [briko.process :as process]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
@@ -270,8 +271,10 @@
       (is (str/includes? (:out (h/run-tik! {:root (:root fx) :actor "seb"} "verify" (str (:ticket fx))))
                          "verify: PASS")))
     (let [spawned (atom [])
-          real-sh sh/sh]
-      (with-redefs [sh/sh (fn [& args] (swap! spawned conj args) (apply real-sh args))]
+          real-sh sh/sh
+          real-run process/run]
+      (with-redefs [sh/sh (fn [& args] (swap! spawned conj args) (apply real-sh args))
+                    process/run (fn [& args] (swap! spawned conj args) (apply real-run args))]
         (let [[r v] (verdict-of fx (:event/id e))]
           (is (= :unchecked (:signature v)))
           (is (not (:ok? r)) "an unchecked signature is not verified")))

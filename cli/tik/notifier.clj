@@ -23,7 +23,10 @@
   Delivery never touches the log (ADR 0019): the cursor that keeps a
   restart from repeating old hints is disposable state under
   $XDG_STATE_HOME, and losing it costs one silent baseline."
-  (:require [briko.json :as json]
+  (:require [briko.fs :as bfs]
+            [briko.paths :as paths]
+            [briko.process :as proc]
+            [briko.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
@@ -39,7 +42,7 @@
            (java.io BufferedReader File InputStreamReader OutputStream Reader)
            (java.net StandardProtocolFamily UnixDomainSocketAddress)
            (java.nio.channels Channels ServerSocketChannel SocketChannel)
-           (java.nio.file Files LinkOption Path StandardCopyOption)
+           (java.nio.file Files LinkOption Path)
            (java.nio.file.attribute FileAttribute PosixFilePermissions)
            (java.time Duration)))
 
@@ -161,11 +164,7 @@
   leaves the old cursor or the new one, never half of either."
   [^File f cursors]
   (.mkdirs (.getParentFile f))
-  (let [tmp (io/file (.getParentFile f) (str (.getName f) ".tmp"))]
-    (spit tmp (pr-str (n/cursor->edn cursors)))
-    (Files/move (.toPath tmp) (.toPath f)
-                (into-array StandardCopyOption [StandardCopyOption/ATOMIC_MOVE
-                                                StandardCopyOption/REPLACE_EXISTING]))))
+  (bfs/atomic-write! (str f) (pr-str (n/cursor->edn cursors))))
 
 ;; ------------------------------------------------------------ sinks
 
@@ -175,19 +174,15 @@
 (defrecord CommandSink [argv]
   Sink
   (deliver! [_ hint]
+    ;; stdin closed, output read and dropped, the whole process tree
+    ;; killed at the deadline
     (let [cmd (n/render-argv argv hint)
-          p (-> (ProcessBuilder. ^java.util.List cmd)
-                (.redirectErrorStream true)
-                (.redirectOutput java.lang.ProcessBuilder$Redirect/DISCARD)
-                (.start))]
-      (.close (.getOutputStream p))
-      (if (.waitFor p 10 java.util.concurrent.TimeUnit/SECONDS)
-        (do (when-not (zero? (.exitValue p))
-              (log "command sink" (first cmd) "exited" (.exitValue p)))
-            true)
-        (do (.destroyForcibly p)
-            (log "command sink" (first cmd) "timed out after 10 s")
-            true)))))
+          r (proc/run cmd {:timeout-ms 10000 :max-out-bytes 0 :max-err-bytes 0})]
+      (cond
+        (:timed-out? r) (log "command sink" (first cmd) "timed out after 10 s")
+        (not (:launched? r)) (log "command sink" (first cmd) "could not start:" (:err r))
+        (not (zero? (long (:exit r)))) (log "command sink" (first cmd) "exited" (:exit r)))
+      true)))
 
 (defn- write-line! [^OutputStream out m]
   (locking out
@@ -435,17 +430,13 @@
 
 ;; ------------------------------------------------------------ config
 
-(defn- env [k] (not-empty (System/getenv k)))
-
 (defn default-socket []
-  (str (io/file (or (env "XDG_RUNTIME_DIR")
+  (str (io/file (or (paths/runtime-dir)
                     (str (System/getProperty "java.io.tmpdir") "/tik-" (me)))
                 "tik" "notify.sock")))
 
 (defn- default-state-dir []
-  (str (io/file (or (env "XDG_STATE_HOME")
-                    (str (System/getProperty "user.home") "/.local/state"))
-                "tik" "notify")))
+  (str (io/file (paths/state-home) "tik" "notify")))
 
 (defn- millis [x default]
   (cond (nil? x) default
@@ -474,7 +465,7 @@
     (when-not (and (map? stores) (seq stores) (every? string? (keys stores)))
       (die "notify.edn :stores must map store names to store roots"))
     {:stores (into {} (for [[k v] stores]
-                        [k (str/replace-first (str v) #"^~(?=/|$)" (System/getProperty "user.home"))]))
+                        [k (paths/expand-home (str v))]))
      :socket (or (:socket opts) (:socket c) (default-socket))
      :cursor-file (str (io/file (or (:state-dir c) (default-state-dir)) "cursor.edn"))
      :poll-ms (millis (:poll c) 2000)

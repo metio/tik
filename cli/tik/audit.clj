@@ -6,8 +6,8 @@
   countersignatures, the self-contained evidence bundle (events +
   signatures + a coreutils verify.sh), and export. All read-side: it
   proves what the signed log says, and never writes authoritative state."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [briko.process :as proc]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.bundle :as bundle]
             [tik.canonical :as canonical]
@@ -282,7 +282,7 @@
       ;; its surfaces, and works identically without this flag; the
       ;; .ots sidecar is just one more detached endorsement for those
       ;; who want third-party timestamping (PLAN §10).
-      (when-not (zero? (:exit (sh/sh "sh" "-c" "command -v ots")))
+      (when-not (zero? (long (:exit (proc/run ["sh" "-c" "command -v ots"]))))
         (die (str "--anchor needs the external `ots` tool"
                   " (opentimestamps-client) — entirely optional;"
                   " everything else works without it")))
@@ -291,8 +291,10 @@
             ots-target (io/file dir (str root ".ots"))]
         (io/make-parents f)
         (spit f bytes)
-        (let [r (sh/sh "ots" "stamp" (str f))]
-          (if (and (zero? (:exit r))
+        ;; ots asks public calendar servers; five minutes covers a slow
+        ;; one without letting an unreachable one hold the witness run
+        (let [r (proc/run ["ots" "stamp" (str f)] {:timeout-ms 300000})]
+          (if (and (zero? (long (:exit r)))
                    (.exists (io/file (str f ".ots"))))
             (do (.renameTo (io/file (str f ".ots")) ots-target)
                 (println "anchored" (shash root)
@@ -1065,9 +1067,11 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (.setExecutable (io/file bdir "verify.sh") true)
     (spit (io/file bdir "README.md")
           (bundle-readme id (:title state) (or phash "unpinned")))
-    (let [r (sh/sh "tar" "czf" (str (.getAbsoluteFile out))
-                   "-C" (str bdir) ".")]
-      (when-not (zero? (:exit r)) (die (str "tar failed: " (:err r)))))
+    ;; tar packs a local directory: no deadline, since a slow disk must
+    ;; not turn a complete bundle into a refused one
+    (let [r (proc/run ["tar" "czf" (str (.getAbsoluteFile out)) "-C" (str bdir) "."]
+                      {:timeout-ms :none})]
+      (when-not (zero? (long (:exit r))) (die (str "tar failed: " (:err r)))))
     (println (str "wrote " out))
     (println (str "verify anywhere with: tar xzf, then ./verify.sh"
                   " (coreutils + ssh-keygen; openssl for bindings)"))))

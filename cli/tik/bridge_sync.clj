@@ -22,7 +22,7 @@
             [tik.odoo-describe :as odd]
             [tik.redmine :as rm]
             [tik.render :as render :refer [sid]]
-            [tik.secret :as secret]
+            [briko.secret :as secret]
             [tik.store.protocol :as store]
             [tik.text :refer [safe-name]])
   (:import (java.time Duration Instant)))

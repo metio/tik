@@ -7,7 +7,7 @@
         ;; HTTP requests with deadlines and body limits (briko.http); it
         ;; brings babashka.fs and babashka.process for the JVM, which bb
         ;; carries itself
-        io.github.metio/briko {:git/sha "b021a2190f6a9a5171d006fbb0d8c8c7a58e7cf2"}
+        io.github.metio/briko {:git/sha "bd41fc529215975a2c8a5277bfb66ec596e0238d"}
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.

@@ -68,6 +68,18 @@
                  base names->keys)
       base)))
 
+(defn child-env-options
+  "briko.process options giving a subprocess exactly `(merge (child-env)
+  extra)` as its environment: briko.process starts from the process
+  environment, so the difference is passed as variables to set and
+  variables to remove."
+  ([] (child-env-options {}))
+  ([extra]
+   (let [base (into {} (System/getenv))
+         want (merge (child-env) extra)]
+     {:extra-env (into {} (remove (fn [[n v]] (= v (get base n)))) want)
+      :unset-env (vec (sort (remove #(contains? want %) (keys base))))})))
+
 (defmacro with-store
   "Run `body` acting on the store `s` ({:name :root :key :actor :pq-key})."
   [s & body]

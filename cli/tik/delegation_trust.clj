@@ -9,7 +9,7 @@
   verifies as the delegator through `actors` alone. A key that rung 2 or
   another delegation grants cannot delegate, so there are no chains. With
   `{:delegation {:require-touch true}}` in `oidc.edn` that signature must
-  also come from a security key, whose touch tik.sshsig already requires.
+  also come from a security key, whose touch briko.sshsig already requires.
   An `oidc.edn` that does not parse trusts no delegation, because a typo
   must not reopen what the setting closes."
   (:require [clojure.java.io :as io]
@@ -17,7 +17,7 @@
             [tik.canonical :as canonical]
             [tik.delegation :as delegation]
             [tik.sign :as sign]
-            [tik.sshsig :as sshsig]
+            [briko.sshsig :as sshsig]
             [tik.store.protocol :as store]))
 
 (defn policy-of

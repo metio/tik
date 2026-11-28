@@ -6,7 +6,8 @@
   backend's :exec and failure report), the delegate keys each store must
   grant, the mailbox rules checked before anything starts, and a backend
   whose runs are child processes each seeing only its own store."
-  (:require [clojure.java.io :as io]
+  (:require [briko.paths]
+            [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -109,7 +110,7 @@
   (is (= "/stores/metio/github.edn" (stores/config-path "/stores/metio" "github.edn")))
   (is (= "/stores/metio/bridges/github.edn" (stores/config-path "/stores/metio" "bridges/github.edn")))
   (is (= "/etc/tik/github.edn" (stores/config-path "/stores/metio" "/etc/tik/github.edn")))
-  (is (= (str (System/getProperty "user.home") "/github.edn") (stores/config-path "/stores/metio" "~/github.edn")))
+  (is (= (str (briko.paths/home) "/github.edn") (stores/config-path "/stores/metio" "~/github.edn")))
   (is (nil? (stores/config-path "/stores/metio" nil))))
 
 ;; ------------------------------------------------------------ delegate keys per store

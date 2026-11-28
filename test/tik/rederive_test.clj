@@ -7,7 +7,9 @@
   reached through an untrusted archive — the paths inside it, the
   definition it pins, the URL a service is asked to fetch — is refused
   rather than trusted."
-  (:require [clojure.java.io :as io]
+  (:require [briko.ssh-sign]
+            [briko.sshsig]
+            [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -18,8 +20,7 @@
             [tik.harness :as h]
             [tik.loopback-http :as lh]
             [tik.rederive :as rederive]
-            [tik.sign]
-            [tik.sshsig])
+            [tik.sign])
   (:import (java.io File)
            (java.nio.file Files)
            (java.time Instant)
@@ -576,7 +577,7 @@
         tgz (bundle! store)
         dest (h/temp-dir! "tik-no-openssh")]
     (bundle/untar-gz! tgz dest)
-    (with-redefs [tik.sign/verifier-available? (delay false)]
+    (with-redefs [briko.ssh-sign/ssh-keygen-available? (constantly false)]
       (let [r (bundle/re-derive dest (Instant/now))
             msgs (map :msg (:checks r))]
         (is (:verified? r))
@@ -585,7 +586,7 @@
         (is (not-any? #(str/includes? % "does not verify") msgs))))))
 
 (deftest a_key_this_build_cannot_read_is_unchecked_not_forged
-  ;; The remaining fallback case: a key type tik.sshsig does not
+  ;; The remaining fallback case: a key type briko.sshsig does not
   ;; implement, on a host with no ssh-keygen to ask instead. Catching
   ;; broadly here would report an honest signature as forged, which is
   ;; the one direction a verification tool must never fail in.
@@ -593,8 +594,8 @@
         tgz (bundle! store)
         dest (h/temp-dir! "tik-unreadable-key")]
     (bundle/untar-gz! tgz dest)
-    (with-redefs [tik.sign/verifier-available? (delay false)
-                  tik.sshsig/verify (fn [& _] :tik.sshsig/unsupported)]
+    (with-redefs [briko.ssh-sign/ssh-keygen-available? (constantly false)
+                  briko.sshsig/verify (fn [& _] :briko.sshsig/unsupported)]
       (let [r (bundle/re-derive dest (Instant/now))
             msgs (map :msg (:checks r))]
         (is (:verified? r)

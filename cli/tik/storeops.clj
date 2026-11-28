@@ -8,8 +8,8 @@
   settled tickets), gc (drop unpinned archived definitions), init (mark a
   directory a store), and store migrate (convert the backend in place).
   Porcelain over tik.cli-core."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [briko.process :as proc]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.context :as context]
             [tik.args :refer [actor parse-key read-edn-file typed-value]]
@@ -136,6 +136,36 @@
     (let [f (io/file dir)]
       (below-holder holder (.getCanonicalFile (if (.isAbsolute f) f (io/file holder dir))) dir))))
 
+(def script-timeout-ms
+  "How long a probe, a scope script or a population command may run
+  before it and its process tree are killed: ten minutes. Long enough for
+  a probe that asks a forge several questions, short enough that a wedged
+  script cannot hold a sweep forever."
+  600000)
+
+(def ^:private population-max-bytes
+  "The most a population command may print: 16 MiB, room for hundreds of
+  thousands of members. More is refused rather than cut, because a cut
+  population would read as members leaving."
+  (* 16 1024 1024))
+
+(def ^:private probe-max-bytes
+  "The most a probe may print: 1 MiB of key=value lines. More is refused
+  rather than cut, because a cut line would sign a truncated value."
+  (* 1024 1024))
+
+(defn- script-problem
+  "Why the briko.process result `r` of a script answered nothing usable,
+  or nil when it exited 0 with all its output."
+  [r]
+  (let [err (not-empty (str/trim (str (:err r))))]
+    (cond
+      (:timed-out? r) (str "ran longer than " (quot (long script-timeout-ms) 1000)
+                           " s and was stopped")
+      (not (zero? (long (:exit r)))) (str "exited " (:exit r) (when err (str " — " err)))
+      (:out-truncated? r) "printed more than its output limit"
+      :else nil)))
+
 (defn- command-entries
   "The entries a population's :command prints: one member per line, as
   `subject` or `subject<TAB>dir`; blank lines are skipped. The command
@@ -143,12 +173,11 @@
   question about who belongs must never read as an empty population,
   which --retire would act on."
   [pop-name command ^File holder]
-  (let [r (try (sh/sh "sh" "-c" command :dir (str holder))
-               (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
-    (when-not (zero? (long (:exit r)))
-      (die (str "population " (name pop-name) ": command exited " (:exit r)
-                (when-let [e (not-empty (str/trim (str (:err r))))]
-                  (str " — " e)))))
+  (let [r (proc/run ["sh" "-c" command] {:dir (str holder)
+                                          :timeout-ms script-timeout-ms
+                                          :max-out-bytes population-max-bytes})]
+    (when-let [problem (script-problem r)]
+      (die (str "population " (name pop-name) ": command " problem)))
     (vec (for [[n line] (map-indexed vector (str/split-lines (:out r)))
                :when (not (str/blank? line))
                :let [fields (str/split line #"\t" -1)]]
@@ -234,18 +263,17 @@
   [scope ^File holder {:keys [subject repo]}]
   (let [^File f (resolve-file scope)
         argv (if (.exists f) ["sh" (str f)] ["sh" "-c" scope])
-        r (try (apply sh/sh (concat argv
-                                    [:dir (str (if repo (io/file holder repo) holder))
-                                     :env (cond-> (assoc (context/child-env)
-                                                         "TIK_SUBJECT" subject)
-                                            repo (assoc "TIK_REPO" repo))]))
-               (catch java.io.IOException e {:exit -1 :err (ex-message e)}))]
-    (case (long (:exit r))
-      0 :in
-      1 :out
-      {:error (str "scope exited " (:exit r)
-                   (when-let [e (not-empty (str/trim (str (:err r))))]
-                     (str " — " e)))})))
+        r (proc/run argv
+                    (merge (context/child-env-options
+                            (cond-> {"TIK_SUBJECT" subject}
+                              repo (assoc "TIK_REPO" repo)))
+                           {:dir (str (if repo (io/file holder repo) holder))
+                            :timeout-ms script-timeout-ms}))]
+    (cond
+      (:timed-out? r) {:error (str "scope " (script-problem r))}
+      (zero? (long (:exit r))) :in
+      (= 1 (long (:exit r))) :out
+      :else {:error (str "scope " (script-problem r))})))
 
 (defn cmd-rollout
   "rollout <process> [--population P] [--parent <id>] [--parent-title T]
@@ -736,21 +764,21 @@
                                   " is ambiguous between "
                                   (str/join " and " (map pr-str paths))
                                   " — exported for neither"))))
-              r (apply sh/sh (concat argv
-                                     [:dir (str (or dir holder))
-                                      ;; the reserved names land LAST: a
-                                      ;; fact can add to the probe's world,
-                                      ;; never rewrite which ticket it is
-                                      :env (cond-> (merge (context/child-env)
-                                                          facts
-                                                          {"TIK_TICKET" (str id)})
-                                             repo-name (assoc "TIK_REPO" repo-name)
-                                             subject (assoc "TIK_SUBJECT" subject))]))
+              r (proc/run argv
+                          (merge (context/child-env-options
+                                  ;; the reserved names land LAST: a
+                                  ;; fact can add to the probe's world,
+                                  ;; never rewrite which ticket it is
+                                  (cond-> (merge facts {"TIK_TICKET" (str id)})
+                                    repo-name (assoc "TIK_REPO" repo-name)
+                                    subject (assoc "TIK_SUBJECT" subject)))
+                                 {:dir (str (or dir holder))
+                                  :timeout-ms script-timeout-ms
+                                  :max-out-bytes probe-max-bytes}))
               before (stage/effective-reached process events t roles)]
           (swap! ran inc)
-          (if-not (zero? (:exit r))
-            (do (println (str (sid id) " " label ": probe failed — "
-                              (str/trim (:err r))))
+          (if-let [problem (script-problem r)]
+            (do (println (str (sid id) " " label ": probe failed — " problem))
                 ;; one bad repo must not abort a store sweep, but a named
                 ;; ticket whose probe failed did not measure anything
                 (when named (exit! 1)))

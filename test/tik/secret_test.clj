@@ -1,16 +1,17 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 (ns tik.secret-test
-  "The one secret resolver, exhaustively: a value is a literal, an
-  environment variable, a password-manager command (shell string or
-  argv vector), or a file — resolved fail-loud, and resolvable ANYWHERE
-  in a config via the walk. The single-key spec rule keeps the :command
+  "The secret specs tik's configurations rely on, resolved by
+  briko.secret: a value is a literal, an environment variable, a
+  password-manager command (shell string or argv vector), a file or a
+  systemd credential, resolved fail-loud, and resolvable ANYWHERE in a
+  config via the walk. The single-key spec rule keeps the :command
   effect sink from being mistaken for a secret."
-  (:require [clojure.java.io :as io]
+  (:require [briko.secret :as secret]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [tik.harness :as h]
-            [tik.secret :as secret]))
+            [tik.harness :as h]))
 
 ;; --------------------------------------------------------- spec?
 
@@ -71,8 +72,13 @@
 
 (deftest command-failure-is-loud
   (testing "a nonzero exit throws, naming the command"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"failed"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"false exited with 1"
                           (secret/resolve1 "pw" {:command ["false"]}))))
+  (testing "a failing command's output never reaches the refusal"
+    (let [e (try (secret/resolve1 "pw" {:command "printf leaked-value; exit 3"})
+                 (catch clojure.lang.ExceptionInfo e e))]
+      (is (= ::secret/command-failed (:type (ex-data e))))
+      (is (not (str/includes? (str (ex-message e) (pr-str (ex-data e))) "leaked-value")))))
   (testing "an unrunnable command fails well (ex-info, not a raw throw)"
     (is (thrown? clojure.lang.ExceptionInfo
                  (secret/resolve1 "pw" {:command ["tik-no-such-binary-xyz"]}))))
@@ -101,31 +107,27 @@
     ;; newline; first-line-trimmed yields the exact value
     (spit (io/file dir "opsgenie_token") "cred-SECRET-value")
     (testing "resolves the file named NAME in $CREDENTIALS_DIRECTORY"
-      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
-                                                 (str dir)))}
-        (fn []
-          (is (= "cred-SECRET-value"
-                 (secret/resolve1 "tok" {:credential "opsgenie_token"}))))))
+      (let [opts {:getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                    (str dir)))}]
+        (is (= "cred-SECRET-value"
+               (secret/resolve1 "tok" {:credential "opsgenie_token"} opts)))))
     (testing "a missing credential file throws, pointing at LoadCredential="
-      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
-                                                 (str dir)))}
-        (fn []
-          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not present"
-                                (secret/resolve1 "tok" {:credential "absent"}))))))
+      (let [opts {:getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                    (str dir)))}]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not present"
+                              (secret/resolve1 "tok" {:credential "absent"} opts)))))
     (testing "a name with a slash or .. is rejected (no directory escape)"
-      (with-redefs-fn {#'secret/getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
-                                                 (str dir)))}
-        (fn []
-          (doseq [bad ["../etc/passwd" "a/b" "..\\x"]]
-            (is (thrown-with-msg? clojure.lang.ExceptionInfo #"bare name"
-                                  (secret/resolve1 "tok" {:credential bad}))
-                bad)))))
+      (let [opts {:getenv (fn [n] (when (= n "CREDENTIALS_DIRECTORY")
+                                    (str dir)))}]
+        (doseq [bad ["../etc/passwd" "a/b" "..\\x"]]
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"bare name"
+                                (secret/resolve1 "tok" {:credential bad} opts))
+              bad))))
     (testing "outside systemd (no $CREDENTIALS_DIRECTORY) it says so clearly"
-      (with-redefs-fn {#'secret/getenv (constantly nil)}
-        (fn []
-          (is (thrown-with-msg? clojure.lang.ExceptionInfo
-                                #"CREDENTIALS_DIRECTORY is not set"
-                                (secret/resolve1 "tok" {:credential "x"}))))))))
+      (let [opts {:getenv (constantly nil)}]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #"CREDENTIALS_DIRECTORY is not set"
+                              (secret/resolve1 "tok" {:credential "x"} opts)))))))
 
 ;; --------------------------------------------------------- resolve-secrets walk
 
@@ -164,3 +166,14 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"token"
                           (secret/resolve-secrets
                            {:token {:env "TIK_SURELY_UNSET_VAR"}})))))
+
+;; --------------------------------------------------------- empty values
+
+(deftest an-empty-value-is-refused-rather-than-returned
+  (let [dir (h/temp-dir! "tik-secret-empty")
+        f (io/file dir "pw")
+        refusal (fn [thunk] (try (thunk) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
+    (spit f "\nlogin: x\n")
+    (is (= ::secret/empty (refusal #(secret/resolve1 "pw" {:env "E"} {:getenv (constantly "")}))))
+    (is (= ::secret/empty (refusal #(secret/resolve1 "pw" {:file (str f)}))))
+    (is (= ::secret/empty (refusal #(secret/resolve1 "pw" {:command ["printf" ""]}))))))

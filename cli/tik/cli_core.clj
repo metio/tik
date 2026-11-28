@@ -9,8 +9,8 @@
   command namespaces); no command handler or lens lives in it, so the
   command namespaces (tik.effects, tik.audit, …) can depend on it without
   cycling back through tik.cli."
-  (:require [clojure.java.io :as io]
-            [clojure.java.shell :as sh]
+  (:require [briko.process :as proc]
+            [clojure.java.io :as io]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [clojure.walk :as walk]
@@ -225,7 +225,7 @@
   honestly promise git recovery."
   [dir]
   (try
-    (zero? (:exit (sh/sh "git" "-C" (str dir) "rev-parse" "--is-inside-work-tree")))
+    (zero? (long (:exit (proc/run ["git" "-C" (str dir) "rev-parse" "--is-inside-work-tree"]))))
     (catch Exception _ false)))
 
 (defn archive-process!

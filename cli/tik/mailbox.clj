@@ -29,7 +29,7 @@
             [tik.mail :as mail]
             [tik.netmail :refer [loopback-host?]]
             [tik.reporter :as reporter]
-            [tik.secret :as secret]))
+            [briko.secret :as secret]))
 
 (def mailbox-id-pattern #"[a-z0-9][a-z0-9._-]{0,62}")
 

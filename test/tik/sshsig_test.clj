@@ -14,7 +14,7 @@
             [clojure.test :refer [deftest is testing]]
             [tik.harness :as h]
             [tik.sign :as sign]
-            [tik.sshsig :as sshsig])
+            [briko.sshsig :as sshsig])
   (:import (java.io File)))
 
 (defn- signer!

@@ -68,7 +68,8 @@
   signed — a real consequence, and the reason re-pinning merges. Keys
   merge by kid and key material (ADR 0027), so new material under a kid
   already pinned joins the old key instead of replacing it."
-  (:require [briko.json :as json]
+  (:require [briko.digest :as digest]
+            [briko.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
@@ -208,10 +209,8 @@
   the hex SHA-256 of the key's type and base64 blob, so a comment or
   extra whitespace on the key line changes nothing."
   [public-key]
-  (let [[kind blob] (str/split (str/trim (str public-key)) #"\s+")
-        md (java.security.MessageDigest/getInstance "SHA-256")
-        digest (.digest md (.getBytes (str kind " " blob) "UTF-8"))]
-    (str "tik-key-" (str/join (map #(format "%02x" (bit-and % 0xff)) digest)))))
+  (let [[kind blob] (str/split (str/trim (str public-key)) #"\s+")]
+    (str "tik-key-" (digest/sha256-hex (str kind " " blob)))))
 
 (defn key-commitment-required?
   "Whether this store refuses a binding whose token does not commit to its

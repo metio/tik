@@ -10,13 +10,13 @@
   A leaf: it depends on the kernel's canonical reader, never on cli. File
   reads fail WELL (an ex-info dispatch-guarded turns into `tik: …` + exit
   1), so this namespace does no process control of its own."
-  (:require [clojure.edn :as edn]
+  (:require [briko.edn :as bedn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.context :as context]
             [tik.shape :as shape])
-  (:import (java.io File PushbackReader StringReader)))
+  (:import (java.io File)))
 
 (def switch-flags
   "Flags that are on or off and never carry a value. A switch is true when
@@ -73,23 +73,20 @@
   should need to know EDN quoting to record a description."
   [s]
   (let [[v ok?] (try
-                  ;; depth precheck: a recursion-bomb argument must land
-                  ;; as a literal string, not overflow the reader
-                  (canonical/check-nesting s)
-                  (with-open [r (PushbackReader. (StringReader. s))]
-                    (let [form (edn/read {:eof ::eof
-                                          :readers canonical/edn-readers} r)
-                          rest (edn/read {:eof ::eof} r)]
-                      [form (= ::eof rest)]))
-                  ;; the scan bounds the reader's depth; a thread with a
-                  ;; smaller stack than that bound needs still lands here
-                  (catch StackOverflowError _ [nil false])
+                  ;; briko.edn scans the nesting first, so a recursion-bomb
+                  ;; argument lands as a literal string instead of
+                  ;; overflowing the reader; text with no form or more
+                  ;; than one is refused the same way
+                  [(bedn/read-string s {:max-bytes canonical/max-text-bytes
+                                        :max-depth canonical/max-depth
+                                        :readers canonical/edn-readers})
+                   true]
                   (catch Exception _ [nil false]))]
     (cond
-      ;; A parse failure, or empty/whitespace-only input that reads as the eof
-      ;; sentinel — neither must land in a signed fact, so pass the literal
+      ;; A parse failure, or empty/whitespace-only input that holds no
+      ;; form — neither must land in a signed fact, so pass the literal
       ;; (possibly empty) string through untouched.
-      (or (not ok?) (= ::eof v)) s
+      (not ok?) s
       (symbol? v) (keyword (str v))
       :else v)))
 

@@ -5,7 +5,8 @@
   checks made while the stores open, and the isolation each store keeps
   — its root and derivation, its actors and key, its MCP token and path —
   including under concurrent requests to several stores."
-  (:require [cheshire.core :as json]
+  (:require [briko.paths]
+            [cheshire.core :as json]
             [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
@@ -209,10 +210,12 @@
     (let [p (problems-of (assoc-in (cfg-for fx) [:stores :alpha :key] (str junk)))]
       (is (str/includes? p "its :key is not an OpenSSH private key"))
       (is (not (str/includes? p "secret-material"))))
-    (testing "a failing command names the command and its stderr, never its stdout"
+    (testing "a failing command names the program and its exit, never its output"
+      ;; the command's stderr reaches the operator's terminal, not the problem
       (let [p (problems-of (assoc-in (cfg-for fx) [:stores :alpha :key]
                                      {:command ["sh" "-c" "echo leaked-$((40+2)); echo nope >&2; exit 3"]}))]
-        (is (str/includes? p "failed: nope"))
+        (is (str/includes? p "command sh exited with 3"))
+        (is (not (str/includes? p "nope")))
         (is (not (str/includes? p "leaked-42")))))))
 
 (deftest a-command-key-lives-in-a-private-runtime-file
@@ -424,7 +427,7 @@
 
 (deftest the-notifier-watches-the-backends-stores
   (let [cfg (notifier/config-from {:stores {"alpha" "/a" "beta" "~/b"} :poll "PT1S"} {})]
-    (is (= {"alpha" "/a" "beta" (str (System/getProperty "user.home") "/b")} (:stores cfg)))
+    (is (= {"alpha" "/a" "beta" (str (briko.paths/home) "/b")} (:stores cfg)))
     (is (= 1000 (:poll-ms cfg)))))
 
 (deftest a-bound-root-keeps-its-derived-rows-to-itself

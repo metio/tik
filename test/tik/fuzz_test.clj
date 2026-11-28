@@ -30,7 +30,7 @@
             [tik.gen-events :as ge]
             [tik.delegation :as delegation]
             [tik.identity :as identity]
-            [tik.sshsig :as sshsig]
+            [briko.sshsig :as sshsig]
             [tik.sigpolicy :as sigpolicy]
             [tik.link :as link]
             [tik.harness :as h]
@@ -332,8 +332,6 @@
     :gen (one gen/any-equatable)}
    {:sym 'tik.canonical/content-address :f canonical/content-address
     :gen (one gen/any-equatable)}
-   {:sym 'tik.canonical/check-nesting :f canonical/check-nesting
-    :gen (one gen/string)}
    {:sym 'tik.canonical/parse :f canonical/parse
     :gen (one gen/string)}
    {:sym 'tik.event/mint :f event/mint
@@ -371,7 +369,7 @@
                                  (gen/fmap #(assoc % :problems []) (gen/map gen/keyword gen/any-equatable))])
                     (gen/one-of [gen/any-equatable gen-garbage]))}
    {:sym 'tik.identity/principal? :f identity/principal? :gen (one gen/any-equatable)}
-   {:sym 'tik.sshsig/parse-signer-line :f sshsig/parse-signer-line
+   {:sym 'briko.sshsig/parse-signer-line :f sshsig/parse-signer-line
     :gen (one (gen/one-of [gen/any-equatable gen/string (gen/fmap #(str "seb " % " ssh-ed25519 AAAAC3x") gen/string)]))}
    {:sym 'tik.sigpolicy/parse :f sigpolicy/parse
     :gen (one (gen/one-of [gen/any-equatable gen/string
@@ -1062,12 +1060,13 @@
                    (event/assert-fact
                     {:ticket (random-uuid) :actor "x" :at (Instant/now)
                      :parents #{"sha256-x"} :path [:x] :value deep-value}))))
-    (testing "check-nesting rejects the raw text before any reader"
-      (is (thrown? clojure.lang.ExceptionInfo
-                   (canonical/check-nesting deep-text))))
+    (testing "parse rejects the raw text before any reader"
+      (is (= :canonical/too-deep
+             (:reason (ex-data (try (canonical/parse deep-text)
+                                    (catch clojure.lang.ExceptionInfo e e)))))))
     (testing "brackets inside strings and char literals don't count"
-      (is (nil? (canonical/check-nesting
-                 "{:a \"[[[[[[\" :b \\[ :c [1 2 3]}"))))
+      (is (= {:a "[[[[[[" :b \[ :c [1 2 3]}
+             (canonical/parse "{:a \"[[[[[[\" :b \\[ :c [1 2 3]}"))))
     (testing "parse-value answers with the literal string"
       (is (= deep-text (cli-parse-value deep-text))))
     (testing "an empty/whitespace value is the literal string, NOT the

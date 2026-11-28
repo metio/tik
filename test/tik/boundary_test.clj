@@ -115,7 +115,6 @@
 (deftest canonical_text_and_bytes_are_typed
   (doseq [v [1 [1] :k (byte-array 2) \a]]
     (is (fails-well? canonical/parse v) (pr-str v))
-    (is (fails-well? canonical/check-nesting v) (pr-str v))
     (is (fails-well? canonical/sha256-hex v) (pr-str v)))
   (is (fails-well? canonical/sha256-hex nil))
   (is (fails-well? canonical/sha256-hex-bytes "abc"))
