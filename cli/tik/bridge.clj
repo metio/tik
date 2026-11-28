@@ -8,7 +8,8 @@
   ingest. Each turns an external fact into a bridge-SIGNED attestation;
   verification thereafter never calls the IdP/issuer. Porcelain over
   tik.cli-core plus the pure parsers in tik.mail / tik.oidc / tik.oid4vci."
-  (:require [clojure.java.io :as io]
+  (:require [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.context :as context]
             [tik.args :refer [actor parse-key parse-value read-edn-file
@@ -175,8 +176,10 @@
   (let [[ticket file] pos
         _ (when-not file (die "usage: tik bridge intoto <id> <statement.json>"))
         raw (slurp-existing "statement" file)
-        doc (try ((requiring-resolve 'cheshire.core/parse-string) raw true)
-                 (catch Exception _ (die (str file " is not valid JSON"))))
+        ;; the raw statement rides in the event, and an event over 1 MiB
+        ;; is one tik.api refuses to read, so briko's 1 MiB default fits
+        doc (try (json/parse-string raw {:keys :keyword})
+                 (catch Exception e (die (str file " is not valid JSON: " (ex-message e)))))
         _ (when-not (map? doc) (die "an in-toto statement must be a JSON object"))
         ptype (or (:predicateType doc)
                   (die (str file " has no predicateType — not an in-toto statement")))
@@ -328,7 +331,7 @@
                       " pinned and both verify. Confirm the new key with the"
                       " issuer before committing."))))
     (io/make-parents f)
-    (spit f ((requiring-resolve 'cheshire.core/generate-string) merged))
+    (spit f (json/write-string merged))
     (println (str "pinned " (count (:keys merged)) " key(s) for " issuer
                   (when existing
                     (str " (" (count (:keys existing)) " already held)"))
@@ -367,7 +370,9 @@
                  (str url "&audience="
                       (java.net.URLEncoder/encode (str aud) "UTF-8"))
                  (str "Bearer " rt))]
-       (or (:value ((requiring-resolve 'cheshire.core/parse-string) body true))
+       (or (:value (try (json/parse-string body {:keys :keyword})
+                        (catch Exception e
+                          (die (str "the Actions token endpoint returned no JSON: " (ex-message e))))))
            (die "the Actions token endpoint returned no value")))
 
      :else (die (str "how should the token arrive? --github, --token-file <f>,"

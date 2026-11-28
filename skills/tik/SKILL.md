@@ -48,7 +48,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   `tik ls --all --where 'fact:repo=:beta'` to select across the whole store.
   The same grammar drives `tik search <words>` (sugar for `--all --where '~w
   …'`). `tik dupes` reports near-title lookalikes. Any lens takes `--edn` /
-  `--format json` for machine output.
+  `--format json` for machine output. JSON output escapes hidden code points
+  (bidirectional controls, zero-width characters) as `\uXXXX`, and a map
+  whose keys would print to one name (`:a` and `"a"`) prints every key in
+  EDN (`":a"`, `"\"a\""`) instead of naming one twice.
 - `tik next [--actor A]` — your inbox: what you can act on now. An item
   marked `(overrides a settled fact)` would replace a value already set
   (`replacing [:decision] = :accepted`), the branch the ticket did not
@@ -218,7 +221,10 @@ Run these; do not hand-edit `tickets/` — events are content-addressed and
   symlinks and unbounded expansion), and refuses a pinned definition that does
   not lint. `--serve [--port N]` is the same over HTTP —
   `POST /rederive`, `GET /derivation?bundle=<url>`, `GET /badge.svg?bundle=<url>`
-  — deriving per request and caching only on `[content-hash, minute]`.
+  — deriving per request and caching only on `[content-hash, minute]`. A
+  fetch follows at most four redirects, each target judged by the same
+  public-HTTPS rule before it is requested, refuses a bundle over 32 MiB
+  while reading it, and gives up after 60 s.
 - `tik gc [--apply]` — remove archived process definitions no ticket pins
   and no named definition is at (versions every ticket has been moved off
   with `reprocess`), with their
@@ -310,7 +316,9 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   calls the IdP. Supply the password without exposing it in `ps`: prefer
   `--password-command '<pass show …>'`, `--password-file`, or the
   `TIK_OIDC_PASSWORD` environment variable over a literal `--password`.
-  Identity fetches require HTTPS (loopback excepted for a local test IdP).
+  Identity fetches require HTTPS (loopback excepted for a local test IdP),
+  give up after 60 s and refuse an answer over 1 MiB; a JSON document that
+  names a member twice or holds text after its value is refused.
 - `tik bridge jwks --issuer <url>` — pin an issuer's signing keys at
   `<root>/jwks/<issuer>.json`. Rung 2's trust anchor: verification never calls
   the IdP, so the keys must be in the store before a binding can count. Fetched
@@ -388,7 +396,8 @@ which admits exactly the actions its actor may take on a ticket right now.
   (the verbs route through `--format json`). `TIK_ACTOR` is the agent's
   identity; with `TIK_KEY` set each accepted call is signed. It runs from the
   shipped binary (`tik mcp`) — the enforcement is the derivation, so it holds
-  whatever the client sends.
+  whatever the client sends. A message over 1 MiB, or one naming a key
+  twice, answers a JSON-RPC parse error (-32700).
 - `tik serve --mcp-token-file F` — the same MCP surface over HTTP on `/mcp`,
   so one long-running server serves every client instead of one process
   per session: `claude mcp add --transport http tik http://127.0.0.1:7777/mcp

@@ -3,6 +3,11 @@
 {:paths ["src" "cli" "skills"]
  :deps {org.clojure/clojure {:mvn/version "1.12.7"}
         metosin/malli {:mvn/version "0.20.3"}
+        ;; briko reads JSON strictly within bounds (briko.json) and makes
+        ;; HTTP requests with deadlines and body limits (briko.http); it
+        ;; brings babashka.fs and babashka.process for the JVM, which bb
+        ;; carries itself
+        io.github.metio/briko {:git/sha "f23bbdb699f616b0e4263a737b53821ad33eea79"}
         ;; bb ships cheshire built-in; the JVM needs it declared. The
         ;; OIDC bridge and MCP server reach it via requiring-resolve so
         ;; the kernel never loads JSON machinery.

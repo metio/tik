@@ -9,18 +9,22 @@
   which registered actor vouched for the manifest, so this command is
   the one place a skill an agent received is judged by the store's
   identity registry rather than by the server that sent it."
-  (:require [clojure.java.io :as io]
+  (:require [briko.http :as http]
+            [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.cli-core :refer [die exit! root]]
             [tik.forge :as forge]
             [tik.skills :as skills])
-  (:import (java.net URI)
-           (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse
-                          HttpResponse$BodyHandlers)
-           (java.time Duration)))
+  (:import (java.net URI)))
 
-(defn- json-parse [s] ((requiring-resolve 'cheshire.core/parse-string) s))
-(defn- json-emit [x] ((requiring-resolve 'cheshire.core/generate-string) x))
+(def ^:private max-bytes
+  "The largest answer and saved entry read. The Skills extension caps a
+  skill at 16 MiB, which a resources/read answer carries base64-encoded
+  as about 21.3 MiB; our own skill is 40 KB (2026-11-28)."
+  (* 32 1024 1024))
+
+(defn- json-parse [s] (json/parse-string s {:max-bytes max-bytes}))
 
 (def ^:private modern-version "2026-07-28")
 
@@ -29,27 +33,24 @@
                          "io.modelcontextprotocol/clientInfo" {"name" "tik-skill-verify" "version" "1"}
                          "io.modelcontextprotocol/clientCapabilities" {}}))
 
-(defn- client ^HttpClient []
-  (-> (HttpClient/newBuilder) (.connectTimeout (Duration/ofSeconds 20)) (.build)))
-
 (defn- post!
-  "POST one JSON-RPC message; {:status :body :session}."
-  [^HttpClient c ^URI uri headers msg]
-  (let [req (as-> (HttpRequest/newBuilder uri) b
-              (reduce (fn [^java.net.http.HttpRequest$Builder b [k v]]
-                        (if (seq v) (.header b k v) b))
-                      b (merge {"Content-Type" "application/json"
-                                "Accept" "application/json, text/event-stream"
-                                "User-Agent" "tik-skill-verify"}
-                               headers))
-              (.timeout ^java.net.http.HttpRequest$Builder b (Duration/ofSeconds 60))
-              (.POST ^java.net.http.HttpRequest$Builder b
-                     (HttpRequest$BodyPublishers/ofString (json-emit msg)))
-              (.build ^java.net.http.HttpRequest$Builder b))
-        ^HttpResponse resp (.send c req (HttpResponse$BodyHandlers/ofString))]
-    {:status (.statusCode resp)
-     :body (str (.body resp))
-     :session (.orElse (.firstValue (.headers resp) "mcp-session-id") nil)}))
+  "POST one JSON-RPC message; {:status :body :session}. Connecting may
+  take 20 s and the whole exchange 60 s."
+  [^URI uri headers msg]
+  (let [r (http/request :post (str uri)
+                        {:headers (into {} (filter (comp seq val))
+                                        (merge {"Content-Type" "application/json"
+                                                "Accept" "application/json, text/event-stream"
+                                                "User-Agent" "tik-skill-verify"}
+                                               headers))
+                         :body (json/write-string msg)
+                         :as :text
+                         :connect-timeout-ms 20000
+                         :timeout-ms 60000
+                         :max-bytes max-bytes})]
+    {:status (:status r)
+     :body (str (:body r))
+     :session (http/header r "mcp-session-id")}))
 
 (defn- answer
   "The `result` of a JSON-RPC response body; throws with the server's
@@ -71,30 +72,31 @@
   server of either era can be checked."
   [url token]
   (let [uri (forge/require-tls! url)
-        c (client)
         auth (when token {"Authorization" (str "Bearer " token)})
         ids (atom 0)
         msg (fn [method params]
               {"jsonrpc" "2.0" "id" (swap! ids inc) "method" method "params" params})
         modern (fn [method params]
-                 (answer (post! c uri (merge auth {"MCP-Protocol-Version" modern-version
+                 (answer (post! uri (merge auth {"MCP-Protocol-Version" modern-version
                                                    "Mcp-Method" method}
                                              (when-let [n (get params "uri")] {"Mcp-Name" n}))
                                 (msg method (modern-params params)))
                          method))
+        ;; a server that cannot be reached is no legacy server either
         modern? (try (modern "server/discover" {}) true
-                     (catch clojure.lang.ExceptionInfo _ false))]
+                     (catch clojure.lang.ExceptionInfo e
+                       (if (http/refusal? e) (throw e) false)))]
     (if modern?
       modern
-      (let [init (post! c uri auth (msg "initialize" {"protocolVersion" "2025-06-18"
+      (let [init (post! uri auth (msg "initialize" {"protocolVersion" "2025-06-18"
                                                       "capabilities" {}
                                                       "clientInfo" {"name" "tik-skill-verify" "version" "1"}}))
             _ (answer init "initialize")
             session (when-let [s (:session init)] {"Mcp-Session-Id" s})
             headers (merge auth session {"MCP-Protocol-Version" "2025-06-18"})]
-        (post! c uri headers {"jsonrpc" "2.0" "method" "notifications/initialized"})
+        (post! uri headers {"jsonrpc" "2.0" "method" "notifications/initialized"})
         (fn [method params]
-          (answer (post! c uri headers (msg method params)) method))))))
+          (answer (post! uri headers (msg method params)) method))))))
 
 ;; ------------------------------------------------------------- judging
 
@@ -160,7 +162,7 @@
                           (throw (ex-info "resources/read returned no contents for it" {})))
                         (skills/content-bytes item)))]
       (mapv #(judge-entry signers % read-file) entries))
-    (let [doc (try (json-parse (slurp src))
+    (let [doc (try (json/parse-file src {:max-bytes max-bytes})
                    (catch Exception e
                      (throw (ex-info (str src " is not JSON: " (ex-message e)) {}))))]
       (mapv #(judge-entry signers % nil)

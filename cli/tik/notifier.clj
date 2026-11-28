@@ -23,7 +23,8 @@
   Delivery never touches the log (ADR 0019): the cursor that keeps a
   restart from repeating old hints is disposable state under
   $XDG_STATE_HOME, and losing it costs one silent baseline."
-  (:require [clojure.java.io :as io]
+  (:require [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
             [tik.audit :as audit]
@@ -41,8 +42,11 @@
            (java.nio.file.attribute FileAttribute PosixFilePermissions)
            (java.time Duration)))
 
-(defn- json-parse [s] ((requiring-resolve 'cheshire.core/parse-string) s))
-(defn- json-emit [x] ((requiring-resolve 'cheshire.core/generate-string) x))
+;; Lines on the socket and on stdio are read within briko's default
+;; bounds; a subscription request is already capped at
+;; tik.notify/max-request-bytes before it is parsed.
+(defn- json-parse [s] (json/parse-string s))
+(defn- json-emit [x] (json/write-string x))
 
 (defn- log [& parts]
   (binding [*out* *err*]

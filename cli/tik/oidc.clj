@@ -17,13 +17,21 @@
   Composition: HTTP enters as an injected `http-post`/`http-get`
   function ((url form-params-or-nil) -> body string), so every flow
   is testable without a server; only the CLI passes the real one."
-  (:require [clojure.string :as str])
+  (:require [briko.http :as http]
+            [briko.json :as json]
+            [clojure.string :as str])
   (:import (java.net URI URLEncoder)
-           (java.net.http HttpClient HttpRequest
-                          HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
            (java.util Base64)))
 
-(def ^:private client (delay (HttpClient/newHttpClient)))
+(def ^:private limits
+  "Bounds of every identity request and of every JSON document an IdP
+  sends. The largest discovery document and key set measured on
+  2026-11-28 were 1.7 KB and 12.9 KB (login.microsoftonline.com), an ID
+  token a few KB; 1 MiB leaves room for any real IdP and stops one that
+  streams without end."
+  {:connect-timeout-ms 10000
+   :timeout-ms 60000
+   :max-bytes (* 1024 1024)})
 
 (defn require-tls!
   "Every security-critical OIDC/JWKS fetch must run over TLS: an http URL
@@ -41,21 +49,38 @@
                       {:reason :oidc/insecure-url :url (str url)})))
     u))
 
+(defn- request!
+  "The body of the answer to one identity request, whatever its status.
+  A refusal of the HTTP layer becomes an ex-info naming the IdP's
+  address (scheme, host, port and path; never the query, which may carry
+  a token): :oidc/too-large for a body over the limit, :oidc/unreachable
+  for everything else."
+  [method url opts]
+  (require-tls! url)
+  (try
+    (:body (http/request method url (merge limits {:as :text} opts)))
+    (catch clojure.lang.ExceptionInfo e
+      (if-not (http/refusal? e)
+        (throw e)
+        (let [{:keys [type limit] u :url} (ex-data e)]
+          (throw (ex-info (str "the identity provider at " u " "
+                               (if (= ::http/too-large type)
+                                 (str "answered with more than " limit " bytes")
+                                 (str "could not be reached: " (ex-message e))))
+                          (cond-> {:reason (if (= ::http/too-large type) :oidc/too-large :oidc/unreachable)
+                                   :url u}
+                            limit (assoc :limit limit))
+                          e)))))))
+
 (defn http-get [url]
-  (.body (.send ^HttpClient @client
-                (.build (HttpRequest/newBuilder (require-tls! url)))
-                (HttpResponse$BodyHandlers/ofString))))
+  (request! :get url nil))
 
 (defn http-get-with-auth
   "GET with an Authorization header — what a platform's own token
   endpoint wants (GitHub Actions hands the job a short-lived request
   token to exchange for an ID token)."
   [url auth]
-  (.body (.send ^HttpClient @client
-                (-> (HttpRequest/newBuilder (require-tls! url))
-                    (.header "Authorization" auth)
-                    (.build))
-                (HttpResponse$BodyHandlers/ofString))))
+  (request! :get url {:headers {"Authorization" auth}}))
 
 (defn http-post
   "Form-encoded POST; returns the body string regardless of status —
@@ -63,21 +88,17 @@
   [url params]
   (let [form (str/join "&" (for [[k v] params]
                              (str k "=" (URLEncoder/encode (str v) "UTF-8"))))]
-    (.body (.send ^HttpClient @client
-                  (-> (HttpRequest/newBuilder (require-tls! url))
-                      (.header "Content-Type" "application/x-www-form-urlencoded")
-                      (.POST (HttpRequest$BodyPublishers/ofString form))
-                      (.build))
-                  (HttpResponse$BodyHandlers/ofString)))))
+    (request! :post url {:headers {"Content-Type" "application/x-www-form-urlencoded"}
+                         :body form})))
 
 (defn- json-parse
-  "Parse an IdP-sourced JSON body. A broken or hostile IdP that returns
-  non-JSON is THE IdP's fault, not a tik bug — fail well with a
-  data-carrying error so the message names the IdP, never a raw
-  JsonParseException reworded as a this-is-a-bug line."
+  "Parse an IdP-sourced JSON body, keys as keywords. A broken or hostile
+  IdP that returns non-JSON is THE IdP's fault, not a tik bug — fail well
+  with a data-carrying error so the message names the IdP, never a raw
+  parser exception reworded as a this-is-a-bug line."
   [s]
   (try
-    ((requiring-resolve 'cheshire.core/parse-string) s true)
+    (json/parse-string s {:keys :keyword :max-bytes (:max-bytes limits)})
     (catch Exception e
       (throw (ex-info "the identity provider returned a body that is not valid JSON"
                       {:reason :oidc/bad-response

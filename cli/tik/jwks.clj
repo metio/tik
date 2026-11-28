@@ -20,7 +20,8 @@
 
   The verifier is TOTAL over an untrusted signature: a malformed one is a
   verification FAILURE, not a throw."
-  (:require [clojure.string :as str])
+  (:require [briko.json :as json]
+            [clojure.string :as str])
   (:import (java.security KeyFactory MessageDigest Signature)
            (java.security.spec X509EncodedKeySpec)
            (java.util Base64)))
@@ -37,7 +38,7 @@
   "A JWKS JSON string -> `{:keys [{:kid :kty :crv :alg :x} …]}`.
   Fail-well on non-JSON."
   [json]
-  (let [m (try ((requiring-resolve 'cheshire.core/parse-string) json true)
+  (let [m (try (json/parse-string json {:keys :keyword})
                (catch Exception e (throw (ex-info "JWKS is not valid JSON"
                                                   {:reason :oid4vci/bad-jwks} e))))]
     (when-not (and (map? m) (sequential? (:keys m)))
@@ -92,6 +93,10 @@
                   "OKP" [:crv :kty :x]
                   "EC" [:crv :kty :x :y]
                   nil)
+        ;; RFC 7638 hashes each member as a JSON string with only the
+        ;; escapes JSON requires, other characters raw in UTF-8; briko's
+        ;; writer also escapes hidden code points, which would change the
+        ;; hashed bytes of a member holding one, so this stays on cheshire
         json (requiring-resolve 'cheshire.core/generate-string)]
     (when (and members (every? #(string? (get jwk %)) members))
       (let [canon (str "{"

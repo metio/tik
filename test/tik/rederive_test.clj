@@ -16,6 +16,7 @@
             [tik.canonical :as canonical]
             [tik.cli]
             [tik.harness :as h]
+            [tik.loopback-http :as lh]
             [tik.rederive :as rederive]
             [tik.sign]
             [tik.sshsig])
@@ -600,3 +601,63 @@
             "an unjudgeable signature is a note, so the bundle still stands")
         (is (some #(str/includes? % "cannot check") msgs))
         (is (not-any? #(str/includes? % "does not verify") msgs))))))
+
+;; ------------------------------------------------------ fetching, bounded
+
+(defn- with-loopback-allowed
+  "Runs f with the URL rule relaxed to admit the loopback test server,
+  except for any path under /private, which stands for a target the rule
+  refuses."
+  [f]
+  (with-redefs-fn {#'rederive/check-url!
+                   (fn [url]
+                     (let [u (java.net.URI. (str url))]
+                       (when (str/starts-with? (str (.getPath u)) "/private")
+                         (throw (ex-info (str "refusing to fetch " (.getHost u)
+                                              " — it resolves inside a private network")
+                                         {:reason :fetch/refused})))
+                       u))}
+    f))
+
+(deftest a_fetch_follows_redirects_each_judged_by_the_url_rule
+  (with-loopback-allowed
+    (fn []
+      (lh/with-server
+        (fn [{:keys [path]}]
+          (case path
+            "/a" {:status 302 :headers {"Location" "/b"}}
+            "/b" {:status 200 :body "bundle-bytes"}
+            "/to-private" {:status 301 :headers {"Location" "/private/x"}}
+            "/loop" {:status 302 :headers {"Location" "/loop"}}
+            {:status 404}))
+        (fn [base seen]
+          (let [f (rederive/fetch! (str base "/a"))]
+            (is (= "bundle-bytes" (slurp f)))
+            (.delete ^java.io.File f))
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"private network"
+                                (rederive/fetch! (str base "/to-private"))))
+          (is (not-any? #(str/starts-with? (:path %) "/private") @seen)
+              "the refused target is never requested")
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"too many redirects"
+                                (rederive/fetch! (str base "/loop"))))
+          (is (= 5 (count (filter #(= "/loop" (:path %)) @seen)))
+              "four redirects are followed, the fifth refused")
+          (let [e (try (rederive/fetch! (str base "/gone?token=secret")) nil
+                       (catch clojure.lang.ExceptionInfo e e))]
+            (is (= :fetch/refused (:reason (ex-data e))))
+            (is (re-find #"answered 404" (ex-message e)))
+            (is (not (str/includes? (ex-message e) "secret")) "a query never reaches the message")))))))
+
+(deftest a_fetched_bundle_larger_than_the_bound_is_refused_while_it_is_read
+  (with-loopback-allowed
+    (fn []
+      (let [huge (byte-array (inc (* 32 1024 1024)))]
+        (doseq [chunked? [false true]]
+          (testing (if chunked? "of unannounced length" "with a Content-Length")
+            (lh/with-server
+              (constantly {:status 200 :chunked? chunked? :body huge})
+              (fn [base _]
+                (let [e (try (rederive/fetch! (str base "/big")) nil
+                             (catch clojure.lang.ExceptionInfo e e))]
+                  (is (= :fetch/refused (:reason (ex-data e))))
+                  (is (re-find #"larger than 33554432 bytes" (ex-message e))))))))))))
