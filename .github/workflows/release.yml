@@ -33,7 +33,7 @@ jobs:
         # actually moved since the last tag.
         uses: metio/ci/needs-release@4ffe6343c7dad75502de503165b853f1959afc8c # 2026.11.21090200
         with:
-          paths: deps.edn bb.edn build.clj src cli skills Containerfile dev/build-native.sh
+          paths: deps.edn bb.edn build.clj src cli skills Containerfile .dockerignore container dev/build-native.sh
       - id: version
         if: steps.gate.outputs.needed == 'true'
         # Calendar version (YYYY.M.D + UTC time), shared across every metio artifact.
@@ -77,10 +77,11 @@ jobs:
         run: sh dev/native-smoke.sh target/tik
       - name: Run the container image
         # The runner has libraries the image may lack, so the binary passing
-        # here says nothing about the image.
+        # here says nothing about the image. The image checks also cover the
+        # mkfifo that briko.process needs.
         run: |
           docker build --tag tik:verify --file Containerfile .
-          docker run --rm tik:verify --help
+          sh dev/image-smoke.sh tik:verify --with-tik
       - id: image
         name: Build, push and sign the container image
         # container-release builds the Containerfile with buildx, pushes

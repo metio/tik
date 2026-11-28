@@ -155,6 +155,22 @@ jobs:
         with:
           registries: github:metio/toolchains
       - run: sh dev/native-smoke-controls.sh
+  image:
+    # The container image around tik: mkfifo builds and passes its tests in
+    # the image build, sits on the PATH owned by root, makes owner-only
+    # named pipes and refuses a bad mode, and no shell enters the image. The
+    # native binary is built only in the release, so an empty file stands in
+    # for target/tik here; the release runs the same checks with tik itself.
+    name: Container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: mkdir -p target && touch target/tik
+      - run: docker build --tag tik:image-smoke --file Containerfile .
+      - run: sh dev/image-smoke.sh tik:image-smoke
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -172,7 +188,7 @@ jobs:
     # Single required check: mark only this one required in branch
     # protection and new jobs are covered automatically.
     name: Verify
-    needs: [clojure, tla, lean, process-tests, evidence, native-smoke, lint]
+    needs: [clojure, tla, lean, process-tests, evidence, native-smoke, image, lint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
