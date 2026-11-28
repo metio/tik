@@ -642,11 +642,12 @@
                                 (rederive/fetch! (str base "/loop"))))
           (is (= 5 (count (filter #(= "/loop" (:path %)) @seen)))
               "four redirects are followed, the fifth refused")
-          (let [e (try (rederive/fetch! (str base "/gone?token=secret")) nil
+          (let [marker (str (random-uuid))
+                e (try (rederive/fetch! (str base "/gone?q=" marker)) nil
                        (catch clojure.lang.ExceptionInfo e e))]
             (is (= :fetch/refused (:reason (ex-data e))))
             (is (re-find #"answered 404" (ex-message e)))
-            (is (not (str/includes? (ex-message e) "secret")) "a query never reaches the message")))))))
+            (is (not (str/includes? (ex-message e) marker)) "a query never reaches the message")))))))
 
 (deftest a_fetched_bundle_larger_than_the_bound_is_refused_while_it_is_read
   (with-loopback-allowed
