@@ -127,3 +127,35 @@
 (defn sqlite-store [db-path]
   (init! db-path)
   (->SqliteStore (str db-path)))
+
+(defn read-only-db
+  "The database spec that opens `db-path` read-only: an SQLite URI with
+  mode=ro, so the connection can neither create the file nor change it.
+  java.io.File/toURI percent-encodes the path, so a `?` or `#` in a
+  directory name stays part of the path."
+  [db-path]
+  (str (.toURI (.getAbsoluteFile (java.io.File. (str db-path)))) "?mode=ro"))
+
+(defn read-only-store
+  "A SqliteStore over an existing `db-path` that never creates a table or
+  writes a row: the connection itself is read-only (read-only-db)."
+  [db-path]
+  (->SqliteStore (read-only-db db-path)))
+
+(defn sizes
+  "What ticket `ticket-id` holds in `db`, as stored:
+  {:events n :event-max bytes :event-total bytes
+   :sidecars n :sidecar-max bytes :sidecar-total bytes}. Read before the
+  rows themselves, so a caller can refuse a ticket larger than it will
+  load."
+  [db ticket-id]
+  (let [row (fn [table]
+              (let [[[n mx total]] (query db (str "SELECT count(*), coalesce(max(length(bytes)),0),"
+                                                  " coalesce(sum(length(bytes)),0) FROM " table
+                                                  " WHERE ticket=?")
+                                          (safe-id ticket-id))]
+                (mapv #(Long/parseLong (str %)) [n mx total])))
+        [en emax etotal] (row "events")
+        [sn smax stotal] (row "sidecars")]
+    {:events en :event-max emax :event-total etotal
+     :sidecars sn :sidecar-max smax :sidecar-total stotal}))

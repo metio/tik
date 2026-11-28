@@ -15,6 +15,8 @@ agent's authorization boundary.
   bridges, backend and notify from the native binary, under systemd.
 - [MCP server](/integrations/mcp-server/) — the frontier as a gated tool
   surface over stdio.
+- [Clojure library](/integrations/library/) — read, verify and derive one
+  ticket in process from a JVM, babashka or native program, read-only.
 - [GitHub Actions](/integrations/github-actions/) — failed workflow runs as
   tickets, one per failure streak, with `tik stats` for per-repository
   metrics.

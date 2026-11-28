@@ -353,6 +353,26 @@ trust flows through the bridge (ADR 0019), verifiable offline forever:
   with the guards that already exist — `[:signed-by :bridge [:credential]]`,
   `[:fact= [:credential :type] :kyc]`, `[:attested-within [:credential] "P90D"]`.
 
+### Reading a store from code — tik.api
+
+A Clojure, babashka or native program that needs a ticket's stage, facts
+or signature verdicts calls `tik.api` in process instead of running
+`tik status` per ticket:
+
+```clojure
+(def store (tik.api/open-store "/path/to/.tik"))  ; the dir holding tickets/ or tik.db
+(tik.api/derive store "f106aa78")                 ; = tik status --edn: :current :reached :facts …
+(tik.api/verify-ticket store "f106aa78")          ; the tik verify ladder as data, :ok?
+```
+
+It is read-only (a SQLite store opens with `mode=ro`), starts no process
+(a key type only ssh-keygen reads is `:unchecked` and fails its check),
+bounds every read, takes a full id or a unique prefix of 8 or more
+characters, refuses a definition that does not hash to the ticket's pin
+unless `{:allow-unpinned-definition true}`, and refuses everything else
+with an ex-info whose `:type` is in the `tik.api` namespace. The contract
+is the namespace docstring, versioned by `tik.api/version`.
+
 ### Working as an agent — the gated surface
 
 An agent never gets a free hand on the store; it works through the frontier,
