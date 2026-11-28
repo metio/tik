@@ -132,7 +132,7 @@ for kind in vector discard meta tag symbolic nsmap comment; do
     vector) chain '[' '1' > "${f}" ;;
     discard) chain '#_ ' '{}' > "${f}" ;;
     meta) chain '^:a ' '{}' > "${f}" ;;
-    tag) chain '#foo ' '{}' > "${f}" ;;
+    tag) chain '#inst ' '{}' > "${f}" ;;
     symbolic) chain '## ' 'Inf' > "${f}" ;;
     nsmap) chain '#:a{:b ' '1' > "${f}" ;;
     comment) { printf ';"\n'; chain '[' '1'; } > "${f}" ;;
@@ -146,6 +146,16 @@ for kind in vector discard meta tag symbolic nsmap comment; do
   fi
 done
 [ "${deep_ok}" -eq 0 ] && ok "deep EDN: every chain past the depth limit is refused as too deep"
+
+# A tag no reader names is refused by name, before its depth is measured.
+f="${work}/deep-unknown-tag.edn"
+chain '#foo ' '{}' > "${f}"
+if ! "${bin}" lint "${f}" > "${f}.out" 2>&1 \
+  && grep -q 'no reader is given' "${f}.out" && ! grep -q 'bug in tik' "${f}.out"; then
+  ok "deep EDN: a chain of a tag no reader names is refused by name"
+else
+  fail "deep EDN: the unknown tag chain was not refused by name" "${f}.out"
+fi
 
 # ------------------------------------------------------------- the fakes
 
