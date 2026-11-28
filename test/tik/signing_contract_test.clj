@@ -61,7 +61,7 @@
   "The signature `ssh-keygen -Y sign` writes beside a file holding `msg`."
   ^bytes [dir key namespace ^bytes msg]
   (let [f (File/createTempFile "signing-msg" ".bin" (io/file dir))]
-    (Files/write (.toPath f) msg (make-array java.nio.file.OpenOption 0))
+    (io/copy msg f)
     (sh/sh "ssh-keygen" "-Y" "sign" "-f" (str key) "-n" namespace (str f))
     (Files/readAllBytes (.toPath (io/file (str f ".sig"))))))
 
@@ -87,7 +87,7 @@
         key (gen-key! dir "k" "ed25519")
         f (io/file dir "abc.edn")
         _ (spit f (:message golden))
-        side (sign/sign! key f "abc")]
+        ^File side (sign/sign! key f "abc")]
     (is (= (str "abc.sig." (sign/fingerprint (sign/pubkey key))) (.getName side)))
     (is (= (seq (ssh-keygen-signature dir key "tik-event" (utf8 (:message golden))))
            (seq (Files/readAllBytes (.toPath side)))))
