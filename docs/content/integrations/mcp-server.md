@@ -85,6 +85,18 @@ its version, method and resource or tool name in the
 `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and is
 refused with `400` when they differ from the body.
 
+A message is one JSON object of at most 1 MiB, read strictly: a key named
+twice, text after the value or a body over the limit answers a parse
+error (`-32700`) whose `data.rule` names the rule, without quoting the
+input. A request without `"jsonrpc": "2.0"`, a string method and a string
+or integer `id` answers `-32600`, an unknown method `-32601`, and an
+unknown tool or `arguments` that are not an object `-32602`. A tool that
+runs and fails, such as a refused assertion or a missing argument,
+answers in its result with `isError`. A notification, a message without
+an `id`, runs nothing and gets no answer (`202` over HTTP). Over stdio, a
+line over the limit is refused without being held in memory, and the
+next line is read as usual.
+
 ## Why the boundary holds
 
 An agent's permission to act is derived from the same guards a person's

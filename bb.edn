@@ -3,7 +3,7 @@
 {:paths ["src" "cli" "skills"]
  ;; the same briko pin as deps.edn
  :deps {metosin/malli {:mvn/version "0.20.3"}
-        io.github.metio/briko {:git/sha "f23bbdb699f616b0e4263a737b53821ad33eea79"}}
+        io.github.metio/briko {:git/sha "b021a2190f6a9a5171d006fbb0d8c8c7a58e7cf2"}}
  :tasks
  {tik  {:doc "Run the tik CLI (bb tik -- status <id>)"
         :requires ([tik.cli])

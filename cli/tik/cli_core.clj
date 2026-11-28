@@ -641,14 +641,17 @@
   entry), so 64 MiB holds about 60000 tickets."
   (* 64 1024 1024))
 
-;; The cache stays on cheshire rather than briko.json: on a copy of that
-;; 920765-byte file briko.json took 46 ms to parse and 94 ms to write on
-;; the JVM (cheshire 11 and 15 ms), and 86 and 271 ms under babashka
-;; (cheshire 10 and 18 ms), which costs more than many of the folds the
-;; cache saves. The file is ours and disposable: whatever it holds is
-;; read as a derivation shortcut, so a stricter parser would refuse
-;; nothing a writer of the store directory could not get past anyway,
-;; while the size bound keeps a huge file from exhausting memory.
+;; The cache stays on cheshire rather than briko.json, whose cost on it
+;; is outside a 2x budget. On a copy of the metio store's 930746-byte
+;; cache (870 entries, briko b021a21, medians of 100 to 200 runs),
+;; briko.json took 5.7 to 7.0 ms to parse and 11 to 18 ms to write on
+;; the JVM (cheshire 3.2 to 3.3 and 4.4 to 6.2 ms, so 1.7 to 2.2x and 2.2
+;; to 2.9x), and 23 to 31 ms and 21 to 28 ms under babashka (cheshire 6.1
+;; to 8.3 and 9.8 to 14 ms, so 3.8x and 2.0 to 2.4x). The file is ours and
+;; disposable: whatever it holds is read as a derivation shortcut, so a
+;; stricter parser would refuse nothing a writer of the store directory
+;; could not get past anyway, while the size bound keeps a huge file from
+;; exhausting memory.
 (defn- read-cache-file
   "The entries of this store's cache file; a missing, oversized or corrupt
   file is a miss, never an error."

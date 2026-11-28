@@ -30,20 +30,21 @@
   Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… tik mcp
   (or `bb mcp` from the dev shell — the same loop on either runtime), or
   `tik serve --mcp-token-file F` for one shared server on /mcp."
-  (:require [briko.json :as json]
+  (:require [briko.mcp :as rpc]
             [clojure.string :as str]
             [tik.cli :as cli]
             [tik.context :as context]
             [tik.skills :as skills]))
 
-;; A message is read within briko's default bounds (1 MiB, 64 levels):
-;; every tool call writes at most one event, and tik.api refuses to read
-;; an event over 1 MiB. A message naming a key twice is refused, so the
-;; server never acts on one of two readings of it. Responses escape every
-;; hidden code point, so tool output reaches the agent without invisible
-;; or reordering characters.
-(defn- json-parse [s] (json/parse-string s))
-(defn- json-emit [x] (json/write-string x))
+;; A message is read within 1 MiB: every tool call writes at most one
+;; event, and tik.api refuses to read an event over 1 MiB. briko.mcp reads
+;; it through briko.json, so a message naming a key twice is refused and
+;; the server never acts on one of two readings of it, and writes every
+;; response with each hidden code point escaped, so tool output reaches
+;; the agent without invisible or reordering characters.
+(def ^:private max-message-bytes (* 1024 1024))
+
+(defn- json-emit [response] (rpc/write-response response))
 
 (defn- tik
   "Run a tik CLI invocation IN-PROCESS (cli/run-argv): same dispatch the
@@ -135,18 +136,6 @@
                        (apply tik "agent" (concat (json-as) ["--" "attest" ticket claim])))
       {:err (str "unknown tool " name)})))
 
-(def ^:private protocol-versions
-  "The legacy MCP revisions this server speaks (an initialize handshake);
-  initialize answers in the client's revision when it is one of them,
-  else in the newest."
-  ["2025-06-18" "2025-03-26" "2024-11-05"])
-
-(def ^:private modern-versions
-  "The modern revisions this server speaks: every request carries its
-  version, identity and capabilities in `_meta`, and no handshake comes
-  first. Claude Code lists a server's skills only over one of these."
-  ["2026-07-28"])
-
 (def ^:private server-info {:name "tik" :version "1"})
 
 (def ^:private capabilities
@@ -163,20 +152,6 @@
 
 (def ^:private cache-hints {:ttlMs 300000 :cacheScope "public"})
 
-(defn- result [id r] {:jsonrpc "2.0" :id id :result r})
-
-(defn- error
-  ([id code message] {:jsonrpc "2.0" :id id :error {:code code :message message}})
-  ([id code message data] (assoc-in (error id code message) [:error :data] data)))
-
-(defn- rpc-error!
-  "Answer the request with a JSON-RPC error instead of a result. `status`
-  is the HTTP status a modern request answers with; a legacy request
-  always answers 200."
-  ([code message] (rpc-error! code message nil 200))
-  ([code message data status]
-   (throw (ex-info message {::code code ::data data ::status status}))))
-
 (defn- signer [] {:key (context/env "TIK_KEY") :actor (actor)})
 
 (defn- skill-resource [skill uri {:keys [path bytes mime]}]
@@ -184,163 +159,71 @@
     (= uri (:uri skill)) (assoc :name (:skill skill)
                                 :description (get (into {} (:frontmatter skill)) "description"))))
 
-(defn- skills-list [params]
+(defn- skills-list [params _]
   (when (some? (get params "cursor"))
-    (rpc-error! -32602 "invalid cursor: skills/list answers in one page"))
+    (rpc/rpc-error! rpc/invalid-params "invalid cursor: skills/list answers in one page"))
   (merge cache-hints
          {:resultType "complete"
           :skills (mapv #(skills/wire-entry % (signer)) skills/catalog)}))
 
-(defn- skills-get [params]
+(defn- skills-get [params _]
   (let [uri (get params "uri")]
-    (when-not (string? uri) (rpc-error! -32602 "skills/get needs a uri"))
+    (when-not (string? uri) (rpc/rpc-error! rpc/invalid-params "skills/get needs a uri"))
     (if-let [skill (skills/by-uri skills/catalog uri)]
       (merge cache-hints {:resultType "complete" :skill (skills/wire-entry skill (signer))})
-      (rpc-error! -32602 (str "no skill at " uri)))))
+      (rpc/rpc-error! rpc/invalid-params (str "no skill at " uri)))))
 
-(defn- resources-list [_params]
+(defn- resources-list [_ _]
   {:resources (vec (for [skill skills/catalog
                          {:keys [uri]} (:resources skill)]
                      (skill-resource skill uri (get (:files skill) uri))))})
 
-(defn- resources-read [params]
+(defn- resources-read [params _]
   (let [uri (get params "uri")]
     (cond
-      (not (string? uri)) (rpc-error! -32602 "resources/read needs a uri")
+      (not (string? uri)) (rpc/rpc-error! rpc/invalid-params "resources/read needs a uri")
       (and (str/starts-with? uri "skill://") (nil? (skills/parse-uri uri)))
-      (rpc-error! -32602 (str "invalid skill URI: " uri))
+      (rpc/rpc-error! rpc/invalid-params (str "invalid skill URI: " uri))
       :else
       (if-let [file (skills/file-at skills/catalog uri)]
         (merge cache-hints {:contents [(skills/read-contents uri file)]})
-        (rpc-error! -32602 (str "no resource at " uri))))))
+        (rpc/rpc-error! rpc/invalid-params (str "no resource at " uri))))))
 
-(defn- call-tool-result [params]
-  (let [args (get params "arguments")
-        {:keys [ok err]} (call-tool (get params "name")
-                                    (if (map? args) args {}))]
-    {:content [{:type "text" :text (or ok err)}]
-     :isError (boolean err)}))
+(defn- tool-call
+  "The briko.mcp :call of the tool `tool-name`: the tool's answer as text,
+  a refusal or a missing argument as a tool error."
+  [tool-name]
+  (fn [args _]
+    (let [{:keys [ok err]} (call-tool tool-name args)]
+      {:text (or ok err) :error? (boolean err)})))
 
-(def ^:private handlers
-  "The methods both eras answer, by name, to the result of their params."
-  {"tools/list" (fn [_] {:tools tools})
-   "tools/call" call-tool-result
-   "resources/list" resources-list
-   "resources/templates/list" (fn [_] {:resourceTemplates []})
-   "resources/read" resources-read
-   "skills/list" skills-list
-   "skills/get" skills-get
-   "ping" (fn [_] {})})
-
-(def ^:private meta-version "io.modelcontextprotocol/protocolVersion")
-(def ^:private meta-capabilities "io.modelcontextprotocol/clientCapabilities")
-
-(defn- header-value
-  "A mirrored header value as the client meant it: the Base64 sentinel
-  form `=?base64?…?=` decoded, anything else as sent."
-  [v]
-  (if-let [[_ b64] (and (string? v) (re-matches #"=\?base64\?([A-Za-z0-9+/=]*)\?=" v))]
-    (try (String. (.decode (java.util.Base64/getDecoder) ^String b64) "UTF-8")
-         (catch IllegalArgumentException _ ::undecodable))
-    v))
-
-(defn- check-headers!
-  "The modern Streamable HTTP rule: the version, method and name the
-  body carries must also stand in the headers, unchanged, so nothing
-  routing on the headers sees another request than we execute."
-  [headers method params version]
-  (let [mismatch #(rpc-error! -32020 (str "header mismatch: " %) nil 400)]
-    (when-not (= version (get headers "mcp-protocol-version"))
-      (mismatch "MCP-Protocol-Version must equal the request's protocol version"))
-    (when-not (= method (get headers "mcp-method"))
-      (mismatch "Mcp-Method must equal the request's method"))
-    (when-let [field ({"tools/call" "name" "resources/read" "uri" "prompts/get" "name"} method)]
-      (when-not (= (get params field) (header-value (get headers "mcp-name")))
-        (mismatch (str "Mcp-Name must equal params." field))))))
-
-(defn- modern-result
-  "A modern result: complete, naming the server, whatever it answered."
-  [r]
-  (-> r
-      (assoc :resultType (or (:resultType r) "complete"))
-      (assoc-in [:_meta "io.modelcontextprotocol/serverInfo"] server-info)))
-
-(defn- modern
-  "One request of a modern revision, served statelessly: its own `_meta`
-  says which version, client and capabilities it speaks, and nothing a
-  previous request said is consulted. `headers` is nil on stdio."
-  [id method params headers]
-  (let [version (get-in params ["_meta" meta-version])]
-    ;; a request missing a required _meta field is malformed: -32602, 400
-    (when-not (string? version)
-      (rpc-error! -32602 (str "the request's _meta needs " meta-version) nil 400))
-    (when-not (some #{version} modern-versions)
-      (rpc-error! -32022 "Unsupported protocol version"
-                  {:supported modern-versions :requested version} 400))
-    (when-not (map? (get-in params ["_meta" meta-capabilities]))
-      (rpc-error! -32602 (str "the request's _meta needs " meta-capabilities) nil 400))
-    (when headers (check-headers! headers method params version))
-    (when id
-      (cond
-        (= "server/discover" method)
-        (result id (modern-result (merge cache-hints
-                                         {:supportedVersions modern-versions
-                                          :capabilities capabilities
-                                          :instructions instructions})))
-        (contains? handlers method)
-        (result id (modern-result ((get handlers method) params)))
-        :else (rpc-error! -32601 (str "method not found: " method) nil 404)))))
-
-(defn- legacy [id method params]
-  (case method
-    "initialize"
-    (result id {:protocolVersion (let [asked (get params "protocolVersion")]
-                                   (if (some #{asked} protocol-versions)
-                                     asked
-                                     (first protocol-versions)))
-                :capabilities capabilities
-                :serverInfo server-info
-                :instructions instructions})
-    (if-let [f (get handlers method)]
-      (result id (f params))
-      (when id (result id {})))))
+(def ^:private server
+  "The MCP server briko.mcp answers for: both eras of the protocol,
+  ping, the tools and the skill resources."
+  (rpc/server
+   {:server-info server-info
+    :capabilities capabilities
+    :instructions instructions
+    :discover cache-hints
+    :handlers (merge (rpc/tool-handlers (mapv #(assoc % :call (tool-call (:name %))) tools))
+                     {"resources/list" resources-list
+                      "resources/templates/list" (fn [_ _] {:resourceTemplates []})
+                      "resources/read" resources-read
+                      "skills/list" skills-list
+                      "skills/get" skills-get})}))
 
 (defn handle-message
-  "{:response r :status s} for one JSON-RPC message: r is nil for a
-  notification, s the HTTP status it calls for. A message whose `_meta`
-  names a protocol version, or an HTTP request whose MCP-Protocol-Version
-  header names a modern one, is a modern request; everything else,
-  initialize first, is the legacy handshake era. Each message is fully
-  isolated: one that is not JSON, not a map, or whose handling raises
-  answers with a JSON-RPC error object, so the session survives whatever
-  the client sends. `headers` (lower-cased) are the HTTP request's, nil
-  on stdio."
+  "{:response r :status s} for one JSON-RPC message as text, answered by
+  briko.mcp: r is nil for a notification, which runs nothing, and s the
+  HTTP status it calls for. Text briko.json refuses answers -32700
+  naming the rule; a message that is no valid request answers -32600 or
+  -32602; an unknown method -32601. Each message is isolated: whatever
+  its handling raises becomes a JSON-RPC error object, so the session
+  survives whatever the client sends. `headers` (lower-cased) are the
+  HTTP request's, nil on stdio."
   ([line] (handle-message line nil))
   ([line headers]
-   (let [msg (try (json-parse line)
-                  (catch Exception _ ::unparseable))]
-     (if (or (= ::unparseable msg) (not (map? msg)))
-       {:response (error nil -32700 "parse error: not a JSON object") :status 200}
-       (let [{:strs [id method params]} msg
-             params (if (map? params) params {})
-             modern? (and (not= "initialize" method)
-                          (or (some? (get-in params ["_meta" meta-version]))
-                              (some #{(get headers "mcp-protocol-version")} modern-versions)))]
-         (try
-           {:response (if modern?
-                        (modern id method params headers)
-                        (legacy id method params))
-            :status 200}
-           (catch Throwable e
-             (let [{::keys [code data status]} (ex-data e)]
-               (if code
-                 {:response (if data (error id code (ex-message e) data) (error id code (ex-message e)))
-                  :status (if modern? status 200)}
-                 {:response (error id -32603
-                                   (str "internal error: "
-                                        (or (ex-message e)
-                                            (.getName (class e)))))
-                  :status 200})))))))))
+   (rpc/handle-line server line {:headers headers :max-message-bytes max-message-bytes})))
 
 (defn handle
   "The response to one JSON-RPC message on stdio, or nil for a
@@ -358,6 +241,24 @@
   {:status status
    :headers (merge {"Content-Type" "text/plain; charset=utf-8"} headers)
    :body body})
+
+(defn- read-body
+  "The request body as text, reading at most one byte past
+  max-message-bytes: a longer body is refused as too large by the
+  message reader without being held whole."
+  [body]
+  (if (nil? body)
+    ""
+    (let [in ^java.io.InputStream body
+          out (java.io.ByteArrayOutputStream.)
+          buf (byte-array 8192)]
+      (loop []
+        (let [room (- (inc max-message-bytes) (.size out))
+              n (if (pos? room) (.read in buf 0 (int (min room (alength buf)))) -1)]
+          (when (pos? n)
+            (.write out buf 0 n))
+          (when-not (neg? n) (recur))))
+      (String. (.toByteArray out) java.nio.charset.StandardCharsets/UTF_8))))
 
 (defn http-response
   "The response to an HTTP request on /mcp: MCP's streamable HTTP
@@ -384,15 +285,11 @@
       (plain 405 "" {"Allow" "POST"})
 
       :else
-      (let [line (if (string? body) body (slurp (or body (java.io.ByteArrayInputStream. (byte-array 0)))))
+      (let [line (if (string? body) body (read-body body))
             {:keys [response status]} (locking handle (handle-message line headers))]
         (if response
           {:status status :headers {"Content-Type" "application/json"} :body (json-emit response)}
           {:status 202 :headers {"Content-Type" "application/json"} :body ""})))))
 
 (defn -main [& _]
-  (loop []
-    (when-let [line (read-line)]
-      (when-let [response (handle line)]
-        (println (json-emit response)))
-      (recur))))
+  (rpc/serve-stdio server {:max-message-bytes max-message-bytes}))
