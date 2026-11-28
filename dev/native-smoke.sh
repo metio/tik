@@ -440,8 +440,10 @@ fi
 # A multi-store backend refuses the store variables and the bridges' secret
 # variables in its environment, and labels its lines for the journal when
 # JOURNAL_STREAM says it writes to one; none of them belong to this script.
+# Only ever started with &: exec makes $! the backend itself, so cleanup's
+# kill reaches it instead of the subshell around it.
 backend_env() {
-  env -u TIK_ROOT -u TIK_KEY -u TIK_ACTOR -u TIK_PQ_KEY -u JOURNAL_STREAM \
+  exec env -u TIK_ROOT -u TIK_KEY -u TIK_ACTOR -u TIK_PQ_KEY -u JOURNAL_STREAM \
     -u GITHUB_TOKEN -u GITHUB_WEBHOOK_SECRET -u GITLAB_TOKEN -u REDMINE_API_KEY -u ODOO_PASSWORD \
     "${bin}" "$@"
 }
