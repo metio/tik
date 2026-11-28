@@ -125,7 +125,10 @@ and re-derives with `tik status` before acting.
      are a research preview, work over stdio only, and are not
      registered on revision 2026-07-28. The bridge therefore speaks only
      the legacy `initialize` handshake and answers `server/discover`
-     with -32601.
+     with -32601. It reads each stdin line within the 1 MiB limit of
+     `tik mcp`, holding at most that much of a line: a longer line, or
+     one briko.json refuses, answers -32700 with a null id and the rule
+     in `data.rule`, and the next line is read.
    - **MCP resource subscriptions: blocked.** Under 2026-07-28 a client
      must request `resourceSubscriptions` on `subscriptions/listen`
      before a server may send `notifications/resources/updated`.

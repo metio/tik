@@ -320,3 +320,143 @@
       "a modern request is a method this server lacks, so Claude Code falls back to initialize")
   (is (nil? (notifier/channel-response {"method" "notifications/initialized"})))
   (is (nil? (notifier/channel-response "not a map"))))
+
+;; ------------------------------------------------------------ the channel's stdin
+
+(defn- generated-reader
+  "A Reader of `n` copies of `c` followed by `tail`, generated as it is
+  read: nothing ever holds the whole text."
+  ^java.io.Reader [n c ^String tail]
+  (let [left (long-array [n])
+        tail-at (long-array [0])
+        fill! (fn [^chars cbuf off len]
+                (let [off (long off) len (long len)
+                      body (min len (aget left 0))]
+                  (if (pos? body)
+                    (do (java.util.Arrays/fill cbuf (int off) (int (+ off body)) (char c))
+                        (aset left 0 (- (aget left 0) body))
+                        body)
+                    (let [at (aget tail-at 0)
+                          k (min len (- (count tail) at))]
+                      (if (pos? k)
+                        (do (.getChars tail (int at) (int (+ at k)) cbuf (int off))
+                            (aset tail-at 0 (+ at k))
+                            k)
+                        -1)))))]
+    (proxy [java.io.Reader] []
+      (read
+        ([] (let [b (char-array 1)] (if (neg? (long (fill! b 0 1))) -1 (int (aget b 0)))))
+        ([cbuf] (fill! cbuf 0 (alength ^chars cbuf)))
+        ([cbuf off len] (fill! cbuf off len)))
+      (close []))))
+
+(defn- channel-answers
+  "Every answer `tik notify channel` writes for the text `in` holds, parsed.
+  No message here is notifications/initialized, so nothing subscribes."
+  [^java.io.Reader in]
+  (let [out (with-out-str
+              (binding [*in* (clojure.lang.LineNumberingPushbackReader. in)]
+                (notifier/cmd-channel {:socket "/nonexistent/tik-notify.sock" :store "s"})))]
+    (mapv json/parse-string (remove str/blank? (str/split-lines out)))))
+
+(defn- ping-line
+  "A ping with id `id`, padded to exactly `bytes` UTF-8 bytes with `pad`
+  characters of `pad-bytes` bytes each."
+  [id bytes pad pad-bytes]
+  (let [head (str "{\"jsonrpc\":\"2.0\",\"id\":" id ",\"method\":\"ping\",\"params\":{\"pad\":\"")
+        tail "\"}}"
+        room (- bytes (count head) (count tail))]
+    (assert (zero? (mod room pad-bytes)))
+    (str head (str/join (repeat (quot room pad-bytes) pad)) tail)))
+
+(def ^:private mib (* 1024 1024))
+
+(defn- too-large? [answer]
+  (and (= -32700 (get-in answer ["error" "code"]))
+       (nil? (get answer "id"))
+       (contains? answer "id")
+       (= "too-large" (get-in answer ["error" "data" "rule"]))
+       (str/starts-with? (get-in answer ["error" "message"]) "parse error: ")))
+
+(deftest an_endless_stdin_line_answers_a_parse_error_and_the_next_line_is_read
+  ;; more characters than any Java string or StringBuilder can hold, so
+  ;; reading it whole would fail whatever the heap
+  (let [n (+ 1024 (long Integer/MAX_VALUE))
+        [a b :as answers] (channel-answers
+                           (generated-reader n \x (str "\n" (ping-line 7 64 "p" 1) "\n")))]
+    (is (= 2 (count answers)))
+    (is (too-large? a))
+    (is (= {"jsonrpc" "2.0" "id" 7 "result" {}} b))))
+
+(deftest a_stdin_line_of_exactly_one_mebibyte_is_answered
+  (let [[a b c :as answers] (channel-answers
+                             (java.io.StringReader.
+                              (str (ping-line 1 mib "p" 1) "\n"
+                                   (ping-line 2 mib "p" 1) "\r\n"
+                                   (ping-line 3 mib "é" 2))))]
+    (is (= 3 (count answers)))
+    (is (= [1 2 3] (mapv #(get % "id") [a b c])))
+    (is (every? #(= {} (get % "result")) answers))))
+
+(deftest a_stdin_line_one_byte_over_the_limit_is_refused_and_the_next_is_read
+  (testing "one ASCII character over"
+    (let [[a b :as answers] (channel-answers
+                             (java.io.StringReader.
+                              (str (ping-line 1 (inc mib) "p" 1) "\n" (ping-line 2 64 "p" 1) "\n")))]
+      (is (= 2 (count answers)))
+      (is (too-large? a))
+      (is (= 2 (get b "id")))))
+  (testing "within the limit in characters, over it in UTF-8 bytes"
+    (let [over (str (ping-line 1 (- mib 2) "p" 1) "\n")
+          line (str/replace-first over "\"pad\":\"ppp" "\"pad\":\"ééé")
+          [a b :as answers] (channel-answers
+                             (java.io.StringReader. (str line (ping-line 2 64 "p" 1))))]
+      (is (< (count line) mib))
+      (is (= 2 (count answers)))
+      (is (too-large? a))
+      (is (= 2 (get b "id")))))
+  (testing "at end of input without a newline"
+    (is (too-large? (first (channel-answers
+                            (java.io.StringReader. (ping-line 1 (inc mib) "p" 1)))))))
+  (testing "two over-long lines in a row"
+    (let [answers (channel-answers
+                   (java.io.StringReader.
+                    (str (ping-line 1 (* 3 mib) "p" 1) "\n" (ping-line 2 (* 2 mib) "p" 1) "\n"
+                         (ping-line 3 64 "p" 1) "\n")))]
+      (is (= 3 (count answers)))
+      (is (every? too-large? (take 2 answers)))
+      (is (= 3 (get (nth answers 2) "id"))))))
+
+(deftest unreadable_stdin_lines_answer_a_parse_error_naming_the_rule_without_quoting
+  (let [marker (str (random-uuid))
+        answers (channel-answers
+                 (java.io.StringReader.
+                  (str "{\"id\":1,\"method\":\"" marker "\n"
+                       "{\"id\":2,\"id\":3,\"method\":\"ping\"}\n"
+                       "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"ping\"}\n")))]
+    (is (= 3 (count answers)))
+    (is (every? #(= -32700 (get-in % ["error" "code"])) (take 2 answers)))
+    (is (every? #(and (contains? % "id") (nil? (get % "id"))) (take 2 answers)))
+    (is (= "duplicate-key" (get-in (second answers) ["error" "data" "rule"])))
+    (is (string? (get-in (first answers) ["error" "data" "rule"])))
+    (is (not (str/includes? (pr-str answers) marker)))
+    (is (= 4 (get (nth answers 2) "id")))))
+
+(deftest the_channel_loop_keeps_the_legacy_handshake
+  (let [answers (channel-answers
+                 (java.io.StringReader.
+                  (str "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n"
+                       "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"server/discover\"}\n"
+                       "\n   \n"
+                       "[1,2]\n"
+                       "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\"}\n"
+                       "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\n")))]
+    (testing "blank lines, a value that is no object and a notification get no answer"
+      (is (= [1 2 3] (mapv #(get % "id") answers))))
+    (is (= {"claude/channel" {}} (get-in (first answers) ["result" "capabilities" "experimental"])))
+    (is (= -32601 (get-in (second answers) ["error" "code"])))
+    (is (= {} (get (nth answers 2) "result")))))
+
+(deftest the_channel_ends_with_its_input
+  (is (= [] (channel-answers (java.io.StringReader. ""))))
+  (is (= [] (channel-answers (java.io.StringReader. "\n\n")))))

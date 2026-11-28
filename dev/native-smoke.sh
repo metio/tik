@@ -6,7 +6,8 @@
 # uses: `serve` answering the board and MCP in both protocol eras, one
 # sweep of each sync bridge (github, gitlab, redmine, odoo) and of
 # `bridge imap`, `backend` firing a scheduled bridge sweep, `notify`
-# delivering one hint to `notify watch`, one multi-store backend
+# delivering one hint to `notify watch`, `notify channel` bounding its
+# stdin, one multi-store backend
 # serving two stores with their own keys and MCP tokens, and one running
 # two bridge pipelines and an IMAP watch as child processes, which never
 # overlap a pipeline's runs and report the one that times out. The remote systems are the
@@ -403,6 +404,25 @@ if wait_on "${notify_pid}" 30 test -S "${sock}"; then
   fi
 else
   fail "notify: the socket never appeared" "${work}/notify.out"
+fi
+
+# The channel reads stdin within 1 MiB: an over-long line answers -32700
+# and the next line is still read; the legacy handshake stays. No
+# notifications/initialized is sent, so nothing subscribes.
+{
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}'
+  printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"server/discover"}'
+  head -c 2097152 /dev/zero | tr '\0' x
+  printf '\n%s\n' '{"jsonrpc":"2.0","id":3,"method":"ping"}'
+} | "${bin}" notify channel --socket "${sock}" --store smoke > "${work}/channel.out" 2>"${work}/channel.err" || true
+if jq -s -e 'length == 4
+             and .[0].result.capabilities.experimental["claude/channel"] == {}
+             and .[1].error.code == -32601
+             and .[2].error.code == -32700 and .[2].id == null and .[2].error.data.rule == "too-large"
+             and .[3].id == 3 and .[3].result == {}' "${work}/channel.out" >/dev/null; then
+  ok "notify: notify channel answered an over-long line with -32700 and read the next"
+else
+  fail "notify: notify channel did not bound its stdin" "${work}/channel.out" "${work}/channel.err"
 fi
 
 # ------------------------------------------------------------- multi-store backend

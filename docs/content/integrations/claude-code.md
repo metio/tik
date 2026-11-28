@@ -93,7 +93,11 @@ stages it left and entered, and the actor of the event that moved it. A
 hint holds no fact values and is never evidence: Claude re-derives with
 `tik status` before acting on it. `tik notify channel` delivers the same
 hints as a Claude Code channel to a session started with
-`--dangerously-load-development-channels server:<name>`. Hints sent while
+`--dangerously-load-development-channels server:<name>`. The channel
+speaks only the legacy `initialize` handshake and answers `server/discover`
+with -32601. It reads at most 1 MiB per stdin line, like `tik mcp`: a
+longer line, or one that is not valid JSON, answers a parse error (-32700)
+whose `data.rule` names the rule, and the next line is read. Hints sent while
 nobody was subscribed are not replayed, so keep a slow fallback poll. The
 decisions behind this are in [ADR 0040](/decisions/0040-a-notifier-pushes-hints-not-evidence/).
 

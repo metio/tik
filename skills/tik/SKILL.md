@@ -467,8 +467,11 @@ which admits exactly the actions its actor may take on a ticket right now.
   [--where '<selector>']` under the Monitor tool: each line is one JSON
   hint. `tik notify channel` delivers the same hints as a Claude Code
   channel, for a session started with
-  `--dangerously-load-development-channels server:<name>`. Keep a slow
-  fallback poll: hints sent while you were not subscribed are not replayed.
+  `--dangerously-load-development-channels server:<name>`; it speaks only
+  the legacy `initialize` handshake (`server/discover` answers -32601), and
+  a stdin line over 1 MiB, or one that is not valid JSON, answers -32700
+  with `data.rule` and the next line is read. Keep a slow fallback poll:
+  hints sent while you were not subscribed are not replayed.
 
 Facts take EDN values but you rarely need to know EDN: a bare word becomes a
 keyword (`sev=high` → `:high`), a number stays a number, and anything the
