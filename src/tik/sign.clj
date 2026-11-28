@@ -84,6 +84,20 @@
       true
       (catch java.io.IOException _ false))))
 
+(def ^:dynamic *ssh-keygen-fallback*
+  "Whether a key type tik.sshsig cannot read may be judged by ssh-keygen.
+  True for the CLI. tik.api binds it false, because a library call must
+  not start a process: such a signature is then neither verified nor
+  forged (nil), and the audit ladder counts it as not verified."
+  true)
+
+(defn- fallback?
+  "May this call ask ssh-keygen? Only when fallback is allowed and the
+  binary is here; the binding is read first so a library call never forces
+  the availability probe, which itself starts ssh-keygen."
+  []
+  (and *ssh-keygen-fallback* @verifier-available?))
+
 (defn sig-file
   "The sidecar path for an event signed by the key with `fpr`."
   ^java.io.File [events-dir event-id fpr]
@@ -200,7 +214,7 @@
                                        sig-namespace))]
        (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
          in-process
-         (when @verifier-available?
+         (when (fallback?)
            (let [sig (write-temp "tik-verify" sig-bytes)]
              (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
                   (finally (.delete sig))))))))))
@@ -216,7 +230,7 @@
     (let [in-process (sshsig/verify text event-bytes sig-bytes actor sig-namespace)]
       (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
         in-process
-        (when @verifier-available?
+        (when (fallback?)
           (let [f (write-temp "tik-signers" (.getBytes text "UTF-8"))]
             (try (verify-bytes f event-bytes sig-bytes actor sig-namespace)
                  (finally (.delete f)))))))))
@@ -231,7 +245,7 @@
                                              sig-namespace))]
     (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
       in-process
-      (when @verifier-available?
+      (when (fallback?)
         (let [sig (write-temp "tik-fp" sig-bytes)]
           (try (ssh-principals allowed-signers event-bytes sig sig-namespace)
                (finally (.delete sig))))))))

@@ -181,14 +181,11 @@
         actors (io/file root "actors")
         _ (spit actors "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
-        f ((trust/signer-view root evs) live-at)
-        text (slurp f)]
+        text ((trust/signer-view root evs) live-at)]
     (is (re-find #"seb namespaces=\"tik-\*\" ssh-ed25519 AAAAC3seb" text)
         "rung 1 keeps verifying")
     (is (re-find #"ci namespaces=\"tik-\*\" ssh-ed25519 AAAAC3Kci" text)
         "rung 2 is added for this check")
-    (is (not= (.getCanonicalPath ^java.io.File f) (.getCanonicalPath actors))
-        "the curated registry is never rewritten")
     (is (= "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n" (slurp actors)))))
 
 (deftest inability-to-judge-is-distinguishable-from-evidence-of-forgery
@@ -260,8 +257,8 @@
   (let [root (store-with-pin! {:pin? false})
         _ (spit (io/file root "actors") "seb namespaces=\"tik-*\" ssh-ed25519 AAAAC3seb\n")
         evs (registry-events {:token (jwt (claims-json {}))})
-        f ((trust/signer-view root evs) live-at)]
-    (is (= "actors" (.getName ^java.io.File f))
+        text ((trust/signer-view root evs) live-at)]
+    (is (= (slurp (io/file root "actors")) text)
         "with nothing verified the plain actors registry is what verification uses")))
 
 ;; --- which subject may bind which actor ---------------------------------
@@ -364,17 +361,17 @@
         view (trust/signer-view root evs)
         grants? (fn [secs]
                   (boolean (re-find #"AAAAC3Kci"
-                                    (slurp (view (Instant/ofEpochSecond secs))))))]
+                                    (view (Instant/ofEpochSecond secs)))))]
     (is (grants? 1782000300) "inside the window")
     (is (grants? 1782000950) "inside the leeway after expiry")
     (is (not (grants? 1782001000)) "after the window the key is a stranger")
     (is (not (grants? 1790000000)) "years later, a leaked key signs nothing")
     (is (not (grants? 1781999900)) "before the token existed")
-    (is (= "actors" (.getName ^java.io.File (view (Instant/ofEpochSecond 1790000000))))
+    (is (= (slurp actors) (view (Instant/ofEpochSecond 1790000000)))
         "outside the window verification falls back to rung 1 alone")
     (is (identical? (view (Instant/ofEpochSecond 1782000100))
                     (view (Instant/ofEpochSecond 1782000200)))
-        "one file per distinct grant set, not one per event")))
+        "one text per distinct grant set, not one per event")))
 
 (deftest a-store-with-nothing-to-verify-against-has-no-view
   (let [root (store-with-pin! {:pin? false})
@@ -387,7 +384,7 @@
                               :key "ssh-ed25519 AAAAC3Kci\nseb ssh-ed25519 AAAAC3evil"})]
     (spit (io/file root "actors") "ci namespaces=\"tik-*\" ssh-ed25519 AAAAC3Kci\n")
     (is (empty? (trust/verified-bindings root evs)) "a malformed key is no binding")
-    (is (not (re-find #"AAAAC3evil" (slurp ((trust/signer-view root evs) live-at))))
+    (is (not (re-find #"AAAAC3evil" ((trust/signer-view root evs) live-at)))
         "and grants nothing")))
 
 (deftest a-binding-actor-cannot-be-a-principal-pattern

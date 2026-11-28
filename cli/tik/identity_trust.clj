@@ -74,8 +74,7 @@
             [tik.identity :as identity]
             [tik.jwks :as jwks]
             [tik.sign :as sign])
-  (:import (java.io File)
-           (java.time Instant)
+  (:import (java.time Instant)
            (java.util Base64)))
 
 (def default-leeway-seconds
@@ -483,7 +482,7 @@
    (filterv #(window-holds? (:claims %) secs leeway) verified)))
 
 (defn signer-view
-  "A function from an event's claimed instant to the allowed-signers file
+  "A function from an event's claimed instant to the allowed-signers text
   that judges it: rung 1 (`actors`) plus every key a verified binding
   grants at that instant. Nil when the store has neither, so a caller
   can say there is nothing to verify against.
@@ -491,23 +490,24 @@
   The instant is the CLAIMED one (ADR 0012), so a backdated event is
   detectable rather than prevented, exactly as for rule 3.
 
-  Bindings are verified once per view and one file is written per
+  Bindings are verified once per view and the text is built once per
   distinct set of granted keys, because the ladder asks for every event
-  of every ticket. Temp files because `ssh-keygen -Y verify` reads a
-  path; the store's own `actors` is never rewritten — rung 2 widens who
-  may verify for one check, it does not edit the registry a human
-  curates."
+  of every ticket. The answer is text, never a file: `actors` is read
+  once and never rewritten, so rung 2 widens who may verify for one check
+  without editing the registry a human curates, and nothing is written to
+  disk. tik.sign/verify-text reads the text in process and copies it to a
+  temporary file only for a key type it cannot read itself."
   ([root registry-events]
    (signer-view root registry-events default-leeway-seconds))
   ([root registry-events leeway]
    (let [actors (io/file root "actors")
-         base (if (.exists actors) (slurp actors) "")
+         base (when (.exists actors) (slurp actors))
          verified (into []
                         (keep #(when-let [c (token-claims (:id-token %))]
                                  (assoc % :claims c)))
                         (verified-bindings root registry-events))
-         files (atom {})]
-     (when (or (.exists actors) (seq verified))
+         texts (atom {})]
+     (when (or base (seq verified))
        (fn [at]
          (let [granted (granted-at verified (epoch-seconds at) leeway)
                lines (vec (for [[actor keys*] (sort-by key granted)
@@ -515,14 +515,12 @@
                             (sign/allowed-signers-line actor k)))]
            (cond
              (seq lines)
-             (or (get @files lines)
-                 (let [f (File/createTempFile "tik-signers" ".allowed")]
-                   (.deleteOnExit f)
-                   (spit f (str base (when (seq base) "\n")
-                                (str/join "\n" lines) "\n"))
-                   (swap! files assoc lines f)
-                   f))
+             (or (get @texts lines)
+                 (let [text (str base (when (seq base) "\n")
+                                 (str/join "\n" lines) "\n")]
+                   (swap! texts assoc lines text)
+                   text))
 
-             (.exists actors) actors
+             base base
 
              :else nil)))))))

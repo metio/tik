@@ -33,7 +33,8 @@
             [tik.stage :as stage]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store]
-            [tik.text :refer [safe-name]])
+            [tik.text :refer [safe-name]]
+            [tik.verify :as verify])
   (:import (java.io File)
            (java.time Duration Instant)))
 
@@ -403,8 +404,7 @@
 (defn sidecar-names-for
   "Sidecar names of one `kind` (\"sig\"/\"witness\") for `target-id`."
   [s ticket-id target-id kind]
-  (filterv #(str/starts-with? % (str target-id "." kind "."))
-           (store/sidecar-names s ticket-id)))
+  (verify/sidecar-names-for s ticket-id target-id kind))
 
 (defn signed-event-ids
   "The set of event ids in a ticket that carry ≥1 authorship signature —
@@ -445,8 +445,7 @@
 (defn signature-policy
   "The store's signatures.edn, parsed (ADR 0036 point 4), or nil."
   []
-  (let [f (io/file (root) "signatures.edn")]
-    (when (.isFile f) (sigpolicy/parse (slurp f)))))
+  (verify/store-policy (root)))
 
 (defn- check-signature-policy!
   "Dies, before anything is stored, when the store's signature policy
@@ -542,31 +541,10 @@
   nil)
 
 (defn- compute-registry-events
-  "Every event of every identity-registry ticket in the store.
-
-  The registry is DERIVED, not configured: a ticket pinned to the
-  :identity-registry process is one, so a store cannot have a trust base
-  that some config file forgot to mention, and adding a second registry
-  needs no setting. Reading a ticket that will not derive is skipped
-  rather than fatal — a corrupt unrelated ticket must not make every
-  signature unverifiable."
+  "Every event of every identity-registry ticket in the store
+  (tik.verify/registry-events)."
   [s]
-  (into []
-        (mapcat (fn [id]
-                  (try (let [evs (store/events s id)]
-                         ;; the create event names the process, so this
-                         ;; costs a scan rather than a fold — verify is
-                         ;; already reading the whole store and must not
-                         ;; pay a full derivation per ticket on top
-                         (when (some (fn [e]
-                                       (and (= :ticket/create (:event/type e))
-                                            (let [p (get-in e [:event/body :ticket/process])]
-                                              (and (or (keyword? p) (string? p))
-                                                   (= "identity-registry" (name p))))))
-                                     evs)
-                           evs))
-                       (catch Exception _ nil))))
-        (store/ticket-ids s)))
+  (verify/registry-events s))
 
 (defn registry-ticket-ids
   "Ticket ids pinned to the identity-registry process."

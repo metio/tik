@@ -13,7 +13,6 @@
             [tik.canonical :as canonical]
             [tik.cli-core :refer [blob-dir call-with-temp-dir db-path die exit! load-pinned-process load-ticket
                                   cache-flush! now pq-signing-key put-signature! registry-events
-                                  signature-policy
                                   registry-ticket-ids resolve-id
                                   role-register root root-dir-roots
                                   with-registry-events
@@ -22,19 +21,14 @@
             [tik.dag :as dag]
             [tik.delegation :as delegation]
             [tik.delegation-trust :as delegation-trust]
-            [tik.event :as event]
             [tik.identity-trust :as identity-trust]
             [tik.jwks :as jwks]
             [tik.pqsig :as pqsig]
-            [tik.process :as process]
-            [tik.reduce :as red]
             [tik.render :refer [shash sid tint]]
-            [tik.sigpolicy :as sigpolicy]
             [tik.sign :as sign]
-            [tik.stage :as stage]
             [tik.store.file :as fstore]
             [tik.store.protocol :as store]
-            [tik.store.sqlite :as sqlite])
+            [tik.verify :as verify])
   (:import (java.io File)))
 
 (declare verify-ticket cmd-verify-store verify-one check-identity-bindings)
@@ -1096,29 +1090,16 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
   publication signature (namespace tik-process, ADR 0015) verifies
   against a registered principal."
   [check]
-  (let [dir (io/file (root) "processes" "by-hash")
-        signers (io/file (root) "actors")]
+  (let [dir (io/file (root) "processes" "by-hash")]
     (when (.isDirectory dir)
       (println "definitions")
       (doseq [^File f (.listFiles dir)
               :when (str/ends-with? (.getName f) ".edn")
-              :let [stem (str/replace (.getName f) #"\.edn$" "")]]
-        (check (= stem (canonical/address-of-text (slurp f)))
-               (str (shash stem) "… definition bytes hash to filename"))
-        (let [sigs (sign/sidecars dir stem)]
-          (if (empty? sigs)
-            (println (str "  note  " (shash stem)
-                          "… unsigned definition (tik process sign)"))
-            (doseq [sig sigs
-                    :let [who (and (.exists signers)
-                                   (first (sign/find-principals
-                                           signers f sig
-                                           sign/namespace-process)))]]
-              (check (boolean
-                      (and who (sign/verify signers f sig who
-                                            sign/namespace-process)))
-                     (str (shash stem) "… published by "
-                          (or who "<unregistered key>"))))))))))
+              :let [stem (str/replace (.getName f) #"\.edn$" "")]
+              item (verify/definition-items (root) stem)]
+        (if (= :check (:kind item))
+          (check (:ok? item) (:text item))
+          (println (verify/line item)))))))
 
 (defn cmd-verify
   "The verify ladder. With a ticket id: that ticket. With no arguments:
@@ -1264,244 +1245,19 @@ if [ \"$fail\" = 0 ]; then echo 'bundle: PASS'; else echo 'bundle: FAIL'; exit 1
     (when (pos? f) (exit! 1))))
 
 (defn verify-ticket
-  "The per-ticket ladder; prints, exits nonzero on failure when run for
-  a single ticket."
+  "The per-ticket ladder (tik.verify); prints it and returns the number of
+  failing checks."
   [{:keys []} id]
   (let [s (the-store)
-        dir (io/file (root) "tickets" (str id) "events")
-        files (filter (fn [^File f]
-                        (and (.isFile f)
-                             (str/ends-with? (.getName f) ".edn")))
-                      (.listFiles dir))
-        failures (atom 0)
-        check (fn [ok? msg]
-                (println (str (if ok? "  ok    " "  FAIL  ") msg))
-                (when-not ok? (swap! failures inc)))]
-    (println "L0 integrity")
-    (if-let [db (db-path)]
-      ;; SQLite: the raw BLOB must be the exact hashed region — checked
-      ;; against storage, not against this process's parsing (ADR 0020)
-      (doseq [[eid hex] (sqlite/raw-rows db id)
-              :let [raw (try (String. ^bytes (sqlite/hex->bytes hex) "UTF-8")
-                             (catch Exception ex
-                               (check false (str (shash eid)
-                                                 "… row bytes unreadable: "
-                                                 (ex-message ex)))
-                               nil))
-                    e (when raw
-                        (try (assoc (canonical/parse raw) :event/id eid)
-                             (catch Exception ex
-                               (check false (str (shash eid)
-                                                 "… row unreadable: "
-                                                 (ex-message ex)))
-                               nil)))]
-              :when e]
-        (check (= eid (canonical/address-of-text raw))
-               (str (shash eid) "… hash(stored bytes) = id"))
-        (check (= raw (canonical/emit (dissoc e :event/id)))
-               (str (shash eid) "… bytes are exactly the hashed region"))
-        (check (event/valid? e) (str (shash eid) "… schema-valid")))
-      (do
-        (when-let [{:keys [entries pack] :as index} (fstore/read-pack-index dir)]
-          (let [pack-bytes (java.nio.file.Files/readAllBytes
-                            (.toPath (fstore/pack-file-of dir index)))]
-            (check (= pack (canonical/address-of-bytes pack-bytes))
-                   (str "pack " (shash pack)
-                        "… bytes hash to the index's pack address"))
-            (doseq [{:keys [id] :as entry} entries
-                    :let [slice (try (fstore/pack-slice dir index entry)
-                                     (catch clojure.lang.ExceptionInfo _ nil))]]
-              (check (and slice (= id (canonical/address-of-bytes slice)))
-                     (str (shash id) "… packed slice hashes to id")))))
-        (doseq [^File f files
-                :let [stem (str/replace (.getName f) #"\.edn$" "")
-                      e (try (fstore/read-event f)
-                             (catch Exception ex
-                               (check false (str stem " unreadable: "
-                                                 (ex-message ex)))
-                               nil))]
-                :when e
-                :let [bytes-on-disk (slurp f)]]
-          (check (= bytes-on-disk (canonical/emit (dissoc e :event/id)))
-                 (str stem " bytes are exactly the canonical hashed region"))
-          (check (= stem (event/event-id e))
-                 (str stem " sha256(bytes) = filename = id"))
-          (check (event/valid? e) (str stem " schema-valid")))))
-    ;; the audit reports and continues even when the event SET cannot be
-    ;; assembled — L0 above already named the offending file/row
-    (when-let [evs (try (store/events s id)
-                        (catch Exception e
-                          (check false (str "events unreadable: "
-                                            (ex-message e)))
-                          nil))]
-      (check (empty? (dag/missing-parents evs)) "all parents present")
-      (check (= 1 (count (dag/roots evs))) "exactly one root (:ticket/create)")
-      ;; A claimed time ahead of the verifier's clock is ADMISSIBLE
-      ;; (ADR 0011 — the log holds every well-formed claim) and
-      ;; consequential: :at is the reduction sort key AND the instant
-      ;; guards evaluate at, so such an event sorts last until its time
-      ;; arrives and satisfies :elapsed-since on the spot — permanently
-      ;; where the stage it gates is sticky. Noted, never failed: the
-      ;; log records claims and the auditor reads them.
-      (let [t (now)
-            ahead (filterv #(let [a (:event/at %)]
-                              (and (instance? java.time.Instant a)
-                                   (.isAfter ^java.time.Instant a t)))
-                           evs)]
-        (when (seq ahead)
-          (println (str "  note  " (count ahead) " event(s) claim a time ahead"
-                        " of this clock (latest "
-                        (:event/at (last (sort-by :event/at ahead)))
-                        ") — these sort last and satisfy elapsed-since early"))))
-      (println "L1 authenticity")
-      ;; Rung 1 (the curated actors registry) plus rung 2: keys a verified
-      ;; identity binding grants, each only for events claimed inside the
-      ;; window of the token that bound it. A binding that does NOT verify
-      ;; is named with its reason and FAILS — a store whose trust base
-      ;; cannot be checked must not pass quietly, and "signature does not
-      ;; verify" would be a lie when the truth is that nobody pinned the
-      ;; issuer.
-      (let [classical-ok (atom #{})
-            pq-ok (atom #{})
-            signers-at (identity-trust/signer-view (root) (registry-events s))
-            ;; ADR 0037: a key outside the registry still counts for a
-            ;; verdict a trusted delegation covers, and for nothing else
-            delegations (delegation-trust/assess (root) s (registry-events s))]
-        (doseq [d delegations
-                :when (not (:trusted? d))]
-          (println (str "  note  delegation " (shash (:event d)) "… by " (:actor d)
-                        " credits nothing: " (:why d))))
-        (if-not signers-at
-          (println "  skip  no actors registry (tik actor add <name> <key.pub>)")
-          (let [unsigned (atom 0)]
-            ;; classical-ok records which events a signature by their own
-            ;; actor verified, for the signature policy below
-            (doseq [e (red/ordered evs)
-                    :let [names (sidecar-names-for s id (:event/id e) "sig")]]
-              (if (empty? names)
-                (swap! unsigned inc)
-                (let [ev-bytes (store/event-bytes s id (:event/id e))]
-                  (doseq [name names
-                          :let [sig (store/read-sidecar s id name)
-                                direct (boolean
-                                        (and ev-bytes sig
-                                             (when-let [signers (signers-at (:event/at e))]
-                                               (sign/verify-bytes signers ev-bytes sig
-                                                                  (:event/actor e)))))
-                                delegated (when (and (not direct) ev-bytes sig)
-                                            (delegation-trust/credit delegations e ev-bytes sig))]]
-                    (when (or direct (some? delegated))
-                      (swap! classical-ok conj (:event/id e)))
-                    (check (or direct (some? delegated))
-                           (str (shash (:event/id e)) "… signed by "
-                                (:event/actor e)
-                                (when delegated
-                                  (str " (delegated by " (shash (:event delegated)) "…)"))))))))
-            (when (pos? @unsigned)
-              (println (str "  note  " @unsigned " event(s) unsigned"
-                            " (authenticity unclaimed, not failed)")))))
-      ;; ADR 0036: every post-quantum sidecar present is checked against
-      ;; pq-signers. Which events must carry one is the store policy's
-      ;; question; a sidecar that is there and does not verify fails
-      ;; whatever the policy says, as a classical one does.
-      (let [pq-file (io/file (root) "pq-signers")
-            pq-sidecars (for [e (red/ordered evs)
-                              name (sidecar-names-for s id (:event/id e) "pqsig")]
-                          [e name])
-            witnesses (for [e (red/ordered evs)
-                            name (sidecar-names-for s id (:event/id e) "pqwitness")]
-                        [e name])
-            registry (when (and (or (seq pq-sidecars) (seq witnesses)) (.exists pq-file))
-                       (try (pqsig/parse-registry (slurp pq-file))
-                            (catch clojure.lang.ExceptionInfo ex
-                              (check false (ex-message ex))
-                              nil)))
-            anchors (atom #{})
-            policy (signature-policy)]
-        (when (seq pq-sidecars)
-          (if-not (.exists pq-file)
-            (println (str "  skip  " (count pq-sidecars) " post-quantum signature(s),"
-                          " no pq-signers registry"))
-            (when registry
-              (doseq [[e name] pq-sidecars
-                      :let [holds? (pqsig/check-event
-                                    registry
-                                    {:actor (:event/actor e)
-                                     :fpr (pqsig/sidecar-fpr name)
-                                     :signature (store/read-sidecar s id name)
-                                     :event-bytes (store/event-bytes s id (:event/id e))
-                                     :namespace sign/namespace-event})]]
-                (when holds? (swap! pq-ok conj (:event/id e)))
-                (check holds?
-                       (str (shash (:event/id e)) "… post-quantum signed by "
-                            (:event/actor e)))))))
-        ;; ADR 0036 point 7: an ML-DSA-65 countersignature over an event
-        ;; seals its whole ancestry
-        (doseq [[e name] witnesses
-                :let [who (when registry
-                            (pqsig/check-witness
-                             registry
-                             {:fpr (pqsig/sidecar-fpr name)
-                              :signature (store/read-sidecar s id name)
-                              :event-bytes (store/event-bytes s id (:event/id e))}))]]
-          (when who (swap! anchors conj (:event/id e)))
-          (check (some? who)
-                 (str (shash (:event/id e)) "… post-quantum witnessed"
-                      (if who (str " by " who " (whole ancestry)")
-                          " by a key pq-signers does not allow to witness"))))
-        (when policy
-          (println "L1 signature policy (signatures.edn)")
-          (let [verified (into {} (for [e evs
-                                        :let [i (:event/id e)]]
-                                    [i (cond-> #{}
-                                         (@classical-ok i) (conj :ssh-ed25519)
-                                         (@pq-ok i) (conj :ml-dsa-65))]))
-                rows (sigpolicy/judge policy evs {:verified verified :anchors @anchors})
-                failed (remove :ok? rows)]
-            (doseq [{:keys [msg]} failed] (check false msg))
-            (when (empty? failed)
-              (println (str "  ok    every event meets signatures.edn ("
-                            (count evs) " checked)")))))))
-      (println "L3 provenance (witness countersignatures)")
-      (let [signers (io/file (root) "actors")
-            heads (dag/heads evs)
-            witnessed (for [head heads
-                            name (sidecar-names-for s id head "witness")]
-                        [head name])]
-        (if (empty? witnessed)
-          (println "  note  no countersigned heads (tik witness <id>)")
-          (doseq [[head name] witnessed
-                  :let [ev-bytes (store/event-bytes s id head)
-                        sig (store/read-sidecar s id name)
-                        who (and (.exists signers) ev-bytes sig
-                                 (first (sign/find-principals-bytes
-                                         signers ev-bytes sig
-                                         sign/namespace-witness)))]]
-            (check (boolean (and who (sign/verify-bytes signers ev-bytes sig who
-                                                        sign/namespace-witness)))
-                   (str (shash head) "… witnessed by "
-                        (or who "<unregistered key>")
-                        " (whole ancestry)")))))
-      (println "L2 reproducibility")
-      (let [state (red/ticket-state evs)
-            proc (load-pinned-process state)]
-        (check (or (nil? (:process-hash state))
-                   (= (:process-hash state) (process/process-hash proc)))
-               "pinned process hash resolves to its definition")
-        ;; an audit reports and continues — a derivation that raises is
-        ;; a FAIL line for THIS ticket, never an aborted audit
-        (try
-          (let [reached (stage/effective-reached proc evs (now)
-                                                 (process/resolve-roles
-                                                  (:process/roles proc {})
-                                                  (role-register)))]
-            (println (str "  ok    derived: "
-                          (str/join ", " (map str (sort-by str reached))))))
-          (catch Exception e
-            (check false (str "derivation raises: " (ex-message e)))))))
-    (if (zero? @failures)
+        items (verify/ticket-ladder
+               {:root (root) :store s :db (db-path) :id id
+                :registry-events (registry-events s)
+                :load-process load-pinned-process
+                :role-register role-register
+                :now now})
+        failures (count (verify/failures items))]
+    (doseq [item items] (println (verify/line item)))
+    (if (zero? failures)
       (println "verify: PASS")
-      (println (str "verify: FAIL (" @failures ")")))
-    @failures))
-
-
+      (println (str "verify: FAIL (" failures ")")))
+    failures))
