@@ -429,8 +429,11 @@ Verification is a product surface, not a test suite. The ladder:
 
 `tik verify` shipped L0 + L2 in Phase 0 — it already caught ADR 0007's
 bug during development, which is the entire argument for building it
-first. **L1 is now live**: detached SSH sidecars via `ssh-keygen -Y`
-(no crypto code of our own), verified against the store's `actors`
+first. **L1 is now live**: detached SSH sidecars made by
+`ssh-keygen -Y sign` and verified in process by briko.sshsig, whose
+cryptography is the JDK's (SHA-512, Ed25519) and whose own code parses
+the SSHSIG format and the allowed-signers registry; other key types go
+to `ssh-keygen -Y verify`. They are verified against the store's `actors`
 registry (allowed-signers format — identity rung 1, §9). Events are
 signed at write time when `TIK_KEY` is set; unsigned events are
 reported as unclaimed, never failed (ADR 0011); a signature that

@@ -32,6 +32,11 @@ Any secret in a bridge config can be a spec instead of a literal:
 output), `{:file "/run/secrets/x"}`, `{:env "NAME"}` or `{:credential
 "NAME"}`. The credential form is the one to prefer under systemd: the
 secret never sits in a file you commit, in the environment or in argv.
+An unset variable, a missing file, a failing command and an empty or
+blank value are refused rather than read as an empty secret. A command
+has one minute to answer, its error output goes to tik's stderr instead
+of into the refusal, and a file, credential or output longer than 64 KiB
+is refused.
 
 ## The board and MCP
 
