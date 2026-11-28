@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Odoo on tik</title><link href="https://tik.projects.metio.wtf/tags/odoo/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/odoo/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/odoo/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/odoo/</id><entry><title type="html">Odoo</title><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><link href="https://tik.projects.metio.wtf/integrations/local-service/?utm_source=atom_feed" rel="related" type="text/html" title="Local service"/><id>https://tik.projects.metio.wtf/integrations/odoo/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-25T09:43:54+01:00</updated><content type="html"><![CDATA[<blockquote>Odoo project tasks mirrored as odoo-task tickets, with their history.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge odoo --config odoo.edn                               <span class="c1"># poll once</span>
+</span></span><span class="line"><span class="cl">tik bridge odoo describe --model project.task --config odoo.edn <span class="c1"># read a model&#39;s fields</span>
+</span></span></code></pre></div><p><code>tik bridge odoo</code> mirrors Odoo project tasks into the store as tickets
+under the <code>odoo-task</code> process. Each ticket carries the task&rsquo;s title,
+stage, assignee and project as facts signed by the bridge, its
+conversation as artifacts, and its URL as <code>odoo.url</code>. The stage follows
+the mirrored Odoo stage: <code>:closed</code> when the configuration names that stage
+as closed, <code>:open</code> for every other stage. Moving the task back to an open
+stage in Odoo brings the ticket back to <code>:open</code> on the next sync.</p>
+<p>Odoo stays the place where the task is worked on. Facts you add locally
+(a <code>link.*</code> to another ticket, notes for yourself) stay in tik and never
+move the mirrored stages.</p>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:profile</span>       <span class="s">&#34;project.task&#34;</span>             <span class="c1">; optional; the Odoo model to mirror</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:url</span>           <span class="s">&#34;https://odoo.example&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:db</span>            <span class="s">&#34;odoo&#34;</span>                     <span class="c1">; the database name</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:user</span>          <span class="s">&#34;you@example.com&#34;</span>          <span class="c1">; a string or a secret spec</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:password</span>      <span class="p">{</span><span class="ss">:env</span> <span class="s">&#34;ODOO_PASSWORD&#34;</span><span class="p">}</span>     <span class="c1">; a secret spec</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:closed-stages</span> <span class="p">[</span><span class="s">&#34;Done&#34;</span> <span class="s">&#34;Cancelled&#34;</span><span class="p">]</span>       <span class="c1">; stage names that count as closed</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:users</span>         <span class="p">{</span><span class="mi">45</span> <span class="s">&#34;seb&#34;</span><span class="p">}</span>                 <span class="c1">; Odoo user id -&gt; tik actor</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:domain</span>        <span class="p">[[</span><span class="s">&#34;user_id&#34;</span> <span class="s">&#34;=&#34;</span> <span class="mi">45</span><span class="p">]]</span>       <span class="c1">; optional; default: tasks assigned to :user</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:actor</span>         <span class="s">&#34;odoo&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:process</span>       <span class="ss">:odoo-task</span><span class="p">}</span>
+</span></span></code></pre></div><p>The bridge talks to Odoo&rsquo;s JSON-RPC endpoint, <code>/jsonrpc</code>. Odoo 12 has no
+API keys, so it logs in with the user&rsquo;s password and sends it with every
+call; a user with read access to the tasks is enough. Odoo often refuses to
+list its databases, in which case the database name shows after logging in
+through the web interface (<code>/web/session/get_session_info</code> reports it as
+<code>db</code>).</p>
+<p>Odoo 12 stages carry no closed flag. Folding a stage only hides its column,
+and a folded backlog is still open work, so <code>:closed-stages</code> names the
+closed stages explicitly.</p>
+<p>Each sweep syncs every task the domain selects, plus every task the store
+already mirrors, so a task that is reassigned or archived keeps its ticket
+current. A task counts as mirrored when the store holds its own ticket, the
+one whose id the host of <code>:url</code>, the model and <code>odoo.id</code> name; <code>odoo.url</code>
+plays no part, so changing the scheme, port or path of <code>:url</code> on the same
+host keeps every task, and a ticket of another host or model is never
+taken for one. <code>:users</code> renders an Odoo user as a tik actor in <code>odoo.assignee</code>;
+other users appear under the name Odoo shows.</p>
+<h2 id="profiles">Profiles</h2>
+<p>A profile describes how one Odoo model becomes tickets: which tracked
+fields become which facts, which field derives the ticket&rsquo;s state and from
+which configuration lists, how the ticket title is formed, which chatter
+messages become artifacts, the default domain and the process. <code>:profile</code>
+names the profile by its model, as a string or a keyword, and defaults to
+<code>&quot;project.task&quot;</code>. A configuration that names a model without a profile is
+refused when it loads, with the list of profiles there are.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Profile</th>
+					<th>Facts</th>
+					<th>State</th>
+					<th>Title</th>
+					<th>Configuration</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>project.task</code></td>
+					<td><code>odoo.title</code>, <code>odoo.stage</code>, <code>odoo.assignee</code>, <code>odoo.project</code></td>
+					<td><code>odoo.state</code>: <code>:closed</code> for a stage in <code>:closed-stages</code>, else <code>:open</code></td>
+					<td><code>#&lt;id&gt; &lt;title the task was created with&gt;</code></td>
+					<td><code>:closed-stages</code></td>
+			</tr>
+	</tbody>
+</table>
+<p>Every profile also asserts <code>odoo.id</code> and <code>odoo.url</code>, whose URL names the
+model. The ticket id is a name-based UUID over the Odoo host, the model and
+the record id, so records of two models with the same id become two
+tickets.</p>
+<h2 id="describing-a-model">Describing a model</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bridge odoo describe --model helpdesk.ticket --config odoo.edn
+</span></span><span class="line"><span class="cl">tik bridge odoo describe --model project.task --edn
+</span></span><span class="line"><span class="cl">tik bridge odoo describe --model project.task --format json
+</span></span></code></pre></div><p><code>tik bridge odoo describe</code> asks the server how it defines one model&rsquo;s
+fields and prints, for each field, its type, label, whether it is required
+or read-only, the model a relation points at, the values of a selection,
+and whether Odoo tracks it. Only tracked fields can be mirrored with their
+history, so this is the list to read before writing a profile for a new
+model. The output also says whether the model inherits <code>mail.thread</code>.</p>
+<p>The command writes nothing to Odoo or to the store. It logs in and calls
+<code>version</code>, <code>login</code> and <code>fields_get</code>, and refuses every other call before it
+leaves tik, so a write method cannot be reached from it. It reads <code>:url</code>,
+<code>:db</code>, <code>:user</code> and <code>:password</code> from the same <code>odoo.edn</code> as the bridge;
+<code>:password</code> has to be a secret spec such as <code>{:env &quot;ODOO_PASSWORD&quot;}</code> or
+<code>{:command &quot;pasejo secret show …&quot;}</code>, and a literal password in the file is
+refused. Neither the output nor an error message carries the password.</p>
+<p>Odoo 12 reports the tracking flag as <code>track_visibility</code>, later versions as
+<code>tracking</code>; the command asks for both and names the one the server
+answered with. When the server reports neither, every field&rsquo;s tracked flag
+reads <code>unknown</code>. Whether <code>message_post</code> accepts a <code>message_id</code> argument
+also reads <code>unknown</code>: <code>fields_get</code> describes fields, and Odoo offers no
+read-only call that reports a method&rsquo;s arguments.</p>
+<p>When the model has a profile, the output ends with how the profile fits
+the server: the fields it reads that the server lacks, fields whose type
+differs from the one the profile declares, actor fields that do not point
+at <code>res.users</code>, mirrored fields the server does not track, and, for a
+state read from a selection field, the selection values no configuration
+list names, which fall to the profile&rsquo;s default state. A stage field such
+as <code>stage_id</code> is a relation, so its stage names are records that
+<code>fields_get</code> cannot list.</p>
+<h2 id="history">History</h2>
+<p>Every event is a function of the task and its chatter. Odoo records each
+change of a tracked field as a tracking value in the chatter, with the old
+and new value as Odoo displays them. The ticket is dated by the task&rsquo;s
+creation and carries the values the task was created with, recovered by
+undoing each tracked change from the current values. Each message then
+adds its changes at its own time, and a comment or email as an
+<code>odoo/message/&lt;id&gt;</code> artifact. A re-sync adds only the messages that are
+new, and two machines syncing the same Odoo write identical events.</p>
+<p>Only the title, stage, assignee and project are mirrored, because those
+are the fields Odoo tracks. A tracking value names its field by the label
+the field had at the time, in the language of whoever made the change; the
+bridge reads every field&rsquo;s label in every installed language and leaves
+out a label two fields share.</p>
+<h2 id="open-work">Open work</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik ls --all --where <span class="s1">&#39;stage=:open and fact:odoo.assignee=seb&#39;</span>
+</span></span><span class="line"><span class="cl">tik stats --by odoo.project --until :closed
+</span></span></code></pre></div>]]></content><category scheme="https://tik.projects.metio.wtf/tags/odoo" term="odoo" label="odoo"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/sync" term="sync" label="sync"/></entry></feed>

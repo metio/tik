@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Clojure on tik</title><link href="https://tik.projects.metio.wtf/tags/clojure/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/clojure/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/clojure/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/clojure/</id><entry><title type="html">Clojure library</title><link href="https://tik.projects.metio.wtf/integrations/library/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/concepts/proofs/?utm_source=atom_feed" rel="related" type="text/html" title="Machine-checked proofs"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/processes/automated-release/?utm_source=atom_feed" rel="related" type="text/html" title="automated-release"/><link href="https://tik.projects.metio.wtf/processes/employee-onboarding-template/?utm_source=atom_feed" rel="related" type="text/html" title="employee-onboarding"/><id>https://tik.projects.metio.wtf/integrations/library/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-28T02:14:15+01:00</updated><content type="html"><![CDATA[<blockquote>Read, verify and derive one ticket of a store in process with tik.api, read-only and without starting a process.</blockquote><p><code>tik.api</code> gives a JVM, babashka or native-image program the answers of
+<code>tik status</code> and <code>tik verify</code> for one ticket without running the CLI. It
+never writes to the store, signs, runs a probe, touches the network or
+starts a process.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">(</span><span class="nf">require</span> <span class="o">&#39;</span><span class="p">[</span><span class="nv">tik.api</span> <span class="ss">:as</span> <span class="nv">api</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="p">(</span><span class="k">def </span><span class="nv">store</span> <span class="p">(</span><span class="nf">api/open-store</span> <span class="s">&#34;/path/to/.tik&#34;</span><span class="p">))</span>   <span class="c1">; the dir holding tickets/ or tik.db</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="p">(</span><span class="nf">api/derive</span> <span class="nv">store</span> <span class="s">&#34;f106aa78&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;; =&gt; {:ticket #uuid &#34;f106aa78-…&#34; :title &#34;…&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :rules {:process :skilled-change :version 2 :hash &#34;sha256-…&#34;}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :current [:scoped] :reached [:scoped]</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :facts {[:kind] {:status :present :value :feat :by &#34;claude&#34;} …}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :missing-parents nil</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :definition {:pinned &#34;sha256-…&#34; :derived-under &#34;sha256-…&#34; :source :archive}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">;;     :at #inst &#34;…&#34;}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="p">(</span><span class="ss">:ok?</span> <span class="p">(</span><span class="nf">api/verify-ticket</span> <span class="nv">store</span> <span class="s">&#34;f106aa78&#34;</span><span class="p">))</span>
+</span></span></code></pre></div><p>Add tik as a git dependency in <code>deps.edn</code>:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:deps</span> <span class="p">{</span><span class="nv">io.github.metio/tik</span> <span class="p">{</span><span class="ss">:git/sha</span> <span class="s">&#34;&lt;commit&gt;&#34;</span><span class="p">}}}</span>
+</span></span></code></pre></div><h2 id="the-calls">The calls</h2>
+<ul>
+<li><code>(open-store root)</code> or <code>(open-store root {:limits {…}})</code> opens the store
+whose root is <code>root</code>, the directory holding <code>tickets/</code> (file store) or
+<code>tik.db</code> (SQLite store). Nothing is discovered from parent directories.</li>
+<li><code>(resolve-id store ref)</code> takes a uuid, the full id, or a prefix of at
+least 8 characters naming exactly one ticket.</li>
+<li><code>(ticket store ref)</code> returns the ticket&rsquo;s events in reduction order.</li>
+<li><code>(derive store ref {:at instant})</code> returns the ticket&rsquo;s title, rules,
+current and reached stages and facts. They equal what
+<code>tik status &lt;id&gt; --edn --at &lt;instant&gt;</code> prints. When the definition found
+in the store does not hash to the ticket&rsquo;s pin, <code>derive</code> refuses unless
+<code>{:allow-unpinned-definition true}</code> is passed.</li>
+<li><code>(verify-ticket store ref)</code> runs the <code>tik verify</code> ladder for that ticket
+with the same code as the CLI and returns it as data: <code>:ok?</code>,
+<code>:failures</code>, one summary per event (<code>:integrity</code> and <code>:signature</code>, which
+is <code>:verified</code>, <code>:delegated</code>, <code>:unsigned</code>, <code>:unchecked</code> or <code>:failed</code>)
+and every check as an item.</li>
+</ul>
+<p><code>tik.api/version</code> is the contract&rsquo;s version; it changes only when a
+documented key, argument or refusal changes meaning or goes away.</p>
+<h2 id="refusals">Refusals</h2>
+<p>Every refusal is an <code>ex-info</code> whose <code>:type</code> is in the <code>tik.api</code> namespace:
+<code>not-a-store</code>, <code>ambiguous-store</code>, <code>backend-unavailable</code>,
+<code>invalid-argument</code>, <code>invalid-id</code>, <code>unknown-ticket</code>, <code>ambiguous-id</code> (with
+<code>:candidates</code>), <code>too-large</code> (with <code>:limit</code> and <code>:actual</code>), <code>unreadable</code>,
+<code>definition-missing</code>, <code>definition-mismatch</code>, <code>malformed-roles</code>,
+<code>underivable</code> and <code>read-only</code>.</p>
+<h2 id="differences-from-the-cli">Differences from the CLI</h2>
+<ul>
+<li>Signatures are verified in process (Ed25519, Ed25519 security keys,
+ML-DSA-65). A key type only ssh-keygen reads is <code>:unchecked</code>, and its
+check fails where <code>tik verify</code> would ask ssh-keygen.</li>
+<li>Every event, sidecar and config file is measured before it is read, and
+a symbolic link inside a ticket directory is refused. The defaults are
+<code>tik.api/default-limits</code>.</li>
+<li>A SQLite store is opened read-only and needs the SQLite driver, which
+babashka lacks. A native image that reads SQLite stores or identity
+bindings must require <code>tik.store.sqlite-jdbc</code> or <code>cheshire.core</code> at
+build time.</li>
+</ul>
+<p>The reasoning is recorded in
+<a href="/decisions/0044-a-library-reads-one-ticket-and-never-writes/">ADR 0044</a>
+.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/library" term="library" label="library"/><category scheme="https://tik.projects.metio.wtf/tags/clojure" term="clojure" label="clojure"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry></feed>

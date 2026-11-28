@@ -1,0 +1,254 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0038-one-shared-server-holds-no-keys/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-25T00:58:05+01:00","datePublished":"2026-11-25T00:00:00Z","headline":"One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0038-one-shared-server-holds-no-keys/","url":"https://tik.projects.metio.wtf/decisions/0038-one-shared-server-holds-no-keys/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0038-one-shared-server-holds-no-keys/","name":"One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0038-one-shared-server-holds-no-keys/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; One shared tik server per organisation holds no signing keys; agents sign, prove who they are per connection, and receive work through roles</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0038-one-shared-server-holds-no-keys>ADR 0038: One shared server holds no keys</h1><h2 id=decision>Decision</h2><p>Proposed on 2026-11-24 and accepted by the maintainer on 2026-11-25,
+together with the answers under &ldquo;Resolved questions&rdquo;. Nothing here is
+implemented yet; the order in which it lands is under &ldquo;Consequences&rdquo;.</p><p><strong>An organisation runs one shared tik server, every employee&rsquo;s agent
+connects to it, and the server holds no signing key.</strong> Agents sign their
+own events with keys the server never sees, prove which actor they are
+with a short-lived signed assertion on each connection, and find their
+work through <code>tik next</code> filtered by the roles the store&rsquo;s register gives
+them.</p><ol><li><p><strong>One server per organisation.</strong> An entire company uses a single tik
+server (<code>tik serve</code> with its <code>/mcp</code> endpoint, or replicas of it under
+ADR 0021), and each employee connects their agent to it to read,
+receive and work on tickets. Replicas share nothing beyond the event
+set, so &ldquo;one server&rdquo; names one store and one trust base, however many
+processes serve it.</p></li><li><p><strong>The server holds no signing keys.</strong> A server that signs on behalf of
+its callers can sign as any actor whose key it holds, so whoever
+compromises it, or operates it, can forge events for every one of
+them, and a single compromise forges the store. Signatures would then
+prove only that the server agreed, which is the custody problem
+ADR 0010 separates authorship from authorization to avoid. Each agent
+keeps its own key in <code>ssh-agent</code> or on a security key, and no key
+bytes leave the agent&rsquo;s machine.</p></li><li><p><strong>Writes are signed by the client and verified by the server.</strong> The
+server composes the event for an intent and the client signs it:</p><ul><li><code>prepare</code> takes an intent (the arguments <code>tik_assert</code> and
+<code>tik_attest</code> take today), refuses it unless the frontier admits it
+for the connection&rsquo;s actor (<code>agent-admissible</code>,
+<code>cli/tik/agent.clj:19</code>), and returns the canonical stored bytes of
+the event, with <code>:event/actor</code> set to that actor and the ticket&rsquo;s
+current heads as parents.</li><li>The client signs those bytes with <code>ssh-keygen -Y sign -n tik-event</code>,
+the call <code>tik.sign</code> already makes (<code>src/tik/sign.clj:108</code>).
+OpenSSH&rsquo;s <code>-Y sign</code> accepts a public key file whose private half is
+held by <code>ssh-agent</code> (ssh-keygen(1), OpenSSH 10.2p1).</li><li><code>submit</code> takes the bytes and the detached signature, recomputes the
+event id from the bytes, verifies the signature against <code>actors</code> or
+a binding that holds (ADR 0023, ADR 0026) as the event&rsquo;s actor,
+checks that actor equals the connection&rsquo;s actor and that the
+frontier still admits the event, and only then appends the event and
+its sidecar.</li></ul><p>Events stay content-addressed and their parents are the heads the
+signer saw. Two agents preparing against the same heads produce two
+events that both append, leaving two heads that union like any
+concurrent writes; contention between their facts resolves by
+derivation (<code>:conflicted</code>). Nothing in either path needs a lock or a
+designated replica (ADR 0021). A client that holds its own replica of
+the store may build and sign the event itself and call <code>submit</code>
+directly, since <code>submit</code> checks the same things whoever composed the
+bytes.</p></li><li><p><strong>Reads that depend on identity answer only for an actor proven by a
+signature.</strong> The inbox (<code>tik next --actor &lt;self></code>), <code>tik_explain</code> and
+<code>tik_actions</code> answer for the actor of the connection&rsquo;s assertion,
+never for an actor named in a tool argument. The assertion:</p><ul><li>is an SSHSIG signature in the namespace <code>tik-mcp-auth</code>, which the
+<code>namespaces="tik-*"</code> pattern of an <code>actors</code> line already admits and
+which no event, definition or witness signature uses;</li><li>signs the canonical bytes (<code>tik.canonical</code>) of a map with
+<code>:mcp-auth/actor</code>, <code>:mcp-auth/origin</code> (the server&rsquo;s configured
+origin, so an assertion made for one server is refused by any
+other, kajero included), <code>:mcp-auth/nonce</code> (random, at least 128
+bits), <code>:mcp-auth/issued-at</code> and <code>:mcp-auth/not-after</code>;</li><li>is valid for at most 15 minutes after <code>:mcp-auth/issued-at</code>, with a
+tolerance of 60 seconds for clock skew. Within that window it is a
+bearer credential reused on every request of the connection, so the
+replay window equals its validity; the origin binding and the short
+expiry bound a replay. The nonce makes each assertion distinct in
+logs and adds no replay protection of its own;</li><li>is verified against <code>actors</code> or a binding that holds, the same way
+an event signature is, by every replica on its own;</li><li>is porcelain authentication. It is never stored in the log, is not
+an event, and credits nothing: whether a fact counts still follows
+from the signature on the event and the guards (ADR 0011). Deciding
+who may connect and write at all is the store and transport policy
+ADR 0011 places outside derivation.</li></ul><p>A store that wants freshness proven by the server can add a challenge
+endpoint whose nonce the assertion must carry. It is left out of the
+first version because the helper would make one more request per
+connection and replicas would have to agree on what they issued.</p></li><li><p><strong>Work is routed by roles.</strong> Definitions name
+functional roles (for example <code>:change-implementer</code>) in
+<code>[:signed-by :&lt;role> path]</code> guards on the facts an agent provides. The
+store&rsquo;s role register maps each role to agent actors: one actor routes
+exactly, several form a pool. <code>tik next --actor X</code> already shows X only
+the actions the roles it holds admit, and the gated write surface uses
+the same predicate, so an agent&rsquo;s inbox and what it may write cannot
+disagree. There is no per-ticket assignment mechanism.</p></li><li><p><strong>The register gains an authority check before agents get their own
+identities.</strong> <code>roles.edn</code> is an unsigned file, and <code>tik roles add</code>
+checks no authority, so an agent able to write the store could add
+itself to <code>:maintainer</code>, after which every in-flight ticket would
+accept its review verdicts. Closing this needs its own ADR, because it
+changes what <code>tik verify</code> treats as trust input. The direction
+proposed here:</p><ul><li>register edits become signed: either events on a well-known register
+log, like the identity registry of PLAN §9, or a <code>roles.edn</code> with a
+detached signature that <code>tik verify</code> checks against a set of
+register authorities named in the store;</li><li>a role named by a guard on a maintainer fact refuses agent actors,
+which <code>tik verify</code> and <code>tik roles add</code> both enforce, so even a signed
+edit cannot hand an agent the maintainer&rsquo;s authority.</li></ul><p>Until that ADR lands, the register stays maintainer-edited, and the
+metio instructions say so.</p></li><li><p><strong>Claude Code integrates through what it already offers, with no new
+resident process.</strong></p><ul><li>Connection identity comes from the server entry&rsquo;s <code>headersHelper</code>, a
+command Claude Code runs on each connection. A small script signs a
+fresh assertion through <code>ssh-agent</code> and prints it as the
+<code>Authorization</code> header. When an assertion expires, the server
+answers <code>401</code>, Claude Code re-runs the helper, reconnects and retries
+the call once.</li><li>Writes go through one Bash call to the local tik CLI in a remote
+mode that calls <code>prepare</code>, signs, and calls <code>submit</code>, so event bytes
+never pass through the model.</li><li>The inbox available now is a <code>Monitor</code> loop polling
+<code>tik next --actor &lt;self> --format json</code> against the server and
+printing one line per new item. The target is a server-sent-events
+<code>/inbox</code> on <code>tik serve</code>, which the same Monitor subscribes to, and a
+dispatcher that starts one <code>claude -p</code> worker per ticket.</li></ul><p>Subagents share their parent&rsquo;s connection, so they act as the
+session&rsquo;s actor.</p></li><li><p><strong>kajero adopts the same mechanism</strong>: client-signed writes and a
+signed connection assertion in its own namespace. That is kajero&rsquo;s
+decision and gets its own ADR there.</p></li></ol><h2 id=context>Context</h2><h3 id=the-servers-today>The servers today</h3><p>The tik MCP server writes as one actor. <code>tik serve --mcp-token-file</code>
+answers <code>/mcp</code> behind one bearer token (<code>http-response</code>,
+<code>cli/tik/mcp.clj:178</code>), the actor is the process environment variable
+<code>TIK_ACTOR</code> (<code>cli/tik/mcp.clj:78</code>), and the key is <code>TIK_KEY</code>
+(<code>signing-key</code>, <code>cli/tik/cli_core.clj:359</code>). Calls run one at a time
+(<code>locking handle</code>, <code>cli/tik/mcp.clj:204</code>). The tools are <code>tik_board</code>,
+<code>tik_explain</code>, <code>tik_actions</code>, <code>tik_new</code>, <code>tik_assert</code> and <code>tik_attest</code>;
+none of them is the inbox. Everything else <code>tik serve</code> answers is
+read-only (<code>cli/tik/serve.clj</code>). kajero&rsquo;s MCP writer is likewise one
+<code>KAJERO_MCP_ACTOR</code>/<code>KAJERO_MCP_KEY</code> pair (kajero <code>src/kajero/web.clj</code>,
+<code>main</code> a6333fb), and kajero signs with <code>tik.sign</code> in the namespace
+<code>kajero</code>. Every Claude session and subagent on the maintainer&rsquo;s machine
+therefore signs as one actor, <code>claude</code>, whether it writes through MCP or
+through the local CLI.</p><p>A shared server for a whole organisation cannot keep that shape. One
+token and one key make every employee&rsquo;s agent the same actor, and
+giving the server one key per agent makes it custodian of all of them.</p><h3 id=identity-on-the-ladder>Identity on the ladder</h3><p>Event signatures are SSHSIG sidecars checked against <code>actors</code> (PLAN §9,
+rung 1), or against keys bound through issuer-signed tokens (rung 2,
+ADR 0023, ADR 0026, ADR 0035). Both verify offline from what travels
+with the store. PLAN §19 rejects mTLS as a source of trust for events
+because a connection leaves nothing in the log; the connection assertion
+of point 4 keeps to that verdict, since it selects whose reads are
+answered and who may write at all, and never makes an event count.</p><p><code>tik import</code> is the existing ingest for foreign events. It merges by
+content address and checks on the way in only that each event hashes to
+its name, leaving signatures to a later <code>tik verify</code> (<code>cmd-import</code>,
+<code>cli/tik/audit.clj:139</code>). A shared server must not append an unverified
+event on request, so <code>submit</code> reuses import&rsquo;s append-and-sidecar half
+and adds the signature and frontier checks before it. Composing an
+event needs the ticket&rsquo;s heads and pinned definition, and the frontier
+gate reads the store (<code>agent-admissible</code>); an employee&rsquo;s agent holds no
+replica of the organisation&rsquo;s store, which is why the server composes
+and the client signs.</p><h3 id=routing>Routing</h3><p><code>cmd-next</code> (<code>cli/tik/inspect.clj:218</code>) derives each ticket with
+<code>ticket-ctx</code> (<code>cli/tik/cli_core.clj:478</code>), whose roles are
+<code>resolve-roles</code> over the register (<code>src/tik/process.cljc:134</code>), and the
+inbox keeps an action only when <code>admissible?</code> (<code>src/tik/next.cljc:162</code>)
+allows the actor; <code>agent-admissible</code> projects the same predicate for
+writes. The register (<code>roles.edn</code>, <code>cli/tik/cli_core.clj:268</code>) overrides
+a definition role by role, takes effect on in-flight tickets, and
+replaces a role wholly once it names it, so the first
+<code>tik roles add maintainer X</code> drops the definition&rsquo;s members unless they
+are added too (<code>cmd-role</code>, <code>cli/tik/admin.clj:148</code>). A role in the
+register gates nothing until a pinned definition&rsquo;s guard names it, and
+a new guard reaches tickets pinned to an older definition only through
+<code>tik reprocess</code>. In the metio store on 2026-11-24, <code>change</code> guards only
+maintainer facts and there is no <code>roles.edn</code>, so every agent&rsquo;s inbox
+would still list the same actions.</p><p>PLAN §19 defers time-aware role validity and delegation with scope and
+<code>:valid-until</code>, including human-to-agent delegation for MCP; it records
+no verdict on who may edit the register.</p><h3 id=what-claude-code-offers>What Claude Code offers</h3><p>From the Claude Code documentation fetched on 2026-11-24, with Claude
+Code 2.1.331 installed on the maintainer&rsquo;s machine:</p><ul><li><code>headersHelper</code> (<a href=https://code.claude.com/docs/en/mcp>https://code.claude.com/docs/en/mcp</a>
+, &ldquo;Use dynamic
+headers for custom authentication&rdquo;) runs &ldquo;fresh on each connection, at
+session start and on reconnect&rdquo;, does not cache its output, and has a
+10-second timeout. When a tool call returns <code>401</code> or <code>403</code>, Claude Code
+re-runs the helper, reconnects with the fresh headers and retries the
+call once; a rejection while connecting is reported as a failed
+connection, to be retried from <code>/mcp</code>. Helpers declared by a project or
+plugin run without credential-named environment variables, and project
+and local-scope helpers run only once the folder is trusted.</li><li>Subagents (<a href=https://code.claude.com/docs/en/sub-agents>https://code.claude.com/docs/en/sub-agents</a>
+): &ldquo;String
+references share the parent session&rsquo;s connection&rdquo;; only an inline
+<code>mcpServers</code> entry in an agent file gets a connection of its own, per
+agent type, while the subagent runs.</li><li>Channels (<a href=https://code.claude.com/docs/en/channels-reference>https://code.claude.com/docs/en/channels-reference</a>
+), the
+only mechanism that pushes into an idle session, are a research
+preview, stdio only, need <code>--dangerously-load-development-channels</code> for
+a custom server, and are ignored under <code>claude -p</code>. A standard MCP
+server pushes nothing into a session.</li><li><code>Monitor</code> turns each output line of a long-running command into a
+notification in the session and expires after at most 30 minutes, so a
+long wait re-arms it.</li></ul><h2 id=consequences>Consequences</h2><ul><li><strong>New MCP tools</strong>, named in the style of the existing ones: <code>tik_next</code>
+(the inbox for the connection&rsquo;s actor, no actor argument),
+<code>tik_prepare</code> and <code>tik_submit</code>. <code>tik_explain</code> and <code>tik_actions</code> answer
+for the connection&rsquo;s actor. The HTTP transport accepts the signed
+assertion in place of the shared bearer token; <code>TIK_ACTOR</code> and
+<code>TIK_KEY</code> remain for the stdio server, which runs as its caller.</li><li><strong>The tik CLI gains a remote mode and a public-key signing path.</strong>
+The remote mode runs <code>prepare</code>, sign, <code>submit</code> against a server URL.
+<code>tik.sign/pubkey</code> derives the public key with <code>ssh-keygen -y</code> from a
+private key file (<code>src/tik/sign.clj:55</code>), so signing with a key held
+by <code>ssh-agent</code> needs the CLI to accept a public key file instead.</li><li><strong><code>~/.local/scripts/tik-claude</code> changes role.</strong> Today it reads the
+organisation&rsquo;s key from pasejo into a private runtime directory and
+runs <code>tik</code> with <code>TIK_ACTOR</code> and <code>TIK_KEY</code> against a local store. Under
+this ADR it loads the agent&rsquo;s key into <code>ssh-agent</code>, or names a
+security key, serves as the <code>headersHelper</code> that signs the connection
+assertion, and invokes the CLI&rsquo;s remote mode for writes.</li><li><strong>Post-quantum stores need more.</strong> Under ADR 0036 a store with
+<code>signatures.edn</code> requires an ML-DSA-65 sidecar per event, which
+<code>ssh-agent</code> cannot produce; such a store needs the client to hold the
+ML-DSA half as well, outside the agent.</li><li><strong>A security key costs a touch per assertion.</strong> With a touch-required
+key each helper run, at most every 15 minutes per connection, asks for
+a touch within the helper&rsquo;s 10-second timeout, which is workable for
+an interactive session and not for unattended workers.</li><li><strong>Serialised calls become the bottleneck</strong> once many agents poll.
+<code>tik serve</code> runs one MCP call at a time, so the <code>/inbox</code> stream should
+derive once per store change and fan out to subscribers instead of
+answering N polls. The stream is a lens and keeps nothing
+authoritative (ADR 0013, ADR 0019); duplicates across replicas are
+harmless to an inbox.</li></ul><p>The order in which this would land:</p><ol><li>The register-authority ADR and its implementation (point 6).</li><li>The signed connection assertion on <code>/mcp</code>, <code>tik_next</code>, and
+<code>tik_explain</code>/<code>tik_actions</code> for the connection&rsquo;s actor.</li><li><code>tik_prepare</code>/<code>tik_submit</code>, the CLI&rsquo;s remote mode and public-key
+signing; then the shared token and the server&rsquo;s key are removed.</li><li>Functional roles and <code>[:signed-by]</code> guards in the metio processes,
+through the version-bump gate with a negative test per signature,
+and the register filled by the maintainer.</li><li>The <code>/inbox</code> stream and a dispatcher of <code>claude -p</code> workers.</li></ol><h2 id=alternatives-considered>Alternatives considered</h2><ul><li><strong>A custodial server holding one key per agent.</strong> The smallest change,
+since <code>tik serve</code> already passes <code>--actor</code> per call and could pass
+<code>--key</code> the same way, and signatures would still verify offline. It is
+declined because the server can then forge any actor whose key it
+holds, and one compromise forges the store.</li><li><strong>A small local stdio MCP server per employee</strong>, holding or reaching
+the key and forwarding to the shared server. It would also be the only
+place a channel could live. It is declined because it is one more
+process per employee to install, run and update, for no capability the
+<code>headersHelper</code> assertion and the CLI&rsquo;s remote mode lack.</li><li><strong>Delegated ephemeral keys</strong>, a human root authorising short-lived
+per-agent keys. Deferred to its own ADR. ADR 0037&rsquo;s delegation does not
+fit: it credits the delegator and never the agent, caps the window at
+five minutes, scopes to heads the reviewer was shown, allows no chains,
+and the metio store requires a touch for it. A local rung-2 issuer
+binding ephemeral keys (ADR 0023) is the other route, at the cost of a
+binding event per session and an issuer key whose custody equals a root
+key&rsquo;s.</li><li><strong>An actor named in a tool argument for reads.</strong> Reading another
+actor&rsquo;s inbox discloses little the board does not show. It is declined
+because a dispatcher and its workers act on what the inbox returns, and
+an inbox that answers for whatever actor a caller names routes work by
+the caller&rsquo;s claim; the identity of an identity-dependent read has to
+come from a signature, as the identity of a write does.</li></ul><h2 id=resolved-questions>Resolved questions</h2><p>The maintainer answered these on 2026-11-25.</p><ol><li><strong>Worker identities are stable slots.</strong> Dispatched workers act as
+<code>claude-worker-1</code>, <code>claude-worker-2</code> and so on, each an ordinary key in
+<code>actors</code> (rung 1). A slot outlives the session that used it, so its
+inbox and history stay readable, and role routing needs nothing
+beyond the register. Per-session identities wait for the delegation
+ADR.</li><li><strong>Starting a batch of workers costs one security-key touch.</strong> The
+touch signs the list of slots and an expiry, the shape ADR 0037 gives
+a review batch, so a batch does not cost one touch per worker every
+15 minutes.</li><li><strong>infra.run&rsquo;s agents keep their own identities on their own server.</strong>
+infra.run is a separate organisation with its own store, keys and
+server, and work between the two organisations keeps going through the
+<code>request</code> process with the requesting organisation&rsquo;s actor
+(<code>metio-claude</code>, <code>infra.run-claude</code>). Support tickets from infra.run&rsquo;s
+customers belong in infra.run&rsquo;s store, served by infra.run&rsquo;s server.</li><li><strong>Interactive sessions keep the plain <code>claude</code> identity.</strong> A session
+the maintainer watches acts like the maintainer driving a tool, and its
+writes already pass the gated frontier. Per-agent names are for
+dispatched workers, which act unattended.</li><li><strong>The first functional roles are few, and widen when a real split
+appears.</strong> <code>implementer</code> for <code>change</code>, <code>skilled-change</code> and
+<code>package-addition</code>; <code>infra-operator</code> for the plan half of
+<code>infra-change</code>; <code>request-handler</code> for <code>request</code>; and <code>support</code> once a
+support process exists. Each role starts holding today&rsquo;s actor, so
+nothing reroutes on the day the roles land.</li><li><strong>Only the maintainer edits the register at first.</strong> Every register
+edit is signed by the maintainer, and a role that gates a maintainer
+fact refuses agent actors (point 6). A dispatcher limited to moving
+workers between agent-only roles can follow once the register ADR is
+implemented and tested.</li><li><strong>Only new tickets are routed by the new guards.</strong> In-flight tickets
+keep the definition they pinned, because <code>tik reprocess</code> re-judges
+evidence signed under the old rules. A long-lived ticket, such as an
+open request or a vulnerability, moves one at a time with
+<code>tik reprocess</code>, dry run first, when routing it matters.</li></ol><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0038-one-shared-server-holds-no-keys.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0038-one-shared-server-holds-no-keys.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

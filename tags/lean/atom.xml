@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Lean on tik</title><link href="https://tik.projects.metio.wtf/tags/lean/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/lean/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/lean/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/lean/</id><entry><title type="html">Machine-checked proofs</title><link href="https://tik.projects.metio.wtf/concepts/proofs/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/concepts/stages/?utm_source=atom_feed" rel="related" type="text/html" title="Stages"/><link href="https://tik.projects.metio.wtf/evidence/bundle-format/?utm_source=atom_feed" rel="related" type="text/html" title="Bundle format"/><link href="https://tik.projects.metio.wtf/integrations/library/?utm_source=atom_feed" rel="related" type="text/html" title="Clojure library"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><id>https://tik.projects.metio.wtf/concepts/proofs/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-27T14:36:36+01:00</updated><content type="html"><![CDATA[<blockquote>What a Lean 4 model of the derivation function proves about stages, what it leaves out, and how CI holds the model and the Clojure kernel to the same answers.</blockquote><p>Three laws of derivation are proved in Lean 4 over an executable model of
+<code>tik.stage/reached-set</code>, <code>evolve</code> and <code>effective-reached</code>, and CI runs that
+model beside the Clojure kernel on every pull request and fails on any
+disagreement. The proofs say nothing about the Clojure code directly; the
+differential run is what ties the two together, case by case.</p>
+<h2 id="what-is-proved">What is proved</h2>
+<p>The model and its proofs live in <code>formal/lean/</code>. Every theorem below rests
+on Lean&rsquo;s three standard axioms (<code>propext</code>, <code>Classical.choice</code>,
+<code>Quot.sound</code>) and nothing else; <code>bb lean</code> fails on a <code>sorry</code>, an added
+axiom or <code>native_decide</code> anywhere in a proof.</p>
+<ul>
+<li><strong>Event order.</strong> Two lists holding the same events, in any order and with
+any duplicates, derive the same stages, sticky carry included
+(<code>Tik.derive_order_independent</code>). The one assumption is the
+content-addressing promise: two events with the same id are the same
+event.</li>
+<li><strong>Sweep order.</strong> Listing a definition&rsquo;s stages in another order derives
+the same reached set, for any facts and any sticky carry, as long as
+stage ids are distinct (<code>Tik.reachedSet_perm</code>).</li>
+<li><strong>One fixpoint.</strong> For a stratified process, exactly one set of stages is
+closed under the rules (a stage is in it exactly when its <code>:after</code>
+stages are and its guards hold reading it), and the synchronous sweep
+from an empty carry computes that set
+(<code>Tik.stratified_unique_fixpoint</code>).</li>
+<li><strong>Monotonicity.</strong> Adding facts, keeping every fact already present with
+its value and author, never removes a stage whose guards, and the guards
+of every stage it waits for, contain no <code>:not</code>
+(<code>Tik.reachedSet_mono_cone</code>).</li>
+</ul>
+<p>Stratified here means ADR 0033&rsquo;s rule in certificate form: every stage a
+stage waits for, through <code>:after</code> or a positive <code>[:stage-reached …]</code>, has a
+smaller entry bound, and every stage it negates enters for good before the
+stage is first judged. The model checks the certificate for every case it
+runs; every process in <code>processes/</code> passes it.</p>
+<h2 id="counterexamples">Counterexamples</h2>
+<p>Each stronger statement below is false, and the model proves so on a
+concrete process:</p>
+<ul>
+<li>Firing one stage at a time reaches two different terminal sets on
+<code>processes/sweep-order.edn</code>, depending on the order; the synchronous
+sweep reaches one.</li>
+<li>Two stages that wait for each other through positive
+<code>[:stage-reached …]</code> guards have two fixpoints, the empty set and both
+stages. The lint accepts such a pair, since nothing negates either
+stage; the sweep derives the empty one.</li>
+<li>A stage with no guard at all drops out when a fact arrives that a stage
+it waits for negates. Monotonicity therefore needs every stage upstream
+to be free of <code>:not</code> too.</li>
+<li>A later assertion that changes a fact&rsquo;s value can remove a stage gated by
+<code>:fact=</code>. Adding an event is adding a fact only when the event names a
+path that held no value.</li>
+</ul>
+<h2 id="what-is-left-out">What is left out</h2>
+<p>The model&rsquo;s guard basis is <code>:fact</code>, <code>:fact=</code>, <code>:signed-by</code>,
+<code>:different-person</code>, <code>:stage-reached</code>, <code>:and</code>, <code>:or</code> and <code>:not</code>. Its
+reduction knows assertions and retractions, last write wins in <code>(at, id)</code>
+order. Left out, each because its verdict is fixed for one evaluation of the
+fixpoint and adds nothing to the laws above:</p>
+<ul>
+<li><code>:artifact</code>, <code>:elapsed-since</code>, <code>:attested-within</code> and <code>:malli</code>, and the
+schemas a definition declares for its facts. The kernel computes these and
+hands the model the verdicts.</li>
+<li>disputes, conflicts between concurrent writes and the <code>:now</code> clamp, which
+the reducer resolves before guards run;</li>
+<li>signatures, key bindings and the role register, which decide which events
+and members exist, before derivation starts.</li>
+</ul>
+<p>The fixpoint and monotonicity theorems are stated for an empty sticky carry.
+With a carry, derivation depends on the history it was carried through, and
+the differential run covers it.</p>
+<h2 id="the-differential-run">The differential run</h2>
+<p><code>bb lean</code> builds the model, checks the axioms, replays the proofs with
+<code>leanchecker</code>, and then derives every case twice: once with <code>tik.stage</code>, once
+with the model&rsquo;s executable <code>tik-lean</code>. The cases are the conformance corpus,
+every scripted case under <code>processes/*.tests.edn</code> and a few thousand
+generated processes and histories, lint-clean or not. A case whose guards
+and events fit the model is replayed from its events; any other case gets the
+kernel&rsquo;s facts and sticky carry, with every guard outside the basis replaced
+by its verdict.</p>
+<p><code>bb lean controls</code> shows that each check can fail: a planted <code>sorry</code> must
+fail the source check and the axiom check, and four deliberately broken
+models (firing one stage per sweep, seeding the carry into the first
+snapshot, ignoring <code>:after</code>, ignoring retractions) must each disagree with
+the kernel on some case.</p>
+<h2 id="toolchain">Toolchain</h2>
+<p>The Lean release is pinned in <code>formal/lean/lean-toolchain</code> and installed by
+breto for the CI job; <code>bb lean</code> refuses a <code>lean</code> on <code>PATH</code> of any other
+version. The model uses Lean&rsquo;s core library only, without Mathlib or
+Batteries.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/stages" term="stages" label="stages"/><category scheme="https://tik.projects.metio.wtf/tags/fixpoint" term="fixpoint" label="fixpoint"/><category scheme="https://tik.projects.metio.wtf/tags/lean" term="lean" label="lean"/><category scheme="https://tik.projects.metio.wtf/tags/conformance" term="conformance" label="conformance"/><category scheme="https://tik.projects.metio.wtf/tags/verification" term="verification" label="verification"/></entry></feed>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: The tik Authors
+SPDX-License-Identifier: 0BSD
+
+The master mark, rendered by the theme's site header as a 40px <img>. An SVG
+in an <img> renders in its own document and cannot inherit the page's color,
+so the ink is supplied here (the brand rules sanction setting it on the svg
+itself) and follows the reader's colour scheme. The accent keeps its default:
+the bead is the signature that closes the seal, and it is the one colour in
+the system.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="tik-logo-title">
+  <title id="tik-logo-title">tik</title>
+  <style>
+    :root { color: #1f1f1f; }
+    @media (prefers-color-scheme: dark) { :root { color: #f2f2f2; } }
+  </style>
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M91.9 34.1 L103.84 41 L103.84 87 L64 110 L24.16 87 L24.16 41 L64 18 L78 26.1" stroke-width="5.5"/>
+    <path d="M34 70 L50 86 L94.5 14.8" stroke-width="9"/>
+  </g>
+  <circle cx="64" cy="110" r="5.5" fill="var(--tik-accent, #A8752B)"/>
+</svg>

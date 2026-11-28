@@ -1,0 +1,99 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0036-post-quantum-signatures-are-hybrid/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-23T20:36:57+01:00","datePublished":"2026-11-23T00:00:00Z","headline":"Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0036-post-quantum-signatures-are-hybrid/","url":"https://tik.projects.metio.wtf/decisions/0036-post-quantum-signatures-are-hybrid/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0036-post-quantum-signatures-are-hybrid/","name":"Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0036-post-quantum-signatures-are-hybrid/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; Post-quantum signatures arrive as a hybrid ML-DSA-65 sidecar beside SSHSIG</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0036-post-quantum-signatures-are-hybrid>ADR 0036: Post-quantum signatures are hybrid</h1><h2 id=decision>Decision</h2><p>Accepted on 2026-11-23 by the maintainer, with points 1 to 7 as written
+and two refinements: the witness anchor of point 7 uses ML-DSA-65, the
+same algorithm as the event signatures, and point 8 makes the content
+hash a parameter of the format version. The implementation follows in
+the order listed under Consequences.</p><p><strong>A store opts into post-quantum authenticity by requiring a second
+signature per event, made with ML-DSA-65 (FIPS 204), beside the SSHSIG
+Ed25519 signature it already carries.</strong> An event counts as signed by an
+actor only when every signature the store&rsquo;s policy requires verifies, so
+the store keeps classical security if ML-DSA is broken and gains
+post-quantum security if Ed25519 is.</p><ol><li><strong>A closed algorithm set per format version.</strong> Following ADR 0006 rule
+4, a format version names exactly the signature algorithms a verifier
+implements: today <code>ssh-ed25519</code> through SSHSIG, and from the next
+version also <code>ml-dsa-65</code>. A verifier never dispatches on whatever an
+algorithm tag says.</li><li><strong>A sidecar of its own.</strong> OpenSSH has no post-quantum signature key
+type, so the ML-DSA signature cannot travel as SSHSIG. It is stored as
+<code>&lt;id>.pqsig.&lt;fpr></code>, the raw FIPS 204 signature over the bytes
+<code>tik-event-v1\0</code> followed by the event&rsquo;s stored bytes. The prefix
+separates this use of the key from any other. The <code>.sig.</code> sidecar is
+unchanged, so an existing verifier still checks the classical half.</li><li><strong>A registry of its own.</strong> <code>pq-signers</code> in the store root holds lines
+<code>&lt;actor> namespaces="…" ml-dsa-65 &lt;base64 SubjectPublicKeyInfo></code>. It is
+kept out of <code>actors</code> because <code>ssh-keygen -Y verify</code> reads <code>actors</code> as an
+allowed-signers file, and a line it cannot parse must not change what
+it does with the others. <code>&lt;fpr></code> is the hex SHA-256 of the DER
+SubjectPublicKeyInfo.</li><li><strong>Policy in the store.</strong> <code>signatures.edn</code> declares
+<code>{:require #{:ssh-ed25519 :ml-dsa-65} :from "&lt;instant>"}</code>. Events
+claimed before <code>:from</code> need only the classical signature; events after
+it need both. A store without the file behaves as today.</li><li><strong>Signing in process.</strong> <code>TIK_PQ_KEY</code> names a PKCS#8 PEM private key,
+and tik signs with the JDK&rsquo;s <code>ML-DSA</code> provider. <code>ssh-keygen</code> remains
+the Ed25519 signer.</li><li><strong>Checkable without tik.</strong> The bundle&rsquo;s <code>verify.sh</code> checks <code>.pqsig.</code>
+sidecars with <code>openssl pkeyutl -verify</code>, which needs OpenSSL 3.5 or
+later, and fails a required signature it cannot check.</li><li><strong>Sealing classical history.</strong> Signatures face no
+harvest-now-decrypt-later risk, but once Ed25519 can be forged, an
+attacker can produce new events with old instants. A witness holding an
+ML-DSA key countersigns every store&rsquo;s heads when the policy takes
+effect (<code>.pqwitness.&lt;fpr></code>), so classical history up to that moment is
+anchored by a signature that remains unforgeable. The witness signs
+with ML-DSA-65. SLH-DSA remains a candidate for this anchor later, since
+its security rests on hash assumptions only and the anchor&rsquo;s volume is
+low.</li><li><strong>The content hash is a parameter, not a constant.</strong> SHA-256 stays the
+hash of format version 1. Which hash a format version uses is declared
+in one table in <code>tik.canonical</code>, and every content address, the
+bundle&rsquo;s <code>verify.sh</code> and the L0 checks read it from there, so a format
+version that switches to SHA-512 (<code>sha512-</code>) is a new table entry and
+a version bump. Following ADR 0006 rule 4, a verifier supports exactly
+the hashes of the format versions it implements and never dispatches
+on whatever prefix an id carries.</li></ol><h2 id=context>Context</h2><p>The finding behind this proposal (tik-30 of the 2026-11 review) lists
+where Ed25519 and SHA-256 are hard-wired: <code>tik.sshsig</code> verifies Ed25519
+only, <code>tik.sign</code> shells out to <code>ssh-keygen -Y</code>, trust registries are
+allowed-signers files, and <code>"sha256-"</code> is a literal in several namespaces.</p><p>Verified on 2026-11-23 on the development host:</p><ul><li><p>OpenSSH 10.2p1 (<code>ssh -Q key</code>) offers no post-quantum signature key
+type. Its post-quantum support is key exchange only
+(<code>mlkem768x25519-sha256</code>).</p></li><li><p>The JDK the build uses (GraalVM 25.0.4) generates and verifies
+ML-DSA-65 through <code>KeyPairGenerator</code>/<code>Signature</code> with no extra
+provider; signatures are 3309 bytes and public keys 1974 bytes DER.</p></li><li><p>OpenSSL 3.5.8 signs and verifies ML-DSA-65, and the two interoperate in
+both directions: a JDK signature verifies under <code>openssl pkeyutl -verify</code> with the JDK&rsquo;s X.509 public key, and an OpenSSL signature
+verifies under the JDK.</p></li><li><p>A minimal program compiled with GraalVM native-image (CE 25.0.2, the
+<code>ghcr.io/graalvm/native-image-community:25</code> image) generates, signs and
+verifies ML-DSA-65 with no reflection or security-provider
+configuration. tik&rsquo;s own native build was not tried.</p></li></ul><p>Not verified: whether either side exposes the FIPS 204 context string
+consistently, which is why point 2 uses a message prefix instead.</p><p><strong>Hashes stay as they are.</strong> SHA-256 content addresses carry integrity
+only (ADR 0006, ADR 0007). Grover&rsquo;s algorithm reduces preimage resistance
+to about 2^128, and the best known quantum collision attack does not beat
+classical collision search in practice, so SHA-256 is generally
+considered adequate against quantum attackers. ADR 0006 rule 3 remains the
+exit if that changes: a <code>sha384-</code> prefix under a format-version bump.
+Routing the literal <code>"sha256-"</code> strings through one function is worth
+doing on its own, as preparation, and needs no decision.</p><p><strong>Identity bindings are outside tik&rsquo;s control.</strong> An id-token is signed by
+its issuer with RS256, ES256 or EdDSA. tik cannot make that post-quantum;
+it can only sign the binding attestation itself hybrid, and the binding
+then records that a classical token was presented at a claimed moment,
+which point 7&rsquo;s anchor dates.</p><h2 id=consequences>Consequences</h2><ul><li>Every signed event carries about 3.3 KB more, and every actor a second
+key. Signing and verifying ML-DSA-65 is fast enough not to matter at
+event rates.</li><li>A store that sets the policy cannot be verified by a tik that predates
+it. That follows from the format-version rule and is the intended
+behaviour.</li><li>Implementation order, each step its own change: route content
+addressing through one function (done); make the hash a parameter of
+the format version, with SHA-512 implemented and tested but not used
+by any format version yet; add the <code>pq-signers</code> reader and the
+<code>.pqsig.</code> verifier with tests against OpenSSL-made signatures; add
+signing; extend <code>verify.sh</code> and the bundle format; add the policy file
+and the witness anchor. Building tik&rsquo;s own binary with an ML-DSA
+signature in its test suite belongs to the first signing step.</li></ul><h2 id=alternatives-considered>Alternatives considered</h2><ul><li><strong>ML-DSA alone.</strong> Smaller sidecars, but the scheme was standardised in
+2024 and has less cryptanalysis behind it than Ed25519. A hybrid costs
+space and buys a fallback in both directions.</li><li><strong>SLH-DSA (FIPS 205).</strong> Rests on hash assumptions only, which is
+attractive for a format meant to verify for decades, but signatures are
+7.8 KB or more and signing is slow. It remains a candidate for the
+witness anchor of point 7, where volume is low.</li><li><strong>Waiting for OpenSSH.</strong> Would keep a single sidecar format, but the
+timeline is unknown, and the decision about which algorithm a store
+requires should not depend on it.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0036-post-quantum-signatures-are-hybrid.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0036-post-quantum-signatures-are-hybrid.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

@@ -1,0 +1,101 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="A relation between tickets is its own event kind, with a closed vocabulary that no stage reads · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0029-relations-are-events-no-stage-reads/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="A relation between tickets is its own event kind, with a closed vocabulary that no stage reads · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-21T08:40:33+01:00","datePublished":"2026-11-21T00:00:00Z","headline":"A relation between tickets is its own event kind, with a closed vocabulary that no stage reads","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0029-relations-are-events-no-stage-reads/","url":"https://tik.projects.metio.wtf/decisions/0029-relations-are-events-no-stage-reads/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0029-relations-are-events-no-stage-reads/","name":"A relation between tickets is its own event kind, with a closed vocabulary that no stage reads","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0029-relations-are-events-no-stage-reads/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; A relation between tickets is its own event kind, with a closed vocabulary that no stage reads</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0029-relations-are-events-no-stage-reads>ADR 0029: Relations are events no stage reads</h1><h2 id=decision>Decision</h2><p><strong>A relation between two tickets is recorded by its own event types,
+<code>:relation/assert</code> and <code>:relation/withdraw</code>, and stage derivation never
+reads one.</strong> No guard operator names a relation, so <code>status</code>, <code>whatif</code>,
+<code>debug</code>, <code>rederive</code> and <code>verify</code> derive the same stages from a log with
+or without its relations. A relation is navigation and scheduling. It is
+never evidence.</p><p><strong>The body holds exactly two keys:</strong></p><div class=highlight><pre tabindex=0 class=chroma><code class=language-clojure data-lang=clojure><span class=line><span class=cl><span class=p>{</span><span class=ss>:relation/kind</span>   <span class=ss>:depends-on</span>            <span class=c1>; from the closed vocabulary</span>
+</span></span><span class=line><span class=cl> <span class=ss>:relation/target</span> <span class=o>#</span><span class=nv>uuid</span> <span class=s>&#34;…&#34;</span><span class=p>}</span>             <span class=c1>; or {:ticket #uuid &#34;…&#34; :head &#34;sha256-…&#34; :store &#34;…&#34;}</span>
+</span></span></code></pre></div><p>A target is a local ticket uuid or the foreign reference of ADR 0024,
+whose shape and meaning carry over unchanged: the uuid is the identity,
+<code>:head</code> is the version observed when the relation was made, and <code>:store</code>
+is advisory. A body has no other keys, no free text and no value field.</p><p><strong>The vocabulary is closed and versioned by tik</strong>, as the guard
+vocabulary is:</p><table><thead><tr><th>Kind</th><th>What the lenses do with it</th></tr></thead><tbody><tr><td><code>:depends-on</code></td><td><code>next</code> holds the ticket back until the target settles; <code>plan</code> draws the edge, the critical path and the unlock impact</td></tr><tr><td><code>:supersedes</code></td><td>the board hides the superseded target; the target&rsquo;s <code>status</code> names its successor</td></tr><tr><td><code>:follows-up</code></td><td><code>status</code> lists a ticket&rsquo;s follow-ups, such as the change a <code>follow-up</code> review verdict opens</td></tr><tr><td><code>:duplicates</code></td><td>the board hides the duplicate and names the original</td></tr></tbody></table><p>A definition cannot add a kind. A new kind is a tik release with an ADR,
+the same bar as a new guard operator, so no relation can carry data or
+meaning that tik does not define.</p><p><strong>A definition opts in per kind</strong> with <code>:process/relations</code>, a set of
+kinds. A ticket whose definition omits the key accepts no relations. The
+key is part of the pinned bytes, so widening it is a new definition
+version and moves tickets only through <code>reprocess</code>.</p><p><strong>A relation is written on its source ticket by an actor who may act on
+that ticket now.</strong> That actor is a member of a role the definition names,
+or one for whom the frontier admits at least one action. The
+agent surface gains <code>tik agent relate &lt;id> &lt;kind> &lt;target></code>, refused with
+exit 3 unless the definition opts into the kind and the frontier admits
+the actor. The target ticket needs no such standing, because nothing is
+written to its log.</p><p><strong>A relation is validated when it is written</strong>, so the log never holds a
+malformed one from tik itself:</p><ul><li>the kind is in the vocabulary and in the definition&rsquo;s <code>:process/relations</code>;</li><li>a local target exists in the store, and a foreign target is a
+well-formed reference that names a head;</li><li>a ticket does not relate to itself;</li><li>a <code>:depends-on</code> that would close a cycle among local tickets is refused;</li><li>asserting a relation that stands is a no-op, and withdrawing one that
+does not stand is refused.</li></ul><p><strong>The relations standing on a ticket</strong> are, for each <code>(kind, target)</code>
+pair, the latest assert or withdraw in the causal order of the event
+DAG. Two concurrent events on one pair are shown as conflicted in
+<code>status</code>; a lens treats a conflicted <code>:depends-on</code> as standing, which
+holds a ticket back rather than releasing it.</p><p><strong>Cross-ticket gates are evidence facts.</strong> <code>tik bridge gate</code> mints the
+upstream&rsquo;s milestone into the downstream ticket as a fact under
+<code>[:gate &lt;name>]</code>, whose value is the ADR 0024 reference with the head
+observed, beside the signed <code>:gate</code> attestation it writes today. A guard
+reads <code>[:fact [:gate &lt;name>]]</code>. The fact records that an actor looked at
+the upstream and saw a sticky stage reached at a named head, which is
+evidence; a relation records only that one ticket points at another.
+The reverse <code>[:link :gates]</code> fact is no longer written, since a lens
+derives which tickets a release gated from the <code>[:gate …]</code> facts that
+name it.</p><h2 id=context>Context</h2><p>ADR 0024 put links into facts under <code>[:link …]</code>, and PLAN §2 chose that
+shape because it bought dispute, retraction and supersession for free.
+The same choice made a link readable by guards and subject to the
+frontier. Both turned out to work against what a link is for.</p><ul><li><strong>A guard on a pointer advances a stage on no evidence.</strong> A
+definition in production use guards a <code>:candidate</code> stage on
+<code>[:fact [:link :depends-on]]</code>, so recording which ticket this one waits
+on is part of what makes it a candidate. A pointer proves nothing
+about the work; <code>tik.link</code> says itself that nothing here reads another
+ticket.</li><li><strong>The frontier withholds links from the actors who know them.</strong> An
+agent may set only what the frontier admits for the next stages. A
+<code>change</code> ticket has no <code>[:link …]</code> fact in any stage, so an agent
+working on two dependent changes cannot record the dependency at all,
+and a definition that admitted one would have to make it evidence of
+some stage to do so.</li><li><strong>Facts invite a general metadata channel.</strong> Any definition may
+declare any <code>[:link &lt;anything>]</code> path with any schema, so the reserved
+prefix constrains nothing about what a link means or holds.</li></ul><p>Relations as events keep what made links-as-facts attractive. Each
+relation is signed, content-addressed, has parents, is checked by
+<code>tik verify</code> and travels in an evidence bundle, so its audit trail is the
+log&rsquo;s. Retraction becomes <code>:relation/withdraw</code>, and supersession is the
+latest event per pair. Dispute does not carry over, deliberately: the
+dispute machinery exists to contest evidence, and a relation that is
+wrong is withdrawn by whoever may act on the ticket.</p><p>The events are also safe under ADR 0009. A reader that predates them
+preserves, hashes and ignores them, and because no stage reads a
+relation, that reader derives exactly the stages a current one does.
+Adding them is the kind of change ADR 0001 and PLAN §2 reserve for new
+capability: new event types under a version bump, never pluggable code.</p><p>Alternatives considered:</p><ul><li><strong>A free metadata map on the ticket.</strong> Unbounded keys and values would
+become a second state channel that definitions cannot see and lenses
+interpret ad hoc, which is the abuse this decision exists to prevent.</li><li><strong>Exempting <code>[:link …]</code> facts from the frontier.</strong> It fixes the agent
+problem and keeps the guard problem, and it makes one fact prefix
+behave unlike every other fact.</li><li><strong>Letting definitions guard on relations behind an opt-in.</strong> A single
+definition that does so turns relations back into state for every
+reader of its tickets, and the maintainer decided that no guard ever
+reads a relation.</li></ul><h2 id=consequences>Consequences</h2><ul><li>The event vocabulary grows from seven types to nine. PLAN §2, the
+<code>event-types</code> docstring and the events-and-facts concept page change
+with the release that adds them.</li><li><code>tik.link</code> keeps parsing and rendering references for relation targets
+and <code>[:gate …]</code> values, and stays total, because a target arriving
+from a replica or a bundle is not guaranteed to be well formed.</li><li><code>plan</code>, <code>query</code> and <code>inspect</code> read relations. <code>plan</code> stays total over
+cycles: write-time refusal covers one store, while two replicas can
+each accept one half of a cycle, and a foreign cycle is still not
+detected anywhere, as ADR 0024 recorded.</li><li>A target may be missing from a replica that has not received it yet,
+so every lens tolerates a relation whose target does not resolve.</li><li>For one release the lenses read both <code>[:link …]</code> facts and relations.
+A <code>tik store</code> upgrade step then turns each standing link fact into a
+relation event signed by the actor who runs it, with the original
+fact&rsquo;s event among its parents, and turns each <code>[:link &lt;gate-name>]</code>
+minted by <code>bridge gate</code> into a <code>[:gate &lt;gate-name>]</code> fact. After that
+release, <code>tik lint</code> reports a <code>[:link …]</code> path in a definition as an
+error.</li><li>A definition that guards on a <code>[:link …]</code> fact drops that guard and
+opts into the kind instead, keeping whatever other facts already name
+its subject. Its tickets move only through <code>reprocess</code>, and the dry
+run shows any stage they would lose.</li><li><code>tik set &lt;id> link.&lt;kind>=&lt;id></code> stops being the way to relate tickets;
+<code>tik relate &lt;id> &lt;kind> &lt;target></code> and <code>tik unrelate</code> replace it, and
+the CLI keeps the short reference spellings of ADR 0024.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0029-relations-are-events-no-stage-reads.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0029-relations-are-events-no-stage-reads.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

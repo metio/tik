@@ -1,0 +1,104 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="The mail bridge records a DKIM-authenticated sender of a new ticket as a keyed pseudonym, keeps the address in a private table outside the store, and refuses blocked senders before writing anything · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="The mail bridge records a DKIM-authenticated sender of a new ticket as a keyed pseudonym, keeps the address in a private table outside the store, and refuses blocked senders before writing anything · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-27T12:14:41+01:00","datePublished":"2026-11-27T00:00:00Z","headline":"The mail bridge records a DKIM-authenticated sender of a new ticket as a keyed pseudonym, keeps the address in a private table outside the store, and refuses blocked senders before writing anything","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym/","url":"https://tik.projects.metio.wtf/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym/","name":"The mail bridge records a DKIM-authenticated sender of a new ticket as a keyed pseudonym, keeps the address in a private table outside the store, and refuses blocked senders before writing anything","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; The mail bridge records a DKIM-authenticated sender of a new ticket as a keyed pseudonym, keeps the address in a private table outside the store, and refuses blocked senders before writing anything</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0043-a-mail-reporter-is-a-keyed-pseudonym>ADR 0043: A mail reporter is a keyed pseudonym</h1><h2 id=decision>Decision</h2><p>Proposed on 2026-11-27. Not accepted. It is implemented in <code>tik.reporter</code>,
+<code>tik.reporter-cmd</code> and <code>tik.bridge</code> under ticket 717990fb of the metio
+store, and builds on ADR 0019 and ADR 0042. Each choice names the
+alternatives and why it was taken, ranked by security first, then
+extensibility and re-use, then performance.</p><p><strong>A mailbox with <code>:reporter</code> records the DKIM-authenticated sender of
+each new ticket as a fact holding <code>hmac-sha256:</code> and the lower-case hex
+HMAC-SHA256 of the normalised address under a key the store never sees.
+The pseudonym → address mapping lives in a private table on the
+bridge&rsquo;s machine, outside the store, and <code>tik reporter forget</code> erases a
+row for an erasure request. A mailbox with <code>:block</code> refuses listed
+senders after the DKIM gate and before any event is written.</strong></p><div class=highlight><pre tabindex=0 class=chroma><code class=language-clojure data-lang=clojure><span class=line><span class=cl><span class=p>{</span><span class=ss>:reporter</span> <span class=p>{</span><span class=ss>:key</span> <span class=p>{</span><span class=ss>:credential</span> <span class=s>&#34;reporter-key&#34;</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>            <span class=ss>:table</span> <span class=s>&#34;~/.local/state/tik/reporters&#34;</span>
+</span></span><span class=line><span class=cl>            <span class=ss>:fact</span> <span class=p>[</span><span class=ss>:reporter</span> <span class=ss>:id</span><span class=p>]}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:block</span> <span class=p>{</span><span class=ss>:addresses</span> <span class=p>[</span><span class=s>&#34;noise@example.net&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>         <span class=ss>:domains</span> <span class=p>[</span><span class=s>&#34;spam.example&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>         <span class=ss>:pseudonyms</span> <span class=p>[</span><span class=s>&#34;hmac-sha256:&lt;64 hex digits&gt;&#34;</span><span class=p>]}}</span>
+</span></span></code></pre></div><p>The receiving process declares the fact:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-clojure data-lang=clojure><span class=line><span class=cl><span class=ss>:process/facts</span> <span class=p>{[</span><span class=ss>:reporter</span> <span class=ss>:id</span><span class=p>]</span> <span class=p>[</span><span class=ss>:re</span> <span class=s>&#34;^hmac-sha256:[0-9a-f]{64}$&#34;</span><span class=p>]}</span>
+</span></span></code></pre></div><h3 id=1-a-pseudonym-in-the-log-the-address-outside-it>1. A pseudonym in the log, the address outside it</h3><p>The log is append-only, content-addressed and signed, so a plaintext
+address in an event could never be erased without rewriting every
+descendant id and signature. An erasure request under the GDPR then has
+no answer.</p><ul><li><strong>Chosen: a keyed pseudonym.</strong> The fact is stable per sender, so the
+store can count reports per sender and a block list can name a sender
+without naming the address. Without the key, the pseudonym can be
+neither reversed nor recomputed. With the key, a guessed address can be
+checked against it; that is accepted, and the key is guarded like a
+signing key.</li><li>Rejected: plaintext in the log (no erasure), an unkeyed hash (anybody
+with a list of addresses reverses it in seconds), and a random id per
+sender held only in the table (the same sender would get a new id on a
+second machine or after the table is lost, and blocking by id would
+need the table).</li><li><strong>Determinism.</strong> The pseudonym is a pure function of the key and the
+address, so two bridges with the same key mint the same fact for the
+same message, as ADR 0021 requires of a self-minted event.</li></ul><h3 id=2-only-an-authenticated-sender-becomes-a-reporter>2. Only an authenticated sender becomes a reporter</h3><p>The fact is asserted only when the mailbox requires DKIM and the gate
+(<code>tik.mail/require-dkim!</code>) let the message through. The bridge consumes
+the gate&rsquo;s outcome and does not judge <code>Authentication-Results</code> itself,
+so a change to the gate carries over. A config with <code>:reporter</code> and
+without <code>:dkim {:require true :authserv-id …}</code> is refused at start, and
+<code>ingest-message!</code> checks again at run time, so an unauthenticated From
+never becomes a reporter identity.</p><h3 id=3-new-tickets-only>3. New tickets only</h3><p>A comment on an existing ticket records nothing, whoever sends it. The
+fact answers who opened the report; a second sender asserting it would
+replace the opener and blur &ldquo;who sent the most reports&rdquo;, and recording
+every participant would keep addresses of people who only replied. A
+participant fact can be added later under its own path. A <code>tik></code> line in
+a mail can never set the reporter fact, nor <code>[:reporter :id]</code> on a
+mailbox without <code>:reporter</code>: a sender would otherwise forge another
+sender&rsquo;s pseudonym.</p><h3 id=4-normalisation>4. Normalisation</h3><p>The address is the addr-spec the bridge already extracts, trimmed and
+lower-cased, with one pair of enclosing angle brackets removed (for an
+address typed at <code>tik reporter forget</code>). Nothing else is folded: plus
+tags, dots in a Gmail local part and IDN forms are rules of particular
+providers, and folding them would merge mailboxes that are distinct
+elsewhere. A sender who varies plus tags to escape an address block is
+caught by a domain block.</p><h3 id=5-the-key>5. The key</h3><p><code>:key</code> is a secret spec resolved once when the bridge starts, through
+<code>tik.secret</code>. A literal (it would sit in a config file) and <code>{:env …}</code>
+(every child inherits it, ADR 0041) are refused, as is a key shorter
+than 32 bytes, HMAC-SHA256&rsquo;s own security level. The key is the UTF-8
+bytes of the resolved line; <code>openssl rand -hex 32</code> gives 64 bytes of
+which 32 are entropy. The bridge refuses to start when the key is
+missing or short, when the process does not declare the fact, or when
+the declared schema rejects a pseudonym, so a misconfiguration fails at
+start instead of on the first report.</p><h3 id=6-the-table>6. The table</h3><p>The table is a directory with mode 0700 holding one file per pseudonym
+with mode 0600, <code>&lt;64 hex>.edn</code>, each <code>{:address … :first-seen …}</code>.</p><ul><li><strong>Outside the store.</strong> The bridge refuses a table inside the store&rsquo;s
+root, so it is never committed, pushed or bundled. Erasure is deleting
+a file; after <code>tik reporter forget</code>, the pseudonym on the tickets
+resolves to nothing.</li><li><strong>Written whole.</strong> A row is written to a 0600 temp file in the same
+directory, forced to disk and renamed into place, so a reader sees a
+whole row or none. The row is written before the ticket&rsquo;s events: a
+ticket whose pseudonym nobody can resolve is worse than a row with no
+ticket.</li><li><strong>No lock.</strong> One file per row means two bridges sharing a table never
+rewrite each other&rsquo;s rows; two recording the same sender write the same
+address and the later rename wins. A single file would need a lock to
+avoid losing rows.</li><li><strong>Permissions are checked.</strong> A table directory or row that a group or
+others can use, or that is a symbolic link, is refused on read and
+write.</li><li><strong>Not encrypted.</strong> Encryption at rest would need a key on the same
+machine, readable by the same user that reads the table, so it adds no
+protection against that user and none against a stolen disk that a
+disk encryption does not already give. It would also not change
+erasure, which still deletes the row. Backups of the table keep what
+they hold until they expire, and an erasure request has to name them.</li></ul><h3 id=7-blocking>7. Blocking</h3><p><code>:block</code> is checked after the DKIM gate and before any event or row is
+written, and the refusal is logged with the rule that matched (an
+address&rsquo;s index, a domain or a pseudonym), never the address or the
+body. The poll skips the message like any other refusal and continues.</p><ul><li><strong>Domains</strong> match themselves and every subdomain on a label boundary:
+<code>spam.example</code> blocks <code>mail.spam.example</code> and not <code>nospam.example</code>.
+Entries are bare lower-case names; a leading dot, <code>@</code> or <code>*</code> is
+refused rather than guessed at.</li><li><strong>Pseudonyms</strong> keep plaintext out of the config. They need <code>:reporter</code>,
+whose key computes a sender&rsquo;s pseudonym, and they still hold after the
+sender&rsquo;s row was forgotten.</li><li>A block also applies to mail on a mailbox without DKIM, where it can
+only refuse more.</li></ul><h3 id=8-analytics>8. Analytics</h3><p><code>tik reporter stats</code> counts tickets per pseudonym across the store with a
+pure function over derived rows and the table, showing the address where
+a row exists and <code>(forgotten)</code> where none does. <code>tik stats --by reporter.id</code> already counts per pseudonym; <code>tik reporter stats</code> adds the
+resolution.</p><h2 id=consequences>Consequences</h2><ul><li>A process that receives reports declares <code>[:reporter :id]</code>; the metio
+<code>vulnerability</code> process gains it in a new version.</li><li>The key and the table are new things to back up and guard on the
+bridge&rsquo;s machine, and a lost key makes every recorded pseudonym
+unmatchable by a new mail.</li><li>Not done: participant pseudonyms on comments, and blocking without
+DKIM by anything but the From address.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0043-a-mail-reporter-is-a-keyed-pseudonym.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

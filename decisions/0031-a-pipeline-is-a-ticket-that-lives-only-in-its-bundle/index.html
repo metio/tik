@@ -1,0 +1,81 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-22T00:57:09+01:00","datePublished":"2026-11-22T00:00:00Z","headline":"A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/","url":"https://tik.projects.metio.wtf/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/","name":"A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; A pipeline run is one ticket in a throwaway store, its jobs bind their own keys, and the bundle it publishes is the only record</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle>ADR 0031: A pipeline is a ticket that lives only in its bundle</h1><h2 id=decision>Decision</h2><p><strong>A CI pipeline can use tik without a store anyone keeps.</strong> The run
+creates a throwaway store, mints one ticket against a process definition
+that the repository pins by hash, records each job&rsquo;s evidence as signed
+facts, and publishes <code>tik bundle</code> of that ticket next to the release
+artifacts. The bundle is the only record that survives the run, and
+<code>tik rederive --expect-definition --expect-stage</code> is how anyone checks it.
+No new kernel concept is needed: this is the release pipeline of this
+repository with the store made ephemeral, and the rules below are what
+makes that safe.</p><ol><li><strong>The trust anchors are pinned in the repository, never fetched by the
+run.</strong> The process definition, the issuer keys under <code>jwks/</code>, the
+binding policy in <code>oidc.edn</code> (ADR 0026) and <code>roles.edn</code> come from the
+commit being built. A run that fetched them would let whoever controls
+the network choose the rules that judge it. <code>tik init --from &lt;dir></code>
+seeds a fresh store from those files and refuses one that does not
+lint.</li><li><strong>Every job is its own actor and binds its own key.</strong> A job generates
+a keypair, binds it with <code>tik bridge workload --github</code> against its own
+OIDC token, and signs only its own facts. The binding policy names
+the subject that may bind each actor, and it matches the token&rsquo;s <code>sub</code>
+claim and nothing else. GitHub&rsquo;s default <code>sub</code> names the repository
+and the ref, not the workflow or the job, so on its own it cannot tell
+two jobs of one run apart. A pipeline that wants one actor per job
+either customizes the repository&rsquo;s subject claim to include the job&rsquo;s
+workflow reference (GitHub offers this per repository; check its
+current documentation before relying on the exact template), or tik
+grows policy matching on further claims such as <code>job_workflow_ref</code>,
+which would be its own decision. A pipeline whose jobs share one
+actor proves only that the workflow ran, not which step did what.</li><li><strong>Jobs hand over events, not stores.</strong> A job uploads its signed events
+as a CI artifact (<code>tik export</code>), and a final job <code>tik import</code>s them all
+into one store, where the union by content address makes the order of
+arrival and duplicates irrelevant. That final job derives and bundles;
+it holds no authority the others lack, and a forged import fails
+<code>tik verify</code> like any other forgery.</li><li><strong>The stage is what the definition derives from the bundle, and only
+that.</strong> A consumer pins the definition hash and the stage it requires.
+The pipeline never writes &ldquo;passed&rdquo;; a skipped job leaves its stage
+underived, and the bundle says less, which is the true answer.</li><li><strong>A bundle verifies offline forever.</strong> It carries the pinned issuer
+keys and the tokens that bound each key, so checking it needs neither
+GitHub nor the network (ADR 0023, ADR 0025). Freshness guards
+(<code>:attested-within</code>) still judge at the instant of the check, so a
+consumer that wants &ldquo;built within 90 days&rdquo; gets it from the same bytes.</li></ol><h2 id=context>Context</h2><p>The idea came from wanting tik&rsquo;s signature, evidence and process model for
+one pipeline at a time: the process says which steps a release needs, the
+jobs prove with their workload identity that each step ran, and the
+signature travels with the artifacts. Most of that exists. The release
+workflow of this repository already generates a key per run, binds it to
+the workflow&rsquo;s OIDC token, records the release as a ticket and publishes
+<code>evidence-&lt;version>.tgz</code> with the release. What it does not do is stand
+alone: the store is this repository, so the pipeline depends on the
+repository being a tik store, and every step runs in one job as one actor.</p><p>A store-less mode removes the first dependency and fixes the second. A
+repository that is not a tik store pins a definition and the issuer keys
+it trusts, and gets the same evidence. Splitting the actors per job lets a
+definition say &ldquo;the build job and the scan job are different identities&rdquo;,
+which is the property a supply-chain reader actually wants.</p><p>The overlap with SLSA provenance and in-toto attestations is deliberate
+and bounded. Those formats describe what was built from what; tik
+describes which steps of a declared process have evidence and who signed
+each. The <code>supply-chain-release</code> process already attests SBOM and
+provenance as claims without reading them, and a pipeline-mode ticket can
+carry an in-toto statement&rsquo;s digest as a fact in the same way. tik does
+not become an in-toto verifier.</p><h2 id=consequences>Consequences</h2><ul><li><code>tik init --from &lt;dir></code> is new porcelain: it copies a pinned
+definition, <code>jwks/</code>, <code>oidc.edn</code> and <code>roles.edn</code> into a fresh store and
+lints them. Everything else (workload binding, export, import, bundle,
+rederive) exists today.</li><li>A definition written for pipeline mode names one role per job, with the
+binding policy as the only way into each role. Its tests need a negative
+case per job: a fact signed by another job&rsquo;s actor does not satisfy the
+guard.</li><li>Issuer key rotation is handled the way ADR 0027 already handles it: a
+run pins the keys it trusts at its commit, and re-pinning merges by
+<code>kid</code>, so a bundle signed under an older key stays checkable.</li><li>Open: whether the policy should match claims beyond <code>sub</code> (today it
+does not, <code>cli/tik/identity_trust.clj</code>); how a reusable workflow called from
+another repository is named in the policy; and whether a pipeline that
+spans several workflow runs (a release triggered by a tag after a
+separate build) is one ticket or two linked ones. Each needs an answer
+before a definition depends on it.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0031-a-pipeline-is-a-ticket-that-lives-only-in-its-bundle.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

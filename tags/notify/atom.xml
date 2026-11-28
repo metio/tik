@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Notify on tik</title><link href="https://tik.projects.metio.wtf/tags/notify/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/notify/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/notify/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/notify/</id><entry><title type="html">Local service</title><link href="https://tik.projects.metio.wtf/integrations/local-service/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/github-actions/?utm_source=atom_feed" rel="related" type="text/html" title="GitHub Actions"/><link href="https://tik.projects.metio.wtf/integrations/gitlab-pipelines/?utm_source=atom_feed" rel="related" type="text/html" title="GitLab pipelines"/><link href="https://tik.projects.metio.wtf/get-started/install/?utm_source=atom_feed" rel="related" type="text/html" title="Install"/><link href="https://tik.projects.metio.wtf/integrations/odoo/?utm_source=atom_feed" rel="related" type="text/html" title="Odoo"/><link href="https://tik.projects.metio.wtf/integrations/redmine/?utm_source=atom_feed" rel="related" type="text/html" title="Redmine"/><id>https://tik.projects.metio.wtf/integrations/local-service/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-28T11:57:40+01:00</updated><content type="html"><![CDATA[<blockquote>Run the board, MCP, the bridges, backend and notify from the native binary, under systemd or by hand.</blockquote><p>The native binary runs everything a long-running local install needs:
+<code>tik serve</code> for the board and MCP, <code>tik bridge &lt;kind&gt;</code> sweeps, <code>tik backend</code> for scheduled pipelines and <code>tik notify</code> for hints. It needs no
+JVM, no babashka and no checkout. Every release checks this with
+<code>dev/native-smoke.sh</code>, which drives the built binary through each of
+these against loopback stand-ins for GitHub, GitLab, Redmine, Odoo and an
+IMAP mailbox.</p>
+<h2 id="the-environment">The environment</h2>
+<table>
+	<thead>
+			<tr>
+					<th>Variable</th>
+					<th>Read by</th>
+					<th>Meaning</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>TIK_ROOT</code></td>
+					<td>every verb</td>
+					<td>The store. Without it, tik uses the nearest ancestor holding <code>.tik/</code>, <code>tickets/</code> or <code>tik.db</code>.</td>
+			</tr>
+			<tr>
+					<td><code>TIK_ACTOR</code></td>
+					<td>every write</td>
+					<td>The actor events are signed as. <code>--actor</code> overrides it.</td>
+			</tr>
+			<tr>
+					<td><code>TIK_KEY</code></td>
+					<td>every write</td>
+					<td>The ed25519 private key that signs. <code>--key</code> overrides it.</td>
+			</tr>
+			<tr>
+					<td><code>GITHUB_TOKEN</code></td>
+					<td><code>bridge github</code></td>
+					<td>The token when <code>github.edn</code> names neither <code>:token</code> nor <code>:tokens</code>.</td>
+			</tr>
+			<tr>
+					<td><code>GITHUB_WEBHOOK_SECRET</code></td>
+					<td><code>bridge github --webhook</code></td>
+					<td>The HMAC secret when <code>github.edn</code> has no <code>:webhook {:secret …}</code>.</td>
+			</tr>
+			<tr>
+					<td><code>GITLAB_TOKEN</code></td>
+					<td><code>bridge gitlab</code></td>
+					<td>The token when <code>gitlab.edn</code> has no <code>:token</code>.</td>
+			</tr>
+			<tr>
+					<td><code>REDMINE_API_KEY</code></td>
+					<td><code>bridge redmine</code></td>
+					<td>The key when <code>redmine.edn</code> has no <code>:key</code>.</td>
+			</tr>
+			<tr>
+					<td><code>ODOO_PASSWORD</code></td>
+					<td><code>bridge odoo</code></td>
+					<td>The password when <code>odoo.edn</code> has no <code>:password</code>.</td>
+			</tr>
+			<tr>
+					<td><code>CREDENTIALS_DIRECTORY</code></td>
+					<td>any <code>{:credential …}</code></td>
+					<td>Set by systemd for <code>LoadCredential=</code>.</td>
+			</tr>
+			<tr>
+					<td><code>XDG_RUNTIME_DIR</code>, <code>XDG_STATE_HOME</code></td>
+					<td><code>notify</code></td>
+					<td>The default socket directory and the cursor.</td>
+			</tr>
+	</tbody>
+</table>
+<p>Any secret in a bridge config can be a spec instead of a literal:
+<code>{:command &quot;pass show github&quot;}</code> (the first line of the command&rsquo;s
+output), <code>{:file &quot;/run/secrets/x&quot;}</code>, <code>{:env &quot;NAME&quot;}</code> or <code>{:credential &quot;NAME&quot;}</code>. The credential form is the one to prefer under systemd: the
+secret never sits in a file you commit, in the environment or in argv.
+An unset variable, a missing file, a failing command and an empty or
+blank value are refused rather than read as an empty secret. A command
+has one minute to answer, its error output goes to tik&rsquo;s stderr instead
+of into the refusal, and a file, credential or output longer than 64 KiB
+is refused.</p>
+<h2 id="the-board-and-mcp">The board and MCP</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">openssl rand -hex <span class="m">32</span> &gt; ~/.local/state/tik/mcp-token
+</span></span><span class="line"><span class="cl"><span class="nv">TIK_ROOT</span><span class="o">=</span>~/work/.tik <span class="nv">TIK_ACTOR</span><span class="o">=</span>claude <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/claude_ed25519 <span class="se">\
+</span></span></span><span class="line"><span class="cl">  tik serve --host 127.0.0.1 --port <span class="m">7777</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl">    --mcp-token-file ~/.local/state/tik/mcp-token --surfaces http,mcp
+</span></span></code></pre></div><p><code>/</code> is the board, <code>/tickets.edn</code> and <code>/explain/&lt;id&gt;.edn</code> its data, and
+<code>/mcp</code> the MCP endpoint. Clients send the token as <code>Authorization: Bearer &lt;token&gt;</code>. <code>/mcp</code> answers both the <code>initialize</code> handshake and stateless
+2026-07-28 requests; see <a href="/integrations/mcp-server/">MCP server</a>
+. Calls
+on <code>/mcp</code> write as <code>TIK_ACTOR</code>, which is why the token is required and why
+<code>serve</code> listens on 127.0.0.1 unless <code>--host</code> says otherwise.</p>
+<h2 id="the-bridges">The bridges</h2>
+<p>Each sync bridge reads its config from the store root (<code>github.edn</code>,
+<code>gitlab.edn</code>, <code>redmine.edn</code>, <code>odoo.edn</code>, <code>imap.edn</code>), or from <code>--config</code>,
+sweeps once and exits 0, or 1 when any unit of the sweep failed:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nb">export</span> <span class="nv">TIK_ROOT</span><span class="o">=</span>~/work/.tik <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/github_ed25519
+</span></span><span class="line"><span class="cl">tik bridge github                       <span class="c1"># github.edn: :token or GITHUB_TOKEN</span>
+</span></span><span class="line"><span class="cl">tik bridge gitlab                       <span class="c1"># gitlab.edn: :token or GITLAB_TOKEN</span>
+</span></span><span class="line"><span class="cl">tik bridge redmine                      <span class="c1"># redmine.edn: :key or REDMINE_API_KEY</span>
+</span></span><span class="line"><span class="cl">tik bridge odoo                         <span class="c1"># odoo.edn: :password or ODOO_PASSWORD</span>
+</span></span><span class="line"><span class="cl">tik bridge imap                         <span class="c1"># imap.edn: {:imap {:host … :user … :password …}}</span>
+</span></span></code></pre></div><p>The actor of a sweep is the config&rsquo;s <code>:actor</code> (or <code>github</code>, <code>gitlab</code>,
+<code>redmine</code>, <code>odoo</code>), so <code>TIK_KEY</code> must be that actor&rsquo;s key. A server that
+cannot be reached, or whose certificate does not chain to a CA the binary
+trusts, fails the sweep with a line naming the API, the address and the
+cause, and nothing is written. For a server behind a private CA, name a
+trust store holding that CA; the binary reads <code>-D</code> system properties
+before its verb:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik -Djavax.net.ssl.trustStore<span class="o">=</span>/etc/pki/internal.p12 <span class="se">\
+</span></span></span><span class="line"><span class="cl">    -Djavax.net.ssl.trustStorePassword<span class="o">=</span>changeit bridge odoo
+</span></span></code></pre></div><p>The detail of each bridge is on its own page:
+<a href="/integrations/github-actions/">GitHub Actions</a>
+,
+<a href="/integrations/gitlab-pipelines/">GitLab pipelines</a>
+,
+<a href="/integrations/redmine/">Redmine</a>
+ and <a href="/integrations/odoo/">Odoo</a>
+.</p>
+<h2 id="under-systemd">Under systemd</h2>
+<p>A timer per bridge, with the signing key and the remote&rsquo;s secret handed
+over as credentials. The key file is readable only by the unit while it
+runs:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-ini" data-lang="ini"><span class="line"><span class="cl"><span class="c1"># ~/.config/systemd/user/tik-bridge@.service</span>
+</span></span><span class="line"><span class="cl"><span class="k">[Unit]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Description</span><span class="o">=</span><span class="s">Sweep the %i tik bridge</span>
+</span></span><span class="line"><span class="cl"><span class="na">After</span><span class="o">=</span><span class="s">network-online.target</span>
+</span></span><span class="line"><span class="cl"><span class="na">Wants</span><span class="o">=</span><span class="s">network-online.target</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Service]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Type</span><span class="o">=</span><span class="s">oneshot</span>
+</span></span><span class="line"><span class="cl"><span class="na">EnvironmentFile</span><span class="o">=</span><span class="s">%h/.config/tik/bridge-%i.env</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">tik-key:%h/.config/tik/%i_ed25519</span>
+</span></span><span class="line"><span class="cl"><span class="na">Environment</span><span class="o">=</span><span class="s">TIK_KEY=%d/tik-key</span>
+</span></span><span class="line"><span class="cl"><span class="na">ExecStart</span><span class="o">=</span><span class="s">%h/.local/bin/tik bridge ${TIK_BRIDGE}</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-ini" data-lang="ini"><span class="line"><span class="cl"><span class="c1"># ~/.config/systemd/user/tik-bridge@.timer</span>
+</span></span><span class="line"><span class="cl"><span class="k">[Unit]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Description</span><span class="o">=</span><span class="s">Sweep the %i tik bridge every 10 minutes</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Timer]</span>
+</span></span><span class="line"><span class="cl"><span class="na">OnBootSec</span><span class="o">=</span><span class="s">2min</span>
+</span></span><span class="line"><span class="cl"><span class="na">OnUnitActiveSec</span><span class="o">=</span><span class="s">10min</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Install]</span>
+</span></span><span class="line"><span class="cl"><span class="na">WantedBy</span><span class="o">=</span><span class="s">timers.target</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="c1"># ~/.config/tik/bridge-github-work.env</span>
+</span></span><span class="line"><span class="cl"><span class="nv">TIK_BRIDGE</span><span class="o">=</span>github
+</span></span><span class="line"><span class="cl"><span class="nv">TIK_ROOT</span><span class="o">=</span>/home/me/work/.tik
+</span></span></code></pre></div><p><code>%d</code> is the unit&rsquo;s credentials directory. A secret the config fetches
+with <code>{:credential &quot;github-token&quot;}</code> arrives the same way, through another
+<code>LoadCredential=github-token:&lt;file&gt;</code> line. Enable one instance per bridge
+with <code>systemctl --user enable --now tik-bridge@github-work.timer</code>.</p>
+<p>The board runs as a plain service:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-ini" data-lang="ini"><span class="line"><span class="cl"><span class="c1"># ~/.config/systemd/user/tik.service</span>
+</span></span><span class="line"><span class="cl"><span class="k">[Unit]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Description</span><span class="o">=</span><span class="s">tik board and MCP on 127.0.0.1:7777</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Service]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Environment</span><span class="o">=</span><span class="s">TIK_ROOT=%h/work/.tik TIK_ACTOR=claude</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">tik-key:%h/.config/tik/claude_ed25519</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">mcp-token:%h/.local/state/tik/mcp-token</span>
+</span></span><span class="line"><span class="cl"><span class="na">Environment</span><span class="o">=</span><span class="s">TIK_KEY=%d/tik-key</span>
+</span></span><span class="line"><span class="cl"><span class="na">ExecStart</span><span class="o">=</span><span class="s">%h/.local/bin/tik serve --host 127.0.0.1 --port 7777 \
+</span></span></span><span class="line"><span class="cl"><span class="s">  --mcp-token-file %d/mcp-token --surfaces http,mcp</span>
+</span></span><span class="line"><span class="cl"><span class="c1"># tik exits with 143 on the SIGTERM of a stop, which is no failure.</span>
+</span></span><span class="line"><span class="cl"><span class="na">SuccessExitStatus</span><span class="o">=</span><span class="s">143</span>
+</span></span><span class="line"><span class="cl"><span class="na">Restart</span><span class="o">=</span><span class="s">on-failure</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Install]</span>
+</span></span><span class="line"><span class="cl"><span class="na">WantedBy</span><span class="o">=</span><span class="s">default.target</span>
+</span></span></code></pre></div><h2 id="pipelines-instead-of-timers">Pipelines instead of timers</h2>
+<p><code>tik backend</code> runs the same sweeps from one process on an interval. Each
+pipeline runs as the actor its <code>:as</code> names, passed as <code>--actor</code>, which
+takes precedence over a bridge config&rsquo;s <code>:actor</code>. <code>TIK_KEY</code> is that
+actor&rsquo;s key, so one backend process signs as one actor, and the bridge
+role of each process (<code>roles.edn</code>) has to include it. Put
+<code>pipelines.edn</code> at the store root:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:pipelines</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:id</span> <span class="ss">:github</span>  <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:as</span> <span class="s">&#34;tik-backend&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;github&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="ss">:redmine</span> <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:as</span> <span class="s">&#34;tik-backend&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;redmine&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="ss">:board</span>   <span class="ss">:watch</span> <span class="nv">true</span>                      <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;serve&#34;</span> <span class="s">&#34;--port&#34;</span> <span class="s">&#34;7777&#34;</span><span class="p">]}]}</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nv">TIK_ROOT</span><span class="o">=</span>~/work/.tik <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/backend_ed25519 tik backend
+</span></span></code></pre></div><p>A failing pipeline logs and the others carry on; a <code>:watch</code> pipeline is
+restarted with backoff when it exits.</p>
+<h2 id="several-stores-in-one-backend">Several stores in one backend</h2>
+<p>A config with <code>:stores</code> serves several stores from one process. Each
+store signs with its own key as its own actor, and its board and MCP
+answer below <code>/s/&lt;store&gt;/</code> with that store&rsquo;s own token:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="c1">;; ~/.config/tik/backend.edn</span>
+</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stores</span> <span class="p">{</span><span class="ss">:work</span> <span class="p">{</span><span class="ss">:root</span> <span class="s">&#34;~/work/.tik&#34;</span> <span class="ss">:org</span> <span class="s">&#34;work&#34;</span> <span class="ss">:actor</span> <span class="s">&#34;claude&#34;</span>
+</span></span><span class="line"><span class="cl">                 <span class="ss">:key</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;tik-work-key&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">                 <span class="ss">:mcp-token-file</span> <span class="s">&#34;~/.local/state/tik/mcp-token-work&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">          <span class="ss">:home</span> <span class="p">{</span><span class="ss">:root</span> <span class="s">&#34;~/home/.tik&#34;</span> <span class="ss">:org</span> <span class="s">&#34;home&#34;</span> <span class="ss">:actor</span> <span class="s">&#34;claude&#34;</span>
+</span></span><span class="line"><span class="cl">                 <span class="ss">:key</span> <span class="p">{</span><span class="ss">:command</span> <span class="p">[</span><span class="s">&#34;pass&#34;</span> <span class="s">&#34;show&#34;</span> <span class="s">&#34;tik/home&#34;</span><span class="p">]}}}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:serve</span> <span class="p">{</span><span class="ss">:host</span> <span class="s">&#34;127.0.0.1&#34;</span> <span class="ss">:port</span> <span class="mi">7777</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:notify</span> <span class="p">{}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:pipelines</span> <span class="p">[{</span><span class="ss">:id</span> <span class="ss">:github-work</span> <span class="ss">:store</span> <span class="ss">:work</span> <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;github&#34;</span><span class="p">]}]}</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik backend --config ~/.config/tik/backend.edn
+</span></span></code></pre></div><ul>
+<li><code>:key</code> is a path, <code>{:file …}</code>, <code>{:credential …}</code> or <code>{:command …}</code>.
+A command&rsquo;s whole output is written to an owner-only file below
+<code>XDG_RUNTIME_DIR</code> for as long as the backend runs. <code>{:env …}</code> is
+refused.</li>
+<li>At start, each key must sign as the store&rsquo;s <code>:actor</code> according to that
+store&rsquo;s own <code>actors</code> file. Two stores with different <code>:org</code> may not
+resolve to the same key unless <code>:allow-shared-keys [[:work :home]]</code>
+says so.</li>
+<li>An MCP token file must hold at least 32 characters and be readable by
+you only, and each store needs its own. A token sent to another store&rsquo;s
+path is refused with 401.</li>
+<li>A pipeline names its <code>:store</code>. It runs as that store&rsquo;s actor, or as
+<code>:as</code>, which that store&rsquo;s <code>actors</code> file must grant the key to. It may
+not pass <code>--key</code>, <code>--actor</code> or <code>--config</code>, and may not run <code>serve</code>,
+<code>notify</code>, <code>mcp</code> or <code>backend</code>, which the backend provides for every
+store itself.</li>
+<li><code>:notify</code> takes the settings of a <code>notify.edn</code> and watches every store
+of the backend.</li>
+<li><code>TIK_ROOT</code>, <code>TIK_KEY</code>, <code>TIK_PQ_KEY</code> and <code>TIK_ACTOR</code> must not be set in
+the backend&rsquo;s environment, and neither may <code>GITHUB_TOKEN</code>,
+<code>GITHUB_WEBHOOK_SECRET</code>, <code>GITLAB_TOKEN</code>, <code>REDMINE_API_KEY</code> or
+<code>ODOO_PASSWORD</code>: every pipeline inherits the environment, so a token
+meant for one store&rsquo;s bridge would reach all of them. Name the secret
+in the bridge&rsquo;s config instead.</li>
+</ul>
+<p>Any problem with any store refuses the whole backend and lists every
+problem, so a running backend always serves every store it names.</p>
+<h2 id="bridges-and-mailboxes-as-pipelines">Bridges and mailboxes as pipelines</h2>
+<p>A multi-store backend replaces one systemd timer per bridge. Each run of
+a pipeline is a child process of the same binary that sees only its own
+store&rsquo;s root, key and actor, so a bridge signs as its own delegate in its
+own store, and nothing one run keeps in memory reaches another store&rsquo;s.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stores</span> <span class="p">{</span><span class="nv">...</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:on-failure</span> <span class="p">{</span><span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;notify-send&#34;</span> <span class="s">&#34;--urgency=critical&#34;</span> <span class="s">&#34;tik {store}/{pipeline}&#34;</span> <span class="s">&#34;{reason}&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">              <span class="ss">:repeat</span> <span class="s">&#34;PT1H&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:pipelines</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:id</span> <span class="ss">:github-work</span> <span class="ss">:store</span> <span class="ss">:work</span> <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:as</span> <span class="s">&#34;github&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:key</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;github-work-key&#34;</span><span class="p">}</span> <span class="ss">:config</span> <span class="s">&#34;github.edn&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;github&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="ss">:redmine-work</span> <span class="ss">:store</span> <span class="ss">:work</span> <span class="ss">:every</span> <span class="s">&#34;PT10M&#34;</span> <span class="ss">:jitter</span> <span class="s">&#34;PT2M&#34;</span> <span class="ss">:timeout</span> <span class="s">&#34;PT5M&#34;</span> <span class="ss">:as</span> <span class="s">&#34;redmine&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:key</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;redmine-work-key&#34;</span><span class="p">}</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;redmine&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="ss">:support-mail</span> <span class="ss">:store</span> <span class="ss">:work</span> <span class="ss">:watch</span> <span class="nv">true</span> <span class="ss">:as</span> <span class="s">&#34;mail&#34;</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:key</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;mail-work-key&#34;</span><span class="p">}</span> <span class="ss">:config</span> <span class="s">&#34;imap.edn&#34;</span> <span class="ss">:run</span> <span class="p">[</span><span class="s">&#34;bridge&#34;</span> <span class="s">&#34;imap&#34;</span> <span class="s">&#34;--watch&#34;</span><span class="p">]}]}</span>
+</span></span></code></pre></div><table>
+	<thead>
+			<tr>
+					<th>Key</th>
+					<th>Meaning</th>
+					<th>Default</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>:every</code></td>
+					<td>The interval of a scheduled pipeline, as an ISO-8601 duration. Fires sit on a grid from the backend&rsquo;s start, so they do not drift by the run time.</td>
+					<td></td>
+			</tr>
+			<tr>
+					<td><code>:jitter</code></td>
+					<td>Each fire lands at a random point within this window after its grid point.</td>
+					<td><code>PT1M</code>, at most half of <code>:every</code></td>
+			</tr>
+			<tr>
+					<td><code>:timeout</code></td>
+					<td>A run still going after this is stopped (SIGTERM, then SIGKILL five seconds later) and counts as failed.</td>
+					<td><code>:every</code></td>
+			</tr>
+			<tr>
+					<td><code>:watch</code></td>
+					<td>A continuous pipeline, restarted after 1 s, doubling to 60 s while it keeps failing fast, and back to 1 s once a run lasted a minute.</td>
+					<td></td>
+			</tr>
+			<tr>
+					<td><code>:config</code></td>
+					<td>The verb&rsquo;s config file, relative to the store&rsquo;s root, absolute, or <code>~/…</code>; it must exist when the backend starts.</td>
+					<td>the verb&rsquo;s default file at the store&rsquo;s root</td>
+			</tr>
+			<tr>
+					<td><code>:as</code>, <code>:key</code></td>
+					<td>The delegate the run signs as, and its key, which the store&rsquo;s <code>actors</code> file must grant to it.</td>
+					<td>the store&rsquo;s actor and key</td>
+			</tr>
+	</tbody>
+</table>
+<p>The backend&rsquo;s own keys:</p>
+<ul>
+<li><strong>No overlap.</strong> A pipeline due while its previous run still goes is not
+started again; the skip is logged and the next fire is its next grid
+point. Different pipelines run at the same time.</li>
+<li><strong>Catch-up.</strong> Fires missed while the backend was stopped or the machine
+slept collapse into one run, which lands within the jitter window of the
+moment the backend noticed, at most 30 seconds after a resume.</li>
+<li><strong><code>:on-failure</code></strong> runs a command, without a shell, when a run fails or
+times out, with <code>{store}</code>, <code>{pipeline}</code>, <code>{exit}</code> and <code>{reason}</code> filled
+in. A pipeline is reported when it starts failing and again every
+<code>:repeat</code> while it keeps failing; <code>&quot;PT0S&quot;</code> reports every failure, as a
+unit&rsquo;s <code>OnFailure=</code> does.</li>
+<li><strong>The journal.</strong> Every line is labelled <code>[store/pipeline]</code>, and under
+systemd it carries a priority, so <code>journalctl --user -u tik-backend -p warning</code> shows the pipelines&rsquo; error output and the failure reports.</li>
+<li><strong><code>:exec</code></strong> names the command that runs this tik. The native binary and
+babashka find themselves; set it when neither applies.</li>
+</ul>
+<p>Two pipelines of stores with different <code>:org</code> may not sign with the same
+key unless <code>:allow-shared-keys</code> names the pair of stores: one
+organisation&rsquo;s delegate never signs for another&rsquo;s.</p>
+<h3 id="mailboxes">Mailboxes</h3>
+<p><code>bridge imap</code> reads one mailbox under <code>:imap</code>, or several under
+<code>:mailboxes</code>. Every other top-level key is a default for each mailbox, so
+adding a support address is one more list entry:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="c1">;; imap.edn at the store&#39;s root</span>
+</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:dkim</span> <span class="p">{</span><span class="ss">:require</span> <span class="nv">true</span> <span class="ss">:authserv-id</span> <span class="s">&#34;mx.example.org&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:default-actor</span> <span class="s">&#34;mail&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:mailboxes</span>
+</span></span><span class="line"><span class="cl"> <span class="p">[{</span><span class="ss">:id</span> <span class="s">&#34;support-example-org&#34;</span> <span class="ss">:process</span> <span class="ss">:support</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:imap</span> <span class="p">{</span><span class="ss">:host</span> <span class="s">&#34;imap.example.org&#34;</span> <span class="ss">:user</span> <span class="s">&#34;support@example.org&#34;</span>
+</span></span><span class="line"><span class="cl">          <span class="ss">:password</span> <span class="p">{</span><span class="ss">:command</span> <span class="p">[</span><span class="s">&#34;pass&#34;</span> <span class="s">&#34;show&#34;</span> <span class="s">&#34;mail/support@example.org&#34;</span><span class="p">]}}}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span><span class="ss">:id</span> <span class="s">&#34;support-app&#34;</span> <span class="ss">:process</span> <span class="ss">:app-support</span>
+</span></span><span class="line"><span class="cl">   <span class="ss">:imap</span> <span class="p">{</span><span class="ss">:host</span> <span class="s">&#34;imap.example.org&#34;</span> <span class="ss">:user</span> <span class="s">&#34;support@app.example&#34;</span>
+</span></span><span class="line"><span class="cl">          <span class="ss">:password</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;support-app-imap&#34;</span><span class="p">}}}]}</span>
+</span></span></code></pre></div><p>Each mailbox has its own connection, its own backoff and its own
+<code>:process</code>, and its lines are labelled with its <code>:id</code>. <code>bridge imap --mailbox &lt;id&gt;</code> reads only that one. A <code>:mailboxes</code> list, and every
+mailbox a backend watches, must:</p>
+<ul>
+<li>require DKIM at a pinned verifier, <code>:dkim {:require true :authserv-id …}</code>, the id your receiving MX stamps on <code>Authentication-Results</code>, so a
+forged From is never credited to anybody (see below);</li>
+<li>take its password from <code>{:command …}</code>, <code>{:credential …}</code> or <code>{:file …}</code>, never a literal and never <code>{:env …}</code>;</li>
+<li>under a backend, be signed by a key the store grants to every actor a
+mailbox records mail as: <code>:default-actor</code> and each <code>:from-&gt;actor</code> value.</li>
+</ul>
+<h4 id="the-dkim-verdict">The DKIM verdict</h4>
+<p>tik reads only the topmost <code>Authentication-Results</code> header of a message,
+the first one in its header block. The MTA that delivered the message
+prepended that header above every header the sender wrote, so a sender
+cannot place a header above it. When the topmost header names a verifier
+other than <code>:authserv-id</code>, the message is refused, even if a header
+further down claims the trusted id and <code>dkim=pass</code>. The From domain must
+then be the <code>header.d</code> of a <code>dkim=pass</code> in that header, or a subdomain
+of it.</p>
+<p>This holds only when your receiving MTA stamps every message it
+delivers. A message it delivers without a header of its own keeps the
+sender&rsquo;s headers on top, and a forged header there is read as the
+verdict. Check how your provider treats mail between two of its own
+customers before you rely on the gate.</p>
+<p><code>:authserv-id</code> takes one of:</p>
+<ul>
+<li>a string, compared with the whole id, ignoring case:
+<code>&quot;mx.example.org&quot;</code>;</li>
+<li>a pattern, <code>{:pattern &quot;mx[0-9]+\\.example\\.org&quot;}</code>, matched against
+the whole id, ignoring case;</li>
+<li>a list of both: <code>[&quot;mx.example.org&quot; {:pattern &quot;…&quot;}]</code>.</li>
+</ul>
+<p>A pattern always matches the whole id, so <code>mx[0-9]+\.example\.org</code>
+never accepts <code>evil.mx1.example.org</code> or <code>mx1.example.org.attacker.test</code>.
+It may use letters, digits and <code>-</code>, <code>\.</code> for a dot, <code>\d</code>, character
+classes such as <code>[0-9]</code>, groups with alternatives such as <code>(mx|smtp)</code>,
+and the quantifiers <code>?</code>, <code>*</code>, <code>+</code> and <code>{n,m}</code>. It must end in a literal
+domain of at least two labels, such as <code>\.example\.org</code>. An unescaped
+<code>.</code>, <code>^</code>, <code>$</code>, a top-level <code>|</code>, inline flags and any other construct are
+refused when the config loads, and so is a pattern that matches an empty
+id.</p>
+<p>Some providers stamp the name of the receiving MX host rather than one
+id for the domain. Migadu stamps <code>mx13.migadu.com</code> or a sibling host,
+whichever received the message, so pin it with a pattern:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:dkim</span> <span class="p">{</span><span class="ss">:require</span> <span class="nv">true</span> <span class="ss">:authserv-id</span> <span class="p">{</span><span class="ss">:pattern</span> <span class="s">&#34;mx[0-9]+\\.migadu\\.com&#34;</span><span class="p">}}}</span>
+</span></span></code></pre></div><p>Migadu was seen adding no <code>Authentication-Results</code> header to mail sent
+from one Migadu mailbox to another, so such mail is refused. If Migadu
+also keeps an <code>Authentication-Results</code> header that a Migadu-hosted
+sender wrote into such a mail, that forged header is the topmost one;
+whether it does has not been checked.</p>
+<p>Every IMAP and POP3 connection checks that the server&rsquo;s certificate is
+trusted and names the host, and plaintext (<code>:tls false</code>) is refused for
+any host that is not written as a loopback address (<code>localhost</code>,
+<code>127.x.x.x</code>, <code>::1</code>).</p>
+<h3 id="under-systemd-1">Under systemd</h3>
+<p>One unit replaces the board&rsquo;s service and every bridge timer. The keys
+of the delegates arrive as credentials; the store keys come from a
+password manager here, and <code>{:credential …}</code> works for them as well:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-ini" data-lang="ini"><span class="line"><span class="cl"><span class="c1"># ~/.config/systemd/user/tik-backend.service</span>
+</span></span><span class="line"><span class="cl"><span class="k">[Unit]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Description</span><span class="o">=</span><span class="s">tik: the boards, MCP, bridges, mailboxes and notifier of every local store</span>
+</span></span><span class="line"><span class="cl"><span class="na">After</span><span class="o">=</span><span class="s">network-online.target</span>
+</span></span><span class="line"><span class="cl"><span class="na">Wants</span><span class="o">=</span><span class="s">network-online.target</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Service]</span>
+</span></span><span class="line"><span class="cl"><span class="na">Type</span><span class="o">=</span><span class="s">simple</span>
+</span></span><span class="line"><span class="cl"><span class="na">ExecStart</span><span class="o">=</span><span class="s">%h/.local/bin/tik backend --config %h/.config/tik/backend.edn</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">github-work-key:%h/.config/tik/github-work_ed25519</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">redmine-work-key:%h/.config/tik/redmine-work_ed25519</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">mail-work-key:%h/.config/tik/mail-work_ed25519</span>
+</span></span><span class="line"><span class="cl"><span class="na">LoadCredential</span><span class="o">=</span><span class="s">support-app-imap:%h/.config/tik/support-app-imap</span>
+</span></span><span class="line"><span class="cl"><span class="c1"># the MCP tokens live here; the backend refuses a token others can read</span>
+</span></span><span class="line"><span class="cl"><span class="na">StateDirectory</span><span class="o">=</span><span class="s">tik-backend</span>
+</span></span><span class="line"><span class="cl"><span class="na">StateDirectoryMode</span><span class="o">=</span><span class="s">0700</span>
+</span></span><span class="line"><span class="cl"><span class="c1"># tik exits with 143 on the SIGTERM of a stop, which is no failure.</span>
+</span></span><span class="line"><span class="cl"><span class="na">SuccessExitStatus</span><span class="o">=</span><span class="s">143</span>
+</span></span><span class="line"><span class="cl"><span class="na">Restart</span><span class="o">=</span><span class="s">on-failure</span>
+</span></span><span class="line"><span class="cl"><span class="na">RestartSec</span><span class="o">=</span><span class="s">10</span>
+</span></span><span class="line"><span class="cl"><span class="c1"># a stop also ends every run the backend started</span>
+</span></span><span class="line"><span class="cl"><span class="na">KillMode</span><span class="o">=</span><span class="s">control-group</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">[Install]</span>
+</span></span><span class="line"><span class="cl"><span class="na">WantedBy</span><span class="o">=</span><span class="s">default.target</span>
+</span></span></code></pre></div><p>The backend refuses <code>TIK_ROOT</code> and the bridges&rsquo; token variables, so the
+unit sets none of them. Disable the bridge timers and the old board
+service when it starts, and point MCP clients at <code>/s/&lt;store&gt;/mcp</code>.</p>
+<h3 id="reporter-pseudonyms-and-block-lists">Reporter pseudonyms and block lists</h3>
+<p>A mailbox can record who sent each report without writing the address
+into the store, and refuse senders who only send garbage. Both keys go
+on a mailbox or at the top level as a default for all of them:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:reporter</span> <span class="p">{</span><span class="ss">:key</span> <span class="p">{</span><span class="ss">:credential</span> <span class="s">&#34;reporter-key&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="ss">:table</span> <span class="s">&#34;~/.local/state/tik/reporters&#34;</span>
+</span></span><span class="line"><span class="cl">            <span class="ss">:fact</span> <span class="p">[</span><span class="ss">:reporter</span> <span class="ss">:id</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:block</span> <span class="p">{</span><span class="ss">:addresses</span> <span class="p">[</span><span class="s">&#34;noise@example.net&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">         <span class="ss">:domains</span> <span class="p">[</span><span class="s">&#34;spam.example&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">         <span class="ss">:pseudonyms</span> <span class="p">[</span><span class="s">&#34;hmac-sha256:&lt;64 hex digits&gt;&#34;</span><span class="p">]}}</span>
+</span></span></code></pre></div><p>With <code>:reporter</code>, a new ticket from a sender the DKIM gate authenticated
+carries the fact <code>[:reporter :id]</code> (or the <code>:fact</code> you name) holding
+<code>hmac-sha256:</code> and the hex HMAC-SHA256 of the lower-cased address under
+your key. Without the key nobody can reverse it; with it, a guessed
+address can be checked, so guard the key like a signing key. It comes
+from <code>{:command …}</code>, <code>{:credential …}</code> or <code>{:file …}</code>, holds at least 32
+bytes (<code>openssl rand -hex 32</code> prints 64), and is resolved once when the
+bridge starts. The bridge refuses to start when <code>:reporter</code> lacks a key,
+lacks <code>:dkim {:require true …}</code>, puts its table inside the store, or
+names a process that does not declare the fact with a schema a
+pseudonym satisfies:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="ss">:process/facts</span> <span class="p">{[</span><span class="ss">:reporter</span> <span class="ss">:id</span><span class="p">]</span> <span class="p">[</span><span class="ss">:re</span> <span class="s">&#34;^hmac-sha256:[0-9a-f]{64}$&#34;</span><span class="p">]}</span>
+</span></span></code></pre></div><p>A comment on an existing ticket records no pseudonym, and a <code>tik&gt;</code> line
+in a mail can never set the reporter fact.</p>
+<p>The table maps each pseudonym to its address and the time it was first
+seen. It is a directory only you can enter (0700), one file per
+pseudonym (0600), and it stays on this machine, outside the store, so it
+is never committed or pushed:</p>
+<ul>
+<li><code>tik reporter show &lt;pseudonym&gt;</code> resolves one;</li>
+<li><code>tik reporter forget &lt;address|pseudonym&gt;</code> deletes its rows for an
+erasure request, after which the pseudonym on the tickets resolves to
+nothing (backups of the table keep what they hold until they expire);</li>
+<li><code>tik reporter stats [--format json]</code> counts tickets per pseudonym,
+showing the address where a row exists and <code>(forgotten)</code> where none
+does.</li>
+</ul>
+<p>Each takes <code>--table &lt;dir&gt;</code>, or reads the table from <code>--config &lt;imap.edn&gt;</code>
+(by default <code>imap.edn</code>, else <code>bridge.edn</code>, at the store&rsquo;s root) with
+<code>--mailbox &lt;id&gt;</code> when the config names several.</p>
+<p><code>:block</code> refuses a sender after the DKIM gate and before anything is
+written; the poll logs the rule that matched, never the address or the
+body, and goes on with the next message. A domain matches itself and
+every subdomain on a label boundary, so <code>spam.example</code> also blocks
+<code>mail.spam.example</code> and not <code>nospam.example</code>. Listing <code>:pseudonyms</code>
+keeps plaintext out of the config and needs <code>:reporter</code>, whose key
+computes a sender&rsquo;s pseudonym; a block by pseudonym still holds after
+the sender&rsquo;s row was forgotten.</p>
+<h2 id="hints">Hints</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik notify --config ~/.config/tik/notify.edn          <span class="c1"># the notifier</span>
+</span></span><span class="line"><span class="cl">tik notify watch --store work --where <span class="s2">&#34;stage=:asked&#34;</span>  <span class="c1"># one JSON line per hint</span>
+</span></span></code></pre></div><p>See <a href="/integrations/claude-code/">Claude Code</a>
+ for the notifier&rsquo;s config
+and what a hint holds.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/serve" term="serve" label="serve"/><category scheme="https://tik.projects.metio.wtf/tags/bridge" term="bridge" label="bridge"/><category scheme="https://tik.projects.metio.wtf/tags/backend" term="backend" label="backend"/><category scheme="https://tik.projects.metio.wtf/tags/notify" term="notify" label="notify"/><category scheme="https://tik.projects.metio.wtf/tags/systemd" term="systemd" label="systemd"/><category scheme="https://tik.projects.metio.wtf/tags/install" term="install" label="install"/></entry></feed>

@@ -1,0 +1,90 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="MCP server · tik"><meta property="og:description" content="The frontier as an agent's gated tool surface, and tik's agent skill, over stdio or HTTP."><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/integrations/mcp-server/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="MCP server · tik"><meta name=twitter:description content="The frontier as an agent's gated tool surface, and tik's agent skill, over stdio or HTTP."><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-28T11:57:40+01:00","description":"The frontier as an agent's gated tool surface, and tik's agent skill, over stdio or HTTP.","headline":"MCP server","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/integrations/mcp-server/","url":"https://tik.projects.metio.wtf/integrations/mcp-server/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/integrations/","name":"Integrations","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/integrations/mcp-server/","name":"MCP server","position":3}]}</script><link href=https://tik.projects.metio.wtf/integrations/mcp-server/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; MCP server</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><h1 class=post-titel><a href=https://tik.projects.metio.wtf/integrations/mcp-server/>MCP server
+</a><a href=https://github.com/metio/tik/commits/main/docs/content/integrations/mcp-server.md title="see history"><img src=https://tik.projects.metio.wtf/images/history.svg height=16 width=14 class="icon svgimg" alt="see history">
+</a><a href=https://github.com/metio/tik/edit/main/docs/content/integrations/mcp-server.md title="edit this page"><img src=https://tik.projects.metio.wtf/images/pencil.svg height=16 width=14 class="icon svgimg" alt="edit this page"></a></h1><div class=subtitle>Talks about:
+<a class="post-tag post-tag-agents" href=/tags/agents/>agents</a>, <a class="post-tag post-tag-authorization" href=/tags/authorization/>authorization</a>, and <a class="post-tag post-tag-mcp" href=/tags/mcp/>mcp</a></div><div id=post-content><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl><span class=nv>TIK_ACTOR</span><span class=o>=</span>bot <span class=nv>TIK_KEY</span><span class=o>=</span>~/.config/tik/bot_ed25519 tik mcp
+</span></span></code></pre></div><p><code>tik mcp</code> speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+<em>is</em> the authorization boundary.</p><h2 id=one-shared-server-over-http>One shared server over HTTP</h2><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl><span class=nv>TIK_ACTOR</span><span class=o>=</span>bot <span class=nv>TIK_KEY</span><span class=o>=</span>~/.config/tik/bot_ed25519 <span class=se>\
+</span></span></span><span class=line><span class=cl>  tik serve --host 127.0.0.1 --port <span class=m>7777</span> --mcp-token-file ~/.local/state/tik/mcp-token
+</span></span></code></pre></div><p><code>tik serve</code> also speaks MCP on <code>/mcp</code> when given a token file, so every
+client shares one long-running server instead of starting its own
+process. It answers one JSON-RPC message per POST with JSON and opens no
+event stream. A request needs the token as <code>Authorization: Bearer …</code>, and
+one whose <code>Origin</code> is not the server&rsquo;s own is refused, which keeps a web
+page from driving the server through DNS rebinding. The token must be at
+least 32 characters; <code>openssl rand -hex 32</code> makes one.</p><p>Without <code>--host</code>, a server offering MCP listens on 127.0.0.1 only, because
+<code>/mcp</code> writes over plain HTTP; put a TLS proxy in front before offering it
+beyond the machine. The board alone keeps listening on every address.</p><p><code>--surfaces</code> picks what the server offers: <code>http</code> for the read-only board
+and its EDN, <code>mcp</code> for the tools, or <code>http,mcp</code>. Without it, the server
+offers <code>http</code>, and <code>mcp</code> too when a token file is given.</p><h2 id=agent-skill>Agent skill</h2><p>The server serves tik&rsquo;s agent skill, the repository&rsquo;s <code>skills/tik/</code> tree
+as built into the binary, through the MCP Skills extension
+(<code>io.modelcontextprotocol/skills</code>):</p><ul><li><code>skills/list</code> and <code>skills/get</code> return the skill&rsquo;s entry: its
+frontmatter and a manifest listing every file with its sha256 digest
+and size.</li><li><code>resources/read</code> serves the files under <code>skill://tik/&lt;path></code>. A client
+without the extension sees them as ordinary resources, and the server
+instructions name <code>skill://tik/SKILL.md</code>.</li><li>A URI with a <code>..</code> or <code>.</code> segment, an empty segment or an escaped
+character is refused, as is a skill name other than lowercase letters,
+digits and single inner hyphens, and any file the manifest does not
+list.</li></ul><p>The extension&rsquo;s digests only show that a file matches the manifest, and
+whoever runs the server writes both. tik therefore signs the manifest
+with <code>TIK_KEY</code> as <code>TIK_ACTOR</code>, in the SSHSIG namespace
+<code>tik-skill-manifest</code>, and puts the signature in the entry&rsquo;s <code>_meta</code> under
+<code>wtf.metio/skill-manifest</code>. Without a key, that marker says
+<code>"signed": false</code> and why. <code>tik skill verify</code> checks a server against the
+store&rsquo;s <code>actors</code> file:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik skill verify http://127.0.0.1:7777/mcp --token-file ~/.local/state/tik/mcp-token
+</span></span></code></pre></div><p>It checks the signature, then reads every file and compares its bytes,
+and the SKILL.md frontmatter, with the manifest. It exits 1 for an
+unsigned manifest, a signature no registered actor made, or any file
+that differs. Given a saved <code>skills/list</code> or <code>skills/get</code> response
+instead of a URL, it checks the signature alone. It accepts signatures in
+the namespaces <code>tik-skill-manifest</code> and <code>kajero-skill-manifest</code>, and a
+manifest that lists more than 512 files, declares a skill over 16 MiB,
+names an entry URI other than the skill&rsquo;s <code>SKILL.md</code> or lists a file of
+another skill is malformed.</p><p>The signed bytes are the manifest in a fixed form, one line each:
+<code>skill-manifest v1</code>, <code>skill &lt;SKILL.md URI></code>, then
+<code>file &lt;digest> &lt;size> &lt;URI></code> per file in URI order, each line ending in
+a newline. The form leaves out the frontmatter, which a client compares
+against the signed SKILL.md bytes, and binds no server version, so an
+older signed manifest still verifies until its signer is removed from
+<code>actors</code>.</p><p>The server speaks both MCP eras: the <code>initialize</code> handshake of revisions
+up to 2025-06-18, and revision 2026-07-28, whose every request carries
+its version and capabilities in <code>_meta</code>. Claude Code lists a server&rsquo;s
+skills only over 2026-07-28. Over HTTP, a 2026-07-28 request must repeat
+its version, method and resource or tool name in the
+<code>MCP-Protocol-Version</code>, <code>Mcp-Method</code> and <code>Mcp-Name</code> headers, and is
+refused with <code>400</code> when they differ from the body.</p><p>A message is one JSON object of at most 1 MiB, read strictly: a key named
+twice, text after the value or a body over the limit answers a parse
+error (<code>-32700</code>) whose <code>data.rule</code> names the rule, without quoting the
+input. A request without <code>"jsonrpc": "2.0"</code>, a string method and a string
+or integer <code>id</code> answers <code>-32600</code>, an unknown method <code>-32601</code>, and an
+unknown tool or <code>arguments</code> that are not an object <code>-32602</code>. A tool that
+runs and fails, such as a refused assertion or a missing argument,
+answers in its result with <code>isError</code>. A notification, a message without
+an <code>id</code>, runs nothing and gets no answer (<code>202</code> over HTTP). Over stdio, a
+line over the limit is refused without being held in memory, and the
+next line is read as usual.</p><h2 id=why-the-boundary-holds>Why the boundary holds</h2><p>An agent&rsquo;s permission to act is derived from the same guards a person&rsquo;s
+is. A step whose <code>:signed-by</code> names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.</p><p>That matters because the alternative — telling a model in its prompt what
+it may not do — is enforcement by cooperation. Here the check happens
+where the answer is computed, and it produces the same reason string a
+person would see.</p><h2 id=accountability>Accountability</h2><p>Every write the agent makes is an ordinary signed event with the agent&rsquo;s
+own actor identity. The log therefore distinguishes what a person claimed
+from what an agent claimed, permanently and without a separate audit
+trail. <code>tik causal</code> names the events behind each reached stage, so a
+conclusion an agent contributed to can be traced to the evidence it
+supplied and the key that signed it.</p><h2 id=task-specifications-from-guards>Task specifications from guards</h2><p>An agent asking &ldquo;what should I do?&rdquo; gets the same structured answer every
+other lens renders:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>tik explain <span class=m>3184</span> --actor bot --edn
+</span></span></code></pre></div><p>Each missing step carries its path, its schema, and who may satisfy it —
+which makes an acceptance criterion out of a guard, rather than out of a
+sentence somebody wrote in a ticket description.</p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

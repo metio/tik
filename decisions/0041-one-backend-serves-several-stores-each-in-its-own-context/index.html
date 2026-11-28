@@ -1,0 +1,108 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="One tik backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="One tik backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-27T04:35:25+01:00","datePublished":"2026-11-27T00:00:00Z","headline":"One tik backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/","url":"https://tik.projects.metio.wtf/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/","name":"One tik backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; One tik backend serves several stores, each in its own context with its own key, actor, actors file, board and MCP token</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0041-one-backend-serves-several-stores-each-in-its-own-context>ADR 0041: One backend serves several stores, each in its own context</h1><h2 id=decision>Decision</h2><p>Proposed on 2026-11-27. Not accepted. It is implemented in <code>tik backend</code> under ticket 03ec81f1 of the metio store. Each choice below names
+the alternatives and why it was taken, ranked by security first, then
+extensibility and re-use, then performance.</p><p><strong>A <code>tik backend</code> whose config has <code>:stores</code> serves several stores from
+one process. Every request, pipeline run and subprocess for a store runs
+inside that store&rsquo;s context, and the context alone decides the root, the
+signing key and the actor.</strong> A single-store invocation (<code>pipelines.edn</code>
+without <code>:stores</code>, <code>tik serve</code>, <code>tik mcp</code>, every other verb) is
+unchanged: it reads <code>TIK_ROOT</code>, <code>TIK_KEY</code>, <code>TIK_PQ_KEY</code> and <code>TIK_ACTOR</code>
+from the environment as before.</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-clojure data-lang=clojure><span class=line><span class=cl><span class=p>{</span><span class=ss>:stores</span> <span class=p>{</span><span class=ss>:metio</span> <span class=p>{</span><span class=ss>:root</span> <span class=s>&#34;~/git/github.com/metio/.tik&#34;</span> <span class=ss>:org</span> <span class=s>&#34;metio&#34;</span> <span class=ss>:actor</span> <span class=s>&#34;claude&#34;</span>
+</span></span><span class=line><span class=cl>                  <span class=ss>:key</span> <span class=p>{</span><span class=ss>:command</span> <span class=p>[</span><span class=s>&#34;pasejo&#34;</span> <span class=s>&#34;secret&#34;</span> <span class=s>&#34;show&#34;</span> <span class=s>&#34;tik/metio/claude&#34;</span><span class=p>]}</span>
+</span></span><span class=line><span class=cl>                  <span class=ss>:mcp-token-file</span> <span class=s>&#34;~/.config/tik/mcp-token-metio&#34;</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>          <span class=ss>:personal</span> <span class=p>{</span><span class=ss>:root</span> <span class=s>&#34;~/git/.tik&#34;</span> <span class=ss>:org</span> <span class=s>&#34;default&#34;</span> <span class=ss>:actor</span> <span class=s>&#34;claude&#34;</span>
+</span></span><span class=line><span class=cl>                     <span class=ss>:key</span> <span class=p>{</span><span class=ss>:credential</span> <span class=s>&#34;tik-default-key&#34;</span><span class=p>}}}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:serve</span> <span class=p>{</span><span class=ss>:host</span> <span class=s>&#34;127.0.0.1&#34;</span> <span class=ss>:port</span> <span class=mi>7777</span><span class=p>}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:notify</span> <span class=p>{</span><span class=ss>:poll</span> <span class=s>&#34;PT2S&#34;</span><span class=p>}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:pipelines</span> <span class=p>[{</span><span class=ss>:id</span> <span class=ss>:github-metio</span> <span class=ss>:store</span> <span class=ss>:metio</span> <span class=ss>:every</span> <span class=s>&#34;PT10M&#34;</span>
+</span></span><span class=line><span class=cl>              <span class=ss>:config</span> <span class=s>&#34;github.edn&#34;</span> <span class=ss>:run</span> <span class=p>[</span><span class=s>&#34;bridge&#34;</span> <span class=s>&#34;github&#34;</span><span class=p>]}]}</span>
+</span></span></code></pre></div><ol><li><p><strong>A thread-bound store context.</strong> <code>tik.context/*store*</code> holds <code>{:name :root :key :actor}</code> and is bound around everything done for one store.
+<code>tik.cli-core/root</code>, <code>signing-key</code>, <code>pq-signing-key</code>, <code>tik.args/actor</code>
+and the MCP server&rsquo;s actor and signer read it through
+<code>tik.context/env</code> before the environment, and inside a context they
+never read the environment at all. The binding is per thread, so two
+requests for two stores running at once each see their own; futures
+carry it along. <code>tik.cli-core/*root*</code>, which the notifier binds, was
+not enough on its own, because it names only the root, and the key
+and actor would still have come from a process-wide variable.
+Rejected: one process per store behind a proxy (the maintainer asked
+for one process, and it would only move the routing); passing the
+store as an argument through every verb (hundreds of call sites, each
+a place to forget it).</p></li><li><p><strong>No guessing in a multi-store process.</strong> Once the stores have opened,
+<code>tik.context/strict!</code> makes a read of a store variable outside any
+context throw, so a code path that forgot to bind a store fails
+instead of discovering a store from the working directory or signing
+with an inherited key. The backend also refuses to start while any of
+<code>TIK_ROOT</code>, <code>TIK_KEY</code>, <code>TIK_PQ_KEY</code> or <code>TIK_ACTOR</code> is set in its
+environment. Inside a context, <code>--key</code> naming any file but the store&rsquo;s
+own is refused, and a multi-store pipeline may not pass <code>--key</code> or
+<code>--actor</code> at all.</p></li><li><p><strong>Keys resolved once, at start, into a private runtime directory.</strong> A
+store&rsquo;s <code>:key</code> is a path, <code>{:file …}</code>, <code>{:credential …}</code> (systemd
+<code>LoadCredential=</code>) or <code>{:command …}</code>, whose whole output is written to
+a <code>rw-------</code> file in a fresh <code>rwx------</code> directory below
+<code>XDG_RUNTIME_DIR</code>, removed on exit (<code>tik.secret/materialize-file</code>).
+<code>{:env …}</code> is refused, because a key in a variable is inherited by
+every child. No message carries a key: a failing command is reported
+with its stderr, a file that is not a key as &ldquo;not an OpenSSH private
+key&rdquo;. Holding the key only in memory was declined because signing
+shells out to <code>ssh-keygen -Y sign -f</code>, which needs a file, and the
+in-process reader verifies but does not sign.</p></li><li><p><strong>Each key is proven against its own store before anything runs.</strong>
+The backend signs a challenge with each store&rsquo;s key in the event
+namespace and verifies it against that store&rsquo;s <code>actors</code> file for that
+store&rsquo;s actor, exactly as an event would be verified. A key the store
+does not grant to its actor, or a store without an <code>actors</code> file,
+refuses the backend. Two stores whose keys are the same but whose
+<code>:org</code> differs are refused unless <code>:allow-shared-keys</code> names the pair,
+so one organisation&rsquo;s key never signs another&rsquo;s store by accident.
+The same holds for a pipeline&rsquo;s <code>:as</code> and its optional own <code>:key</code>: the
+signer must be granted to <code>:as</code> in the pipeline&rsquo;s store.</p></li><li><p><strong>Routing: one path per store, and a token that opens one store.</strong>
+The board answers at <code>/s/&lt;store>/</code>, <code>/s/&lt;store>/tickets.edn</code> and
+<code>/s/&lt;store>/explain/&lt;id>.edn</code>; MCP at <code>/s/&lt;store>/mcp</code>. Each store has
+its own token file, refused when shorter than 32 characters or
+readable by group or others, and two stores may not share one. The
+request is checked against the token of the store its path names, so
+a token sent to another store&rsquo;s path is a 401. Both were taken, rather
+than either alone: a token that maps to a store but shares one
+endpoint would make the store depend on which token arrived, and paths
+with one shared token would let anyone holding it reach every store.
+<code>/</code> and <code>/mcp</code> answer 404. The rebinding guard (421 for a foreign
+Host) runs before routing.</p></li><li><p><strong>Fail closed at start, isolate at run time.</strong> A config problem, a
+store that will not open, a key that does not prove, or a token that
+does not pass refuses the whole backend, and every problem is listed
+at once. Starting the healthy stores and skipping the broken one was
+declined: the service would show as running while one store&rsquo;s
+bridges never sweep and its MCP answers 404, and an agent or operator
+reading &ldquo;active&rdquo; would take that store&rsquo;s silence for an empty inbox.
+A start-time failure is deterministic and fixed by editing the
+config, so refusing costs one restart. Once running, failures stay
+isolated as before: a failing pipeline logs and the others carry on,
+and a request that fails answers 500 for that request only.</p></li><li><p><strong>The notifier is reused.</strong> <code>:notify</code> takes the settings of a
+<code>notify.edn</code> without <code>:stores</code>, and the backend runs
+<code>tik.notifier/notify-forever!</code> over its own stores&rsquo; roots
+(<code>config-from</code>). The notifier binds <code>*root*</code> per store as it did and
+signs nothing, so it runs outside every store context.</p></li><li><p><strong>Per-root caches.</strong> The derived-row cache (<code>tik.cli-core/cache-state</code>)
+is keyed by store root. It used to be one process-wide map, so a
+process deriving two stores in turn, which the notifier already did,
+flushed one store&rsquo;s rows, titles included, into the other store&rsquo;s
+<code>.derived-cache.json</code>.</p></li></ol><h2 id=consequences>Consequences</h2><ul><li>Probes and rollout scopes started for a store get that store&rsquo;s
+<code>TIK_ROOT</code>, <code>TIK_KEY</code> and <code>TIK_ACTOR</code> (<code>tik.context/child-env</code>), never
+the process&rsquo;s.</li><li>MCP calls on all stores still run one at a time, behind the lock the
+single-store server already had. A slow call on one store delays the
+others.</li><li>A post-quantum key (<code>TIK_PQ_KEY</code>) has no per-store setting yet, so a
+store whose <code>signatures.edn</code> requires ML-DSA refuses writes from a
+multi-store backend.</li><li>The tests pin each isolation: a concurrent mix of CLI and MCP writes to
+two stores, every resulting signature verified against its own store&rsquo;s
+actors and checked for the other store&rsquo;s fingerprint; a config matrix;
+each start-time refusal; and <code>dev/native-smoke.sh</code> serving two stores
+with different keys from one native binary, with a cross-store write
+refused.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0041-one-backend-serves-several-stores-each-in-its-own-context.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

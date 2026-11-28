@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Verify on tik</title><link href="https://tik.projects.metio.wtf/tags/verify/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/verify/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/verify/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/verify/</id><entry><title type="html">Store administration</title><link href="https://tik.projects.metio.wtf/cli/administration/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/evidence/re-deriving/?utm_source=atom_feed" rel="related" type="text/html" title="Re-deriving a bundle"/><link href="https://tik.projects.metio.wtf/cli/reading-a-store/?utm_source=atom_feed" rel="related" type="text/html" title="Reading a store"/><link href="https://tik.projects.metio.wtf/cli/recording-work/?utm_source=atom_feed" rel="related" type="text/html" title="Recording work"/><link href="https://tik.projects.metio.wtf/authoring/roles-and-authority/?utm_source=atom_feed" rel="related" type="text/html" title="Roles and authority"/><id>https://tik.projects.metio.wtf/cli/administration/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-24T03:58:03+01:00</updated><content type="html"><![CDATA[<blockquote>Identity, roles, verification, migration, storage backends, and alerts.</blockquote><h2 id="identity">Identity</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik actor add alice ~/.config/tik/id_ed25519.pub
+</span></span><span class="line"><span class="cl">tik sign <span class="m">3184</span>
+</span></span><span class="line"><span class="cl">tik witness <span class="m">3184</span>
+</span></span></code></pre></div><p><code>actor add</code> registers a signer in the store&rsquo;s allowed-signers registry. An
+actor name is letters, digits and <code>._@+-</code>, and the key file holds one
+OpenSSH public key on one line; anything else is refused, because the name
+and key are written verbatim into the registry, where <code>*</code>, <code>?</code>, <code>!</code> and <code>,</code>
+are principal patterns and a line break starts another grant. A rung-2
+binding (<code>tik bridge oidc</code>, <code>tik bridge workload</code>) whose actor or key fails
+the same check grants nothing.</p>
+<p>The registry may also be edited by hand, with OpenSSH&rsquo;s allowed-signers
+options. tik reads Ed25519 signatures in process and honours them as
+<code>ssh-keygen</code> does: <code>namespaces=&quot;…&quot;</code> is a pattern list where <code>*</code> and <code>?</code> are
+wildcards and a matching <code>!pattern</code> refuses, a <code>cert-authority</code> line never
+accepts a direct signature by the CA key, and a line with an option OpenSSH
+does not know grants nothing. A line carrying <code>valid-before</code> or
+<code>valid-after</code> depends on the time of the check, so <code>verify</code> hands it to
+<code>ssh-keygen</code>, and reports the signature unchecked on a host without one.</p>
+<p>A hardware security key works as a signer too. Generate a key that lives
+on the device, register its public half, and point <code>TIK_KEY</code> at the key
+handle; every signature then needs a touch, and with <code>-O verify-required</code>
+the device PIN as well:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">ssh-keygen -t ed25519-sk -O verify-required -f ~/.config/tik/id_ed25519_sk
+</span></span><span class="line"><span class="cl">tik actor add alice ~/.config/tik/id_ed25519_sk.pub
+</span></span></code></pre></div><p>tik verifies these signatures in process and counts one only when the
+device reports that a user was present, a flag inside the signed bytes.
+<code>ssh-keygen -Y verify</code> accepts a security-key signature made without a
+touch, so <code>verify</code> and the bundle&rsquo;s <code>verify.sh</code> read the flag themselves.
+That holds for an ECDSA security key (<code>ecdsa-sk</code>) too: tik reads its flag
+in process, and only a touched signature is passed on to <code>ssh-keygen</code> for
+the cryptographic check.</p>
+<p>Exporting <code>TIK_KEY</code> signs every write as it happens; <code>sign</code> catches up on
+your own earlier events, and only your own — signing somebody else&rsquo;s would
+assert something false. <code>witness</code> countersigns a ticket&rsquo;s head, and one
+signature timestamps the entire ancestry beneath it.</p>
+<h2 id="roles">Roles</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik roles
+</span></span><span class="line"><span class="cl">tik roles add triager alice
+</span></span><span class="line"><span class="cl">tik roles remove triager bob
+</span></span></code></pre></div><p>A process definition declares which roles exist and who starts in them; the
+store&rsquo;s register decides who is in one today, for every ticket at once. Use
+it for a hire or a departure — it takes effect on in-flight tickets
+immediately, with no definition version bump and no per-ticket migration.
+See <a href="/authoring/roles-and-authority/">Roles and authority</a>
+.</p>
+<h2 id="verification">Verification</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik verify
+</span></span><span class="line"><span class="cl">tik verify --changed
+</span></span><span class="line"><span class="cl">tik root --witness
+</span></span></code></pre></div><p><code>verify</code> runs the ladder: content addressing, schema, signatures, and
+re-derivation. <code>--changed</code> skips unchanged heads for a fast drift check
+rather than the full audit. <code>root</code> prints one hash committing to the entire
+store, optionally countersigned, optionally anchored to a third-party
+timestamp.</p>
+<p>A review verdict can also be signed by a throwaway key the reviewer
+delegated to for one batch (ADR 0037). The delegation is an attestation
+on the identity registry:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:claim</span> <span class="ss">:delegation</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:delegation/public-key</span> <span class="s">&#34;ssh-ed25519 AAAA…&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:delegation/not-after</span> <span class="o">#</span><span class="nv">inst</span> <span class="s">&#34;2026-11-23T20:04:00Z&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:delegation/scope</span> <span class="o">#</span><span class="p">{[</span><span class="o">#</span><span class="nv">uuid</span> <span class="s">&#34;…&#34;</span> <span class="s">&#34;sha256-…&#34;</span><span class="p">]}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:delegation/facts</span> <span class="o">#</span><span class="p">{[</span><span class="ss">:review</span> <span class="ss">:verdict</span><span class="p">]}}</span>
+</span></span></code></pre></div><p><code>verify</code> credits a signature by that key to the reviewer only when the
+delegation is signed with a key <code>actors</code> grants the reviewer, and the
+verdict lies inside it. The verdict must name the reviewer as its actor,
+be claimed no more than five minutes after the delegation, and sit on a
+ticket and head pair the scope lists. It must also assert a fact path
+the delegation allows. A key granted through an identity binding or
+another delegation cannot delegate. With
+<code>{:delegation {:require-touch true}}</code> in <code>oidc.edn</code>, the delegation must
+come from a touched security key. The <code>:delegation</code> map holds exactly
+<code>:require-touch</code> with <code>true</code> or <code>false</code>; any other key, a missing one or
+another value makes the setting malformed, and a malformed setting
+credits no delegation at all. A delegation that credits nothing is
+named in the output with the reason.</p>
+<p>An event can also carry a post-quantum signature, an ML-DSA-65 sidecar
+<code>&lt;id&gt;.pqsig.&lt;fpr&gt;</code> beside its SSHSIG one. <code>verify</code> checks every such
+sidecar against <code>pq-signers</code> in the store root, which holds one line per
+key:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">seb namespaces=&#34;tik-*&#34; ml-dsa-65 MIIHsjALBglghkgBZQMEAxID…
+</span></span></code></pre></div><p>The key is the base64 DER SubjectPublicKeyInfo, and <code>&lt;fpr&gt;</code> is the hex
+SHA-256 of that DER. <code>namespaces</code> takes comma-separated patterns where
+<code>*</code> is the only wildcard and every other character, brackets included,
+stands for itself. A sidecar that does not verify, names a key
+<code>pq-signers</code> lacks, or a key registered for another actor fails the
+audit, and so does a malformed line. A store without the file is
+checked as before.</p>
+<p>To sign with ML-DSA-65, make a key with OpenSSL 3.5 or later, register
+its public half, and point <code>TIK_PQ_KEY</code> at the private key:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">openssl genpkey -algorithm ML-DSA-65 -out ~/.config/tik/id_ml_dsa_65.pem
+</span></span><span class="line"><span class="cl"><span class="nb">echo</span> <span class="s2">&#34;seb namespaces=\&#34;tik-*\&#34; ml-dsa-65 </span><span class="k">$(</span>openssl pkey -in ~/.config/tik/id_ml_dsa_65.pem -pubout -outform DER <span class="p">|</span> base64 -w0<span class="k">)</span><span class="s2">&#34;</span> &gt;&gt; pq-signers
+</span></span><span class="line"><span class="cl"><span class="nb">export</span> <span class="nv">TIK_PQ_KEY</span><span class="o">=</span>~/.config/tik/id_ml_dsa_65.pem
+</span></span></code></pre></div><p>Every write then carries both signatures. A write whose <code>TIK_PQ_KEY</code>
+<code>pq-signers</code> does not grant the actor is refused before anything is
+stored. <code>tik sign &lt;id&gt;</code> with <code>TIK_PQ_KEY</code> adds the sidecar to your own
+events that lack one, which is how events written earlier gain it.</p>
+<h3 id="requiring-post-quantum-signatures">Requiring post-quantum signatures</h3>
+<p><code>signatures.edn</code> in the store root makes the second signature a
+requirement from a chosen instant on:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:require</span> <span class="o">#</span><span class="p">{</span><span class="ss">:ssh-ed25519</span> <span class="ss">:ml-dsa-65</span><span class="p">}</span> <span class="ss">:from</span> <span class="o">#</span><span class="nv">inst</span> <span class="s">&#34;2026-12-01T00:00:00Z&#34;</span><span class="p">}</span>
+</span></span></code></pre></div><p><code>:from</code> is written with seconds, at most three fraction digits, and <code>Z</code>
+or a UTC offset in hours and minutes, such as
+<code>#inst &quot;2026-12-01T00:00:00+01:00&quot;</code>. <code>verify</code>, <code>rederive</code> and the
+bundle&rsquo;s <code>verify.sh</code> read only that spelling, so they always name the
+same instant; lower case, a leap second, <code>24:00</code> and an instant before
+1970 make the file malformed.</p>
+<p>An event claimed at or after <code>:from</code> must carry a verifying signature by
+its own actor for every algorithm in <code>:require</code>. An event claimed before
+it needs the classical signature only, and must be anchored: it or a
+later event in its ticket carries an ML-DSA-65 witness countersignature,
+which seals the whole ancestry. Once Ed25519 can be forged, anyone can
+write a new event with an old instant; the anchor tells that event apart
+from the history that existed when the policy took effect. <code>:require</code>
+always keeps <code>:ssh-ed25519</code>, so the scheme stays hybrid, and a file that
+does not read as exactly this shape fails <code>verify</code> rather than counting
+as no policy.</p>
+<p>Switch it on in this order, with a key <code>pq-signers</code> allows to witness
+(the <code>tik-*</code> pattern covers both <code>tik-event</code> and <code>tik-witness</code>):</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nb">echo</span> <span class="s1">&#39;{:require #{:ssh-ed25519 :ml-dsa-65} :from #inst &#34;2026-12-01T00:00:00Z&#34;}&#39;</span> &gt; signatures.edn
+</span></span><span class="line"><span class="cl"><span class="nv">TIK_PQ_KEY</span><span class="o">=</span>~/.config/tik/id_ml_dsa_65.pem tik anchor
+</span></span><span class="line"><span class="cl">tik verify
+</span></span></code></pre></div><p><code>tik anchor</code> writes <code>&lt;head&gt;.pqwitness.&lt;fpr&gt;</code> on every head of every
+ticket. Anchor again whenever events claimed before <code>:from</code> were written
+after the last anchor; <code>verify</code> names each event no anchor covers. Under
+the policy, a write without <code>TIK_KEY</code> or, from <code>:from</code> on, without
+<code>TIK_PQ_KEY</code> is refused before anything is stored. <code>tik review --batch</code>
+meets the policy when <code>TIK_PQ_KEY</code> is set: its verdicts carry the
+throwaway key&rsquo;s delegated Ed25519 signature and an ML-DSA-65 signature by
+the reviewer&rsquo;s own key.</p>
+<h2 id="moving-tickets-to-newer-rules">Moving tickets to newer rules</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik reprocess <span class="m">3184</span> processes/support-request.edn
+</span></span><span class="line"><span class="cl">tik reprocess <span class="m">3184</span> processes/support-request.edn --apply
+</span></span></code></pre></div><p>A ticket is judged by the rules it was minted under, so a definition that
+grows leaves existing tickets deriving under the old one until you move
+them — deliberately, because an implicit upgrade would re-judge a whole
+store on an edit. The dry run prints the pinned-versus-proposed hashes,
+which stages would be gained or would regress, and the new blockers.
+<code>--apply</code> records the re-pin as a signed event, so the log keeps which
+rules judged the ticket when.</p>
+<h2 id="storage">Storage</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik init --sqlite
+</span></span><span class="line"><span class="cl">tik store migrate --to file
+</span></span><span class="line"><span class="cl">tik <span class="nb">export</span> ./audit-copy
+</span></span><span class="line"><span class="cl">tik pack
+</span></span><span class="line"><span class="cl">tik gc --apply
+</span></span></code></pre></div><p>The file store is the signed interchange format; SQLite keeps the same
+events in one file. Migration is lossless in both directions — events,
+their detached signatures and the attached blobs travel together. A file
+store keeps a ticket&rsquo;s blobs in <code>tickets/&lt;id&gt;/blobs/</code>; a SQLite store keeps
+them in <code>blobs/&lt;id&gt;/</code> beside <code>tik.db</code>. <code>export</code> materializes any store
+as the file format. <code>pack</code> consolidates settled tickets into one
+content-addressed pack each, and <code>gc</code> removes archived definitions no
+ticket pins any more and no named definition is at, together with their
+publication signatures.</p>
+<h2 id="handing-a-ticket-to-someone-else">Handing a ticket to someone else</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik bundle <span class="m">3184</span> --out evidence.tgz
+</span></span><span class="line"><span class="cl">tik import evidence.tgz
+</span></span><span class="line"><span class="cl">tik rederive evidence.tgz
+</span></span></code></pre></div><p><code>bundle</code> packs one ticket as an <a href="/evidence/">evidence bundle</a>
+: the events,
+their signatures, the pinned definition and the registry, checkable with
+coreutils. <code>import</code> brings someone else&rsquo;s events into this store, merging
+by content address so importing twice is a no-op. <code>rederive</code> recomputes
+what a bundle&rsquo;s facts imply without importing anything.</p>
+<h2 id="alerts-out-mail-in">Alerts out, mail in</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik effects run --config effects.edn --dry-run
+</span></span><span class="line"><span class="cl">tik bridge email &lt; message.eml
+</span></span></code></pre></div><p><code>effects run</code> pushes derived stage transitions to Slack, Discord, Matrix,
+Teams, ntfy, PagerDuty, plain webhooks, email, or any program through the
+command sink. Any sink field may be a secret resolved at send time — from
+an environment variable, a file, a command, or a systemd credential — so
+no secret sits in the config file.</p>
+<p>The email bridge turns messages into tickets and comments, and replies
+carrying <code>tik&gt; key=value</code> lines become facts, which closes the loop for
+people who never leave their inbox.</p>
+<h2 id="the-gated-agent-surface">The gated agent surface</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik agent actions <span class="m">3184</span> --actor bot
+</span></span><span class="line"><span class="cl">tik agent <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:high --actor bot
+</span></span></code></pre></div><p>An agent sees only what the frontier admits for its role, and anything else
+is refused with the derived reason. The boundary is the same derivation
+everyone else reads, so it cannot be talked around.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/cli" term="cli" label="cli"/><category scheme="https://tik.projects.metio.wtf/tags/verify" term="verify" label="verify"/><category scheme="https://tik.projects.metio.wtf/tags/roles" term="roles" label="roles"/><category scheme="https://tik.projects.metio.wtf/tags/migration" term="migration" label="migration"/><category scheme="https://tik.projects.metio.wtf/tags/effects" term="effects" label="effects"/></entry></feed>

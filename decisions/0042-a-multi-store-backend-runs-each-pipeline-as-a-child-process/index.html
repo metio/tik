@@ -1,0 +1,121 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="A multi-store backend runs each pipeline as a child process of the same binary, scheduled on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes under strict rules · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="A multi-store backend runs each pipeline as a child process of the same binary, scheduled on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes under strict rules · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-27T04:35:25+01:00","datePublished":"2026-11-27T00:00:00Z","headline":"A multi-store backend runs each pipeline as a child process of the same binary, scheduled on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes under strict rules","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/","url":"https://tik.projects.metio.wtf/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/","name":"A multi-store backend runs each pipeline as a child process of the same binary, scheduled on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes under strict rules","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; A multi-store backend runs each pipeline as a child process of the same binary, scheduled on a grid with jitter, never overlapping, bounded and reported, and watches mailboxes under strict rules</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process>ADR 0042: A multi-store backend runs each pipeline as a child process</h1><h2 id=decision>Decision</h2><p>Proposed on 2026-11-27. Not accepted. It is implemented in <code>tik backend</code>
+under ticket 7eb48e71 of the metio store, and builds on ADR 0041. Each
+choice names the alternatives and why it was taken, ranked by security
+first, then extensibility and re-use, then performance.</p><p><strong>A multi-store backend (a config with <code>:stores</code>) runs every run of every
+pipeline as a child process of the same tik binary, started with its
+store&rsquo;s variables only. The pipelines replace the systemd timers that ran
+one bridge each: they fire on a grid with jitter, collapse missed fires
+into one, never overlap a pipeline&rsquo;s own runs, are killed when they
+outlive a timeout, write labelled lines to the journal and send a failure
+report.</strong> A single-store backend (<code>pipelines.edn</code> without <code>:stores</code>) is
+unchanged and still runs its verbs in process.</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-clojure data-lang=clojure><span class=line><span class=cl><span class=p>{</span><span class=ss>:stores</span> <span class=p>{</span><span class=ss>:metio</span> <span class=p>{</span><span class=ss>:root</span> <span class=s>&#34;~/git/github.com/metio/.tik&#34;</span> <span class=ss>:org</span> <span class=s>&#34;metio&#34;</span> <span class=ss>:actor</span> <span class=s>&#34;claude&#34;</span>
+</span></span><span class=line><span class=cl>                  <span class=ss>:key</span> <span class=p>{</span><span class=ss>:command</span> <span class=p>[</span><span class=s>&#34;pasejo&#34;</span> <span class=s>&#34;secret&#34;</span> <span class=s>&#34;show&#34;</span> <span class=s>&#34;--store&#34;</span> <span class=s>&#34;personal-ls&#34;</span> <span class=s>&#34;tik/metio/claude&#34;</span><span class=p>]}}}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:on-failure</span> <span class=p>{</span><span class=ss>:run</span> <span class=p>[</span><span class=s>&#34;notify-send&#34;</span> <span class=s>&#34;--urgency=critical&#34;</span> <span class=s>&#34;tik {store}/{pipeline}&#34;</span> <span class=s>&#34;{reason}&#34;</span><span class=p>]}</span>
+</span></span><span class=line><span class=cl> <span class=ss>:pipelines</span> <span class=p>[{</span><span class=ss>:id</span> <span class=ss>:github-metio</span> <span class=ss>:store</span> <span class=ss>:metio</span> <span class=ss>:every</span> <span class=s>&#34;PT10M&#34;</span> <span class=ss>:as</span> <span class=s>&#34;github&#34;</span>
+</span></span><span class=line><span class=cl>              <span class=ss>:key</span> <span class=p>{</span><span class=ss>:credential</span> <span class=s>&#34;github-metio-key&#34;</span><span class=p>}</span> <span class=ss>:run</span> <span class=p>[</span><span class=s>&#34;bridge&#34;</span> <span class=s>&#34;github&#34;</span><span class=p>]}</span>
+</span></span><span class=line><span class=cl>             <span class=p>{</span><span class=ss>:id</span> <span class=ss>:mail-metio</span> <span class=ss>:store</span> <span class=ss>:metio</span> <span class=ss>:watch</span> <span class=nv>true</span> <span class=ss>:as</span> <span class=s>&#34;mail&#34;</span>
+</span></span><span class=line><span class=cl>              <span class=ss>:key</span> <span class=p>{</span><span class=ss>:credential</span> <span class=s>&#34;mail-metio-key&#34;</span><span class=p>}</span> <span class=ss>:config</span> <span class=s>&#34;imap.edn&#34;</span>
+</span></span><span class=line><span class=cl>              <span class=ss>:run</span> <span class=p>[</span><span class=s>&#34;bridge&#34;</span> <span class=s>&#34;imap&#34;</span> <span class=s>&#34;--watch&#34;</span><span class=p>]}]}</span>
+</span></span></code></pre></div><h3 id=1-a-run-is-a-child-process-not-a-call>1. A run is a child process, not a call</h3><p>Each run is <code>&lt;this tik> &lt;verb> --actor &lt;as> [--config &lt;file>]</code> with the
+environment of <code>tik.context/child-env</code> for its store: <code>TIK_ROOT</code>,
+<code>TIK_KEY</code> and <code>TIK_ACTOR</code> of that store and pipeline, nothing of any
+other store&rsquo;s.</p><ul><li><strong>Security.</strong> A child shares no memory with another store&rsquo;s runs. The
+derived-row cache leak found under ADR 0041 shows the class of bug a
+shared process invites: any process-global cache, rate limiter or
+<code>alter-var-root</code> is a channel between stores. A process boundary closes
+every such channel at once, where a context binding closes only the ones
+somebody remembered to bind. The boundary is against mistakes: every
+child runs as the same Unix user, so a compromised child could read any
+file the backend can.</li><li><strong>A bounded run needs a kill.</strong> A bridge blocked in a socket read ignores
+<code>Thread.interrupt</code>, so an in-process run cannot be stopped when it hangs.
+A child is stopped with SIGTERM, then SIGKILL after five seconds, with
+the processes it started (a password manager, an ssh tunnel) where the
+runtime can list them (the JVM and the native image; babashka cannot).</li><li><strong>Labelled output.</strong> A child&rsquo;s stdout and stderr are read line by line
+and written as <code>[store/pipeline] &lt;line></code>, from every thread the verb
+starts. An in-process run captures only the calling thread&rsquo;s <code>*out*</code>, and
+only once the run ends.</li><li><strong>Cost.</strong> One process start per run: milliseconds for the native binary,
+about a second for babashka. A ten-minute bridge interval does not
+notice either.</li></ul><p>Rejected: in-process runs bound to the store context (ADR 0041&rsquo;s first
+shape), for the reasons above.</p><h3 id=2-how-the-backend-names-itself>2. How the backend names itself</h3><p><code>:exec</code> in the config wins. Without it, a native image runs its own
+executable (<code>/proc/self/exe</code>) and babashka runs <code>bb --config &lt;its bb.edn> tik</code>. Any other runtime, such as a JVM REPL, cannot name its own command
+line, and the backend refuses to start pipelines rather than guess. The
+<code>javax.net.ssl.trustStore*</code> properties the backend was started with are
+passed on as <code>-D</code> arguments, so a private CA reaches every run.</p><h3 id=3-the-scheduler-is-pure>3. The scheduler is pure</h3><p><code>tik.schedule</code> takes the clock and the random draw as arguments and
+returns data; <code>tik.pipeline-run</code> executes its decisions. The properties are
+property-tested without a clock or a process.</p><ul><li><strong>Grid and jitter.</strong> A pipeline keeps a grid point (start plus whole
+intervals) and fires at the grid point plus a draw from <code>[0, :jitter)</code>.
+The default jitter is one minute, the timers&rsquo; <code>RandomizedDelaySec=60</code>,
+and never more than half the interval. A grid does not drift by the run
+time, as an <code>OnCalendar</code> timer does not.</li><li><strong>Catch-up.</strong> Every fire missed while the backend was stopped or the
+machine slept collapses into one run (<code>Persistent=true</code>). A sleep does
+not advance during a suspend, so the scheduler re-reads the wall clock at
+least every 30 seconds. A fire found more than 35 seconds late is
+re-drawn into its jitter window once, so the pipelines that all missed
+do not start in the same instant after a resume.</li><li><strong>No overlap.</strong> A pipeline due while its run still goes is not started a
+second time; the fire is skipped, logged, and the next one is the next
+grid point. Different pipelines run concurrently. This is a per-process
+guard on delivery timing, not a lock on any correctness path: two
+backends running the same pipeline still converge, because the verbs
+mint content-addressed events (ADR 0021).</li><li><strong>Bounded.</strong> A run is killed after <code>:timeout</code>, by default its interval,
+so a stuck run never outlives the period it belongs to.</li><li><strong>Restarts.</strong> A <code>:watch</code> pipeline restarts after 1 s, doubling to 60 s
+while it keeps failing fast, and starts over at 1 s once a run lasted a
+minute.</li></ul><h3 id=4-failure-reports>4. Failure reports</h3><p><code>:on-failure {:run [...] :repeat "PT1H"}</code> runs a command without a shell
+when a run fails or times out, with <code>{store}</code>, <code>{pipeline}</code>, <code>{exit}</code> and
+<code>{reason}</code> filled in separate arguments. Every value comes from the
+backend (names from its config, a number, a sentence it wrote), never from
+a remote, and no output of the run is passed on. A pipeline is reported
+when it goes from working to failing, and again after <code>:repeat</code> while it
+keeps failing; <code>"PT0S"</code> reports every failure as systemd&rsquo;s <code>OnFailure=</code>
+does. The default of an hour exists because a crash-looping watcher
+restarts every minute. Every failure is also written as <code>FAILED: &lt;reason></code>
+at priority err.</p><h3 id=5-the-journal>5. The journal</h3><p>Every line is labelled <code>[store/pipeline]</code>. When systemd sets
+<code>JOURNAL_STREAM</code>, each line also carries an sd-daemon priority prefix
+(<code>&lt;6></code> progress, <code>&lt;5></code> a skip, <code>&lt;4></code> a run&rsquo;s stderr, <code>&lt;3></code> failures), so
+<code>journalctl -p warning</code> shows what needs attention. Line breaks inside a
+child&rsquo;s line are flattened, so a line cannot forge another pipeline&rsquo;s
+label. A child never sees <code>JOURNAL_STREAM</code>, since it writes to a pipe.</p><h3 id=6-config-files-per-pipeline>6. Config files per pipeline</h3><p><code>:config</code> names the verb&rsquo;s config file, relative to the store&rsquo;s root,
+absolute, or <code>~/…</code>; the backend passes it as <code>--config &lt;absolute path></code>
+and refuses to start when it does not exist. <code>--config</code> inside <code>:run</code> is
+refused, since it would resolve against the backend&rsquo;s working directory.
+Without <code>:config</code> the verb reads its default file at the store&rsquo;s root, as
+before.</p><h3 id=7-delegate-keys>7. Delegate keys</h3><p>A pipeline&rsquo;s <code>:key</code> must sign as its <code>:as</code> in its own store&rsquo;s <code>actors</code>
+file (ADR 0041). Two pipelines of stores with different organisations may
+not resolve to the same key unless <code>:allow-shared-keys</code> names the pair,
+which extends ADR 0041&rsquo;s rule from store keys to delegate keys: one
+organisation&rsquo;s delegate never signs for another&rsquo;s.</p><p>The backend also refuses <code>GITHUB_TOKEN</code>, <code>GITHUB_WEBHOOK_SECRET</code>,
+<code>GITLAB_TOKEN</code>, <code>REDMINE_API_KEY</code> and <code>ODOO_PASSWORD</code> in its environment.
+Every child inherits the backend&rsquo;s environment, so a token meant for one
+organisation&rsquo;s bridge would reach every store&rsquo;s runs. The configs name
+their secrets with <code>{:command …}</code> or <code>{:credential …}</code> instead.</p><h3 id=8-mailboxes>8. Mailboxes</h3><p><code>bridge imap</code> reads one mailbox under <code>:imap</code> or a list under
+<code>:mailboxes</code>, each with an <code>:id</code>, its own <code>:imap</code> settings and its own
+<code>:process</code>; the other top-level keys are defaults for every mailbox. A
+pipeline belongs to one store, so a store&rsquo;s mailboxes share one pipeline
+and one process, each mailbox on its own connection and thread with its
+own backoff. Adding <code>support@klimpi.app</code> is a list entry.</p><p>A <code>:mailboxes</code> list, and any IMAP pipeline of a multi-store backend
+(checked before the backend starts), holds to strict rules:</p><ul><li><code>:dkim {:require true :authserv-id …}</code> with a non-blank id, so a From is
+credited only when the pinned verifier stamped <code>dkim=pass</code> for its
+domain;</li><li>the password is a <code>{:command …}</code>, <code>{:credential …}</code> or <code>{:file …}</code>
+spec, never a literal and never <code>{:env …}</code>, which every child inherits;</li><li>the pipeline&rsquo;s key must sign as every actor a mailbox records mail as
+(<code>:default-actor</code> and each <code>:from->actor</code> value), or what it ingests
+would not verify.</li></ul><p>For every IMAP and POP3 connection, strict or not: a TLS socket checks
+that the certificate names the host (a raw <code>SSLSocket</code> checks only that
+the chain is trusted, so any certificate a trusted CA issued for any name
+was accepted), and plaintext (<code>:tls false</code>) is refused for any host not
+written as a loopback address, judged on the text without DNS. A watch
+that drops says why on stderr, without the password, and a plaintext
+refusal ends it instead of retrying.</p><h2 id=consequences>Consequences</h2><ul><li>The systemd timer per bridge and the board service become one unit
+running <code>tik backend --config backend.edn</code>; see the local-service guide.</li><li>The board and MCP move below <code>/s/&lt;store>/</code> (ADR 0041), so MCP clients
+registered on <code>/mcp</code> need the new path.</li><li><code>tik.process-tree</code> exists only for the JVM and the native image;
+babashka stops a timed-out run without its descendants.</li><li>Not done: a per-mailbox fact on new tickets (such as <code>product=klimpi</code>);
+each mailbox chooses its process instead.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0042-a-multi-store-backend-runs-each-pipeline-as-a-child-process.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

@@ -1,0 +1,137 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta content="metio.wtf" name=author><meta content="tik" name=subject><meta content="a process system, not a ticket system: stage is derived, never stored" name=description><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:site_name" content="tik"><meta property="og:title" content="A local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, and never evidence · tik"><meta property="og:description" content="a process system, not a ticket system: stage is derived, never stored"><meta property="og:type" content="article"><meta property="og:url" content="https://tik.projects.metio.wtf/decisions/0040-a-notifier-pushes-hints-not-evidence/"><meta property="og:locale" content="en"><meta property="og:image" content="https://tik.projects.metio.wtf/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name=twitter:card content="summary_large_image"><meta name=twitter:title content="A local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, and never evidence · tik"><meta name=twitter:description content="a process system, not a ticket system: stage is derived, never stored"><meta name=twitter:image content="https://tik.projects.metio.wtf/og-image.png"><meta name=fediverse:creator content="@sebhoss@mastodon.online"><script type=application/ld+json>{"@context":"https://schema.org","@type":"TechArticle","author":{"@type":"Organization","name":"metio.wtf"},"dateModified":"2026-11-28T08:11:41+01:00","datePublished":"2026-11-27T00:00:00Z","headline":"A local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, and never evidence","isPartOf":{"@type":"WebSite","name":"tik","url":"https://tik.projects.metio.wtf/"},"mainEntityOfPage":"https://tik.projects.metio.wtf/decisions/0040-a-notifier-pushes-hints-not-evidence/","url":"https://tik.projects.metio.wtf/decisions/0040-a-notifier-pushes-hints-not-evidence/"}</script><script type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://tik.projects.metio.wtf/","name":"Home","position":1},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/","name":"Decisions","position":2},{"@type":"ListItem","item":"https://tik.projects.metio.wtf/decisions/0040-a-notifier-pushes-hints-not-evidence/","name":"A local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, and never evidence","position":3}]}</script><link href=https://tik.projects.metio.wtf/decisions/0040-a-notifier-pushes-hints-not-evidence/ rel=canonical><link href=https://tik.projects.metio.wtf/atom.xml rel=alternate title="tik Atom" type=application/atom+xml><link href=https://tik.projects.metio.wtf/index.xml rel=alternate title="tik RSS" type=application/rss+xml><link href=https://tik.projects.metio.wtf/sitemap.xml rel=sitemap title="tik Sitemap" type=application/xml><link rel=author href=https://tik.projects.metio.wtf/humans.txt><link rel=alternate type=application/rdf+xml title=FOAF href=https://tik.projects.metio.wtf/foaf.rdf><link rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><link rel=icon href=https://tik.projects.metio.wtf/favicon.svg type=image/svg+xml><link rel=icon href=https://tik.projects.metio.wtf/favicon.ico sizes="48x48 32x32 16x16"><link rel=apple-touch-icon href=https://tik.projects.metio.wtf/apple-touch-icon.png><link href=https://tik.projects.metio.wtf/css/mobile.min.3e90c3f57209c53d17ddb88c757fb53a631191dbb9604fc0c1df0e92830dd82f7b53d24c250e74277ac903bff84f10ebe3340ea268a742d22916b54bbaeee5c4.css integrity="sha512-PpDD9XIJxT0X3biMdX+1OmMRkdu5YE/Awd8OkoMN2C97U9JMJQ50J3rJA7/4TxDr4zQOominQtIpFrVLuu7lxA==" media="screen and (max-width: 800px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/tablet.min.c9f3bed58b081cc4a4235c7fd12d5984ece257a9d4984e90926e4fbdd5039e31ba30113f8f63ab11d824e9ed7b11a2da6c3d79c4d88d9f26aec63fb53a36d7ab.css integrity="sha512-yfO+1YsIHMSkI1x/0S1ZhOziV6nUmE6Qkm5PvdUDnjG6MBE/j2OrEdgk6e17EaLabD15xNiNnyauxj+1OjbXqw==" media="screen and (min-width: 801px) and (max-width: 1199px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/desktop.min.9ddce84fa850d6b633e1d96f2cc406b2d606b20676ac02aa8e3d2cf920c0f705591f860b1e2d012784611d71687cb406a6ef6d11ae134e65f0cf8111418e2457.css integrity="sha512-ndzoT6hQ1rYz4dlvLMQGstYGsgZ2rAKqjj0s+SDA9wVZH4YLHi0BJ4RhHXFofLQGpu9tEa4TTmXwz4ERQY4kVw==" media="screen and (min-width: 1200px)" rel=stylesheet><link href=https://tik.projects.metio.wtf/css/darkmode.min.c280ed569698d79b60e8054c444654532d79b5d4805c6744203be028828d1d90dfc58bcc909f6e503630f25c8fa642174433f2357ef2930c896f4911570143eb.css integrity="sha512-woDtVpaY15tg6AVMREZUUy15tdSAXGdEIDvgKIKNHZDfxYvMkJ9uUDYw8lyPpkIXRDPyNX7ykwyJb0kRVwFD6w==" media="screen and (prefers-color-scheme: dark)" rel=stylesheet><title>tik &ndash; A local notifier pushes hints of verified stage changes to subscribers on a private Unix socket, and never evidence</title></head><body id=site><header id=header><a id=logolink href=https://tik.projects.metio.wtf/ title=tik><img id=logo src=https://tik.projects.metio.wtf/images/logo.svg alt="tik logo" width=40 height=40></a><h1 id=projectname><a id=rootlink href=https://tik.projects.metio.wtf/>tik</a>
+<a href=https://tik.projects.metio.wtf/sitemap/ title="show me all pages" id=sitemaplink><img class=svgimg src=https://tik.projects.metio.wtf/images/sitemap.svg alt=sitemap width=30 height=30></a></h1><span id=actions><a href=https://github.com/metio/tik id=github title="want some code?"><img class=svgimg src=https://tik.projects.metio.wtf/images/github.svg alt=github width=32 height=32>
+</a><a href=https://tik.projects.metio.wtf/atom.xml id=newsfeed title="get notified about updates"><img class=svgimg src=https://tik.projects.metio.wtf/images/rss.svg alt=newsfeed width=32 height=32></a></span></header><nav id=navigation><ul><h3 class="mobileonly menutitle">Links</h3><li class=mobileonly><a href=https://tik.projects.metio.wtf/>Home</a></li><li class=mobileonly><a href=https://github.com/metio/tik>See some code at GitHub</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/atom.xml>Subscribe to the Atom feed</a></li><li class=mobileonly><a href=https://tik.projects.metio.wtf/sitemap/>See all pages at the sitemap</a></li><hr class="mobileonly menudivider"><h3 class="mobile-and-tablet menutitle">Navigation</h3><li><a href=/get-started/>Get started</a><ul><li><a href=/get-started/install/>Install</a></li><li><a href=/get-started/guide/>Five-minute guide</a></li></ul></li><li><a href=/concepts/>Concepts</a><ul><li><a href=/concepts/derived-beats-declared/>Derived beats declared</a></li><li><a href=/concepts/events-and-facts/>Events and facts</a></li><li><a href=/concepts/stages/>Stages</a></li><li><a href=/concepts/guards/>Guards</a></li><li><a href=/concepts/explain/>Explain</a></li><li><a href=/concepts/replication/>Replication</a></li><li><a href=/concepts/event-log/>The event log</a></li><li><a href=/concepts/witness/>Witnessing</a></li></ul></li><li><a href=/cli/>CLI</a><ul><li><a href=/cli/recording-work/>Recording work</a></li><li><a href=/cli/reading-a-store/>Reading a store</a></li><li><a href=/cli/administration/>Store administration</a></li></ul></li><li><a href=/authoring/>Authoring processes</a><ul><li><a href=/authoring/writing-a-definition/>Writing a definition</a></li><li><a href=/authoring/lint-simulate-test/>Lint, simulate, test</a></li><li><a href=/authoring/roles-and-authority/>Roles and authority</a></li></ul></li><li><a href=/processes/>Processes</a></li><li><a href=/evidence/>Evidence</a><ul><li><a href=/evidence/bundle-format/>Bundle format</a></li><li><a href=/evidence/re-deriving/>Re-deriving a bundle</a></li><li><a href=/evidence/slsa/>SLSA, said honestly</a></li></ul></li><li><a href=/integrations/>Integrations</a><ul><li><a href=/integrations/claude-code/>Claude Code skill</a></li><li><a href=/integrations/mcp-server/>MCP server</a></li></ul></li><li><a href=/runbooks/>Runbooks</a></li><li><a href=/decisions/>Decisions</a></li><li><a href=/contributing/>Contributing</a></li></ul></nav><main id=content><div id=post-content><h1 id=adr-0040-a-notifier-pushes-hints-not-evidence>ADR 0040: A notifier pushes hints, not evidence</h1><h2 id=decision>Decision</h2><p>Proposed on 2026-11-27. Not accepted. It is implemented as
+<code>tik notify</code>, under ticket 19030002 of the metio store. Each choice
+below names the alternatives and why it was taken, ranked by security
+first, then extensibility and re-use, then performance.</p><p><strong><code>tik notify</code> watches one or more local stores. It re-derives and
+verifies every ticket whose log changed, and pushes a hint of each
+change of its current stages to the local subscribers that asked for
+that ticket.</strong> A hint names the store, the ticket, its title, the
+stages it left and entered, and the actor of the event that moved it.
+It carries nothing else. The receiver treats it as a reason to look,
+and re-derives with <code>tik status</code> before acting.</p><ol><li><p><strong>Hints only.</strong> The payload is exactly the keys <code>store</code>, <code>ticket</code>,
+<code>title</code>, <code>from</code>, <code>to</code> and <code>actor</code> (<code>tik.notify/hint-keys</code>). It holds
+no fact values and no instructions. A fact can hold a customer&rsquo;s
+data or text written to steer an agent, and a hint goes into a
+model&rsquo;s context. The title and the actor are folded to one line of at
+most 160 and 64 characters, with control, format and bidi-override
+characters dropped. That keeps a title from forging a second JSON
+line or reordering what a terminal shows. The alternative, a payload
+carrying the facts that moved the ticket, was declined: it would turn
+the notifier into a second read path that bypasses whatever a reader
+may see. It would also make the hint look like evidence, which the
+three-questions law (PLAN §12) reserves for derivation.</p></li><li><p><strong>Re-derived and verified.</strong> The notifier never trusts an event
+because it arrived. For every ticket whose fingerprint moved, it
+derives the ticket from the store with the same functions <code>tik ls</code>
+uses, then requires three things:</p><ul><li>the store has an actors registry;</li><li>every event the cursor had not seen carries a signature;</li><li>the whole verify ladder over the ticket passes: L0 integrity, the
+DAG, every signature present, and the signature policy.</li></ul><p>A ticket that fails sends nothing and logs why. Its cursor entry
+keeps the last verified stages, so the next verified change diffs
+against stages that were verified. Taking stage changes from a
+stream of incoming events was declined, because it would believe an
+event before <code>verify</code> does.</p></li><li><p><strong>Local only.</strong></p><ul><li><strong>Socket.</strong> Subscribers connect to a Unix socket in a directory
+the notifier creates <code>rwx------</code>, or refuses when it exists with
+another owner or wider permissions. The socket itself is
+<code>rw-------</code>.</li><li><strong>Peer check.</strong> Every accepted connection&rsquo;s kernel peer credentials
+(<code>SO_PEERCRED</code>) must name the notifier&rsquo;s own user. A peer the
+platform cannot name is refused.</li><li><strong>No network.</strong> There is no network listener. Delivery to another
+host stays with the effects bridge (ADR 0019) or a future
+notifier that runs inside the shared server (ADR 0038).</li><li><strong>Alternatives declined.</strong> A loopback HTTP endpoint would reach
+every local user and every web page that can rebind DNS. A
+desktop bus would tie the notifier to one desktop.</li></ul></li><li><p><strong>Store-aware.</strong> A subscription names one store. It is admitted
+only when that store&rsquo;s root directory belongs to the subscriber&rsquo;s
+user, the same test the operating system applies to reading the
+store itself. A notifier configured with several stores
+(<code>notify.edn</code> <code>:stores</code>) never tells a subscriber of one store about
+another. Today that boundary is the operating-system user. Once
+connections carry the signed actor assertion of ADR 0038 point 4,
+the admission check is the place to require that the actor may read
+the store. That is how one organisation&rsquo;s session stays out of
+another organisation&rsquo;s tickets on a shared machine.</p></li><li><p><strong>Coalesced and rate-limited.</strong> Diffs wait in a coalescer keyed by
+store and ticket for a window (5 s by default). A ticket pending in
+the window keeps the stages it started from and takes the newest
+stages, title and actor, so a burst of events gives one hint per
+ticket per window. A ticket that came back to where it started gives
+none. Each subscriber has a token bucket (10 hints, one more every
+6 s by default). Past it, hints are dropped and logged, never
+queued without bound.</p></li><li><p><strong>Idempotent across restarts.</strong> A cursor records, per store and
+ticket, the fingerprint, the events and the stages last acted on. It
+is written atomically under <code>$XDG_STATE_HOME/tik/notify/</code> whenever it
+moves, and a restart diffs against it. The cursor is disposable
+porcelain (ADR 0013). Losing it costs one silent baseline. It never
+costs a replay of old hints, because a first start records the
+stores without reporting them. Delivery is therefore at most once.
+That is the right failure for a hint, where ADR 0019&rsquo;s effects choose
+at least once for messages that must arrive.</p></li><li><p><strong>Pluggable delivery.</strong> A sink is one protocol method,
+<code>deliver!</code>, returning whether it is still there. Three sinks ship:</p><ul><li>a socket subscriber;</li><li>a configured command, run without a shell with <code>{ticket}</code>,
+<code>{title}</code>, <code>{line}</code> and the other placeholders substituted as
+whole arguments. <code>notify-send</code> gives a desktop notification this
+way.</li><li>a fake one, in the tests.</li></ul><p>Two subscribers ship as verbs:</p><ul><li><code>tik notify watch</code> prints one JSON line per hint.</li><li><code>tik notify channel</code> is a stdio MCP server that forwards hints as
+Claude Code channel events.</li></ul></li><li><p><strong>How a hint reaches a Claude Code session.</strong> This was checked
+against the MCP 2026-07-28 specification, the Claude Code
+documentation and the strings of Claude Code 2.1.331 on 2026-11-27.
+In order of preference:</p><ul><li><strong>The Monitor tool running <code>tik notify watch</code>.</strong> Claude Code
+documents Monitor as generally available. It &ldquo;runs a command in
+the background and feeds each output line back to Claude&rdquo;, under
+the session&rsquo;s Bash permission rules. It needs nothing beyond the
+notifier.</li><li><strong>A channel.</strong> Claude Code registers <code>tik notify channel</code> as a
+channel when the session starts with
+<code>--dangerously-load-development-channels server:&lt;name></code>. Channels
+are a research preview, work over stdio only, and are not
+registered on revision 2026-07-28. The bridge therefore speaks only
+the legacy <code>initialize</code> handshake and answers <code>server/discover</code>
+with -32601. It reads each stdin line within the 1 MiB limit of
+<code>tik mcp</code>, holding at most that much of a line: a longer line, or
+one briko.json refuses, answers -32700 with a null id and the rule
+in <code>data.rule</code>, and the next line is read.</li><li><strong>MCP resource subscriptions: blocked.</strong> Under 2026-07-28 a client
+must request <code>resourceSubscriptions</code> on <code>subscriptions/listen</code>
+before a server may send <code>notifications/resources/updated</code>.
+Claude Code 2.1.331 requests only the three <code>list_changed</code> kinds,
+and in the legacy era registers no handler for resource updates.</li><li><strong>The <code>cc-socks</code> inbox socket: declined.</strong> Its message format is
+undocumented. The documented auth line serves a session&rsquo;s own
+child processes.</li></ul></li><li><p><strong>One backend, later.</strong> The verb runs as its own process today. It
+is shaped to become a continuous <code>tik backend</code> pipeline
+(<code>{:id :notify :watch true :run ["notify" "--config" "…"]}</code>), and the
+one-backend-many-stores plan reuses the multi-store loop directly.
+The CLI&rsquo;s store root became bindable for that (<code>tik.cli-core/*root*</code>),
+so one process derives each store in turn under its own root.</p></li></ol><h2 id=context>Context</h2><p>Agents and the maintainer learned about ticket changes by polling: an
+hourly request check, plus <code>SendMessage</code> pings between the metio and
+infra.run sessions written by hand. The kajero idea 25d4b7d4 proposed a
+local notifier that finds the right session and pushes the change
+instead, under the law that the notifier must never become a source of
+truth.</p><p>The effects bridge (ADR 0019) already observes derivation and fires
+outbound sinks. It answers a different question, at a different
+latency:</p><ul><li><strong>What it reports.</strong> Effects report every stage a ticket reaches,
+once per (ticket, stage, sink). A hint reports where the ticket is
+now, relative to where it was.</li><li><strong>When it runs.</strong> Effects run in batches, from a pipeline. A hint
+runs live.</li><li><strong>Who it reaches.</strong> Effects deliver at least once to sinks configured
+in advance. Hints go at most once to subscribers that come and go
+with their sessions.</li></ul><p>Folding the notifier into effects would weaken both: effects would
+gain subscriptions and a socket, and hints would gain a ledger keyed on
+reached stages that cannot express &ldquo;moved back&rdquo;.</p><h2 id=consequences>Consequences</h2><ul><li>A session can replace a polling loop with <code>tik notify watch</code> under
+Monitor, plus a slow fallback poll for anything missed while it was
+not subscribed.</li><li>Time alone can move a ticket, through <code>:elapsed-since</code> guards.
+Without an event there is no fingerprint change, so the notifier does
+not report such a move. The fallback poll covers it.</li><li>The fingerprint reads names, not bytes. A signature replaced in place
+under the same name is judged at the next real change, and <code>tik verify</code> remains the audit.</li><li>A write appends its event before its signature sidecar. A poll that
+falls between the two logs a refusal for the unsigned event; the
+sidecar then changes the fingerprint, and the next poll verifies the
+ticket and sends the hint.</li><li>Several notifiers on one estate do not coordinate. Each keeps its own
+cursor and socket, which ADR 0021 permits for delivery. A user runs
+one per machine.</li></ul><h2 id=alternatives-considered>Alternatives considered</h2><ul><li><strong>Push stage changes through MCP resource subscriptions on the
+existing tik MCP server.</strong> Blocked today; see point 8.</li><li><strong>Write into Claude Code&rsquo;s per-session sockets.</strong> Declined; see point
+8.</li><li><strong>inotify instead of a poll.</strong> The poll lists each ticket&rsquo;s event
+directory every 2 s, which is cheap at the store sizes in use and
+works the same on the SQLite store. A watcher can replace the poll
+without touching anything above <code>fingerprints</code>.</li><li><strong>Deliver to every subscriber of a store without selectors.</strong> Each
+subscription carries a <code>tik ls --where</code> selector instead, evaluated on
+the ticket&rsquo;s fresh derivation, so a session hears only about the
+tickets it asked for.</li></ul><p class=subtitle><a href=https://github.com/metio/tik/commits/main/kb/decisions/0040-a-notifier-pushes-hints-not-evidence.md>see history</a>
+&#183;
+<a href=https://github.com/metio/tik/edit/main/kb/decisions/0040-a-notifier-pushes-hints-not-evidence.md>edit this page</a></p></div></main><footer id=footer><p xmlns:dct=http://purl.org/dc/terms/ xmlns:vcard=http://www.w3.org/2001/vcard-rdf/3.0#><a rel=license href=https://creativecommons.org/publicdomain/zero/1.0/><img src=https://tik.projects.metio.wtf/images/cc0.png style=border-style:none alt=CC0-1.0 width=88px height=31px></a><br>To the extent possible under law,
+<a rel=dct:publisher href=https://tik.projects.metio.wtf/><span property="dct:title">metio.wtf</span>
+</a>has waived all copyright and related or neighboring rights to
+<span property="dct:title">tik.projects.metio.wtf</span>.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166" content="EN" about="https://tik.projects.metio.wtf/">Germany</span></p><p id=footer-llms>For LLMs:
+<a href=https://tik.projects.metio.wtf/llms.txt>llms.txt</a> &#183;
+<a href=https://tik.projects.metio.wtf/llms-full.txt>llms-full.txt</a></p></footer></body></html>

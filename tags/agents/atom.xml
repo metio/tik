@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://gohugo.io/" version="0.169.0">Hugo</generator><title type="html">Agents on tik</title><link href="https://tik.projects.metio.wtf/tags/agents/" rel="alternate" type="text/html" title="html"/><link href="https://tik.projects.metio.wtf/tags/agents/index.xml" rel="alternate" type="application/rss+xml" title="rss"/><link href="https://tik.projects.metio.wtf/tags/agents/atom.xml" rel="self" type="application/atom+xml" title="atom"/><updated>2026-11-28T12:32:11+00:00</updated><author><name>metio.wtf</name></author><id>https://tik.projects.metio.wtf/tags/agents/</id><entry><title type="html">Claude Code skill</title><link href="https://tik.projects.metio.wtf/integrations/claude-code/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/mcp-server/?utm_source=atom_feed" rel="related" type="text/html" title="MCP server"/><id>https://tik.projects.metio.wtf/integrations/claude-code/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-28T08:11:41+01:00</updated><content type="html"><![CDATA[<blockquote>Install the tik skill so Claude drives a store correctly — recording evidence and letting stages derive, instead of setting statuses.</blockquote><p>Install the tik skill into <a href="https://claude.com/claude-code">Claude Code</a>
+
+and Claude gains working knowledge of tik: it recognises a store, records
+facts with <code>tik set</code> rather than inventing a status field, reads
+<code>tik explain</code> before asking a person anything, and authors process
+definitions whose stages derive from evidence instead of listing
+activities.</p>
+<p>That last part is the reason the skill exists. The failure mode for any
+model writing a tik process is a task list wearing a process costume —
+stages named after activities, with nothing following from anything. The
+skill carries the design law that rules it out, along with the closed
+guard vocabulary and the authoring loop that checks the result.</p>
+<p>The skill lives in this repository under <code>skills/tik/</code>, packaged as a
+Claude Code plugin by the manifests in <code>.claude-plugin/</code>.</p>
+<h2 id="install">Install</h2>
+<p>Add this repository as a plugin marketplace, then install the plugin:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">/plugin marketplace add metio/tik
+</span></span><span class="line"><span class="cl">/plugin install tik@tik
+</span></span></code></pre></div><p>Claude activates the skill whenever a repository holds a <code>tickets/</code> or
+<code>.tik/</code> directory, an <code>actors</code> registry, or <code>processes/*.edn</code> — or when
+you mention tik, tickets, processes, or stages.</p>
+<h2 id="from-the-mcp-server">From the MCP server</h2>
+<p>A tik MCP server also serves the skill, through the MCP Skills extension
+(<code>io.modelcontextprotocol/skills</code>). With the server registered, Claude
+Code v2.1.331 or later lists the skill as <code>&lt;server&gt;:tik</code>, for example
+<code>tik:tik</code>, and loads the copy built into that server, so it matches the
+server&rsquo;s version without a plugin install. Claude Code lists MCP skills
+only over MCP revision 2026-07-28, which <code>tik mcp</code> and <code>tik serve</code> speak.
+See <a href="/integrations/mcp-server/#agent-skill">MCP server</a>
+ for how the
+manifest is signed and checked.</p>
+<h2 id="what-it-grants-claude">What it grants Claude</h2>
+<p>The skill teaches the CLI surface and the model behind it:</p>
+<ul>
+<li><strong>The daily loop</strong> — <code>tik ls</code>, <code>tik next</code>, <code>tik new</code>, <code>tik set</code>,
+<code>tik explain</code>, <code>tik status</code>, and the selector grammar for filtering a
+board.</li>
+<li><strong>Corrections</strong> — retract, dispute, and the fact that a dispute is
+answered only by a <em>different</em> value, so Claude does not try to clear
+one by retyping the same fact.</li>
+<li><strong>Authoring</strong> — <code>tik author</code>, the guard vocabulary, and the lint,
+simulate, and test loop that proves a definition before a real ticket
+depends on it.</li>
+<li><strong>The one design law</strong> — a stage is defined by what must be TRUE to
+reach it, never by who moved what.</li>
+</ul>
+<p>It also knows when <em>not</em> to act: an unreachable step in <code>explain</code> means
+waiting is pointless and the definition or the role register needs
+fixing, not patience.</p>
+<h2 id="hearing-about-changes">Hearing about changes</h2>
+<p><code>tik notify</code> runs a local notifier that re-derives and verifies every
+ticket whose log changed and pushes a hint of each stage change to the
+sessions that asked for it, over a Unix socket only your user can reach:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik notify --config ~/.config/tik/notify.edn
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-clojure" data-lang="clojure"><span class="line"><span class="cl"><span class="p">{</span><span class="ss">:stores</span> <span class="p">{</span><span class="s">&#34;metio&#34;</span> <span class="s">&#34;~/git/github.com/metio/.tik&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:window</span> <span class="s">&#34;PT5S&#34;</span>
+</span></span><span class="line"><span class="cl"> <span class="ss">:sinks</span> <span class="p">[{</span><span class="ss">:store</span> <span class="s">&#34;metio&#34;</span> <span class="ss">:where</span> <span class="s">&#34;stage=:asked&#34;</span>
+</span></span><span class="line"><span class="cl">          <span class="ss">:command</span> <span class="p">[</span><span class="s">&#34;notify-send&#34;</span> <span class="s">&#34;tik&#34;</span> <span class="s">&#34;{line}&#34;</span><span class="p">]}]}</span>
+</span></span></code></pre></div><p>A Claude Code session subscribes by running <code>tik notify watch</code> under the
+Monitor tool, which feeds each output line back to Claude:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik notify watch --store metio --where <span class="s2">&#34;fact:request.from=infra.run&#34;</span>
+</span></span></code></pre></div><p>Each line is one JSON hint naming the store, the ticket, its title, the
+stages it left and entered, and the actor of the event that moved it. A
+hint holds no fact values and is never evidence: Claude re-derives with
+<code>tik status</code> before acting on it. <code>tik notify channel</code> delivers the same
+hints as a Claude Code channel to a session started with
+<code>--dangerously-load-development-channels server:&lt;name&gt;</code>. The channel
+speaks only the legacy <code>initialize</code> handshake and answers <code>server/discover</code>
+with -32601. It reads at most 1 MiB per stdin line, like <code>tik mcp</code>: a
+longer line, or one that is not valid JSON, answers a parse error (-32700)
+whose <code>data.rule</code> names the rule, and the next line is read. Hints sent while
+nobody was subscribed are not replayed, so keep a slow fallback poll. The
+decisions behind this are in <a href="/decisions/0040-a-notifier-pushes-hints-not-evidence/">ADR 0040</a>
+.</p>
+<h2 id="for-agents-generally">For agents generally</h2>
+<p>The skill is one surface over a derivation every tool can read. The gated
+agent commands enforce the same boundary without any prompt-side
+cooperation:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik agent actions <span class="m">3184</span> --actor bot
+</span></span><span class="line"><span class="cl">tik agent <span class="nb">set</span> <span class="m">3184</span> <span class="nv">severity</span><span class="o">=</span>:high --actor bot
+</span></span></code></pre></div><p>An agent sees only what the frontier admits for its role, and anything
+else is refused with the derived reason. Because the boundary is the
+derivation rather than an instruction, it cannot be talked around.</p>
+<p>This site also publishes <code>/llms.txt</code> and <code>/llms-full.txt</code>, so a model can
+read the documentation directly.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/claude" term="claude" label="claude"/><category scheme="https://tik.projects.metio.wtf/tags/skill" term="skill" label="skill"/><category scheme="https://tik.projects.metio.wtf/tags/plugin" term="plugin" label="plugin"/><category scheme="https://tik.projects.metio.wtf/tags/agents" term="agents" label="agents"/></entry><entry><title type="html">MCP server</title><link href="https://tik.projects.metio.wtf/integrations/mcp-server/?utm_source=atom_feed" rel="alternate" type="text/html"/><link href="https://tik.projects.metio.wtf/integrations/claude-code/?utm_source=atom_feed" rel="related" type="text/html" title="Claude Code skill"/><id>https://tik.projects.metio.wtf/integrations/mcp-server/</id><published>0001-01-01T00:00:00+00:00</published><updated>2026-11-28T11:57:40+01:00</updated><content type="html"><![CDATA[<blockquote>The frontier as an agent&rsquo;s gated tool surface, and tik&rsquo;s agent skill, over stdio or HTTP.</blockquote><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nv">TIK_ACTOR</span><span class="o">=</span>bot <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/bot_ed25519 tik mcp
+</span></span></code></pre></div><p><code>tik mcp</code> speaks the Model Context Protocol over stdio and exposes one
+store as a tool surface. The tools an agent is offered are exactly the
+steps the frontier admits for its role at that moment, so the tool list
+<em>is</em> the authorization boundary.</p>
+<h2 id="one-shared-server-over-http">One shared server over HTTP</h2>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl"><span class="nv">TIK_ACTOR</span><span class="o">=</span>bot <span class="nv">TIK_KEY</span><span class="o">=</span>~/.config/tik/bot_ed25519 <span class="se">\
+</span></span></span><span class="line"><span class="cl">  tik serve --host 127.0.0.1 --port <span class="m">7777</span> --mcp-token-file ~/.local/state/tik/mcp-token
+</span></span></code></pre></div><p><code>tik serve</code> also speaks MCP on <code>/mcp</code> when given a token file, so every
+client shares one long-running server instead of starting its own
+process. It answers one JSON-RPC message per POST with JSON and opens no
+event stream. A request needs the token as <code>Authorization: Bearer …</code>, and
+one whose <code>Origin</code> is not the server&rsquo;s own is refused, which keeps a web
+page from driving the server through DNS rebinding. The token must be at
+least 32 characters; <code>openssl rand -hex 32</code> makes one.</p>
+<p>Without <code>--host</code>, a server offering MCP listens on 127.0.0.1 only, because
+<code>/mcp</code> writes over plain HTTP; put a TLS proxy in front before offering it
+beyond the machine. The board alone keeps listening on every address.</p>
+<p><code>--surfaces</code> picks what the server offers: <code>http</code> for the read-only board
+and its EDN, <code>mcp</code> for the tools, or <code>http,mcp</code>. Without it, the server
+offers <code>http</code>, and <code>mcp</code> too when a token file is given.</p>
+<h2 id="agent-skill">Agent skill</h2>
+<p>The server serves tik&rsquo;s agent skill, the repository&rsquo;s <code>skills/tik/</code> tree
+as built into the binary, through the MCP Skills extension
+(<code>io.modelcontextprotocol/skills</code>):</p>
+<ul>
+<li><code>skills/list</code> and <code>skills/get</code> return the skill&rsquo;s entry: its
+frontmatter and a manifest listing every file with its sha256 digest
+and size.</li>
+<li><code>resources/read</code> serves the files under <code>skill://tik/&lt;path&gt;</code>. A client
+without the extension sees them as ordinary resources, and the server
+instructions name <code>skill://tik/SKILL.md</code>.</li>
+<li>A URI with a <code>..</code> or <code>.</code> segment, an empty segment or an escaped
+character is refused, as is a skill name other than lowercase letters,
+digits and single inner hyphens, and any file the manifest does not
+list.</li>
+</ul>
+<p>The extension&rsquo;s digests only show that a file matches the manifest, and
+whoever runs the server writes both. tik therefore signs the manifest
+with <code>TIK_KEY</code> as <code>TIK_ACTOR</code>, in the SSHSIG namespace
+<code>tik-skill-manifest</code>, and puts the signature in the entry&rsquo;s <code>_meta</code> under
+<code>wtf.metio/skill-manifest</code>. Without a key, that marker says
+<code>&quot;signed&quot;: false</code> and why. <code>tik skill verify</code> checks a server against the
+store&rsquo;s <code>actors</code> file:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik skill verify http://127.0.0.1:7777/mcp --token-file ~/.local/state/tik/mcp-token
+</span></span></code></pre></div><p>It checks the signature, then reads every file and compares its bytes,
+and the SKILL.md frontmatter, with the manifest. It exits 1 for an
+unsigned manifest, a signature no registered actor made, or any file
+that differs. Given a saved <code>skills/list</code> or <code>skills/get</code> response
+instead of a URL, it checks the signature alone. It accepts signatures in
+the namespaces <code>tik-skill-manifest</code> and <code>kajero-skill-manifest</code>, and a
+manifest that lists more than 512 files, declares a skill over 16 MiB,
+names an entry URI other than the skill&rsquo;s <code>SKILL.md</code> or lists a file of
+another skill is malformed.</p>
+<p>The signed bytes are the manifest in a fixed form, one line each:
+<code>skill-manifest v1</code>, <code>skill &lt;SKILL.md URI&gt;</code>, then
+<code>file &lt;digest&gt; &lt;size&gt; &lt;URI&gt;</code> per file in URI order, each line ending in
+a newline. The form leaves out the frontmatter, which a client compares
+against the signed SKILL.md bytes, and binds no server version, so an
+older signed manifest still verifies until its signer is removed from
+<code>actors</code>.</p>
+<p>The server speaks both MCP eras: the <code>initialize</code> handshake of revisions
+up to 2025-06-18, and revision 2026-07-28, whose every request carries
+its version and capabilities in <code>_meta</code>. Claude Code lists a server&rsquo;s
+skills only over 2026-07-28. Over HTTP, a 2026-07-28 request must repeat
+its version, method and resource or tool name in the
+<code>MCP-Protocol-Version</code>, <code>Mcp-Method</code> and <code>Mcp-Name</code> headers, and is
+refused with <code>400</code> when they differ from the body.</p>
+<p>A message is one JSON object of at most 1 MiB, read strictly: a key named
+twice, text after the value or a body over the limit answers a parse
+error (<code>-32700</code>) whose <code>data.rule</code> names the rule, without quoting the
+input. A request without <code>&quot;jsonrpc&quot;: &quot;2.0&quot;</code>, a string method and a string
+or integer <code>id</code> answers <code>-32600</code>, an unknown method <code>-32601</code>, and an
+unknown tool or <code>arguments</code> that are not an object <code>-32602</code>. A tool that
+runs and fails, such as a refused assertion or a missing argument,
+answers in its result with <code>isError</code>. A notification, a message without
+an <code>id</code>, runs nothing and gets no answer (<code>202</code> over HTTP). Over stdio, a
+line over the limit is refused without being held in memory, and the
+next line is read as usual.</p>
+<h2 id="why-the-boundary-holds">Why the boundary holds</h2>
+<p>An agent&rsquo;s permission to act is derived from the same guards a person&rsquo;s
+is. A step whose <code>:signed-by</code> names a role the agent is not in never
+appears as an available tool, and calling it anyway is refused with the
+derived reason rather than a generic denial.</p>
+<p>That matters because the alternative — telling a model in its prompt what
+it may not do — is enforcement by cooperation. Here the check happens
+where the answer is computed, and it produces the same reason string a
+person would see.</p>
+<h2 id="accountability">Accountability</h2>
+<p>Every write the agent makes is an ordinary signed event with the agent&rsquo;s
+own actor identity. The log therefore distinguishes what a person claimed
+from what an agent claimed, permanently and without a separate audit
+trail. <code>tik causal</code> names the events behind each reached stage, so a
+conclusion an agent contributed to can be traced to the evidence it
+supplied and the key that signed it.</p>
+<h2 id="task-specifications-from-guards">Task specifications from guards</h2>
+<p>An agent asking &ldquo;what should I do?&rdquo; gets the same structured answer every
+other lens renders:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">tik explain <span class="m">3184</span> --actor bot --edn
+</span></span></code></pre></div><p>Each missing step carries its path, its schema, and who may satisfy it —
+which makes an acceptance criterion out of a guard, rather than out of a
+sentence somebody wrote in a ticket description.</p>
+]]></content><category scheme="https://tik.projects.metio.wtf/tags/mcp" term="mcp" label="mcp"/><category scheme="https://tik.projects.metio.wtf/tags/agents" term="agents" label="agents"/><category scheme="https://tik.projects.metio.wtf/tags/authorization" term="authorization" label="authorization"/></entry></feed>
