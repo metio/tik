@@ -9,7 +9,8 @@
   lacks, so a re-poll writes nothing and replicas converge by union
   (ADR 0021). The remote enters as an injected `get-json`, which keeps the
   sync functions testable without a network."
-  (:require [clojure.java.io :as io]
+  (:require [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.args :refer [read-edn-file]]
             [tik.cli-core :refer [append!* archive-process! cache-flush! claimed-at
@@ -247,7 +248,11 @@
   and runs the sync in the background (GitHub gives a delivery ten
   seconds); syncs are serialized within this process only."
   [s get-json-for cfg ctxs opts secret]
-  (let [parse (requiring-resolve 'cheshire.core/parse-string)
+  (let [;; httpkit accepts a body of up to 8 MiB, and the delivery is
+        ;; authenticated before it is parsed, so the parse takes the same
+        ;; bound; a workflow_run delivery measured about 15 KB of run
+        ;; (2026-11-28)
+        parse #(json/parse-string % {:keys :keyword :max-bytes (* 8 1024 1024)})
         lock (Object.)]
     (fn [{:keys [request-method headers body]}]
       (try
@@ -261,7 +266,7 @@
             (not (contains? deliveries kind)) {:status 204}
             :else
             (if-let [job ((deliveries kind) s get-json-for cfg ctxs opts
-                                            (parse (String. ^bytes bytes "UTF-8") true))]
+                                            (parse (String. ^bytes bytes "UTF-8")))]
               (do (future
                     (locking lock
                       (try

@@ -25,7 +25,8 @@
   `tik verify` ultimately checks is the bridge's OWN signature over the
   minted attestation, plus the issuer registered in `actors` — never the
   issuer online (offline-forever, like the OIDC/email bridges)."
-  (:require [clojure.string :as str]
+  (:require [briko.json :as json]
+            [clojure.string :as str]
             [tik.oidc :as oidc])
   (:import (java.security MessageDigest)
            (java.util Base64)))
@@ -39,7 +40,7 @@
                                           {:reason :oid4vci/malformed} e)))))
 
 (defn- json-parse [s]
-  (try ((requiring-resolve 'cheshire.core/parse-string) s true)
+  (try (json/parse-string s {:keys :keyword})
        (catch Exception e
          (throw (ex-info "credential contains invalid JSON"
                          {:reason :oid4vci/malformed} e)))))

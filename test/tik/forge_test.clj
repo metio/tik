@@ -4,8 +4,10 @@
   "The forge JSON getter and JSON-RPC caller against a loopback server:
   transient server errors are repeated, anything else fails at once, and
   an RPC error member becomes an ex-info."
-  (:require [clojure.test :refer [deftest is]]
-            [tik.forge :as forge])
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
+            [tik.forge :as forge]
+            [tik.loopback-http :as lh])
   (:import (com.sun.net.httpserver HttpExchange HttpHandler HttpServer)
            (java.net InetSocketAddress)
            (java.nio.charset StandardCharsets)))
@@ -152,3 +154,69 @@
         (is (= (str "https://127.0.0.1:" port "/runs") (:url (ex-data e))))
         (is (instance? javax.net.ssl.SSLException (ex-cause e)))
         (is (re-find #"^Test API unreachable at https://127\.0\.0\.1:\d+: SSL" (ex-message e)))))))
+
+;; ------------------------------------------------------------ bounds
+
+(defn- runs-page
+  "A page of `n` workflow runs of about 15 KB each, the size the GitHub
+  API answered on 2026-11-28."
+  [n]
+  (str "{\"total_count\":" n ",\"workflow_runs\":["
+       (str/join "," (for [i (range n)]
+                       (str "{\"id\":" i ",\"head_commit\":{\"message\":\""
+                            (str/join (repeat 15000 "m")) "\"}}")))
+       "]}"))
+
+(deftest a-page-of-the-measured-size-is-read
+  (let [page (runs-page 140)]
+    (is (< (* 2 1024 1024) (count page)) "larger than any page measured")
+    (lh/with-server
+      (constantly {:status 200 :body page})
+      (fn [base _]
+        (let [r ((forge/json-getter "Test API" base {}) "/runs" {})]
+          (is (= 140 (count (:workflow_runs r))))
+          (is (= 139 (:id (last (:workflow_runs r))))))))))
+
+(deftest every-request-carries-the-user-agent-and-no-empty-header
+  (lh/with-server
+    (constantly {:status 200 :body "{}"})
+    (fn [base seen]
+      ((forge/json-getter "Test API" base {"Authorization" nil "X-Empty" "" "X-Key" "k"}) "/runs" {:page 2})
+      (let [{:keys [headers query]} (first @seen)]
+        (is (= "tik-bridge" (get headers "user-agent")))
+        (is (= "k" (get headers "x-key")))
+        (is (not (contains? headers "authorization")))
+        (is (not (contains? headers "x-empty")))
+        (is (= "page=2" query))))))
+
+(deftest an-empty-success-body-reads-as-nil
+  (lh/with-server
+    (constantly {:status 200 :body ""})
+    (fn [base _]
+      (is (nil? ((forge/json-getter "Test API" base {}) "/runs" {}))))))
+
+(deftest an-answer-larger-than-the-limit-is-refused
+  (let [huge (byte-array (inc (* 16 1024 1024)) (byte 32))]
+    (doseq [chunked? [false true]]
+      (testing (if chunked? "of unannounced length" "with a Content-Length")
+        (lh/with-server
+          (constantly {:status 200 :chunked? chunked? :body huge})
+          (fn [base _]
+            (let [e (attempt #((forge/json-getter "Test API" base {}) "/runs" {}))]
+              (is (= :forge/too-large (:reason (ex-data e))))
+              (is (= (* 16 1024 1024) (:limit (ex-data e)))))))))))
+
+(deftest a-document-that-names-a-key-twice-is-not-json
+  (doseq [body ["{\"a\":1,\"a\":2}" "{\"a\":1} {\"b\":2}" "{\"a\":1e400}"]]
+    (testing body
+      (lh/with-server
+        (constantly {:status 200 :body body})
+        (fn [base _]
+          (let [e (attempt #((forge/json-getter "Test API" base {}) "/runs" {}))]
+            (is (= {:reason :forge/json :path "/runs"} (ex-data e)))))))))
+
+(deftest a-json-rpc-request-escapes-hidden-characters-and-keeps-readable-text
+  (let [[_ [body]] (with-rpc-server 200 "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":1}"
+                     #(% "object" "execute_kw" "Größe" "a\u202Eb"))]
+    (is (str/includes? body "\"Größe\""))
+    (is (str/includes? body "\"a\\u202Eb\""))))

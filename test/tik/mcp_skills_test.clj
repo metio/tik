@@ -292,3 +292,21 @@
     (is (= 1 (:exit (verify-run root saved))))
     (is (= 1 (:exit (verify-run root (io/file root "missing.json")))))
     (is (= 1 (:exit (h/with-cli-root root #(cli/run-argv ["skill" "frobnicate"])))))))
+
+(deftest skill-verify-names-an-unreachable-server
+  (let [root (h/temp-dir! "tik-skill-verify-down")
+        port (with-open [s (java.net.ServerSocket. 0 1 (java.net.InetAddress/getLoopbackAddress))]
+               (.getLocalPort s))]
+    (spit (io/file root "actors") "")
+    (let [r (verify-run root (str "http://127.0.0.1:" port "/mcp"))]
+      (is (= 1 (:exit r)))
+      (is (str/includes? (str (:out r) (:err r)) "could not be opened")))))
+
+(deftest skill-verify-refuses-a-saved-entry-that-names-a-key-twice
+  (let [root (h/temp-dir! "tik-skill-verify-dup")
+        saved (io/file root "entry.json")]
+    (spit (io/file root "actors") "")
+    (spit saved "{\"uri\":\"skill://a\",\"resources\":[],\"resources\":[]}")
+    (let [r (verify-run root saved)]
+      (is (= 1 (:exit r)))
+      (is (str/includes? (str (:out r) (:err r)) "names an object key twice")))))

@@ -19,7 +19,8 @@
   `tik-skill-manifest`, and the signature travels in the skill entry's
   `_meta` under `wtf.metio/skill-manifest`. Without a key the entry
   says it is unsigned and why, so a missing signature is never silent."
-  (:require [clojure.java.io :as io]
+  (:require [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.sign :as sign])
@@ -113,7 +114,7 @@
       (str/blank? v) (refuse "an empty or nested value is not supported")
       (str/starts-with? v "\"")
       (if (and (< 1 (count v)) (str/ends-with? v "\""))
-        (let [parsed (try ((requiring-resolve 'cheshire.core/parse-string) v)
+        (let [parsed (try (json/parse-string v)
                           (catch Exception _ ::bad))]
           (if (string? parsed) parsed (refuse "a malformed double-quoted string")))
         (refuse "an unterminated double-quoted string"))

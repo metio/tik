@@ -18,7 +18,8 @@
   two inputs and may only be memoized on both. Keyed on both, an entry
   cannot go stale: its inputs are immutable, and the whole cache can be
   dropped at any moment with nothing lost but time."
-  (:require [clojure.java.io :as io]
+  (:require [briko.http :as http]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.badge :as badge]
             [tik.bundle :as bundle]
@@ -104,42 +105,48 @@
                     " — it resolves inside a private network"))
       :else uri)))
 
+(defn- redacted
+  "scheme://host[:port]/path of url: a query may carry a token, so it
+  never reaches a message."
+  [url]
+  (let [u (URI. (str url))]
+    (str (.getScheme u) "://" (.getHost u) (when (pos? (.getPort u)) (str ":" (.getPort u)))
+         (.getRawPath u))))
+
 (defn fetch!
-  "Download a bundle to a temp file. Redirects are followed by hand, one
-  hop at a time, because a redirect into a private network is exactly how
-  an allowlist checked only on the first URL is defeated."
+  "Download a bundle to a temp file. Every redirect target is judged by
+  `check-url!` before it is requested, because a redirect into a private
+  network is exactly how an allowlist checked only on the first URL is
+  defeated. The body is bounded while it is read, and the whole fetch,
+  redirects and body included, by a deadline."
   ^File [url]
-  ;; the URL is judged before an HTTP client is even loaded: a refusal
-  ;; must not depend on anything the fetch would need
+  ;; the URL is judged before any request is made: a refusal must not
+  ;; depend on anything the fetch would need
   (let [start (check-url! url)
-        get* (requiring-resolve 'babashka.http-client/get)]
-    (loop [uri start hops 0]
-      (when (< max-redirects hops)
-        (refuse! (str "too many redirects fetching " url)))
-      (let [resp (try (get* (str uri) {:as :bytes :throw false
-                                       :follow-redirects :never
-                                       :timeout 20000})
-                      (catch Exception e
-                        (refuse! (str "cannot fetch " uri ": " (ex-message e)))))
-            status (:status resp)]
-        (cond
-          (and (<= 300 status) (< status 400))
-          (if-let [loc (get-in resp [:headers "location"])]
-            (recur (check-url! (str (.resolve uri (str loc)))) (inc hops))
-            (refuse! (str "redirect with no location fetching " uri)))
-
-          (not= 200 status)
-          (refuse! (str "fetching " uri " answered " status))
-
-          :else
-          (let [^bytes body (:body resp)]
-            (when (< max-fetch-bytes (alength body))
-              (refuse! (str "the bundle at " uri " is larger than "
-                            max-fetch-bytes " bytes")))
-            (let [f (File/createTempFile "tik-fetched" ".tgz")]
-              (.deleteOnExit f)
-              (io/copy body f)
-              f)))))))
+        resp (try (http/request :get (str start)
+                                {:max-redirects max-redirects
+                                 ;; check-url! throws its own refusal for a
+                                 ;; target it will not fetch
+                                 :allow-redirect? #(boolean (check-url! %))
+                                 :max-bytes max-fetch-bytes
+                                 :connect-timeout-ms 10000
+                                 :timeout-ms 60000})
+                  (catch clojure.lang.ExceptionInfo e
+                    (if-not (http/refusal? e)
+                      (throw e)
+                      (let [{:keys [type limit] u :url} (ex-data e)]
+                        (refuse! (case type
+                                   ::http/too-large (str "the bundle at " u " is larger than "
+                                                         limit " bytes")
+                                   ::http/too-many-redirects (str "too many redirects fetching " url)
+                                   (str "cannot fetch " u ": " (ex-message e))))))))
+        status (:status resp)]
+    (if (not= 200 status)
+      (refuse! (str "fetching " (redacted (:url resp)) " answered " status))
+      (let [f (File/createTempFile "tik-fetched" ".tgz")]
+        (.deleteOnExit f)
+        (io/copy ^bytes (:body resp) f)
+        f))))
 
 ;; ---------------------------------------------------------- the HTTP face
 

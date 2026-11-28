@@ -635,12 +635,26 @@
     (sequential? x) (mapv cache-decode x)
     :else x))
 
+(def ^:private max-cache-bytes
+  "The largest cache file read; a larger one is a miss. The metio store's
+  cache held 860 entries in 920765 bytes on 2026-11-28 (about 1.1 KB an
+  entry), so 64 MiB holds about 60000 tickets."
+  (* 64 1024 1024))
+
+;; The cache stays on cheshire rather than briko.json: on a copy of that
+;; 920765-byte file briko.json took 46 ms to parse and 94 ms to write on
+;; the JVM (cheshire 11 and 15 ms), and 86 and 271 ms under babashka
+;; (cheshire 10 and 18 ms), which costs more than many of the folds the
+;; cache saves. The file is ours and disposable: whatever it holds is
+;; read as a derivation shortcut, so a stricter parser would refuse
+;; nothing a writer of the store directory could not get past anyway,
+;; while the size bound keeps a huge file from exhausting memory.
 (defn- read-cache-file
-  "The entries of this store's cache file; a missing or corrupt file is a
-  miss, never an error."
+  "The entries of this store's cache file; a missing, oversized or corrupt
+  file is a miss, never an error."
   []
   (or (try
-        (when (.exists (cache-file))
+        (when (and (.isFile (cache-file)) (<= (.length (cache-file)) max-cache-bytes))
           (let [parse (requiring-resolve 'cheshire.core/parse-string)]
             (into {}
                   (map (fn [[id v]] [id (cache-decode v)]))

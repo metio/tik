@@ -8,7 +8,8 @@
   lens keeps emitting plain data; only this namespace paints. Every lens
   produces EDN; the format is one axis over it, not a branch each command
   re-implements: `(when-not (emit-data opts data) <human>)`."
-  (:require [clojure.string :as str]
+  (:require [briko.json :as json]
+            [clojure.string :as str]
             [tik.text :refer [safe-name]]))
 
 ;; ---------------------------------------------------------------- color
@@ -58,22 +59,38 @@
 ;; --format human|edn|json (with --edn as the short alias for edn). human
 ;; is the default and is unchanged.
 
+(defn- json-name
+  "The JSON name of a map key: a keyword or string as written (a keyword
+  without its colon), anything else printed."
+  [k]
+  (cond (keyword? k) (subs (str k) 1)
+        (string? k) k
+        :else (pr-str k)))
+
 (defn json-safe
-  "Coerce a lens's EDN value into a shape cheshire can encode: Instants
-  to ISO strings (the one time type has no JSON form), sets to arrays,
-  and any non-name map key to its printed string (JSON keys are strings)."
+  "Coerce a lens's EDN value into a shape JSON can encode: Instants to ISO
+  strings (the one time type has no JSON form), sets to arrays, and any
+  non-name map key to its printed string (JSON keys are strings). A map
+  whose keys would print to the same name, such as :a and \"a\", has
+  every key printed instead (\":a\" and \"\\\"a\\\"\"), so the
+  output names no key twice and still says which key was which."
   [x]
   (cond
     (instance? java.time.Instant x) (str x)
-    (map? x) (into {} (map (fn [[k v]]
-                             [(if (or (keyword? k) (string? k)) k (pr-str k))
-                              (json-safe v)]))
-                   x)
+    (map? x) (let [clash? (not= (count x) (count (into #{} (map json-name) (keys x))))]
+               (into {} (map (fn [[k v]]
+                               [(cond clash? (pr-str k)
+                                      (or (keyword? k) (string? k)) k
+                                      :else (pr-str k))
+                                (json-safe v)]))
+                     x))
     (or (set? x) (sequential? x)) (mapv json-safe x)
     :else x))
 
-(defn json-encode [x]
-  ((requiring-resolve 'cheshire.core/generate-string) (json-safe x)))
+(defn json-encode
+  "x as JSON text with every hidden code point escaped (briko.json)."
+  [x]
+  (json/write-string (json-safe x)))
 
 (defn output-format
   "The requested output format keyword, or a fail-well throw for an

@@ -26,15 +26,15 @@
 
   Also here: the JSON-over-HTTP getter every forge adapter injects, and
   the SSH port forward for an API that only listens on its own host."
-  (:require [clojure.java.io :as io]
+  (:require [briko.http :as http]
+            [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.cli-core :as cli-core]
             [tik.event :as event])
   (:import (java.net InetSocketAddress ServerSocket Socket URI URLEncoder)
-           (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse
-                          HttpResponse$BodyHandlers)
-           (java.time Duration Instant)
+           (java.time Instant)
            (java.util.concurrent TimeUnit)))
 
 ;; ---------------------------------------------------------------- streaks
@@ -186,10 +186,16 @@
 
 ;; ---------------------------------------------------------------- http
 
-(def ^:private client
-  (delay (-> (HttpClient/newBuilder)
-             (.connectTimeout (Duration/ofSeconds 20))
-             (.build))))
+(def ^:private limits
+  "Bounds of every forge request and of the JSON it answers. A page of 100
+  workflow runs from the GitHub API measured 1.34 to 1.56 MB on
+  2026-11-28 (about 15 KB a run), the organisation's repository list
+  343 KB; 16 MiB holds ten such pages. The connect timeout and the
+  60-second deadline are the ones the bridges always used, the deadline
+  now covering the body as well."
+  {:connect-timeout-ms 20000
+   :timeout-ms 60000
+   :max-bytes (* 16 1024 1024)})
 
 (defn require-tls!
   "The URI of `url`, refusing plain HTTP anywhere but loopback (where the
@@ -214,65 +220,85 @@
 
 (def ^:private transient-status #{500 502 503 504})
 
+(defn- address [^URI u]
+  (str (.getScheme u) "://" (.getHost u) (when (pos? (.getPort u)) (str ":" (.getPort u)))))
+
 (defn- send!
-  "The response to `req`. A server that cannot be reached - refused, timed
-  out, or failing the TLS handshake - is an operational fault of that
-  server or of this host's trust store, so it becomes an ex-info naming
-  the API, the address and the cause instead of escaping as an exception
-  without a message."
-  ^HttpResponse [label ^HttpRequest req]
-  (try
-    (.send ^HttpClient @client req (HttpResponse$BodyHandlers/ofString))
-    (catch java.io.IOException e
-      (let [u (.uri req)]
-        (throw (ex-info (str label " unreachable at " (.getScheme u) "://" (.getHost u)
-                             (when (pos? (.getPort u)) (str ":" (.getPort u)))
-                             ": " (.getSimpleName (class e))
-                             (when-let [m (not-empty (ex-message e))] (str ": " m)))
-                        {:reason :forge/unreachable :url (str u)} e))))))
+  "The response {:status :headers :body} to one request. A server that
+  cannot be reached - refused, timed out, failing the TLS handshake, or
+  answering past the deadline - is an operational fault of that server or
+  of this host's trust store, so it becomes an ex-info naming the API, the
+  address and the cause instead of escaping as an exception without a
+  message. A body over the limit is :forge/too-large."
+  [label method url opts]
+  (let [u (require-tls! url)]
+    (try
+      (http/request method (str u) (merge limits {:as :text} opts))
+      (catch clojure.lang.ExceptionInfo e
+        (if-not (http/refusal? e)
+          (throw e)
+          (let [{:keys [type limit]} (ex-data e)
+                cause (or (ex-cause e) e)]
+            (cond
+              (= ::http/too-large type)
+              (throw (ex-info (str label " answered with more than " limit " bytes at " (address u))
+                              {:reason :forge/too-large :url (str u) :limit limit} e))
+
+              (#{::http/connect-failed ::http/connect-timeout ::http/tls-failed ::http/timeout
+                 ::http/failed ::http/interrupted} type)
+              (throw (ex-info (str label " unreachable at " (address u)
+                                   ": " (.getSimpleName (class cause))
+                                   (when-let [m (not-empty (ex-message cause))] (str ": " m)))
+                              {:reason :forge/unreachable :url (str u)} cause))
+
+              :else (throw e))))))))
 
 (defn- send-with-retry
-  "The response to `req`, repeating it after each of `*retry-pauses*` while
-  the server answers with a gateway or internal error. Forges return these
-  for a few requests a week and answer the same request a moment later;
-  every request here reads (a GET, or an RPC call to a read-only method),
-  so a repeat cannot double an effect. `label` names the API in errors."
-  ^HttpResponse [label req]
+  "The response to a request, repeating it after each of `*retry-pauses*`
+  while the server answers with a gateway or internal error. Forges return
+  these for a few requests a week and answer the same request a moment
+  later; every request here reads (a GET, or an RPC call to a read-only
+  method), so a repeat cannot double an effect. `label` names the API in
+  errors."
+  [label method url opts]
   (loop [pauses (seq *retry-pauses*)]
-    (let [resp (send! label req)]
-      (if (and pauses (transient-status (.statusCode resp)))
+    (let [resp (send! label method url opts)]
+      (if (and pauses (transient-status (:status resp)))
         (do (Thread/sleep (long (first pauses)))
             (recur (next pauses)))
         resp))))
 
+(defn- parse-json
+  "The parsed JSON of a forge's answer, keys as keywords, within the
+  forge limits; nil for an empty body, ::invalid when it is not one JSON
+  value."
+  [body]
+  (when-not (str/blank? body)
+    (try (json/parse-string body {:keys :keyword :max-bytes (:max-bytes limits)})
+         (catch Exception _ ::invalid))))
+
 (defn json-getter
   "A `get-json` ((path query-map) -> parsed JSON) over the API at `base`,
   sending `headers` with every request. `label` names the API in errors,
-  which carry {:reason :forge/http :status n}, {:reason :forge/json} or
-  {:reason :forge/unreachable}.
+  which carry {:reason :forge/http :status n}, {:reason :forge/json},
+  {:reason :forge/too-large} or {:reason :forge/unreachable}.
   A transient server error is retried before it becomes one."
   [label base headers]
-  (let [parse (requiring-resolve 'cheshire.core/parse-string)
-        base (str/replace (str base) #"/+$" "")]
+  (let [base (str/replace (str base) #"/+$" "")
+        headers (into {} (filter (comp seq val)) (assoc headers "User-Agent" "tik-bridge"))]
     (fn [path q]
       (let [url (str base path (when (seq q) (str "?" (query-string q))))
-            req (as-> (HttpRequest/newBuilder (require-tls! url)) b
-                  (reduce (fn [^java.net.http.HttpRequest$Builder b [k v]]
-                            (if (seq v) (.header b k v) b))
-                          b (assoc headers "User-Agent" "tik-bridge"))
-                  (.timeout ^java.net.http.HttpRequest$Builder b (Duration/ofSeconds 60))
-                  (.build ^java.net.http.HttpRequest$Builder b))
-            resp (send-with-retry label req)
-            status (.statusCode resp)
-            body (str (.body resp))]
+            {:keys [status body]} (send-with-retry label :get url {:headers headers})
+            body (str body)]
         (when (>= status 400)
           (throw (ex-info (str label " " status " for " path ": "
                                (subs body 0 (min 200 (count body))))
                           {:reason :forge/http :status status :path path})))
-        (try (parse body true)
-             (catch Exception _
-               (throw (ex-info (str label " returned non-JSON for " path)
-                               {:reason :forge/json :path path}))))))))
+        (let [r (parse-json body)]
+          (if (= ::invalid r)
+            (throw (ex-info (str label " returned non-JSON for " path)
+                            {:reason :forge/json :path path}))
+            r))))))
 
 ;; HTTP 200 carries both results and errors in JSON-RPC, so `json-rpc-caller`
 ;; reads the error member itself.
@@ -280,34 +306,29 @@
   "A `call` ((service method & args) -> result) over the JSON-RPC 2.0
   endpoint at `url`, Odoo's `/jsonrpc` shape: params {:service :method
   :args}. `label` names the API in errors, which carry {:reason
-  :forge/http :status n}, {:reason :forge/json}, {:reason :forge/rpc} or
-  {:reason :forge/unreachable}.
+  :forge/http :status n}, {:reason :forge/json}, {:reason :forge/rpc},
+  {:reason :forge/too-large} or {:reason :forge/unreachable}.
   Only read-only methods may go through it, because a transient server
   error is retried."
   [label url]
-  (let [parse (requiring-resolve 'cheshire.core/parse-string)
-        render (requiring-resolve 'cheshire.core/generate-string)
-        uri (require-tls! url)]
+  (let [url (str (require-tls! url))]
     (fn [service method & args]
-      (let [req (-> (HttpRequest/newBuilder uri)
-                    (.header "Content-Type" "application/json")
-                    (.header "User-Agent" "tik-bridge")
-                    (.timeout (Duration/ofSeconds 60))
-                    (.POST (HttpRequest$BodyPublishers/ofString
-                            (render {:jsonrpc "2.0" :method "call" :id 1
-                                     :params {:service service :method method :args (vec args)}})))
-                    (.build))
-            resp (send-with-retry label req)
-            status (.statusCode resp)
-            body (str (.body resp))
+      (let [{:keys [status body]}
+            (send-with-retry label :post url
+                             {:headers {"Content-Type" "application/json"
+                                        "User-Agent" "tik-bridge"}
+                              :body (json/write-string
+                                     {:jsonrpc "2.0" :method "call" :id 1
+                                      :params {:service service :method method :args (vec args)}})})
+            body (str body)
             _ (when (>= status 400)
                 (throw (ex-info (str label " " status " for " method ": "
                                      (subs body 0 (min 200 (count body))))
                                 {:reason :forge/http :status status :method method})))
-            r (try (parse body true)
-                   (catch Exception _
-                     (throw (ex-info (str label " returned non-JSON for " method)
-                                     {:reason :forge/json :method method}))))]
+            r (parse-json body)
+            _ (when (= ::invalid r)
+                (throw (ex-info (str label " returned non-JSON for " method)
+                                {:reason :forge/json :method method})))]
         (if-let [e (:error r)]
           (let [msg (str (or (get-in e [:data :message]) (:message e)))]
             (throw (ex-info (str label " refused " method ": " (subs msg 0 (min 300 (count msg))))

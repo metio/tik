@@ -30,17 +30,20 @@
   Run: TIK_ROOT=… TIK_ACTOR=agent-x TIK_KEY=… tik mcp
   (or `bb mcp` from the dev shell — the same loop on either runtime), or
   `tik serve --mcp-token-file F` for one shared server on /mcp."
-  (:require [clojure.string :as str]
+  (:require [briko.json :as json]
+            [clojure.string :as str]
             [tik.cli :as cli]
             [tik.context :as context]
             [tik.skills :as skills]))
 
-;; cheshire is resolved lazily so JVM tooling can load this namespace
-;; without the dependency; babashka ships it as a builtin, and the
-;; native image force-requires cheshire.core in tik.main, so the resolve
-;; succeeds on both runtimes.
-(defn- json-parse [s] ((requiring-resolve 'cheshire.core/parse-string) s))
-(defn- json-emit [x] ((requiring-resolve 'cheshire.core/generate-string) x))
+;; A message is read within briko's default bounds (1 MiB, 64 levels):
+;; every tool call writes at most one event, and tik.api refuses to read
+;; an event over 1 MiB. A message naming a key twice is refused, so the
+;; server never acts on one of two readings of it. Responses escape every
+;; hidden code point, so tool output reaches the agent without invisible
+;; or reordering characters.
+(defn- json-parse [s] (json/parse-string s))
+(defn- json-emit [x] (json/write-string x))
 
 (defn- tik
   "Run a tik CLI invocation IN-PROCESS (cli/run-argv): same dispatch the

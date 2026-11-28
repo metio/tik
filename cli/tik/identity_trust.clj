@@ -68,7 +68,8 @@
   signed — a real consequence, and the reason re-pinning merges. Keys
   merge by kid and key material (ADR 0027), so new material under a kid
   already pinned joins the old key instead of replacing it."
-  (:require [clojure.java.io :as io]
+  (:require [briko.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [tik.canonical :as canonical]
             [tik.identity :as identity]
@@ -85,8 +86,12 @@
 (defn- b64url ^bytes [^String s]
   (.decode (Base64/getUrlDecoder) s))
 
-(defn- json-parse [s]
-  ((requiring-resolve 'cheshire.core/parse-string) s true))
+(defn- json-parse
+  "A JOSE header or claims set, keys as keywords. A segment that repeats a
+  member, or holds anything after its object, is refused rather than read
+  one of two ways."
+  [s]
+  (json/parse-string s {:keys :keyword}))
 
 (defn issuer-slug
   "A pinned-keys filename for an issuer URL. Every character that is not

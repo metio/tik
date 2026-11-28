@@ -1,7 +1,9 @@
 ;; SPDX-FileCopyrightText: The tik Authors
 ;; SPDX-License-Identifier: 0BSD
 {:paths ["src" "cli" "skills"]
- :deps {metosin/malli {:mvn/version "0.20.3"}}
+ ;; the same briko pin as deps.edn
+ :deps {metosin/malli {:mvn/version "0.20.3"}
+        io.github.metio/briko {:git/sha "f23bbdb699f616b0e4263a737b53821ad33eea79"}}
  :tasks
  {tik  {:doc "Run the tik CLI (bb tik -- status <id>)"
         :requires ([tik.cli])
