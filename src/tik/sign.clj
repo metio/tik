@@ -184,33 +184,42 @@
   Read in process (tik.sshsig) for the Ed25519 keys tik mints, so a host
   without OpenSSH still judges authorship — which the distroless image we
   publish has none of. A key type that reader does not implement falls
-  back to ssh-keygen rather than being called forged."
+  back to ssh-keygen rather than being called forged.
+
+  An `actor` that is not a non-blank string is false before either reader
+  is asked: ssh-keygen matches `-I \"\"` against a `*` principal pattern,
+  and a missing actor names nobody to verify as."
   ([allowed-signers event-bytes sig-bytes actor]
    (verify-bytes allowed-signers event-bytes sig-bytes actor namespace-event))
   ([allowed-signers ^bytes event-bytes ^bytes sig-bytes actor sig-namespace]
-   (let [text (registry-text allowed-signers)
-         in-process (when text
-                      (sshsig/verify text event-bytes sig-bytes actor
-                                     sig-namespace))]
-     (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
-       in-process
-       (when @verifier-available?
-         (let [sig (write-temp "tik-verify" sig-bytes)]
-           (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
-                (finally (.delete sig)))))))))
+   (if-not (sshsig/named-principal? actor)
+     false
+     (let [text (registry-text allowed-signers)
+           in-process (when text
+                        (sshsig/verify text event-bytes sig-bytes actor
+                                       sig-namespace))]
+       (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
+         in-process
+         (when @verifier-available?
+           (let [sig (write-temp "tik-verify" sig-bytes)]
+             (try (ssh-verify allowed-signers event-bytes sig actor sig-namespace)
+                  (finally (.delete sig))))))))))
 
 (defn verify-text
   "verify-bytes over allowed-signers given as text rather than a file, for
   a caller that narrowed the registry to some of its lines. ssh-keygen
-  reads a temporary copy only for a key type tik.sshsig does not read."
+  reads a temporary copy only for a key type tik.sshsig does not read. An
+  `actor` that is not a non-blank string is false, as in verify-bytes."
   [^String text ^bytes event-bytes ^bytes sig-bytes actor sig-namespace]
-  (let [in-process (sshsig/verify text event-bytes sig-bytes actor sig-namespace)]
-    (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
-      in-process
-      (when @verifier-available?
-        (let [f (write-temp "tik-signers" (.getBytes text "UTF-8"))]
-          (try (verify-bytes f event-bytes sig-bytes actor sig-namespace)
-               (finally (.delete f))))))))
+  (if-not (sshsig/named-principal? actor)
+    false
+    (let [in-process (sshsig/verify text event-bytes sig-bytes actor sig-namespace)]
+      (if (and (some? in-process) (not= ::sshsig/unsupported in-process))
+        in-process
+        (when @verifier-available?
+          (let [f (write-temp "tik-signers" (.getBytes text "UTF-8"))]
+            (try (verify-bytes f event-bytes sig-bytes actor sig-namespace)
+                 (finally (.delete f)))))))))
 
 (defn find-principals-bytes
   "Which registered principals could have produced `sig-bytes` over

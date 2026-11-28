@@ -335,8 +335,10 @@
 
 (defn- signer-lines
   "The parsed allowed-signers lines that grant `namespace` to a key,
-  optionally narrowed to those naming `principal`, or ::unsupported when
-  a line for that key needs a judgement this reader cannot make."
+  narrowed to those naming `principal` unless it is nil, or ::unsupported
+  when a line for that key needs a judgement this reader cannot make. A
+  nil principal searches every line, which only find-principals asks for;
+  verify refuses a nil principal before it gets here."
   [allowed-signers-text ^bytes public-key namespace principal]
   (let [verdicts (for [l (str/split-lines (str allowed-signers-text))
                        :let [parsed (parse-signer-line l)]
@@ -374,10 +376,18 @@
                   (catch Exception _ false)))))
         ::unsupported))))
 
+(defn named-principal?
+  "Whether `principal` names somebody a signature could be verified as: a
+  string that is not blank. Anything else names nobody, and verifying as
+  nobody must not fall back to accepting whichever line grants the key."
+  [principal]
+  (and (string? principal) (not (str/blank? principal))))
+
 (defn verify
   "Does `signature` (armored SSHSIG, bytes or text) endorse `message` for
   `namespace`, under a key that `allowed-signers-text` grants to
-  `principal`?
+  `principal`? A principal that is not a non-blank string verifies
+  nothing.
 
   true, false, or `::unsupported` — the last meaning this reader cannot
   judge (a key type or hash it does not implement), so a caller may fall
@@ -385,7 +395,8 @@
   [allowed-signers-text ^bytes message signature principal namespace]
   (let [text (if (bytes? signature) (String. ^bytes signature "UTF-8") (str signature))
         parsed (some-> (unarmor text) parse)]
-    (if (or (nil? parsed)
+    (if (or (not (named-principal? principal))
+            (nil? parsed)
             ;; the namespace is inside the signed blob, so a mismatch here
             ;; is a signature made for another purpose
             (not= namespace (:namespace parsed))
