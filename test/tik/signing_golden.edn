@@ -1,0 +1,15 @@
+;; SPDX-FileCopyrightText: The tik Authors
+;; SPDX-License-Identifier: 0BSD
+;; One signature made by `ssh-keygen -Y sign` (OpenSSH 10.2p1) with a
+;; throwaway Ed25519 key whose private half was deleted after signing.
+{:public-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM9ogFrai6HlD1DOPk7C/oYK3WEHHRgbdSEj2JfwGTfR golden"
+ :fingerprint "c39d8bc39e40c5cb"
+ :namespace "tik-event"
+ :message "{:event/actor \"golden\" :event/type :fact}"
+ :signature "-----BEGIN SSH SIGNATURE-----
+U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgz2iAWtqLoeUPUM4+TsL+hgrdYQ
+cdGBt1ISPYl/AZN9EAAAAJdGlrLWV2ZW50AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1l
+ZDI1NTE5AAAAQCHJ3srei5Z0Ud4oCkH08cxg+N+7ej7qMgIo88tGgglTXLM5ExkyRJuw2l
+7VHEq3ABLrLk1zdbhJLtAJ4mAqigk=
+-----END SSH SIGNATURE-----
+"}
